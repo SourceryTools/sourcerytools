@@ -1,0 +1,255 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [arm-gnu] Static template member in assigned section -- section type conflict
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:arm-gnu%40codesourcery.com?Subject=Re%3A%20%5Barm-gnu%5D%20Static%20template%20member%20in%20assigned%20section%20--%20section%0A%20type%20conflict&In-Reply-To=%3C4F24541C.70101%40chartertn.net%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000034.html">
+   <LINK REL="Next"  HREF="000036.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[arm-gnu] Static template member in assigned section -- section type conflict</H1>
+    <B>Gene Smith</B> 
+    <A HREF="mailto:arm-gnu%40codesourcery.com?Subject=Re%3A%20%5Barm-gnu%5D%20Static%20template%20member%20in%20assigned%20section%20--%20section%0A%20type%20conflict&In-Reply-To=%3C4F24541C.70101%40chartertn.net%3E"
+       TITLE="[arm-gnu] Static template member in assigned section -- section type conflict">gds at chartertn.net
+       </A><BR>
+    <I>Sat Jan 28 20:01:32 UTC 2012</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000034.html">[arm-gnu] Static template member in assigned section -- section type conflict
+</A></li>
+        <LI>Next message: <A HREF="000036.html">[arm-gnu] Static template member in assigned section -- section type conflict
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#35">[ date ]</a>
+              <a href="thread.html#35">[ thread ]</a>
+              <a href="subject.html#35">[ subject ]</a>
+              <a href="author.html#35">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>On 01/27/2012 01:45 PM, Carlos O'Donell wrote:
+&gt;<i> On 1/27/2012 12:19 AM, Gene Smith wrote:
+</I>&gt;&gt;&gt;<i> You will never have *all* of priv in the same place because
+</I>&gt;&gt;&gt;<i> the `static' clause makes that impossible for&gt;   1 instances
+</I>&gt;&gt;&gt;<i> of the object (given the current implementation for static).
+</I>&gt;&gt;&gt;<i>
+</I>&gt;&gt;&gt;<i> Cheers,
+</I>&gt;&gt;&gt;<i> Carlos.
+</I>&gt;&gt;<i>
+</I>&gt;&gt;<i> Thanks for the detailed explanation. However, I am not sure
+</I>&gt;&gt;<i> I follow it all and will look up the concept of &quot;common&quot;
+</I>&gt;&gt;<i> you refer to. While waiting for a response I found a solution
+</I>&gt;&gt;<i> by breaking up the code into 3 separate files and I get the
+</I>&gt;&gt;<i> result I expect.
+</I>&gt;&gt;<i>
+</I>&gt;&gt;<i> // temp.h
+</I>&gt;&gt;<i> template&lt;class t1, class t2&gt;
+</I>&gt;&gt;<i> class outer
+</I>&gt;&gt;<i> {
+</I>&gt;&gt;<i> public:
+</I>&gt;&gt;<i>      t1        a;
+</I>&gt;&gt;<i>      static t2    b;
+</I>&gt;&gt;<i> };
+</I>&gt;&gt;<i>
+</I>&gt;&gt;<i> // temp.cpp
+</I>&gt;&gt;<i> #include &quot;temp.h&quot;
+</I>&gt;&gt;<i>
+</I>&gt;&gt;<i> template&lt;class t1, class t2&gt;
+</I>&gt;&gt;<i> t2 outer&lt;t1, t2&gt;::b
+</I>&gt;&gt;<i>          __attribute__((section(&quot;.s1&quot;)));
+</I>&gt;&gt;<i>
+</I>&gt;&gt;<i> // Explicit instantiation (NEW!)
+</I>&gt;&gt;<i> template class outer&lt;int,int&gt;;
+</I>&gt;&gt;<i>
+</I>&gt;&gt;<i> //main.c
+</I>&gt;&gt;<i> #include &quot;temp.h&quot;
+</I>&gt;&gt;<i> int main (void)
+</I>&gt;&gt;<i> {
+</I>&gt;&gt;<i>      static outer&lt;int, int&gt;  priv __attribute__((section(&quot;.s1&quot;)));
+</I>&gt;&gt;<i>
+</I>&gt;&gt;<i>      priv.a = 10;
+</I>&gt;&gt;<i>      priv.b = 10;
+</I>&gt;&gt;<i> }
+</I>&gt;&gt;<i>
+</I>&gt;&gt;<i> arm-none-eabi-g++ -c temp.cpp
+</I>&gt;&gt;<i> arm-none-eabi-g++ -c main.cpp
+</I>&gt;&gt;<i> arm-none-eabi-g++ main.o temo.o
+</I>&gt;&gt;<i> Produces a.out with only a warning about lack of _start. An objdump shows all
+</I>&gt;&gt;<i> objects/variables in the expected section.
+</I>&gt;&gt;<i>
+</I>&gt;&gt;<i> Why does this work but having it all in a single file doesn't
+</I>&gt;<i>
+</I>&gt;<i> It doesn't work.
+</I>&gt;<i>
+</I>&gt;<i> Use -save-temps and -Wl,-Map,linkermap.txt to see where everything goes (I
+</I>&gt;<i> suggest also printing &amp;priv, &amp;priv.a and &amp;priv.b).
+</I>&gt;<i>
+</I>&gt;<i> You will see that priv.a goes into .s1 because of the section attribute in main.cpp.
+</I>&gt;<i>
+</I>&gt;<i> However, because of the explicit instantiation priv.b goes into .bss, it's a
+</I>&gt;<i> specialization, and isn't shared amongst other uses of the template so it's not common
+</I>&gt;<i> data anymore (which is the normal way in which static data is handled).
+</I>&gt;<i>
+</I>&gt;<i> e.g.
+</I>&gt;<i>
+</I>&gt;<i> 6009d8 &amp;priv
+</I>&gt;<i> 6009d8 &amp;priv.a
+</I>&gt;<i>
+</I>&gt;<i> .s1             0x00000000006009d8        0x4
+</I>&gt;<i>   .s1            0x00000000006009d8        0x4 priv2.o
+</I>&gt;<i>
+</I>&gt;<i> 6009f0 &amp;priv.b
+</I>&gt;<i>
+</I>&gt;<i> .bss            0x00000000006009e0       0x18
+</I>&gt;<i>   ...
+</I>&gt;<i>   .bss           0x00000000006009f0        0x0 priv2-temp.o
+</I>&gt;<i>   .bss._ZN5outerIiiE1bE
+</I>&gt;<i>                  0x00000000006009f0        0x4 priv2-temp.o
+</I>&gt;<i>                  0x00000000006009f0                _ZN5outerIiiE1bE
+</I>&gt;<i>
+</I>&gt;<i> You are perilously poking under the hood of a complex system :-)
+</I>&gt;<i>
+</I>&gt;<i> Cheers,
+</I>&gt;<i> Carlos.
+</I>
+Don't know why but it works for me with all g++. In the previous example,
+I see priv.a, priv.b and priv *all* in section .s1 (translated mangled names
+with c++-filt in parens):
+
+$ ./a.out
+0x600c20 &amp;priv
+0x600c20 &amp;priv.a
+0x600c1c &amp;priv.b
+
+.s1             0x0000000000600c1c        0x8
+  .s1            0x0000000000600c1c        0x4 temp.o
+                 0x0000000000600c1c                _ZN5outerIiiE1bE 
+(outer&lt;int, int&gt;::b)
+  .s1            0x0000000000600c20        0x4 main.o
+
+Double check location with objdump:
+24 .s1          00000008  0000000000600c1c  0000000000600c1c  00000c1c  2**2
+                 CONTENTS, ALLOC, LOAD, DATA
+25 .bss         00000128  0000000000600c40  0000000000600c40  00000c24  2**5
+                 ALLOC
+
+None of the &quot;priv&quot; elements appear in .bss!
+
+Here's a more general example that works for me with arm-none-eabi-g++ 
+(from CS)
+and generic g++ on linux. This is somewhat closer to my actually 
+application where
+some elements in template class are static and assigned to the containing
+object's section (.b), others are static and not assigned a section 
+(.c[]) and some
+are nether static nor assigned an explicit section (.a):
+
+// temp.h
+template&lt;class t1, class t2&gt;
+class outer
+{
+public:
+	int             c[3];   // goes to .mysec -- where containing object is 
+assigned
+	static t2	b;      // goes to .mysec -- explicitly assigned independently
+	static t1	a;      // goes to .bss   -- always to default section: 
+unassigned static
+};
+
+// temp.cpp
+#include &quot;temp.h&quot;
+
+template&lt;class t1, class t2&gt;
+t2 outer&lt;t1, t2&gt;::b
+	__attribute__((section(&quot;.mysect&quot;)));
+
+template&lt;class t1, class t2&gt;
+t1 outer&lt;t1, t2&gt;::a;
+
+template class outer&lt;int, int&gt;;
+
+// main.cpp
+#include &quot;temp.h&quot;
+
+int main (void)
+{
+	static outer&lt;int,int&gt; priv __attribute__((section(&quot;.mysect&quot;)));  // li:31
+
+	priv.a = 10;
+	priv.b = 10;
+
+	priv.c[0] = 144;
+	priv.c[1] = 145;
+	priv.c[2] = 146;
+
+	cout &lt;&lt; &amp;priv &lt;&lt; &quot; &amp;priv\n&quot;;
+	cout &lt;&lt; &amp;priv.a &lt;&lt; &quot; &amp;priv.a\n&quot;;
+	cout &lt;&lt; &amp;priv.b &lt;&lt; &quot; &amp;priv.b\n&quot;;
+	cout &lt;&lt; &amp;priv.c[0] &lt;&lt; &quot; &amp;priv.c[0]\n&quot;;
+}
+
+I build with linux g++ like this (as you suggested):
+
+g++  -save-temps -c -g  main.cpp
+g++  -save-temps -c -g  temp.cpp
+g++  -save-temps -g -Wl,-Map,linkermap.txt  temp.o main.o
+
+.mysect         0x0000000000600c6c       0x10
+  .mysect        0x0000000000600c6c        0x4 temp.o
+                 0x0000000000600c6c                _ZN5outerIiiE1bE 
+(outer&lt;int,int&gt;::b)
+  .mysect        0x0000000000600c70        0xc main.o
+
+  .bss           0x0000000000600da0        0x0 temp.o
+  .bss._ZN5outerIiiE1aE (outer&lt;int,int&gt;::a)
+                 0x0000000000600da0        0x4 temp.o
+                 0x0000000000600da0                _ZN5outerIiiE1aE
+
+Program output:
+$ ./a.out
+0x600c70 &amp;priv           &lt;---in .mysect
+0x600da0 &amp;priv.a         &lt;---in .bss
+0x600c6c &amp;priv.b         &lt;---in .mysect
+0x600c70 &amp;priv.c[0]      &lt;---in .mysect
+
+Exactly what I want!
+
+-gene
+
+
+
+
+
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000034.html">[arm-gnu] Static template member in assigned section -- section type conflict
+</A></li>
+	<LI>Next message: <A HREF="000036.html">[arm-gnu] Static template member in assigned section -- section type conflict
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#35">[ date ]</a>
+              <a href="thread.html#35">[ thread ]</a>
+              <a href="subject.html#35">[ subject ]</a>
+              <a href="author.html#35">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/arm-gnu">More information about the arm-gnu
+mailing list</a><br>
+</body></html>

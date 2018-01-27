@@ -1,0 +1,113 @@
+From Gerald.Murphy at analog.com  Mon Feb  4 16:02:09 2013
+From: Gerald.Murphy at analog.com (Murphy, Gerald)
+Date: Mon, 4 Feb 2013 16:02:09 +0000
+Subject: [arm-gnu] GCC linker section ordering
+Message-ID: <05E9E85E39C35B4D96ED3A3190E35A10CE2676E900@LIMKCMBX1.ad.analog.com>
+
+Hi,
+
+I have a question regarding  'Sourcery CodeBench Lite for ARM EABI'.
+
+Is it possible to control the order in which input sections with the same name are merged in the output image?
+
+Best regards,
+Ger
+-------------- next part --------------
+An HTML attachment was scrubbed...
+URL: <http://sourcerytools.com/pipermail/arm-gnu/attachments/20130204/bb2ebd77/attachment.html>
+
+From david at westcontrol.com  Tue Feb  5 09:20:46 2013
+From: david at westcontrol.com (David Brown)
+Date: Tue, 5 Feb 2013 10:20:46 +0100
+Subject: [arm-gnu] GCC linker section ordering
+In-Reply-To: <05E9E85E39C35B4D96ED3A3190E35A10CE2676E900@LIMKCMBX1.ad.analog.com>
+References: <05E9E85E39C35B4D96ED3A3190E35A10CE2676E900@LIMKCMBX1.ad.analog.com>
+Message-ID: <5110CEEE.8030105@westcontrol.com>
+
+On 04/02/13 17:02, Murphy, Gerald wrote:
+> Hi,
+> 
+>  
+> 
+> I have a question regarding  ?Sourcery CodeBench Lite for ARM EABI?.
+> 
+>  
+> 
+> Is it possible to control the order in which input sections with the
+> same name are merged in the output image?
+> 
+
+You can do that by using your own linker script.  I don't have a copy of
+the tools on hand at the moment, so this is just general knowledge of
+gcc and the binutils linker.  A typical linker script will join the
+named section from all input files without a particular ordering.  But
+you can specify the files in an explicit order, and (I think) choose to
+alphabetise the remaining files.
+
+However, it is often preferable to give the different sections different
+names, such as a numerical suffix to specify the ordering.  This lets
+you keep a simpler linker script - it's the same technique used by gcc
+to control initialisation ordering.
+
+
+
+
+From martin.velek at gmail.com  Fri Feb 22 14:29:41 2013
+From: martin.velek at gmail.com (Martin Velek)
+Date: Fri, 22 Feb 2013 15:29:41 +0100
+Subject: [arm-gnu] linker script - LMA for rom section
+Message-ID: <CAB-o4Cz6Z_pg=D9wQPsBGChoGaSohED=iV6tcS1mjcUyR2MkQQ@mail.gmail.com>
+
+Hello,
+
+I have a question about settings for a linker script for NXP lpc1857.
+The micro has got two flash banks, A and B, in a non-continuous memory
+address space,
+A starts at 0x1A000000, size 512KB
+B starts at 0x1B000000, size 512KB
+
+There is implemented a shadow memory area starting at 0x00000000 which
+can be, via a special register, mapped to e.g. beginning of the flash
+bank A. Thus it is possible to write a code with starting at addr.
+0x000000, linker script with rom(rx) : ORIGIN = 0x00000000, LENGTH =
+512K, rom1 (rx) : ORIGIN = 0x01000000, LENGTH = 512K.
+
+My idea is to setup LMA for code (.text section, .rodata and
+.data(init values) to 0x1A000000 and VMA to 0x000000. In my linker
+script is
+......
+rom (rx) : ORIGIN = 0x0000, LENGTH = 512K
+.....
+.text : AT(0x1A000000){ ....  } >rom
+.rodata : ALIGN (4) { } >rom
+.data : ALIGN (8) { } >ram AT>rom
+.bss : ALIGN (8)  {} >ram AT>rom
+
+Hower it only  works for .text, .rodata.
+Sections:
+Idx Name          Size      VMA       LMA       File off  Algn
+  0 .text         000002b0  00000000  1a000000  00010000  2**2
+                  CONTENTS, ALLOC, LOAD, READONLY, CODE
+  1 .eh_frame     00000004  000002b0  1a0002b0  000102b0  2**2
+                  CONTENTS, ALLOC, LOAD, READONLY, DATA
+  2 .rodata       00000074  000002b4  1a0002b4  000102b4  2**2
+                  CONTENTS, ALLOC, LOAD, CODE
+  3 .data         00000008  10000000  00000328  00008000  2**3
+                  CONTENTS, ALLOC, LOAD, DATA
+  4 .bss          00000020  10000008  00000330  00008008  2**3
+                  ALLOC
+
+The problem is with .data LMA = 00000328 and .bss  LMA = 00000330 . I
+am out of ideas how to edit the linker script :(.
+
+Thank you for your help.
+
+Best,
+Martin
+
+P.S.
+I would like to stick to rom (rx) : ORIGIN = 0x00000000 instead of rom
+(rx) : ORIGIN = 0x1A000000 for many of reasons, e.g. code portability,
+code size, etc.
+
+
