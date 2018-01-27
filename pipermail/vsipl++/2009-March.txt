@@ -1,0 +1,240 @@
+From jules at codesourcery.com  Mon Mar  2 14:02:01 2009
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Mon, 02 Mar 2009 09:02:01 -0500
+Subject: [vsipl++] [patch] Building VSIPL++ shared libraries
+In-Reply-To: <49A86B1A.2060506@codesourcery.com>
+References: <49A864CF.3080706@codesourcery.com> <49A86826.9030505@codesourcery.com> <49A86B1A.2060506@codesourcery.com>
+Message-ID: <49ABE6D9.6040505@codesourcery.com>
+
+Stefan Seefeld wrote:
+> Brooks Moses wrote:
+> 
+>> Also, do we want to do versioned versions of the .so files?  The usual
+>> habit from IBM's libraries is to create library.so.X.Y.Z as the actual
+>> library (where X.Y.Z is the version number), and install library.so.X
+>> and library.so as symlinks to it.
+> 
+> I don't expect this to be necessary, as we don't install libraries into 
+> common directories. And, we haven't talked about API/ABI compatibility 
+> yet, so right now two distinct releases are conceptually two distinct 
+> products.
+
+I think we want versioned .so files if we ever include shared libraries 
+in our binary packages.
+
+I'm going to punt for now to get this to our customer more quickly.
+
+				-- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From jules at codesourcery.com  Mon Mar  2 14:12:09 2009
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Mon, 02 Mar 2009 09:12:09 -0500
+Subject: [vsipl++] [patch] Building VSIPL++ shared libraries
+In-Reply-To: <49A86A4E.9090801@codesourcery.com>
+References: <49A864CF.3080706@codesourcery.com> <49A86A4E.9090801@codesourcery.com>
+Message-ID: <49ABE939.6020100@codesourcery.com>
+
+Stefan,
+
+Thanks for the feedback!  I've incorporated your suggestions.
+
+			-- Jules
+
+
+> Jules, overall this looks fine. I have one high-level question (at the 
+> end), as well as a couple of specific comments / questions.
+
+
+>>  define link_app
+>>  @echo linking $@
+>>  $(CXX) $(LDFLAGS) $(call dir_var,$(dir $<),LDFLAGS) -o $@ $^ \
+>> -  -Llib -lsvpp $(call dir_var,$(dir $<),LIBS) $(LIBS)
+>> +  $(call dir_var,$(dir $<),LIBS) $(LIBS)
+>>  endef
+> 
+> Where does the link command get -lsvpp from after this change ?
+
+Users of the rule include $(libs) in the dependencies, so it gets picked 
+up in $^.
+
+> 
+>>  hdr    += $(patsubst $(srcdir)/src/%, %, \
+>> -             $(wildcard $(srcdir)/src/vsip/opt/cuda/*.hpp))
+>> -hdr    += $(patsubst $(srcdir)/src/%, %, \
+>>               $(wildcard $(srcdir)/src/vsip/opt/diag/*.hpp))
+>>  
+> 
+> After you take cuda out of $hdr, would dependency generation still work 
+> with CUDA enabled ? (It looks like instead of removing the above, we 
+> should decorate it with
+> 
+> #ifdef SOME_CUDA_VARIABLE
+> ...
+> #endif
+> 
+> no ?
+
+Oops, this removal wasn't intentional.  Let me double-check how that 
+happened.
+
+> 
+>> +ifdef BUILD_SHARED_LIB
+>> +libs += lib/libsvpp.so
+>> +lib_svpp := lib/libsvpp.so
+>> +else
+>> +lib_svpp := lib/libsvpp.$(LIBEXT)
+>> +endif
+> 
+> This raises an interesting question: Are we ever going to ship a 
+> DSO-only build variant ? With DSOs enabled, I would expect us to provide 
+> both, libsvpp.a, as well as libsvpp.so.
+> (Note that this makes compilation slightly more complex, as then we have 
+> to build two sets of objects, one with -fPIC and one without. But the 
+> alternative, adding more build variants, sounds even worse, as far as 
+> build times and memory footprints are concerned.
+
+Right, we definitely want to avoid more variants!
+
+This change still builds (and installs) both libsvpp.so and .a. 
+However, it uses -fPIC code for both (arguably lowering performance). 
+However, a quick & dirty BM of SSAR didn't show a noticable difference.
+
+Like version numbers, if we package this, let's revisit building both 
+fPIC and non-fPIC code.
+
+				-- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From jules at codesourcery.com  Mon Mar  2 14:22:19 2009
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Mon, 02 Mar 2009 09:22:19 -0500
+Subject: [vsipl++] [patch] Building VSIPL++ shared libraries
+In-Reply-To: <49A86826.9030505@codesourcery.com>
+References: <49A864CF.3080706@codesourcery.com> <49A86826.9030505@codesourcery.com>
+Message-ID: <49ABEB9B.8090306@codesourcery.com>
+
+Brooks,
+
+Thanks for the feedback!  I've incorporated your suggestions (sans 
+version numbers, which I think is a good idea too).
+
+				-- Jules
+
+> Also, a couple of specific comments:
+> 
+>> Index: GNUmakefile.in
+>> ===================================================================
+>> --- GNUmakefile.in	(revision 236492)
+>> +++ GNUmakefile.in	(working copy)
+>> @@ -88,8 +88,6 @@
+>>  AR := @AR@
+>>  # The path to the C compiler.
+>>  CC := @CC@
+>> -# C compilation flags.
+>> -CFLAGS := @CFLAGS@
+>>  # C preprocessor flags.
+>>  CPPFLAGS := @CPPFLAGS@
+>>  # The path to the C compiler.
+> 
+> What's the purpose of this change?  It seems unrelated.
+
+Sorry it wasn't clear, but this is a bug fix.  CFLAGS was defined twice.
+
+
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From jules at codesourcery.com  Wed Mar  4 15:36:10 2009
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Wed, 04 Mar 2009 10:36:10 -0500
+Subject: [patch] Fix typo to install libsvpp.so
+Message-ID: <49AE9FEA.6090602@codesourcery.com>
+
+Patch applied.
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: so4.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20090304/f10d71f3/attachment.ksh>
+
+From jules at codesourcery.com  Tue Mar 10 15:21:12 2009
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Tue, 10 Mar 2009 11:21:12 -0400
+Subject: [patch] Fix Wall warning in vsip_csl
+Message-ID: <49B68568.6000400@codesourcery.com>
+
+Patch applied.
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: wall.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20090310/6e6fdd63/attachment.ksh>
+
+From jules at codesourcery.com  Tue Mar 10 20:12:16 2009
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Tue, 10 Mar 2009 16:12:16 -0400
+Subject: [patch] Fix fd_fftshift to work with distributed views
+Message-ID: <49B6C9A0.2000006@codesourcery.com>
+
+Patch applied.
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: fd_fftshift.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20090310/c53b8e50/attachment.ksh>
+
+From don at codesourcery.com  Tue Mar 17 23:30:10 2009
+From: don at codesourcery.com (Don McCoy)
+Date: Tue, 17 Mar 2009 17:30:10 -0600
+Subject: [patch, committed] Finalize default pool
+Message-ID: <49C03282.1020301@codesourcery.com>
+
+The pointer to the Alloc_align class was not being deleted.
+
+Committed as obvious.
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: mem_pool.diff
+Type: text/x-diff
+Size: 1665 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20090317/642c40b3/attachment.diff>
+

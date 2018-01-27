@@ -1,0 +1,186 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [qmtest] Resource behavior questions, and overall comments
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:qmtest%40codesourcery.com?Subject=Re%3A%20%5Bqmtest%5D%20Resource%20behavior%20questions%2C%20and%20overall%20comments&In-Reply-To=%3C36010000.1015790431%40gandalf.codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000036.html">
+   <LINK REL="Next"  HREF="000037.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[qmtest] Resource behavior questions, and overall comments</H1>
+    <B>Mark Mitchell</B> 
+    <A HREF="mailto:qmtest%40codesourcery.com?Subject=Re%3A%20%5Bqmtest%5D%20Resource%20behavior%20questions%2C%20and%20overall%20comments&In-Reply-To=%3C36010000.1015790431%40gandalf.codesourcery.com%3E"
+       TITLE="[qmtest] Resource behavior questions, and overall comments">mark at codesourcery.com
+       </A><BR>
+    <I>Sun Mar 10 20:00:31 UTC 2002</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000036.html">Resource behavior questions, and overall comments
+</A></li>
+        <LI>Next message: <A HREF="000037.html">qmtest reports error when I try the first step of tutorial
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#39">[ date ]</a>
+              <a href="thread.html#39">[ thread ]</a>
+              <a href="subject.html#39">[ subject ]</a>
+              <a href="author.html#39">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>
+
+--On Friday, March 01, 2002 01:16:03 PM -0600 &quot;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">WECaputo at thoughtworks.COM</A>&quot; 
+&lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">WECaputo at thoughtworks.COM</A>&gt; wrote:
+
+First, allow me to apologize for the long delay between the time your
+message was sent and this response.
+
+&gt;<i> According to the docs, tests associated with a resource will have the
+</I>&gt;<i> following behavior:
+</I>&gt;<i>
+</I>&gt;<i> R1.setUp
+</I>&gt;<i> t_1.run
+</I>&gt;<i> t_2.run
+</I>&gt;<i> t_3.run
+</I>&gt;<i> ...
+</I>&gt;<i> t_n
+</I>&gt;<i> R1.cleanUp
+</I>&gt;<i>
+</I>&gt;<i> Presumably, if a second resource (R2) existed, and was associated with a
+</I>&gt;<i> different set of tests this resource would be called *after* the cleanup
+</I>&gt;<i> of R1:
+</I>
+That's not what the docs mean to say; it's assumed that resources, like
+tests, are independent.  (This is important so that you can run them
+in parallel, for example.)
+
+&gt;<i> What we find we need for all but the simplest testing, is nesting and
+</I>&gt;<i> atomic resource execution, along with the option to have a resource
+</I>&gt;<i> isolate each test in a set:
+</I>
+I'm not sure if I understand what you mean by &quot;isolate&quot; in this context.
+
+&gt;<i> R1.setUp
+</I>&gt;<i> R2.setUp
+</I>&gt;<i> test
+</I>&gt;<i> test
+</I>&gt;<i> test
+</I>&gt;<i> R2.cleanUp  &lt;-- order is important
+</I>&gt;<i> R1.cleanUp
+</I>
+Yes, you should be able to do this.  In particular, R2 should be able
+to list R1 as a prerequisite.  If that is not always the case (sometimes
+you want R2 without R1) you can make a new resource (R3) that runs R1
+and then R2.  Note that creating that new resource is something that a
+custom database could do for you -- you don't actually need to do it
+explicitly.
+
+&gt;<i> R1.setUp
+</I>&gt;<i> test
+</I>&gt;<i> R1.cleanUp
+</I>&gt;<i> R1.setUp
+</I>&gt;<i> test
+</I>&gt;<i> R1.cleanUp
+</I>&gt;<i> R1.setUp
+</I>&gt;<i> test
+</I>&gt;<i> R1.cleanUp
+</I>
+That's not what's meant by resource, in our system.  The scheduler
+is allowed to do things this way, even though it doesn't -- but
+there's no way for a user to specify this, as opposed to say:
+
+  R1.setup
+  test
+  test
+  R1.cleanup
+  R1.setup
+  test
+  R1.cleanup
+
+The idea behind resources are that they are things that are shareable
+across tests.  If the cleanup/setup is an intrinsic part of the test,
+the test class itself should handle that.
+
+In other words, resources are purely an optimization.  You could
+*always* put the resource action into the test class.  But, if the
+setup is expensive, then resources allow you to do it only once.
+(The canonical example is database testing, where you need to populate
+the database, and then want to run a bunch of queries.  You could set
+up the database before each test, but it might take a long time, so
+you just do it once, then run all the tests, then tear it down.)
+
+&gt;<i> A bigger issue for us, is in regard to change.  The structure of the
+</I>&gt;<i> resource calling code in QMTest is very difficult to change because the
+</I>&gt;<i> ordering seems tied to the database class and the loading of the resource,
+</I>&gt;<i> which in turn is tied to the directed graph architecture of the engine
+</I>&gt;<i> itself. We really can't plan around a tool that is hard to modify.
+</I>
+I'm not sure if I understand this comment.  You perhaps find the source
+code difficult to modify?  (That could be.)  Or, you find the very
+structure and design hard to modify?  (That could be too -- but is less
+surprising; we had to make some choices when we designed the tool.)
+
+I think what you're finding is that resources simply aren't designed
+for what you want -- they're designed for something else.  My guess
+is that what you want is a custom test class (or classes) instead,
+but it is, of course, also possible that there is yet some third
+thing of which we have not yet conceived!
+
+&gt;<i> This is complicated by the lack of tests for the engine itself. &quot;Eating
+</I>&gt;<i> our own dogfood&quot; has been a big part of the usefulness of the testing rigs
+</I>&gt;<i> we've written before, even if you don't build them test first. We really
+</I>&gt;<i> can't rely on an engine that does not have testing.
+</I>
+Yes, this is a valid criticism.  At this stage, we do not have the
+resources to build as many tests as we would like, but we do hope to
+do that in the future.
+
+&gt;<i> Sorry for providing so much critical feedback, I hope this doesn't sound
+</I>&gt;<i> too down on you -- overall I would definitely give you guys a thumbs up,
+</I>&gt;<i> and if it weren't for those issues, and we would definitely be
+</I>&gt;<i> evangelizing this tool through the XP community as we in the XP and agile
+</I>&gt;<i> world could use a good AT framework. We will keep watching qmtest with
+</I>&gt;<i> interest.
+</I>
+Feedback is appreciated.  I hope that future releases of QMTest will
+better meet your needs.
+
+And, of course, we are happy to provide custom modifications and
+enhancements if that is something in which you would be interested.
+
+--
+Mark Mitchell                   <A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">mark at codesourcery.com</A>
+CodeSourcery, LLC               <A HREF="http://www.codesourcery.com">http://www.codesourcery.com</A>
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000036.html">Resource behavior questions, and overall comments
+</A></li>
+	<LI>Next message: <A HREF="000037.html">qmtest reports error when I try the first step of tutorial
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#39">[ date ]</a>
+              <a href="thread.html#39">[ thread ]</a>
+              <a href="subject.html#39">[ subject ]</a>
+              <a href="author.html#39">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">More information about the qmtest
+mailing list</a><br>
+</body></html>

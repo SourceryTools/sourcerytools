@@ -1,0 +1,3177 @@
+From rguenth at tat.physik.uni-tuebingen.de  Wed Sep  1 13:58:33 2004
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Wed, 1 Sep 2004 15:58:33 +0200 (CEST)
+Subject: [PATCH] Fix FileSetReader/Writer
+In-Reply-To: <Pine.LNX.4.44.0409011441470.9036-100000@alwazn.tat.physik.uni-tuebingen.de>
+Message-ID: <Pine.LNX.4.44.0409011538400.9036-200000@alwazn.tat.physik.uni-tuebingen.de>
+
+On Wed, 1 Sep 2004, Richard Guenther wrote:
+
+> On Wed, 1 Sep 2004 oldham at sirius.codesourcery.com wrote:
+>
+> >   regressions.io.filesetreadertest1             : FAIL
+> >     Unexpected exit_code, standard error.
+> >
+> >   regressions.io.filesetreadertest2             : FAIL
+> >     Unexpected exit_code, standard error.
+>
+> I finally figured out why these fail on ia32 (but not on amd64 and ia64).
+> The test data was appearantly generated on a 64bit big-endian host and the
+> reader just reads bytes and expects a C++ long to be 64bit everywhere
+> (which is not true obviously).
+>
+> There is also the POOMA_HAS_LONG_LONG define which is set nowhere
+> and used only in the FileSetReader/Writer and ElementProperties.
+>
+> We could check for an appropriate 64bit type during configure and
+> use that or just ignore the issue.
+
+Yay, and of course this is not enough, as required alignment for 64bit
+datatypes is of course different.  We should shoot the one that came up
+with
+
+  template <class T>
+  struct OffsetData
+  {
+    void reverseBytes();
+
+    int nodedata[6*Dim];  // domain data (same format as .layout)
+    bool isCompressed;    // Is the data compressed
+    Offset_t offset;      // offset in sizeof(T) units
+    T compressedValue;    // Data value, if compressed
+  };
+
+as possibly "portable" structure to write byte-for-byte to a file.
+Placing bool between int and long long is surely not a good idea.
+
+Changing the above to
+
+    int nodedata[6*Dim];  // domain data (same format as .layout)
+    union {
+      bool isCompressed;  // Is the data compressed
+      char pad[8];
+    } u;
+    Offset_t offset;      // offset in sizeof(T) units
+
+_seems_ to "fix" the problem.
+
+So, is the following patch ok?  Tested on ia32, amd64 and ia64 linux.
+
+
+2004Sep01  Richard Guenther <richard.guenther at uni-tuebingen.de>
+
+	* configure: add POOMA_HAS_LONG_LONG and POOMA_INT64
+	defines.
+	scripts/configure.ac: check for long long and sizes of
+	long and long long.  Set POOMA_HAS_LONG_LONG and
+	POOMA_INT64 appropriately.
+	scripts/configure: regenerate.
+	src/IO/FileSetReader.h: use POOMA_INT64 for Offset_t,
+	pad bool inside OffsetData to 64bit using a union.
+	src/IO/FileSetWriter.h: likewise.
+	src/IO/FileSetReader.cpp: honour union.
+-------------- next part --------------
+Index: configure
+===================================================================
+RCS file: /home/pooma/Repository/r2/configure,v
+retrieving revision 1.117
+diff -u -u -r1.117 configure
+--- configure	17 Aug 2004 20:09:15 -0000	1.117
++++ configure	1 Sep 2004 13:53:11 -0000
+@@ -1831,6 +1831,12 @@
+ 
+   # if the C++ library has a nonstandard iterator or iterator_traits
+   add_autoconf_define("POOMA_NONSTANDARD_ITERATOR");
++
++  # if the compiler supports long long
++  add_autoconf_define("POOMA_HAS_LONG_LONG");
++
++  # appropriate 64bit type
++  add_autoconf_define("POOMA_INT64");
+ }
+ 
+ 
+Index: scripts/configure.ac
+===================================================================
+RCS file: /home/pooma/Repository/r2/scripts/configure.ac,v
+retrieving revision 1.5
+diff -u -u -r1.5 configure.ac
+--- scripts/configure.ac	5 Jan 2004 22:28:39 -0000	1.5
++++ scripts/configure.ac	1 Sep 2004 13:53:11 -0000
+@@ -351,6 +351,31 @@
+ AC_SUBST(POOMA_NONSTANDARD_ITERATOR)
+ 
+ dnl
++dnl Check for long, long long type and its sizes to define
++dnl 64bit type.
++dnl
++AC_CHECK_SIZEOF([long])
++AC_CHECK_SIZEOF([long long])
++AC_MSG_CHECKING([for 64bit type])
++if test "$ac_cv_sizeof_long" = "8"; then
++  AC_MSG_RESULT([long])
++  POOMA_INT64="long"
++elif test "$ac_cv_sizeof_long_long" = "8"; then
++  AC_MSG_RESULT([long long])
++  POOMA_INT64="long long"
++else
++  AC_MSG_RESULT([none - using long anyway])
++  POOMA_INT64="long"
++fi
++AC_SUBST(POOMA_INT64)
++if test ! "$ac_cv_sizeof_long_long" = "0"; then
++  POOMA_HAS_LONG_LONG=POOMA_YES
++else
++  POOMA_HAS_LONG_LONG=POOMA_NO
++fi
++AC_SUBST(POOMA_HAS_LONG_LONG)
++
++dnl
+ dnl Check for compiler argument for OpenMP support
+ dnl
+ 
+Index: src/IO/FileSetReader.cpp
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/IO/FileSetReader.cpp,v
+retrieving revision 1.7
+diff -u -u -r1.7 FileSetReader.cpp
+--- src/IO/FileSetReader.cpp	14 Jan 2003 09:59:32 -0000	1.7
++++ src/IO/FileSetReader.cpp	1 Sep 2004 13:53:11 -0000
+@@ -137,7 +137,7 @@
+   PInsist(mycontext_m == iocontext_m && mycontext_m == dnode.context_m,
+           "This should only be called for nodes on the IO context.");
+ 
+-  if (odata.isCompressed)
++  if (odata.u.isCompressed)
+     {
+       // If compressed, simply set the compressed value. 
+ 
+Index: src/IO/FileSetReader.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/IO/FileSetReader.h,v
+retrieving revision 1.7
+diff -u -u -r1.7 FileSetReader.h
+--- src/IO/FileSetReader.h	26 Oct 2003 11:26:23 -0000	1.7
++++ src/IO/FileSetReader.h	1 Sep 2004 13:53:11 -0000
+@@ -228,11 +228,7 @@
+ 
+ public:
+ 
+-#if POOMA_HAS_LONG_LONG
+-  typedef long long Offset_t;
+-#else
+-  typedef long Offset_t;
+-#endif  
++  typedef POOMA_INT64 Offset_t;
+ 
+ private:
+ 
+@@ -244,7 +240,10 @@
+     void reverseBytes();
+ 
+     int nodedata[6*Dim];  // domain data (same format as .layout)
+-    bool isCompressed;    // Is the data compressed
++    union {
++      bool isCompressed;    // Is the data compressed
++      char pad[8];
++    } u;
+     Offset_t offset;      // offset in sizeof(T) units
+     T compressedValue;    // Data value, if compressed
+   };
+Index: src/IO/FileSetWriter.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/IO/FileSetWriter.h,v
+retrieving revision 1.12
+diff -u -u -r1.12 FileSetWriter.h
+--- src/IO/FileSetWriter.h	26 Oct 2003 11:26:23 -0000	1.12
++++ src/IO/FileSetWriter.h	1 Sep 2004 13:53:11 -0000
+@@ -93,11 +93,7 @@
+   // friends may not be supported everywhere. (This will go away when
+   // we marshal the structure in a standard way.)
+ 
+-#if POOMA_HAS_LONG_LONG
+-  typedef long long Offset_t;
+-#else
+-  typedef long Offset_t;
+-#endif  
++  typedef POOMA_INT64 Offset_t;
+   
+ private:
+     
+@@ -105,7 +101,10 @@
+   struct DFOffsetData 
+   {
+     int        vnodedata_m[6 * Dim];
+-    bool       isCompressed_m;
++    union {
++      bool       isCompressed_m;
++      char       pad[8];
++    } u;
+     Offset_t   offset_m;
+     T          compressedVal_m;
+   };
+@@ -375,9 +374,9 @@
+       odata.vnodedata_m[i * 6 + 3] = a.domain()[i].size();
+     }
+ 
+-  odata.isCompressed_m = compressed(a);
++  odata.u.isCompressed_m = compressed(a);
+   
+-  if (odata.isCompressed_m)
++  if (odata.u.isCompressed_m)
+     {
+       odata.offset_m = 0;
+       odata.compressedVal_m = a.engine().localEngine().compressedRead();
+Index: scripts/configure
+===================================================================
+RCS file: /home/pooma/Repository/r2/scripts/configure,v
+retrieving revision 1.5
+diff -u -u -r1.5 configure
+--- scripts/configure	5 Jan 2004 22:28:39 -0000	1.5
++++ scripts/configure	1 Sep 2004 13:53:26 -0000
+@@ -1,6 +1,6 @@
+ #! /bin/sh
+ # Guess values for system-dependent variables and create Makefiles.
+-# Generated by GNU Autoconf 2.58 for pooma 2.4.0.
++# Generated by GNU Autoconf 2.59 for pooma 2.4.0.
+ #
+ # Copyright (C) 2003 Free Software Foundation, Inc.
+ # This configure script is free software; the Free Software Foundation
+@@ -308,7 +308,7 @@
+ # include <unistd.h>
+ #endif"
+ 
+-ac_subst_vars='SHELL PATH_SEPARATOR PACKAGE_NAME PACKAGE_TARNAME PACKAGE_VERSION PACKAGE_STRING PACKAGE_BUGREPORT exec_prefix prefix program_transform_name bindir sbindir libexecdir datadir sysconfdir sharedstatedir localstatedir libdir includedir oldincludedir infodir mandir build_alias host_alias target_alias DEFS ECHO_C ECHO_N ECHO_T LIBS CC CFLAGS CXX CXXFLAGS LDFLAGS CPPFLAGS ac_ct_CC EXEEXT OBJEXT CPP ac_ct_CXX CXXCPP POOMA_MISSING_IOMANIPS POOMA_NO_STD_IOSBASE POOMA_NO_STRINGSTREAM POOMA_NO_STD_COMPLEX POOMA_NO_TEMPLATED_COMPLEX POOMA_NO_DEPENDENT_TEMPLATE_ARGS POOMA_NO_PLACEMENT_DELETE POOMA_NO_TEMPLATEFUNC_DEFAULTARGS EGREP POOMA_NO_IOS_HEADER POOMA_NO_IOSBASE_FMTFLAGS POOMA_NO_RESTRICT POOMA_CLOCK_USES_CLOCK_GETTIME POOMA_CLOCK_USES_GETTIMEOFDAY POOMA_NO_TEMPLATE_FRIENDS POOMA_NO_OSTREAM_ITERATOR_1ARG POOMA_NO_STD_MIN_MAX POOMA_NONSTANDARD_ITERATOR openmpargs cppargs cargs LIBOBJS LTLIBOBJS'
++ac_subst_vars='SHELL PATH_SEPARATOR PACKAGE_NAME PACKAGE_TARNAME PACKAGE_VERSION PACKAGE_STRING PACKAGE_BUGREPORT exec_prefix prefix program_transform_name bindir sbindir libexecdir datadir sysconfdir sharedstatedir localstatedir libdir includedir oldincludedir infodir mandir build_alias host_alias target_alias DEFS ECHO_C ECHO_N ECHO_T LIBS CC CFLAGS CXX CXXFLAGS LDFLAGS CPPFLAGS ac_ct_CC EXEEXT OBJEXT CPP ac_ct_CXX CXXCPP POOMA_MISSING_IOMANIPS POOMA_NO_STD_IOSBASE POOMA_NO_STRINGSTREAM POOMA_NO_STD_COMPLEX POOMA_NO_TEMPLATED_COMPLEX POOMA_NO_DEPENDENT_TEMPLATE_ARGS POOMA_NO_PLACEMENT_DELETE POOMA_NO_TEMPLATEFUNC_DEFAULTARGS EGREP POOMA_NO_IOS_HEADER POOMA_NO_IOSBASE_FMTFLAGS POOMA_NO_RESTRICT POOMA_CLOCK_USES_CLOCK_GETTIME POOMA_CLOCK_USES_GETTIMEOFDAY POOMA_NO_TEMPLATE_FRIENDS POOMA_NO_OSTREAM_ITERATOR_1ARG POOMA_NO_STD_MIN_MAX POOMA_NONSTANDARD_ITERATOR POOMA_INT64 POOMA_HAS_LONG_LONG openmpargs cppargs cargs LIBOBJS LTLIBOBJS'
+ ac_subst_files=''
+ 
+ # Initialize some variables set by options.
+@@ -851,24 +851,16 @@
+   cat <<\_ACEOF
+ 
+ Some influential environment variables:
+-  CC
+-              C compiler
+-  CFLAGS
+-              C compiler flags
+-  CXX
+-              C++ compiler
+-  CXXFLAGS
+-              C++ compiler flags
+-  LDFLAGS
+-              linker flags, e.g. -L<lib dir> if you have
+-              libraries in a nonstandard directory <lib dir>
+-  CPPFLAGS
+-              C/C++ preprocessor flags, e.g. -I<include dir> if you
+-              have headers in a nonstandard directory <include dir>
+-  CPP
+-              C preprocessor
+-  CXXCPP
+-              C++ preprocessor
++  CC          C compiler
++  CFLAGS      C compiler flags
++  CXX         C++ compiler
++  CXXFLAGS    C++ compiler flags
++  LDFLAGS     linker flags, e.g. -L<lib dir> if you have libraries in a
++              nonstandard directory <lib dir>
++  CPPFLAGS    C/C++ preprocessor flags, e.g. -I<include dir> if you have
++              headers in a nonstandard directory <include dir>
++  CPP         C preprocessor
++  CXXCPP      C++ preprocessor
+ 
+ Use these variables to override the choices made by `configure' or to help
+ it to find libraries and programs with nonstandard names/locations.
+@@ -969,7 +961,7 @@
+ if $ac_init_version; then
+   cat <<\_ACEOF
+ pooma configure 2.4.0
+-generated by GNU Autoconf 2.58
++generated by GNU Autoconf 2.59
+ 
+ Copyright (C) 2003 Free Software Foundation, Inc.
+ This configure script is free software; the Free Software Foundation
+@@ -983,7 +975,7 @@
+ running configure, to aid debugging if configure makes a mistake.
+ 
+ It was created by pooma $as_me 2.4.0, which was
+-generated by GNU Autoconf 2.58.  Invocation command line was
++generated by GNU Autoconf 2.59.  Invocation command line was
+ 
+   $ $0 $@
+ 
+@@ -4536,6 +4528,841 @@
+       conftest$ac_exeext conftest.$ac_ext
+ 
+ 
++echo "$as_me:$LINENO: checking for long" >&5
++echo $ECHO_N "checking for long... $ECHO_C" >&6
++if test "${ac_cv_type_long+set}" = set; then
++  echo $ECHO_N "(cached) $ECHO_C" >&6
++else
++  cat >conftest.$ac_ext <<_ACEOF
++/* confdefs.h.  */
++_ACEOF
++cat confdefs.h >>conftest.$ac_ext
++cat >>conftest.$ac_ext <<_ACEOF
++/* end confdefs.h.  */
++$ac_includes_default
++int
++main ()
++{
++if ((long *) 0)
++  return 0;
++if (sizeof (long))
++  return 0;
++  ;
++  return 0;
++}
++_ACEOF
++rm -f conftest.$ac_objext
++if { (eval echo "$as_me:$LINENO: \"$ac_compile\"") >&5
++  (eval $ac_compile) 2>conftest.er1
++  ac_status=$?
++  grep -v '^ *+' conftest.er1 >conftest.err
++  rm -f conftest.er1
++  cat conftest.err >&5
++  echo "$as_me:$LINENO: \$? = $ac_status" >&5
++  (exit $ac_status); } &&
++	 { ac_try='test -z "$ac_cxx_werror_flag"			 || test ! -s conftest.err'
++  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
++  (eval $ac_try) 2>&5
++  ac_status=$?
++  echo "$as_me:$LINENO: \$? = $ac_status" >&5
++  (exit $ac_status); }; } &&
++	 { ac_try='test -s conftest.$ac_objext'
++  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
++  (eval $ac_try) 2>&5
++  ac_status=$?
++  echo "$as_me:$LINENO: \$? = $ac_status" >&5
++  (exit $ac_status); }; }; then
++  ac_cv_type_long=yes
++else
++  echo "$as_me: failed program was:" >&5
++sed 's/^/| /' conftest.$ac_ext >&5
++
++ac_cv_type_long=no
++fi
++rm -f conftest.err conftest.$ac_objext conftest.$ac_ext
++fi
++echo "$as_me:$LINENO: result: $ac_cv_type_long" >&5
++echo "${ECHO_T}$ac_cv_type_long" >&6
++
++echo "$as_me:$LINENO: checking size of long" >&5
++echo $ECHO_N "checking size of long... $ECHO_C" >&6
++if test "${ac_cv_sizeof_long+set}" = set; then
++  echo $ECHO_N "(cached) $ECHO_C" >&6
++else
++  if test "$ac_cv_type_long" = yes; then
++  # The cast to unsigned long works around a bug in the HP C Compiler
++  # version HP92453-01 B.11.11.23709.GP, which incorrectly rejects
++  # declarations like `int a3[[(sizeof (unsigned char)) >= 0]];'.
++  # This bug is HP SR number 8606223364.
++  if test "$cross_compiling" = yes; then
++  # Depending upon the size, compute the lo and hi bounds.
++cat >conftest.$ac_ext <<_ACEOF
++/* confdefs.h.  */
++_ACEOF
++cat confdefs.h >>conftest.$ac_ext
++cat >>conftest.$ac_ext <<_ACEOF
++/* end confdefs.h.  */
++$ac_includes_default
++int
++main ()
++{
++static int test_array [1 - 2 * !(((long) (sizeof (long))) >= 0)];
++test_array [0] = 0
++
++  ;
++  return 0;
++}
++_ACEOF
++rm -f conftest.$ac_objext
++if { (eval echo "$as_me:$LINENO: \"$ac_compile\"") >&5
++  (eval $ac_compile) 2>conftest.er1
++  ac_status=$?
++  grep -v '^ *+' conftest.er1 >conftest.err
++  rm -f conftest.er1
++  cat conftest.err >&5
++  echo "$as_me:$LINENO: \$? = $ac_status" >&5
++  (exit $ac_status); } &&
++	 { ac_try='test -z "$ac_cxx_werror_flag"			 || test ! -s conftest.err'
++  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
++  (eval $ac_try) 2>&5
++  ac_status=$?
++  echo "$as_me:$LINENO: \$? = $ac_status" >&5
++  (exit $ac_status); }; } &&
++	 { ac_try='test -s conftest.$ac_objext'
++  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
++  (eval $ac_try) 2>&5
++  ac_status=$?
++  echo "$as_me:$LINENO: \$? = $ac_status" >&5
++  (exit $ac_status); }; }; then
++  ac_lo=0 ac_mid=0
++  while :; do
++    cat >conftest.$ac_ext <<_ACEOF
++/* confdefs.h.  */
++_ACEOF
++cat confdefs.h >>conftest.$ac_ext
++cat >>conftest.$ac_ext <<_ACEOF
++/* end confdefs.h.  */
++$ac_includes_default
++int
++main ()
++{
++static int test_array [1 - 2 * !(((long) (sizeof (long))) <= $ac_mid)];
++test_array [0] = 0
++
++  ;
++  return 0;
++}
++_ACEOF
++rm -f conftest.$ac_objext
++if { (eval echo "$as_me:$LINENO: \"$ac_compile\"") >&5
++  (eval $ac_compile) 2>conftest.er1
++  ac_status=$?
++  grep -v '^ *+' conftest.er1 >conftest.err
++  rm -f conftest.er1
++  cat conftest.err >&5
++  echo "$as_me:$LINENO: \$? = $ac_status" >&5
++  (exit $ac_status); } &&
++	 { ac_try='test -z "$ac_cxx_werror_flag"			 || test ! -s conftest.err'
++  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
++  (eval $ac_try) 2>&5
++  ac_status=$?
++  echo "$as_me:$LINENO: \$? = $ac_status" >&5
++  (exit $ac_status); }; } &&
++	 { ac_try='test -s conftest.$ac_objext'
++  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
++  (eval $ac_try) 2>&5
++  ac_status=$?
++  echo "$as_me:$LINENO: \$? = $ac_status" >&5
++  (exit $ac_status); }; }; then
++  ac_hi=$ac_mid; break
++else
++  echo "$as_me: failed program was:" >&5
++sed 's/^/| /' conftest.$ac_ext >&5
++
++ac_lo=`expr $ac_mid + 1`
++		    if test $ac_lo -le $ac_mid; then
++		      ac_lo= ac_hi=
++		      break
++		    fi
++		    ac_mid=`expr 2 '*' $ac_mid + 1`
++fi
++rm -f conftest.err conftest.$ac_objext conftest.$ac_ext
++  done
++else
++  echo "$as_me: failed program was:" >&5
++sed 's/^/| /' conftest.$ac_ext >&5
++
++cat >conftest.$ac_ext <<_ACEOF
++/* confdefs.h.  */
++_ACEOF
++cat confdefs.h >>conftest.$ac_ext
++cat >>conftest.$ac_ext <<_ACEOF
++/* end confdefs.h.  */
++$ac_includes_default
++int
++main ()
++{
++static int test_array [1 - 2 * !(((long) (sizeof (long))) < 0)];
++test_array [0] = 0
++
++  ;
++  return 0;
++}
++_ACEOF
++rm -f conftest.$ac_objext
++if { (eval echo "$as_me:$LINENO: \"$ac_compile\"") >&5
++  (eval $ac_compile) 2>conftest.er1
++  ac_status=$?
++  grep -v '^ *+' conftest.er1 >conftest.err
++  rm -f conftest.er1
++  cat conftest.err >&5
++  echo "$as_me:$LINENO: \$? = $ac_status" >&5
++  (exit $ac_status); } &&
++	 { ac_try='test -z "$ac_cxx_werror_flag"			 || test ! -s conftest.err'
++  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
++  (eval $ac_try) 2>&5
++  ac_status=$?
++  echo "$as_me:$LINENO: \$? = $ac_status" >&5
++  (exit $ac_status); }; } &&
++	 { ac_try='test -s conftest.$ac_objext'
++  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
++  (eval $ac_try) 2>&5
++  ac_status=$?
++  echo "$as_me:$LINENO: \$? = $ac_status" >&5
++  (exit $ac_status); }; }; then
++  ac_hi=-1 ac_mid=-1
++  while :; do
++    cat >conftest.$ac_ext <<_ACEOF
++/* confdefs.h.  */
++_ACEOF
++cat confdefs.h >>conftest.$ac_ext
++cat >>conftest.$ac_ext <<_ACEOF
++/* end confdefs.h.  */
++$ac_includes_default
++int
++main ()
++{
++static int test_array [1 - 2 * !(((long) (sizeof (long))) >= $ac_mid)];
++test_array [0] = 0
++
++  ;
++  return 0;
++}
++_ACEOF
++rm -f conftest.$ac_objext
++if { (eval echo "$as_me:$LINENO: \"$ac_compile\"") >&5
++  (eval $ac_compile) 2>conftest.er1
++  ac_status=$?
++  grep -v '^ *+' conftest.er1 >conftest.err
++  rm -f conftest.er1
++  cat conftest.err >&5
++  echo "$as_me:$LINENO: \$? = $ac_status" >&5
++  (exit $ac_status); } &&
++	 { ac_try='test -z "$ac_cxx_werror_flag"			 || test ! -s conftest.err'
++  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
++  (eval $ac_try) 2>&5
++  ac_status=$?
++  echo "$as_me:$LINENO: \$? = $ac_status" >&5
++  (exit $ac_status); }; } &&
++	 { ac_try='test -s conftest.$ac_objext'
++  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
++  (eval $ac_try) 2>&5
++  ac_status=$?
++  echo "$as_me:$LINENO: \$? = $ac_status" >&5
++  (exit $ac_status); }; }; then
++  ac_lo=$ac_mid; break
++else
++  echo "$as_me: failed program was:" >&5
++sed 's/^/| /' conftest.$ac_ext >&5
++
++ac_hi=`expr '(' $ac_mid ')' - 1`
++		       if test $ac_mid -le $ac_hi; then
++			 ac_lo= ac_hi=
++			 break
++		       fi
++		       ac_mid=`expr 2 '*' $ac_mid`
++fi
++rm -f conftest.err conftest.$ac_objext conftest.$ac_ext
++  done
++else
++  echo "$as_me: failed program was:" >&5
++sed 's/^/| /' conftest.$ac_ext >&5
++
++ac_lo= ac_hi=
++fi
++rm -f conftest.err conftest.$ac_objext conftest.$ac_ext
++fi
++rm -f conftest.err conftest.$ac_objext conftest.$ac_ext
++# Binary search between lo and hi bounds.
++while test "x$ac_lo" != "x$ac_hi"; do
++  ac_mid=`expr '(' $ac_hi - $ac_lo ')' / 2 + $ac_lo`
++  cat >conftest.$ac_ext <<_ACEOF
++/* confdefs.h.  */
++_ACEOF
++cat confdefs.h >>conftest.$ac_ext
++cat >>conftest.$ac_ext <<_ACEOF
++/* end confdefs.h.  */
++$ac_includes_default
++int
++main ()
++{
++static int test_array [1 - 2 * !(((long) (sizeof (long))) <= $ac_mid)];
++test_array [0] = 0
++
++  ;
++  return 0;
++}
++_ACEOF
++rm -f conftest.$ac_objext
++if { (eval echo "$as_me:$LINENO: \"$ac_compile\"") >&5
++  (eval $ac_compile) 2>conftest.er1
++  ac_status=$?
++  grep -v '^ *+' conftest.er1 >conftest.err
++  rm -f conftest.er1
++  cat conftest.err >&5
++  echo "$as_me:$LINENO: \$? = $ac_status" >&5
++  (exit $ac_status); } &&
++	 { ac_try='test -z "$ac_cxx_werror_flag"			 || test ! -s conftest.err'
++  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
++  (eval $ac_try) 2>&5
++  ac_status=$?
++  echo "$as_me:$LINENO: \$? = $ac_status" >&5
++  (exit $ac_status); }; } &&
++	 { ac_try='test -s conftest.$ac_objext'
++  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
++  (eval $ac_try) 2>&5
++  ac_status=$?
++  echo "$as_me:$LINENO: \$? = $ac_status" >&5
++  (exit $ac_status); }; }; then
++  ac_hi=$ac_mid
++else
++  echo "$as_me: failed program was:" >&5
++sed 's/^/| /' conftest.$ac_ext >&5
++
++ac_lo=`expr '(' $ac_mid ')' + 1`
++fi
++rm -f conftest.err conftest.$ac_objext conftest.$ac_ext
++done
++case $ac_lo in
++?*) ac_cv_sizeof_long=$ac_lo;;
++'') { { echo "$as_me:$LINENO: error: cannot compute sizeof (long), 77
++See \`config.log' for more details." >&5
++echo "$as_me: error: cannot compute sizeof (long), 77
++See \`config.log' for more details." >&2;}
++   { (exit 1); exit 1; }; } ;;
++esac
++else
++  if test "$cross_compiling" = yes; then
++  { { echo "$as_me:$LINENO: error: internal error: not reached in cross-compile" >&5
++echo "$as_me: error: internal error: not reached in cross-compile" >&2;}
++   { (exit 1); exit 1; }; }
++else
++  cat >conftest.$ac_ext <<_ACEOF
++/* confdefs.h.  */
++_ACEOF
++cat confdefs.h >>conftest.$ac_ext
++cat >>conftest.$ac_ext <<_ACEOF
++/* end confdefs.h.  */
++$ac_includes_default
++long longval () { return (long) (sizeof (long)); }
++unsigned long ulongval () { return (long) (sizeof (long)); }
++#include <stdio.h>
++#include <stdlib.h>
++int
++main ()
++{
++
++  FILE *f = fopen ("conftest.val", "w");
++  if (! f)
++    exit (1);
++  if (((long) (sizeof (long))) < 0)
++    {
++      long i = longval ();
++      if (i != ((long) (sizeof (long))))
++	exit (1);
++      fprintf (f, "%ld\n", i);
++    }
++  else
++    {
++      unsigned long i = ulongval ();
++      if (i != ((long) (sizeof (long))))
++	exit (1);
++      fprintf (f, "%lu\n", i);
++    }
++  exit (ferror (f) || fclose (f) != 0);
++
++  ;
++  return 0;
++}
++_ACEOF
++rm -f conftest$ac_exeext
++if { (eval echo "$as_me:$LINENO: \"$ac_link\"") >&5
++  (eval $ac_link) 2>&5
++  ac_status=$?
++  echo "$as_me:$LINENO: \$? = $ac_status" >&5
++  (exit $ac_status); } && { ac_try='./conftest$ac_exeext'
++  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
++  (eval $ac_try) 2>&5
++  ac_status=$?
++  echo "$as_me:$LINENO: \$? = $ac_status" >&5
++  (exit $ac_status); }; }; then
++  ac_cv_sizeof_long=`cat conftest.val`
++else
++  echo "$as_me: program exited with status $ac_status" >&5
++echo "$as_me: failed program was:" >&5
++sed 's/^/| /' conftest.$ac_ext >&5
++
++( exit $ac_status )
++{ { echo "$as_me:$LINENO: error: cannot compute sizeof (long), 77
++See \`config.log' for more details." >&5
++echo "$as_me: error: cannot compute sizeof (long), 77
++See \`config.log' for more details." >&2;}
++   { (exit 1); exit 1; }; }
++fi
++rm -f core *.core gmon.out bb.out conftest$ac_exeext conftest.$ac_objext conftest.$ac_ext
++fi
++fi
++rm -f conftest.val
++else
++  ac_cv_sizeof_long=0
++fi
++fi
++echo "$as_me:$LINENO: result: $ac_cv_sizeof_long" >&5
++echo "${ECHO_T}$ac_cv_sizeof_long" >&6
++cat >>confdefs.h <<_ACEOF
++#define SIZEOF_LONG $ac_cv_sizeof_long
++_ACEOF
++
++
++echo "$as_me:$LINENO: checking for long long" >&5
++echo $ECHO_N "checking for long long... $ECHO_C" >&6
++if test "${ac_cv_type_long_long+set}" = set; then
++  echo $ECHO_N "(cached) $ECHO_C" >&6
++else
++  cat >conftest.$ac_ext <<_ACEOF
++/* confdefs.h.  */
++_ACEOF
++cat confdefs.h >>conftest.$ac_ext
++cat >>conftest.$ac_ext <<_ACEOF
++/* end confdefs.h.  */
++$ac_includes_default
++int
++main ()
++{
++if ((long long *) 0)
++  return 0;
++if (sizeof (long long))
++  return 0;
++  ;
++  return 0;
++}
++_ACEOF
++rm -f conftest.$ac_objext
++if { (eval echo "$as_me:$LINENO: \"$ac_compile\"") >&5
++  (eval $ac_compile) 2>conftest.er1
++  ac_status=$?
++  grep -v '^ *+' conftest.er1 >conftest.err
++  rm -f conftest.er1
++  cat conftest.err >&5
++  echo "$as_me:$LINENO: \$? = $ac_status" >&5
++  (exit $ac_status); } &&
++	 { ac_try='test -z "$ac_cxx_werror_flag"			 || test ! -s conftest.err'
++  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
++  (eval $ac_try) 2>&5
++  ac_status=$?
++  echo "$as_me:$LINENO: \$? = $ac_status" >&5
++  (exit $ac_status); }; } &&
++	 { ac_try='test -s conftest.$ac_objext'
++  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
++  (eval $ac_try) 2>&5
++  ac_status=$?
++  echo "$as_me:$LINENO: \$? = $ac_status" >&5
++  (exit $ac_status); }; }; then
++  ac_cv_type_long_long=yes
++else
++  echo "$as_me: failed program was:" >&5
++sed 's/^/| /' conftest.$ac_ext >&5
++
++ac_cv_type_long_long=no
++fi
++rm -f conftest.err conftest.$ac_objext conftest.$ac_ext
++fi
++echo "$as_me:$LINENO: result: $ac_cv_type_long_long" >&5
++echo "${ECHO_T}$ac_cv_type_long_long" >&6
++
++echo "$as_me:$LINENO: checking size of long long" >&5
++echo $ECHO_N "checking size of long long... $ECHO_C" >&6
++if test "${ac_cv_sizeof_long_long+set}" = set; then
++  echo $ECHO_N "(cached) $ECHO_C" >&6
++else
++  if test "$ac_cv_type_long_long" = yes; then
++  # The cast to unsigned long works around a bug in the HP C Compiler
++  # version HP92453-01 B.11.11.23709.GP, which incorrectly rejects
++  # declarations like `int a3[[(sizeof (unsigned char)) >= 0]];'.
++  # This bug is HP SR number 8606223364.
++  if test "$cross_compiling" = yes; then
++  # Depending upon the size, compute the lo and hi bounds.
++cat >conftest.$ac_ext <<_ACEOF
++/* confdefs.h.  */
++_ACEOF
++cat confdefs.h >>conftest.$ac_ext
++cat >>conftest.$ac_ext <<_ACEOF
++/* end confdefs.h.  */
++$ac_includes_default
++int
++main ()
++{
++static int test_array [1 - 2 * !(((long) (sizeof (long long))) >= 0)];
++test_array [0] = 0
++
++  ;
++  return 0;
++}
++_ACEOF
++rm -f conftest.$ac_objext
++if { (eval echo "$as_me:$LINENO: \"$ac_compile\"") >&5
++  (eval $ac_compile) 2>conftest.er1
++  ac_status=$?
++  grep -v '^ *+' conftest.er1 >conftest.err
++  rm -f conftest.er1
++  cat conftest.err >&5
++  echo "$as_me:$LINENO: \$? = $ac_status" >&5
++  (exit $ac_status); } &&
++	 { ac_try='test -z "$ac_cxx_werror_flag"			 || test ! -s conftest.err'
++  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
++  (eval $ac_try) 2>&5
++  ac_status=$?
++  echo "$as_me:$LINENO: \$? = $ac_status" >&5
++  (exit $ac_status); }; } &&
++	 { ac_try='test -s conftest.$ac_objext'
++  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
++  (eval $ac_try) 2>&5
++  ac_status=$?
++  echo "$as_me:$LINENO: \$? = $ac_status" >&5
++  (exit $ac_status); }; }; then
++  ac_lo=0 ac_mid=0
++  while :; do
++    cat >conftest.$ac_ext <<_ACEOF
++/* confdefs.h.  */
++_ACEOF
++cat confdefs.h >>conftest.$ac_ext
++cat >>conftest.$ac_ext <<_ACEOF
++/* end confdefs.h.  */
++$ac_includes_default
++int
++main ()
++{
++static int test_array [1 - 2 * !(((long) (sizeof (long long))) <= $ac_mid)];
++test_array [0] = 0
++
++  ;
++  return 0;
++}
++_ACEOF
++rm -f conftest.$ac_objext
++if { (eval echo "$as_me:$LINENO: \"$ac_compile\"") >&5
++  (eval $ac_compile) 2>conftest.er1
++  ac_status=$?
++  grep -v '^ *+' conftest.er1 >conftest.err
++  rm -f conftest.er1
++  cat conftest.err >&5
++  echo "$as_me:$LINENO: \$? = $ac_status" >&5
++  (exit $ac_status); } &&
++	 { ac_try='test -z "$ac_cxx_werror_flag"			 || test ! -s conftest.err'
++  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
++  (eval $ac_try) 2>&5
++  ac_status=$?
++  echo "$as_me:$LINENO: \$? = $ac_status" >&5
++  (exit $ac_status); }; } &&
++	 { ac_try='test -s conftest.$ac_objext'
++  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
++  (eval $ac_try) 2>&5
++  ac_status=$?
++  echo "$as_me:$LINENO: \$? = $ac_status" >&5
++  (exit $ac_status); }; }; then
++  ac_hi=$ac_mid; break
++else
++  echo "$as_me: failed program was:" >&5
++sed 's/^/| /' conftest.$ac_ext >&5
++
++ac_lo=`expr $ac_mid + 1`
++		    if test $ac_lo -le $ac_mid; then
++		      ac_lo= ac_hi=
++		      break
++		    fi
++		    ac_mid=`expr 2 '*' $ac_mid + 1`
++fi
++rm -f conftest.err conftest.$ac_objext conftest.$ac_ext
++  done
++else
++  echo "$as_me: failed program was:" >&5
++sed 's/^/| /' conftest.$ac_ext >&5
++
++cat >conftest.$ac_ext <<_ACEOF
++/* confdefs.h.  */
++_ACEOF
++cat confdefs.h >>conftest.$ac_ext
++cat >>conftest.$ac_ext <<_ACEOF
++/* end confdefs.h.  */
++$ac_includes_default
++int
++main ()
++{
++static int test_array [1 - 2 * !(((long) (sizeof (long long))) < 0)];
++test_array [0] = 0
++
++  ;
++  return 0;
++}
++_ACEOF
++rm -f conftest.$ac_objext
++if { (eval echo "$as_me:$LINENO: \"$ac_compile\"") >&5
++  (eval $ac_compile) 2>conftest.er1
++  ac_status=$?
++  grep -v '^ *+' conftest.er1 >conftest.err
++  rm -f conftest.er1
++  cat conftest.err >&5
++  echo "$as_me:$LINENO: \$? = $ac_status" >&5
++  (exit $ac_status); } &&
++	 { ac_try='test -z "$ac_cxx_werror_flag"			 || test ! -s conftest.err'
++  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
++  (eval $ac_try) 2>&5
++  ac_status=$?
++  echo "$as_me:$LINENO: \$? = $ac_status" >&5
++  (exit $ac_status); }; } &&
++	 { ac_try='test -s conftest.$ac_objext'
++  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
++  (eval $ac_try) 2>&5
++  ac_status=$?
++  echo "$as_me:$LINENO: \$? = $ac_status" >&5
++  (exit $ac_status); }; }; then
++  ac_hi=-1 ac_mid=-1
++  while :; do
++    cat >conftest.$ac_ext <<_ACEOF
++/* confdefs.h.  */
++_ACEOF
++cat confdefs.h >>conftest.$ac_ext
++cat >>conftest.$ac_ext <<_ACEOF
++/* end confdefs.h.  */
++$ac_includes_default
++int
++main ()
++{
++static int test_array [1 - 2 * !(((long) (sizeof (long long))) >= $ac_mid)];
++test_array [0] = 0
++
++  ;
++  return 0;
++}
++_ACEOF
++rm -f conftest.$ac_objext
++if { (eval echo "$as_me:$LINENO: \"$ac_compile\"") >&5
++  (eval $ac_compile) 2>conftest.er1
++  ac_status=$?
++  grep -v '^ *+' conftest.er1 >conftest.err
++  rm -f conftest.er1
++  cat conftest.err >&5
++  echo "$as_me:$LINENO: \$? = $ac_status" >&5
++  (exit $ac_status); } &&
++	 { ac_try='test -z "$ac_cxx_werror_flag"			 || test ! -s conftest.err'
++  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
++  (eval $ac_try) 2>&5
++  ac_status=$?
++  echo "$as_me:$LINENO: \$? = $ac_status" >&5
++  (exit $ac_status); }; } &&
++	 { ac_try='test -s conftest.$ac_objext'
++  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
++  (eval $ac_try) 2>&5
++  ac_status=$?
++  echo "$as_me:$LINENO: \$? = $ac_status" >&5
++  (exit $ac_status); }; }; then
++  ac_lo=$ac_mid; break
++else
++  echo "$as_me: failed program was:" >&5
++sed 's/^/| /' conftest.$ac_ext >&5
++
++ac_hi=`expr '(' $ac_mid ')' - 1`
++		       if test $ac_mid -le $ac_hi; then
++			 ac_lo= ac_hi=
++			 break
++		       fi
++		       ac_mid=`expr 2 '*' $ac_mid`
++fi
++rm -f conftest.err conftest.$ac_objext conftest.$ac_ext
++  done
++else
++  echo "$as_me: failed program was:" >&5
++sed 's/^/| /' conftest.$ac_ext >&5
++
++ac_lo= ac_hi=
++fi
++rm -f conftest.err conftest.$ac_objext conftest.$ac_ext
++fi
++rm -f conftest.err conftest.$ac_objext conftest.$ac_ext
++# Binary search between lo and hi bounds.
++while test "x$ac_lo" != "x$ac_hi"; do
++  ac_mid=`expr '(' $ac_hi - $ac_lo ')' / 2 + $ac_lo`
++  cat >conftest.$ac_ext <<_ACEOF
++/* confdefs.h.  */
++_ACEOF
++cat confdefs.h >>conftest.$ac_ext
++cat >>conftest.$ac_ext <<_ACEOF
++/* end confdefs.h.  */
++$ac_includes_default
++int
++main ()
++{
++static int test_array [1 - 2 * !(((long) (sizeof (long long))) <= $ac_mid)];
++test_array [0] = 0
++
++  ;
++  return 0;
++}
++_ACEOF
++rm -f conftest.$ac_objext
++if { (eval echo "$as_me:$LINENO: \"$ac_compile\"") >&5
++  (eval $ac_compile) 2>conftest.er1
++  ac_status=$?
++  grep -v '^ *+' conftest.er1 >conftest.err
++  rm -f conftest.er1
++  cat conftest.err >&5
++  echo "$as_me:$LINENO: \$? = $ac_status" >&5
++  (exit $ac_status); } &&
++	 { ac_try='test -z "$ac_cxx_werror_flag"			 || test ! -s conftest.err'
++  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
++  (eval $ac_try) 2>&5
++  ac_status=$?
++  echo "$as_me:$LINENO: \$? = $ac_status" >&5
++  (exit $ac_status); }; } &&
++	 { ac_try='test -s conftest.$ac_objext'
++  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
++  (eval $ac_try) 2>&5
++  ac_status=$?
++  echo "$as_me:$LINENO: \$? = $ac_status" >&5
++  (exit $ac_status); }; }; then
++  ac_hi=$ac_mid
++else
++  echo "$as_me: failed program was:" >&5
++sed 's/^/| /' conftest.$ac_ext >&5
++
++ac_lo=`expr '(' $ac_mid ')' + 1`
++fi
++rm -f conftest.err conftest.$ac_objext conftest.$ac_ext
++done
++case $ac_lo in
++?*) ac_cv_sizeof_long_long=$ac_lo;;
++'') { { echo "$as_me:$LINENO: error: cannot compute sizeof (long long), 77
++See \`config.log' for more details." >&5
++echo "$as_me: error: cannot compute sizeof (long long), 77
++See \`config.log' for more details." >&2;}
++   { (exit 1); exit 1; }; } ;;
++esac
++else
++  if test "$cross_compiling" = yes; then
++  { { echo "$as_me:$LINENO: error: internal error: not reached in cross-compile" >&5
++echo "$as_me: error: internal error: not reached in cross-compile" >&2;}
++   { (exit 1); exit 1; }; }
++else
++  cat >conftest.$ac_ext <<_ACEOF
++/* confdefs.h.  */
++_ACEOF
++cat confdefs.h >>conftest.$ac_ext
++cat >>conftest.$ac_ext <<_ACEOF
++/* end confdefs.h.  */
++$ac_includes_default
++long longval () { return (long) (sizeof (long long)); }
++unsigned long ulongval () { return (long) (sizeof (long long)); }
++#include <stdio.h>
++#include <stdlib.h>
++int
++main ()
++{
++
++  FILE *f = fopen ("conftest.val", "w");
++  if (! f)
++    exit (1);
++  if (((long) (sizeof (long long))) < 0)
++    {
++      long i = longval ();
++      if (i != ((long) (sizeof (long long))))
++	exit (1);
++      fprintf (f, "%ld\n", i);
++    }
++  else
++    {
++      unsigned long i = ulongval ();
++      if (i != ((long) (sizeof (long long))))
++	exit (1);
++      fprintf (f, "%lu\n", i);
++    }
++  exit (ferror (f) || fclose (f) != 0);
++
++  ;
++  return 0;
++}
++_ACEOF
++rm -f conftest$ac_exeext
++if { (eval echo "$as_me:$LINENO: \"$ac_link\"") >&5
++  (eval $ac_link) 2>&5
++  ac_status=$?
++  echo "$as_me:$LINENO: \$? = $ac_status" >&5
++  (exit $ac_status); } && { ac_try='./conftest$ac_exeext'
++  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
++  (eval $ac_try) 2>&5
++  ac_status=$?
++  echo "$as_me:$LINENO: \$? = $ac_status" >&5
++  (exit $ac_status); }; }; then
++  ac_cv_sizeof_long_long=`cat conftest.val`
++else
++  echo "$as_me: program exited with status $ac_status" >&5
++echo "$as_me: failed program was:" >&5
++sed 's/^/| /' conftest.$ac_ext >&5
++
++( exit $ac_status )
++{ { echo "$as_me:$LINENO: error: cannot compute sizeof (long long), 77
++See \`config.log' for more details." >&5
++echo "$as_me: error: cannot compute sizeof (long long), 77
++See \`config.log' for more details." >&2;}
++   { (exit 1); exit 1; }; }
++fi
++rm -f core *.core gmon.out bb.out conftest$ac_exeext conftest.$ac_objext conftest.$ac_ext
++fi
++fi
++rm -f conftest.val
++else
++  ac_cv_sizeof_long_long=0
++fi
++fi
++echo "$as_me:$LINENO: result: $ac_cv_sizeof_long_long" >&5
++echo "${ECHO_T}$ac_cv_sizeof_long_long" >&6
++cat >>confdefs.h <<_ACEOF
++#define SIZEOF_LONG_LONG $ac_cv_sizeof_long_long
++_ACEOF
++
++
++echo "$as_me:$LINENO: checking for 64bit type" >&5
++echo $ECHO_N "checking for 64bit type... $ECHO_C" >&6
++if test "$ac_cv_sizeof_long" = "8"; then
++  echo "$as_me:$LINENO: result: long" >&5
++echo "${ECHO_T}long" >&6
++  POOMA_INT64="long"
++elif test "$ac_cv_sizeof_long_long" = "8"; then
++  echo "$as_me:$LINENO: result: long long" >&5
++echo "${ECHO_T}long long" >&6
++  POOMA_INT64="long long"
++else
++  echo "$as_me:$LINENO: result: none - using long anyway" >&5
++echo "${ECHO_T}none - using long anyway" >&6
++  POOMA_INT64="long"
++fi
++
++if test ! "$ac_cv_sizeof_long_long" = "0"; then
++  POOMA_HAS_LONG_LONG=POOMA_YES
++else
++  POOMA_HAS_LONG_LONG=POOMA_NO
++fi
++
++
+ 
+ echo "$as_me:$LINENO: checking for way to enable OpenMP support" >&5
+ echo $ECHO_N "checking for way to enable OpenMP support... $ECHO_C" >&6
+@@ -5005,7 +5832,7 @@
+ cat >&5 <<_CSEOF
+ 
+ This file was extended by pooma $as_me 2.4.0, which was
+-generated by GNU Autoconf 2.58.  Invocation command line was
++generated by GNU Autoconf 2.59.  Invocation command line was
+ 
+   CONFIG_FILES    = $CONFIG_FILES
+   CONFIG_HEADERS  = $CONFIG_HEADERS
+@@ -5060,7 +5887,7 @@
+ cat >>$CONFIG_STATUS <<_ACEOF
+ ac_cs_version="\\
+ pooma config.status 2.4.0
+-configured by $0, generated by GNU Autoconf 2.58,
++configured by $0, generated by GNU Autoconf 2.59,
+   with options \\"`echo "$ac_configure_args" | sed 's/[\\""\`\$]/\\\\&/g'`\\"
+ 
+ Copyright (C) 2003 Free Software Foundation, Inc.
+@@ -5277,6 +6104,8 @@
+ s, at POOMA_NO_OSTREAM_ITERATOR_1ARG@,$POOMA_NO_OSTREAM_ITERATOR_1ARG,;t t
+ s, at POOMA_NO_STD_MIN_MAX@,$POOMA_NO_STD_MIN_MAX,;t t
+ s, at POOMA_NONSTANDARD_ITERATOR@,$POOMA_NONSTANDARD_ITERATOR,;t t
++s, at POOMA_INT64@,$POOMA_INT64,;t t
++s, at POOMA_HAS_LONG_LONG@,$POOMA_HAS_LONG_LONG,;t t
+ s, at openmpargs@,$openmpargs,;t t
+ s, at cppargs@,$cppargs,;t t
+ s, at cargs@,$cargs,;t t
+
+From oldham at codesourcery.com  Wed Sep  1 21:04:14 2004
+From: oldham at codesourcery.com (Jeffrey D. Oldham)
+Date: Wed, 01 Sep 2004 14:04:14 -0700
+Subject: [PATCH] fix indirectionlist_test1.cpp for serialAsync scheduler
+In-Reply-To: <Pine.LNX.4.44.0408271724300.9036-200000@alwazn.tat.physik.uni-tuebingen.de>
+References: <Pine.LNX.4.44.0408271724300.9036-200000@alwazn.tat.physik.uni-tuebingen.de>
+Message-ID: <4136394E.7050708@codesourcery.com>
+
+Richard Guenther wrote:
+
+>This patch fixes the indirectionlist_test1 Domain test for
+>non-blocking schedulers.  Very obvious.
+>
+>Ok?
+>  
+>
+Yes, it is obvious.  Please commit it.
+
+>Richard.
+>
+>
+>2004Aug27  Richard Guenther <richard.guenther at uni-tuebingen.de>
+>
+>	* src/Domain/tests/indirectionlist_test1.cpp: add
+>	Pooma::blockAndEvaluate() where necessary.
+>  
+>
+>------------------------------------------------------------------------
+>
+>Index: indirectionlist_test1.cpp
+>===================================================================
+>RCS file: /home/pooma/Repository/r2/src/Domain/tests/indirectionlist_test1.cpp,v
+>retrieving revision 1.7
+>diff -u -u -r1.7 indirectionlist_test1.cpp
+>--- indirectionlist_test1.cpp	21 Dec 2003 12:59:57 -0000	1.7
+>+++ indirectionlist_test1.cpp	27 Aug 2004 15:24:22 -0000
+>@@ -57,8 +57,9 @@
+> 
+>   Array<1,int,Brick> klist(foo);
+> 
+>-
+>   klist = 1;
+>+  Pooma::blockAndEvaluate();
+>+
+>   for(int i=1;i<7;i++)
+>     klist(i) = klist(i-1)+i;
+>   klist(2)=3;
+>  
+>
+
+
+-- 
+Jeffrey D. Oldham
+oldham at codesourcery.com
+
+
+
+From oldham at codesourcery.com  Wed Sep  1 21:09:27 2004
+From: oldham at codesourcery.com (Jeffrey D. Oldham)
+Date: Wed, 01 Sep 2004 14:09:27 -0700
+Subject: [PATCH] Fix some of the MPI particle failures
+In-Reply-To: <Pine.LNX.4.44.0408271740590.9036-200000@alwazn.tat.physik.uni-tuebingen.de>
+References: <Pine.LNX.4.44.0408271740590.9036-200000@alwazn.tat.physik.uni-tuebingen.de>
+Message-ID: <41363A87.4010000@codesourcery.com>
+
+Richard Guenther wrote:
+
+>Doh!  I missed one #if POOMA_CHEETAH at the POOMA_CHEETAH ->
+>POOMA_MESSAGING conversion (I think even on purpose, but the particle
+>stuff wasn't compiling at that time anyways).
+>
+>Ok?
+>
+>Richard.
+>
+>
+>2004Aug27  Richard Guenther <richard.guenther at uni-tuebingen.de>
+>
+>	* src/Engine/DynamicEngine.h: include pack/unpack methods
+>	for POOMA_MESSAGING, not just POOMA_CHEETAH.
+>  
+>
+>------------------------------------------------------------------------
+>
+>Index: Engine/DynamicEngine.h
+>===================================================================
+>RCS file: /home/pooma/Repository/r2/src/Engine/DynamicEngine.h,v
+>retrieving revision 1.19
+>diff -u -u -r1.19 DynamicEngine.h
+>--- Engine/DynamicEngine.h	22 Oct 2003 19:38:07 -0000	1.19
+>+++ Engine/DynamicEngine.h	27 Aug 2004 15:40:51 -0000
+>@@ -309,7 +309,7 @@
+> 
+>   void sync(const Domain_t & d);
+> 
+>-#if POOMA_CHEETAH
+>+#if POOMA_MESSAGING
+> 
+>   template <class Dom>
+>   inline int packSize(const Dom &) const
+>  
+>
+Please correct this to also add an ending "#endif" before committing 
+it.  Thanks.
+
+-- 
+Jeffrey D. Oldham
+oldham at codesourcery.com
+
+
+
+From oldham at codesourcery.com  Wed Sep  1 21:20:57 2004
+From: oldham at codesourcery.com (Jeffrey D. Oldham)
+Date: Wed, 01 Sep 2004 14:20:57 -0700
+Subject: [PATCH] don't bench too much for boundschecking
+In-Reply-To: <Pine.LNX.4.44.0408271745451.9036-200000@alwazn.tat.physik.uni-tuebingen.de>
+References: <Pine.LNX.4.44.0408271745451.9036-200000@alwazn.tat.physik.uni-tuebingen.de>
+Message-ID: <41363D39.6030707@codesourcery.com>
+
+Richard Guenther wrote:
+
+>This reduces particle benchmarking if POOMA_BOUNDS_CHECK is on
+>to one time with 100 particles (it takes an awful lot of time).
+>
+>Ok?
+>
+>Richard.
+>
+>
+>2004Aug27  Richard Guenther <richard.guenther at uni-tuebingen.de>
+>
+>	* src/Particles/tests/particle_tests.h: for POOMA_BOUNDS_CHECK
+>	reduce default problem size(s).
+>  
+>
+>------------------------------------------------------------------------
+>
+>Index: Particles/tests/particle_tests.h
+>===================================================================
+>RCS file: /home/pooma/Repository/r2/src/Particles/tests/particle_tests.h,v
+>retrieving revision 1.22
+>diff -u -u -r1.22 particle_tests.h
+>--- Particles/tests/particle_tests.h	23 Aug 2004 18:44:17 -0000	1.22
+>+++ Particles/tests/particle_tests.h	27 Aug 2004 15:45:38 -0000
+>@@ -400,8 +400,13 @@
+>   // Default parameters for the benchmark.
+> 
+>   int iters = 1000;
+>+#if POOMA_BOUNDS_CHECK
+>+  int startnumparticles = 100;
+>+  int endnumparticles = 100;
+>+#else
+>   int startnumparticles = 100;
+>   int endnumparticles = 10000;
+>+#endif
+>   int multnumparticles = 10;
+>   double movefrac = 0.1;
+>   bool usesync = false;
+>  
+>
+I appreciate the desire to reduce the running time when bounds checking 
+occurs, but this new set of values ensures the loop runs only once.  
+Without the change, the loop runs three times.  It would be nice to have 
+the loop run at least twice to ensure it does not break something when 
+the loop counter is updated.  To do this, set endnumparticles to 1000 
+when bounds are checked.  A more complex change is to change 
+'endnumparticles' to 'startnumparticles * multnumparticles' and reducing 
+'multnumparticles' to a smaller value greater than one.
+
+-- 
+Jeffrey D. Oldham
+oldham at codesourcery.com
+
+
+
+From oldham at codesourcery.com  Wed Sep  1 21:22:02 2004
+From: oldham at codesourcery.com (Jeffrey D. Oldham)
+Date: Wed, 01 Sep 2004 14:22:02 -0700
+Subject: [PATCH] fix domain error in particle test
+In-Reply-To: <Pine.LNX.4.44.0408271800410.9036-200000@alwazn.tat.physik.uni-tuebingen.de>
+References: <Pine.LNX.4.44.0408271800410.9036-200000@alwazn.tat.physik.uni-tuebingen.de>
+Message-ID: <41363D7A.8070505@codesourcery.com>
+
+Richard Guenther wrote:
+
+>This patch fixes the last bug in particle tests to let MPI
+>parallelized versions pass on _one_ processor.
+>
+>As update for the truly parallel testruns, the only ones failing
+>are now bctest3, spatial, uniform, destroy, particle_test1-4,
+>particle_bench1-4 and interpolate - all due
+>to the pAbort because "Cross-context particles not supported for MPI".
+>
+>Ok?
+>
+>
+>2004Aug27  Richard Guenther <richard.guenther at uni-tuebingen.de>
+>
+>	* src/Particles/tests/interpolate.cpp: initialize physical
+>	cell domain, not vertex domain.
+>  
+>
+>------------------------------------------------------------------------
+>
+>Index: interpolate.cpp
+>===================================================================
+>RCS file: /home/pooma/Repository/r2/src/Particles/tests/interpolate.cpp,v
+>retrieving revision 1.23
+>diff -u -u -r1.23 interpolate.cpp
+>--- interpolate.cpp	23 Aug 2004 18:44:17 -0000	1.23
+>+++ interpolate.cpp	27 Aug 2004 15:59:17 -0000
+>@@ -282,7 +282,7 @@
+>   // Initialize the field values
+> 
+>   tester.out() << "Initializing Field values ..." << std::endl;
+>-  Interval<PDim> dom = flayout.domain();
+>+  Interval<PDim> dom = electric.physicalDomain();
+>   for (int i = dom[0].first(); i <= dom[0].last(); ++i)
+>     for (int j = dom[1].first(); j <= dom[1].last(); ++j)
+>       electric(i,j) = Particles_t::PointType_t(i+j,i-j);
+>  
+>
+Yes, please commit this.
+
+-- 
+Jeffrey D. Oldham
+oldham at codesourcery.com
+
+
+
+From rguenth at tat.physik.uni-tuebingen.de  Wed Sep  1 21:26:57 2004
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Wed, 01 Sep 2004 23:26:57 +0200
+Subject: [pooma-dev] Re: [PATCH] don't bench too much for boundschecking
+In-Reply-To: <41363D39.6030707@codesourcery.com>
+References: <Pine.LNX.4.44.0408271745451.9036-200000@alwazn.tat.physik.uni-tuebingen.de> <41363D39.6030707@codesourcery.com>
+Message-ID: <41363EA1.2070203@tat.physik.uni-tuebingen.de>
+
+Jeffrey D. Oldham wrote:
+> Richard Guenther wrote:
+> 
+>> This reduces particle benchmarking if POOMA_BOUNDS_CHECK is on
+>> to one time with 100 particles (it takes an awful lot of time).
+>>
+>> Ok?
+>>
+>> Richard.
+>>
+>>
+>> 2004Aug27  Richard Guenther <richard.guenther at uni-tuebingen.de>
+>>
+>>     * src/Particles/tests/particle_tests.h: for POOMA_BOUNDS_CHECK
+>>     reduce default problem size(s).
+>>  
+>>
+>> ------------------------------------------------------------------------
+>>
+>> Index: Particles/tests/particle_tests.h
+>> ===================================================================
+>> RCS file: 
+>> /home/pooma/Repository/r2/src/Particles/tests/particle_tests.h,v
+>> retrieving revision 1.22
+>> diff -u -u -r1.22 particle_tests.h
+>> --- Particles/tests/particle_tests.h    23 Aug 2004 18:44:17 -0000    
+>> 1.22
+>> +++ Particles/tests/particle_tests.h    27 Aug 2004 15:45:38 -0000
+>> @@ -400,8 +400,13 @@
+>>   // Default parameters for the benchmark.
+>>
+>>   int iters = 1000;
+>> +#if POOMA_BOUNDS_CHECK
+>> +  int startnumparticles = 100;
+>> +  int endnumparticles = 100;
+>> +#else
+>>   int startnumparticles = 100;
+>>   int endnumparticles = 10000;
+>> +#endif
+>>   int multnumparticles = 10;
+>>   double movefrac = 0.1;
+>>   bool usesync = false;
+>>  
+>>
+> I appreciate the desire to reduce the running time when bounds checking 
+> occurs, but this new set of values ensures the loop runs only once.  
+> Without the change, the loop runs three times.  It would be nice to have 
+> the loop run at least twice to ensure it does not break something when 
+> the loop counter is updated.  To do this, set endnumparticles to 1000 
+> when bounds are checked.  A more complex change is to change 
+> 'endnumparticles' to 'startnumparticles * multnumparticles' and reducing 
+> 'multnumparticles' to a smaller value greater than one.
+
+Another possibility would be to reduce iters to 10 and endnumparticles 
+to 1000.  Would this be ok?
+
+Thanks,
+Richard.
+
+
+
+From oldham at codesourcery.com  Wed Sep  1 21:41:18 2004
+From: oldham at codesourcery.com (Jeffrey D. Oldham)
+Date: Wed, 01 Sep 2004 14:41:18 -0700
+Subject: [pooma-dev] Re: [PATCH] don't bench too much for boundschecking
+In-Reply-To: <41363EA1.2070203@tat.physik.uni-tuebingen.de>
+References: <Pine.LNX.4.44.0408271745451.9036-200000@alwazn.tat.physik.uni-tuebingen.de> <41363D39.6030707@codesourcery.com> <41363EA1.2070203@tat.physik.uni-tuebingen.de>
+Message-ID: <413641FE.6060804@codesourcery.com>
+
+Richard Guenther wrote:
+
+> Jeffrey D. Oldham wrote:
+>
+>> Richard Guenther wrote:
+>>
+>>> This reduces particle benchmarking if POOMA_BOUNDS_CHECK is on
+>>> to one time with 100 particles (it takes an awful lot of time).
+>>>
+>>> Ok?
+>>>
+>>> Richard.
+>>>
+>>>
+>>> 2004Aug27  Richard Guenther <richard.guenther at uni-tuebingen.de>
+>>>
+>>>     * src/Particles/tests/particle_tests.h: for POOMA_BOUNDS_CHECK
+>>>     reduce default problem size(s).
+>>>  
+>>>
+>>> ------------------------------------------------------------------------ 
+>>>
+>>>
+>>> Index: Particles/tests/particle_tests.h
+>>> ===================================================================
+>>> RCS file: 
+>>> /home/pooma/Repository/r2/src/Particles/tests/particle_tests.h,v
+>>> retrieving revision 1.22
+>>> diff -u -u -r1.22 particle_tests.h
+>>> --- Particles/tests/particle_tests.h    23 Aug 2004 18:44:17 
+>>> -0000    1.22
+>>> +++ Particles/tests/particle_tests.h    27 Aug 2004 15:45:38 -0000
+>>> @@ -400,8 +400,13 @@
+>>>   // Default parameters for the benchmark.
+>>>
+>>>   int iters = 1000;
+>>> +#if POOMA_BOUNDS_CHECK
+>>> +  int startnumparticles = 100;
+>>> +  int endnumparticles = 100;
+>>> +#else
+>>>   int startnumparticles = 100;
+>>>   int endnumparticles = 10000;
+>>> +#endif
+>>>   int multnumparticles = 10;
+>>>   double movefrac = 0.1;
+>>>   bool usesync = false;
+>>>  
+>>>
+>> I appreciate the desire to reduce the running time when bounds 
+>> checking occurs, but this new set of values ensures the loop runs 
+>> only once.  Without the change, the loop runs three times.  It would 
+>> be nice to have the loop run at least twice to ensure it does not 
+>> break something when the loop counter is updated.  To do this, set 
+>> endnumparticles to 1000 when bounds are checked.  A more complex 
+>> change is to change 'endnumparticles' to 'startnumparticles * 
+>> multnumparticles' and reducing 'multnumparticles' to a smaller value 
+>> greater than one.
+>
+>
+> Another possibility would be to reduce iters to 10 and endnumparticles 
+> to 1000.  Would this be ok?
+>
+> Thanks,
+> Richard.
+>
+I would prefer to minimize the differences so I would prefer
+a) Reducing iters from 1000 to 10 and leaving startnumparticles and 
+endnumparticles unchanged
+over
+b) Reducing iters from 1000 to 10 and reducing endnumparticles to 1000,
+but I am not interactively running the tests so I do not know how long 
+they require.
+
+Choose whichever choice yields the most reasonable testing time, e.g., 
+1-5 minutes maximum.
+
+Thanks for catching this.
+
+-- 
+Jeffrey D. Oldham
+oldham at codesourcery.com
+
+
+
+From rguenth at tat.physik.uni-tuebingen.de  Wed Sep  1 21:50:20 2004
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Wed, 01 Sep 2004 23:50:20 +0200
+Subject: [pooma-dev] Re: [PATCH] don't bench too much for boundschecking
+In-Reply-To: <413641FE.6060804@codesourcery.com>
+References: <Pine.LNX.4.44.0408271745451.9036-200000@alwazn.tat.physik.uni-tuebingen.de> <41363D39.6030707@codesourcery.com> <41363EA1.2070203@tat.physik.uni-tuebingen.de> <413641FE.6060804@codesourcery.com>
+Message-ID: <4136441C.103@tat.physik.uni-tuebingen.de>
+
+Jeffrey D. Oldham wrote:
+> 
+> I would prefer to minimize the differences so I would prefer
+> a) Reducing iters from 1000 to 10 and leaving startnumparticles and 
+> endnumparticles unchanged
+> over
+> b) Reducing iters from 1000 to 10 and reducing endnumparticles to 1000,
+> but I am not interactively running the tests so I do not know how long 
+> they require.
+> 
+> Choose whichever choice yields the most reasonable testing time, e.g., 
+> 1-5 minutes maximum.
+
+I chose a).
+
+Thanks,
+Richard.
+
+
+From oldham at codesourcery.com  Thu Sep  2 15:25:53 2004
+From: oldham at codesourcery.com (Jeffrey D. Oldham)
+Date: Thu, 02 Sep 2004 08:25:53 -0700
+Subject: [PATCH] Fix FileSetReader/Writer
+In-Reply-To: <Pine.LNX.4.44.0409011538400.9036-200000@alwazn.tat.physik.uni-tuebingen.de>
+References: <Pine.LNX.4.44.0409011538400.9036-200000@alwazn.tat.physik.uni-tuebingen.de>
+Message-ID: <41373B81.5020702@codesourcery.com>
+
+Richard Guenther wrote:
+
+>On Wed, 1 Sep 2004, Richard Guenther wrote:
+>
+>  
+>
+>>On Wed, 1 Sep 2004 oldham at sirius.codesourcery.com wrote:
+>>
+>>    
+>>
+>>>  regressions.io.filesetreadertest1             : FAIL
+>>>    Unexpected exit_code, standard error.
+>>>
+>>>  regressions.io.filesetreadertest2             : FAIL
+>>>    Unexpected exit_code, standard error.
+>>>      
+>>>
+>>I finally figured out why these fail on ia32 (but not on amd64 and ia64).
+>>The test data was appearantly generated on a 64bit big-endian host and the
+>>reader just reads bytes and expects a C++ long to be 64bit everywhere
+>>(which is not true obviously).
+>>
+>>There is also the POOMA_HAS_LONG_LONG define which is set nowhere
+>>and used only in the FileSetReader/Writer and ElementProperties.
+>>
+>>We could check for an appropriate 64bit type during configure and
+>>use that or just ignore the issue.
+>>    
+>>
+>
+>Yay, and of course this is not enough, as required alignment for 64bit
+>datatypes is of course different.  We should shoot the one that came up
+>with
+>
+>  template <class T>
+>  struct OffsetData
+>  {
+>    void reverseBytes();
+>
+>    int nodedata[6*Dim];  // domain data (same format as .layout)
+>    bool isCompressed;    // Is the data compressed
+>    Offset_t offset;      // offset in sizeof(T) units
+>    T compressedValue;    // Data value, if compressed
+>  };
+>
+>as possibly "portable" structure to write byte-for-byte to a file.
+>Placing bool between int and long long is surely not a good idea.
+>
+>Changing the above to
+>
+>    int nodedata[6*Dim];  // domain data (same format as .layout)
+>    union {
+>      bool isCompressed;  // Is the data compressed
+>      char pad[8];
+>    } u;
+>    Offset_t offset;      // offset in sizeof(T) units
+>
+>_seems_ to "fix" the problem.
+>
+>So, is the following patch ok?  Tested on ia32, amd64 and ia64 linux.
+>
+>  
+>
+This patch seems to contain two ideas: 1) add POOMA_INT64 and 2) 
+changing OffsetData.  Ensuring use of 64-bit values seems to be a good 
+idea.  I am unsure why the order of structure data members is 
+important.  C++ compilers should obey the C++ ABI 
+(http://www.codesourcery.com/cxx-abi/) so the structure will be laid out 
+in the same way on all machines.
+
+Does using just (1) solve the problem?
+
+>2004Sep01  Richard Guenther <richard.guenther at uni-tuebingen.de>
+>
+>	* configure: add POOMA_HAS_LONG_LONG and POOMA_INT64
+>	defines.
+>	scripts/configure.ac: check for long long and sizes of
+>	long and long long.  Set POOMA_HAS_LONG_LONG and
+>	POOMA_INT64 appropriately.
+>	scripts/configure: regenerate.
+>	src/IO/FileSetReader.h: use POOMA_INT64 for Offset_t,
+>	pad bool inside OffsetData to 64bit using a union.
+>	src/IO/FileSetWriter.h: likewise.
+>	src/IO/FileSetReader.cpp: honour union.
+>  
+>
+>------------------------------------------------------------------------
+>
+>Index: configure
+>===================================================================
+>RCS file: /home/pooma/Repository/r2/configure,v
+>retrieving revision 1.117
+>diff -u -u -r1.117 configure
+>--- configure	17 Aug 2004 20:09:15 -0000	1.117
+>+++ configure	1 Sep 2004 13:53:11 -0000
+>@@ -1831,6 +1831,12 @@
+> 
+>   # if the C++ library has a nonstandard iterator or iterator_traits
+>   add_autoconf_define("POOMA_NONSTANDARD_ITERATOR");
+>+
+>+  # if the compiler supports long long
+>+  add_autoconf_define("POOMA_HAS_LONG_LONG");
+>+
+>+  # appropriate 64bit type
+>+  add_autoconf_define("POOMA_INT64");
+> }
+> 
+> 
+>Index: scripts/configure.ac
+>===================================================================
+>RCS file: /home/pooma/Repository/r2/scripts/configure.ac,v
+>retrieving revision 1.5
+>diff -u -u -r1.5 configure.ac
+>--- scripts/configure.ac	5 Jan 2004 22:28:39 -0000	1.5
+>+++ scripts/configure.ac	1 Sep 2004 13:53:11 -0000
+>@@ -351,6 +351,31 @@
+> AC_SUBST(POOMA_NONSTANDARD_ITERATOR)
+> 
+> dnl
+>+dnl Check for long, long long type and its sizes to define
+>+dnl 64bit type.
+>+dnl
+>+AC_CHECK_SIZEOF([long])
+>+AC_CHECK_SIZEOF([long long])
+>+AC_MSG_CHECKING([for 64bit type])
+>+if test "$ac_cv_sizeof_long" = "8"; then
+>+  AC_MSG_RESULT([long])
+>+  POOMA_INT64="long"
+>+elif test "$ac_cv_sizeof_long_long" = "8"; then
+>+  AC_MSG_RESULT([long long])
+>+  POOMA_INT64="long long"
+>+else
+>+  AC_MSG_RESULT([none - using long anyway])
+>+  POOMA_INT64="long"
+>+fi
+>+AC_SUBST(POOMA_INT64)
+>+if test ! "$ac_cv_sizeof_long_long" = "0"; then
+>+  POOMA_HAS_LONG_LONG=POOMA_YES
+>+else
+>+  POOMA_HAS_LONG_LONG=POOMA_NO
+>+fi
+>+AC_SUBST(POOMA_HAS_LONG_LONG)
+>+
+>+dnl
+> dnl Check for compiler argument for OpenMP support
+> dnl
+> 
+>Index: src/IO/FileSetReader.cpp
+>===================================================================
+>RCS file: /home/pooma/Repository/r2/src/IO/FileSetReader.cpp,v
+>retrieving revision 1.7
+>diff -u -u -r1.7 FileSetReader.cpp
+>--- src/IO/FileSetReader.cpp	14 Jan 2003 09:59:32 -0000	1.7
+>+++ src/IO/FileSetReader.cpp	1 Sep 2004 13:53:11 -0000
+>@@ -137,7 +137,7 @@
+>   PInsist(mycontext_m == iocontext_m && mycontext_m == dnode.context_m,
+>           "This should only be called for nodes on the IO context.");
+> 
+>-  if (odata.isCompressed)
+>+  if (odata.u.isCompressed)
+>     {
+>       // If compressed, simply set the compressed value. 
+> 
+>Index: src/IO/FileSetReader.h
+>===================================================================
+>RCS file: /home/pooma/Repository/r2/src/IO/FileSetReader.h,v
+>retrieving revision 1.7
+>diff -u -u -r1.7 FileSetReader.h
+>--- src/IO/FileSetReader.h	26 Oct 2003 11:26:23 -0000	1.7
+>+++ src/IO/FileSetReader.h	1 Sep 2004 13:53:11 -0000
+>@@ -228,11 +228,7 @@
+> 
+> public:
+> 
+>-#if POOMA_HAS_LONG_LONG
+>-  typedef long long Offset_t;
+>-#else
+>-  typedef long Offset_t;
+>-#endif  
+>+  typedef POOMA_INT64 Offset_t;
+> 
+> private:
+> 
+>@@ -244,7 +240,10 @@
+>     void reverseBytes();
+> 
+>     int nodedata[6*Dim];  // domain data (same format as .layout)
+>-    bool isCompressed;    // Is the data compressed
+>+    union {
+>+      bool isCompressed;    // Is the data compressed
+>+      char pad[8];
+>+    } u;
+>     Offset_t offset;      // offset in sizeof(T) units
+>     T compressedValue;    // Data value, if compressed
+>   };
+>Index: src/IO/FileSetWriter.h
+>===================================================================
+>RCS file: /home/pooma/Repository/r2/src/IO/FileSetWriter.h,v
+>retrieving revision 1.12
+>diff -u -u -r1.12 FileSetWriter.h
+>--- src/IO/FileSetWriter.h	26 Oct 2003 11:26:23 -0000	1.12
+>+++ src/IO/FileSetWriter.h	1 Sep 2004 13:53:11 -0000
+>@@ -93,11 +93,7 @@
+>   // friends may not be supported everywhere. (This will go away when
+>   // we marshal the structure in a standard way.)
+> 
+>-#if POOMA_HAS_LONG_LONG
+>-  typedef long long Offset_t;
+>-#else
+>-  typedef long Offset_t;
+>-#endif  
+>+  typedef POOMA_INT64 Offset_t;
+>   
+> private:
+>     
+>@@ -105,7 +101,10 @@
+>   struct DFOffsetData 
+>   {
+>     int        vnodedata_m[6 * Dim];
+>-    bool       isCompressed_m;
+>+    union {
+>+      bool       isCompressed_m;
+>+      char       pad[8];
+>+    } u;
+>     Offset_t   offset_m;
+>     T          compressedVal_m;
+>   };
+>@@ -375,9 +374,9 @@
+>       odata.vnodedata_m[i * 6 + 3] = a.domain()[i].size();
+>     }
+> 
+>-  odata.isCompressed_m = compressed(a);
+>+  odata.u.isCompressed_m = compressed(a);
+>   
+>-  if (odata.isCompressed_m)
+>+  if (odata.u.isCompressed_m)
+>     {
+>       odata.offset_m = 0;
+>       odata.compressedVal_m = a.engine().localEngine().compressedRead();
+>Index: scripts/configure
+>===================================================================
+>RCS file: /home/pooma/Repository/r2/scripts/configure,v
+>retrieving revision 1.5
+>diff -u -u -r1.5 configure
+>--- scripts/configure	5 Jan 2004 22:28:39 -0000	1.5
+>+++ scripts/configure	1 Sep 2004 13:53:26 -0000
+>@@ -1,6 +1,6 @@
+> #! /bin/sh
+> # Guess values for system-dependent variables and create Makefiles.
+>-# Generated by GNU Autoconf 2.58 for pooma 2.4.0.
+>+# Generated by GNU Autoconf 2.59 for pooma 2.4.0.
+> #
+> # Copyright (C) 2003 Free Software Foundation, Inc.
+> # This configure script is free software; the Free Software Foundation
+>@@ -308,7 +308,7 @@
+> # include <unistd.h>
+> #endif"
+> 
+>-ac_subst_vars='SHELL PATH_SEPARATOR PACKAGE_NAME PACKAGE_TARNAME PACKAGE_VERSION PACKAGE_STRING PACKAGE_BUGREPORT exec_prefix prefix program_transform_name bindir sbindir libexecdir datadir sysconfdir sharedstatedir localstatedir libdir includedir oldincludedir infodir mandir build_alias host_alias target_alias DEFS ECHO_C ECHO_N ECHO_T LIBS CC CFLAGS CXX CXXFLAGS LDFLAGS CPPFLAGS ac_ct_CC EXEEXT OBJEXT CPP ac_ct_CXX CXXCPP POOMA_MISSING_IOMANIPS POOMA_NO_STD_IOSBASE POOMA_NO_STRINGSTREAM POOMA_NO_STD_COMPLEX POOMA_NO_TEMPLATED_COMPLEX POOMA_NO_DEPENDENT_TEMPLATE_ARGS POOMA_NO_PLACEMENT_DELETE POOMA_NO_TEMPLATEFUNC_DEFAULTARGS EGREP POOMA_NO_IOS_HEADER POOMA_NO_IOSBASE_FMTFLAGS POOMA_NO_RESTRICT POOMA_CLOCK_USES_CLOCK_GETTIME POOMA_CLOCK_USES_GETTIMEOFDAY POOMA_NO_TEMPLATE_FRIENDS POOMA_NO_OSTREAM_ITERATOR_1ARG POOMA_NO_STD_MIN_MAX POOMA_NONSTANDARD_ITERATOR openmpargs cppargs cargs LIBOBJS LTLIBOBJS'
+>+ac_subst_vars='SHELL PATH_SEPARATOR PACKAGE_NAME PACKAGE_TARNAME PACKAGE_VERSION PACKAGE_STRING PACKAGE_BUGREPORT exec_prefix prefix program_transform_name bindir sbindir libexecdir datadir sysconfdir sharedstatedir localstatedir libdir includedir oldincludedir infodir mandir build_alias host_alias target_alias DEFS ECHO_C ECHO_N ECHO_T LIBS CC CFLAGS CXX CXXFLAGS LDFLAGS CPPFLAGS ac_ct_CC EXEEXT OBJEXT CPP ac_ct_CXX CXXCPP POOMA_MISSING_IOMANIPS POOMA_NO_STD_IOSBASE POOMA_NO_STRINGSTREAM POOMA_NO_STD_COMPLEX POOMA_NO_TEMPLATED_COMPLEX POOMA_NO_DEPENDENT_TEMPLATE_ARGS POOMA_NO_PLACEMENT_DELETE POOMA_NO_TEMPLATEFUNC_DEFAULTARGS EGREP POOMA_NO_IOS_HEADER POOMA_NO_IOSBASE_FMTFLAGS POOMA_NO_RESTRICT POOMA_CLOCK_USES_CLOCK_GETTIME POOMA_CLOCK_USES_GETTIMEOFDAY POOMA_NO_TEMPLATE_FRIENDS POOMA_NO_OSTREAM_ITERATOR_1ARG POOMA_NO_STD_MIN_MAX POOMA_NONSTANDARD_ITERATOR POOMA_INT64 POOMA_HAS_LONG_LONG openmpargs cppargs cargs LIBOBJS LTLIBOBJS'
+> ac_subst_files=''
+> 
+> # Initialize some variables set by options.
+>@@ -851,24 +851,16 @@
+>   cat <<\_ACEOF
+> 
+> Some influential environment variables:
+>-  CC
+>-              C compiler
+>-  CFLAGS
+>-              C compiler flags
+>-  CXX
+>-              C++ compiler
+>-  CXXFLAGS
+>-              C++ compiler flags
+>-  LDFLAGS
+>-              linker flags, e.g. -L<lib dir> if you have
+>-              libraries in a nonstandard directory <lib dir>
+>-  CPPFLAGS
+>-              C/C++ preprocessor flags, e.g. -I<include dir> if you
+>-              have headers in a nonstandard directory <include dir>
+>-  CPP
+>-              C preprocessor
+>-  CXXCPP
+>-              C++ preprocessor
+>+  CC          C compiler
+>+  CFLAGS      C compiler flags
+>+  CXX         C++ compiler
+>+  CXXFLAGS    C++ compiler flags
+>+  LDFLAGS     linker flags, e.g. -L<lib dir> if you have libraries in a
+>+              nonstandard directory <lib dir>
+>+  CPPFLAGS    C/C++ preprocessor flags, e.g. -I<include dir> if you have
+>+              headers in a nonstandard directory <include dir>
+>+  CPP         C preprocessor
+>+  CXXCPP      C++ preprocessor
+> 
+> Use these variables to override the choices made by `configure' or to help
+> it to find libraries and programs with nonstandard names/locations.
+>@@ -969,7 +961,7 @@
+> if $ac_init_version; then
+>   cat <<\_ACEOF
+> pooma configure 2.4.0
+>-generated by GNU Autoconf 2.58
+>+generated by GNU Autoconf 2.59
+> 
+> Copyright (C) 2003 Free Software Foundation, Inc.
+> This configure script is free software; the Free Software Foundation
+>@@ -983,7 +975,7 @@
+> running configure, to aid debugging if configure makes a mistake.
+> 
+> It was created by pooma $as_me 2.4.0, which was
+>-generated by GNU Autoconf 2.58.  Invocation command line was
+>+generated by GNU Autoconf 2.59.  Invocation command line was
+> 
+>   $ $0 $@
+> 
+>@@ -4536,6 +4528,841 @@
+>       conftest$ac_exeext conftest.$ac_ext
+> 
+> 
+>+echo "$as_me:$LINENO: checking for long" >&5
+>+echo $ECHO_N "checking for long... $ECHO_C" >&6
+>+if test "${ac_cv_type_long+set}" = set; then
+>+  echo $ECHO_N "(cached) $ECHO_C" >&6
+>+else
+>+  cat >conftest.$ac_ext <<_ACEOF
+>+/* confdefs.h.  */
+>+_ACEOF
+>+cat confdefs.h >>conftest.$ac_ext
+>+cat >>conftest.$ac_ext <<_ACEOF
+>+/* end confdefs.h.  */
+>+$ac_includes_default
+>+int
+>+main ()
+>+{
+>+if ((long *) 0)
+>+  return 0;
+>+if (sizeof (long))
+>+  return 0;
+>+  ;
+>+  return 0;
+>+}
+>+_ACEOF
+>+rm -f conftest.$ac_objext
+>+if { (eval echo "$as_me:$LINENO: \"$ac_compile\"") >&5
+>+  (eval $ac_compile) 2>conftest.er1
+>+  ac_status=$?
+>+  grep -v '^ *+' conftest.er1 >conftest.err
+>+  rm -f conftest.er1
+>+  cat conftest.err >&5
+>+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+>+  (exit $ac_status); } &&
+>+	 { ac_try='test -z "$ac_cxx_werror_flag"			 || test ! -s conftest.err'
+>+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+>+  (eval $ac_try) 2>&5
+>+  ac_status=$?
+>+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+>+  (exit $ac_status); }; } &&
+>+	 { ac_try='test -s conftest.$ac_objext'
+>+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+>+  (eval $ac_try) 2>&5
+>+  ac_status=$?
+>+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+>+  (exit $ac_status); }; }; then
+>+  ac_cv_type_long=yes
+>+else
+>+  echo "$as_me: failed program was:" >&5
+>+sed 's/^/| /' conftest.$ac_ext >&5
+>+
+>+ac_cv_type_long=no
+>+fi
+>+rm -f conftest.err conftest.$ac_objext conftest.$ac_ext
+>+fi
+>+echo "$as_me:$LINENO: result: $ac_cv_type_long" >&5
+>+echo "${ECHO_T}$ac_cv_type_long" >&6
+>+
+>+echo "$as_me:$LINENO: checking size of long" >&5
+>+echo $ECHO_N "checking size of long... $ECHO_C" >&6
+>+if test "${ac_cv_sizeof_long+set}" = set; then
+>+  echo $ECHO_N "(cached) $ECHO_C" >&6
+>+else
+>+  if test "$ac_cv_type_long" = yes; then
+>+  # The cast to unsigned long works around a bug in the HP C Compiler
+>+  # version HP92453-01 B.11.11.23709.GP, which incorrectly rejects
+>+  # declarations like `int a3[[(sizeof (unsigned char)) >= 0]];'.
+>+  # This bug is HP SR number 8606223364.
+>+  if test "$cross_compiling" = yes; then
+>+  # Depending upon the size, compute the lo and hi bounds.
+>+cat >conftest.$ac_ext <<_ACEOF
+>+/* confdefs.h.  */
+>+_ACEOF
+>+cat confdefs.h >>conftest.$ac_ext
+>+cat >>conftest.$ac_ext <<_ACEOF
+>+/* end confdefs.h.  */
+>+$ac_includes_default
+>+int
+>+main ()
+>+{
+>+static int test_array [1 - 2 * !(((long) (sizeof (long))) >= 0)];
+>+test_array [0] = 0
+>+
+>+  ;
+>+  return 0;
+>+}
+>+_ACEOF
+>+rm -f conftest.$ac_objext
+>+if { (eval echo "$as_me:$LINENO: \"$ac_compile\"") >&5
+>+  (eval $ac_compile) 2>conftest.er1
+>+  ac_status=$?
+>+  grep -v '^ *+' conftest.er1 >conftest.err
+>+  rm -f conftest.er1
+>+  cat conftest.err >&5
+>+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+>+  (exit $ac_status); } &&
+>+	 { ac_try='test -z "$ac_cxx_werror_flag"			 || test ! -s conftest.err'
+>+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+>+  (eval $ac_try) 2>&5
+>+  ac_status=$?
+>+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+>+  (exit $ac_status); }; } &&
+>+	 { ac_try='test -s conftest.$ac_objext'
+>+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+>+  (eval $ac_try) 2>&5
+>+  ac_status=$?
+>+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+>+  (exit $ac_status); }; }; then
+>+  ac_lo=0 ac_mid=0
+>+  while :; do
+>+    cat >conftest.$ac_ext <<_ACEOF
+>+/* confdefs.h.  */
+>+_ACEOF
+>+cat confdefs.h >>conftest.$ac_ext
+>+cat >>conftest.$ac_ext <<_ACEOF
+>+/* end confdefs.h.  */
+>+$ac_includes_default
+>+int
+>+main ()
+>+{
+>+static int test_array [1 - 2 * !(((long) (sizeof (long))) <= $ac_mid)];
+>+test_array [0] = 0
+>+
+>+  ;
+>+  return 0;
+>+}
+>+_ACEOF
+>+rm -f conftest.$ac_objext
+>+if { (eval echo "$as_me:$LINENO: \"$ac_compile\"") >&5
+>+  (eval $ac_compile) 2>conftest.er1
+>+  ac_status=$?
+>+  grep -v '^ *+' conftest.er1 >conftest.err
+>+  rm -f conftest.er1
+>+  cat conftest.err >&5
+>+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+>+  (exit $ac_status); } &&
+>+	 { ac_try='test -z "$ac_cxx_werror_flag"			 || test ! -s conftest.err'
+>+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+>+  (eval $ac_try) 2>&5
+>+  ac_status=$?
+>+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+>+  (exit $ac_status); }; } &&
+>+	 { ac_try='test -s conftest.$ac_objext'
+>+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+>+  (eval $ac_try) 2>&5
+>+  ac_status=$?
+>+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+>+  (exit $ac_status); }; }; then
+>+  ac_hi=$ac_mid; break
+>+else
+>+  echo "$as_me: failed program was:" >&5
+>+sed 's/^/| /' conftest.$ac_ext >&5
+>+
+>+ac_lo=`expr $ac_mid + 1`
+>+		    if test $ac_lo -le $ac_mid; then
+>+		      ac_lo= ac_hi=
+>+		      break
+>+		    fi
+>+		    ac_mid=`expr 2 '*' $ac_mid + 1`
+>+fi
+>+rm -f conftest.err conftest.$ac_objext conftest.$ac_ext
+>+  done
+>+else
+>+  echo "$as_me: failed program was:" >&5
+>+sed 's/^/| /' conftest.$ac_ext >&5
+>+
+>+cat >conftest.$ac_ext <<_ACEOF
+>+/* confdefs.h.  */
+>+_ACEOF
+>+cat confdefs.h >>conftest.$ac_ext
+>+cat >>conftest.$ac_ext <<_ACEOF
+>+/* end confdefs.h.  */
+>+$ac_includes_default
+>+int
+>+main ()
+>+{
+>+static int test_array [1 - 2 * !(((long) (sizeof (long))) < 0)];
+>+test_array [0] = 0
+>+
+>+  ;
+>+  return 0;
+>+}
+>+_ACEOF
+>+rm -f conftest.$ac_objext
+>+if { (eval echo "$as_me:$LINENO: \"$ac_compile\"") >&5
+>+  (eval $ac_compile) 2>conftest.er1
+>+  ac_status=$?
+>+  grep -v '^ *+' conftest.er1 >conftest.err
+>+  rm -f conftest.er1
+>+  cat conftest.err >&5
+>+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+>+  (exit $ac_status); } &&
+>+	 { ac_try='test -z "$ac_cxx_werror_flag"			 || test ! -s conftest.err'
+>+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+>+  (eval $ac_try) 2>&5
+>+  ac_status=$?
+>+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+>+  (exit $ac_status); }; } &&
+>+	 { ac_try='test -s conftest.$ac_objext'
+>+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+>+  (eval $ac_try) 2>&5
+>+  ac_status=$?
+>+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+>+  (exit $ac_status); }; }; then
+>+  ac_hi=-1 ac_mid=-1
+>+  while :; do
+>+    cat >conftest.$ac_ext <<_ACEOF
+>+/* confdefs.h.  */
+>+_ACEOF
+>+cat confdefs.h >>conftest.$ac_ext
+>+cat >>conftest.$ac_ext <<_ACEOF
+>+/* end confdefs.h.  */
+>+$ac_includes_default
+>+int
+>+main ()
+>+{
+>+static int test_array [1 - 2 * !(((long) (sizeof (long))) >= $ac_mid)];
+>+test_array [0] = 0
+>+
+>+  ;
+>+  return 0;
+>+}
+>+_ACEOF
+>+rm -f conftest.$ac_objext
+>+if { (eval echo "$as_me:$LINENO: \"$ac_compile\"") >&5
+>+  (eval $ac_compile) 2>conftest.er1
+>+  ac_status=$?
+>+  grep -v '^ *+' conftest.er1 >conftest.err
+>+  rm -f conftest.er1
+>+  cat conftest.err >&5
+>+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+>+  (exit $ac_status); } &&
+>+	 { ac_try='test -z "$ac_cxx_werror_flag"			 || test ! -s conftest.err'
+>+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+>+  (eval $ac_try) 2>&5
+>+  ac_status=$?
+>+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+>+  (exit $ac_status); }; } &&
+>+	 { ac_try='test -s conftest.$ac_objext'
+>+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+>+  (eval $ac_try) 2>&5
+>+  ac_status=$?
+>+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+>+  (exit $ac_status); }; }; then
+>+  ac_lo=$ac_mid; break
+>+else
+>+  echo "$as_me: failed program was:" >&5
+>+sed 's/^/| /' conftest.$ac_ext >&5
+>+
+>+ac_hi=`expr '(' $ac_mid ')' - 1`
+>+		       if test $ac_mid -le $ac_hi; then
+>+			 ac_lo= ac_hi=
+>+			 break
+>+		       fi
+>+		       ac_mid=`expr 2 '*' $ac_mid`
+>+fi
+>+rm -f conftest.err conftest.$ac_objext conftest.$ac_ext
+>+  done
+>+else
+>+  echo "$as_me: failed program was:" >&5
+>+sed 's/^/| /' conftest.$ac_ext >&5
+>+
+>+ac_lo= ac_hi=
+>+fi
+>+rm -f conftest.err conftest.$ac_objext conftest.$ac_ext
+>+fi
+>+rm -f conftest.err conftest.$ac_objext conftest.$ac_ext
+>+# Binary search between lo and hi bounds.
+>+while test "x$ac_lo" != "x$ac_hi"; do
+>+  ac_mid=`expr '(' $ac_hi - $ac_lo ')' / 2 + $ac_lo`
+>+  cat >conftest.$ac_ext <<_ACEOF
+>+/* confdefs.h.  */
+>+_ACEOF
+>+cat confdefs.h >>conftest.$ac_ext
+>+cat >>conftest.$ac_ext <<_ACEOF
+>+/* end confdefs.h.  */
+>+$ac_includes_default
+>+int
+>+main ()
+>+{
+>+static int test_array [1 - 2 * !(((long) (sizeof (long))) <= $ac_mid)];
+>+test_array [0] = 0
+>+
+>+  ;
+>+  return 0;
+>+}
+>+_ACEOF
+>+rm -f conftest.$ac_objext
+>+if { (eval echo "$as_me:$LINENO: \"$ac_compile\"") >&5
+>+  (eval $ac_compile) 2>conftest.er1
+>+  ac_status=$?
+>+  grep -v '^ *+' conftest.er1 >conftest.err
+>+  rm -f conftest.er1
+>+  cat conftest.err >&5
+>+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+>+  (exit $ac_status); } &&
+>+	 { ac_try='test -z "$ac_cxx_werror_flag"			 || test ! -s conftest.err'
+>+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+>+  (eval $ac_try) 2>&5
+>+  ac_status=$?
+>+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+>+  (exit $ac_status); }; } &&
+>+	 { ac_try='test -s conftest.$ac_objext'
+>+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+>+  (eval $ac_try) 2>&5
+>+  ac_status=$?
+>+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+>+  (exit $ac_status); }; }; then
+>+  ac_hi=$ac_mid
+>+else
+>+  echo "$as_me: failed program was:" >&5
+>+sed 's/^/| /' conftest.$ac_ext >&5
+>+
+>+ac_lo=`expr '(' $ac_mid ')' + 1`
+>+fi
+>+rm -f conftest.err conftest.$ac_objext conftest.$ac_ext
+>+done
+>+case $ac_lo in
+>+?*) ac_cv_sizeof_long=$ac_lo;;
+>+'') { { echo "$as_me:$LINENO: error: cannot compute sizeof (long), 77
+>+See \`config.log' for more details." >&5
+>+echo "$as_me: error: cannot compute sizeof (long), 77
+>+See \`config.log' for more details." >&2;}
+>+   { (exit 1); exit 1; }; } ;;
+>+esac
+>+else
+>+  if test "$cross_compiling" = yes; then
+>+  { { echo "$as_me:$LINENO: error: internal error: not reached in cross-compile" >&5
+>+echo "$as_me: error: internal error: not reached in cross-compile" >&2;}
+>+   { (exit 1); exit 1; }; }
+>+else
+>+  cat >conftest.$ac_ext <<_ACEOF
+>+/* confdefs.h.  */
+>+_ACEOF
+>+cat confdefs.h >>conftest.$ac_ext
+>+cat >>conftest.$ac_ext <<_ACEOF
+>+/* end confdefs.h.  */
+>+$ac_includes_default
+>+long longval () { return (long) (sizeof (long)); }
+>+unsigned long ulongval () { return (long) (sizeof (long)); }
+>+#include <stdio.h>
+>+#include <stdlib.h>
+>+int
+>+main ()
+>+{
+>+
+>+  FILE *f = fopen ("conftest.val", "w");
+>+  if (! f)
+>+    exit (1);
+>+  if (((long) (sizeof (long))) < 0)
+>+    {
+>+      long i = longval ();
+>+      if (i != ((long) (sizeof (long))))
+>+	exit (1);
+>+      fprintf (f, "%ld\n", i);
+>+    }
+>+  else
+>+    {
+>+      unsigned long i = ulongval ();
+>+      if (i != ((long) (sizeof (long))))
+>+	exit (1);
+>+      fprintf (f, "%lu\n", i);
+>+    }
+>+  exit (ferror (f) || fclose (f) != 0);
+>+
+>+  ;
+>+  return 0;
+>+}
+>+_ACEOF
+>+rm -f conftest$ac_exeext
+>+if { (eval echo "$as_me:$LINENO: \"$ac_link\"") >&5
+>+  (eval $ac_link) 2>&5
+>+  ac_status=$?
+>+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+>+  (exit $ac_status); } && { ac_try='./conftest$ac_exeext'
+>+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+>+  (eval $ac_try) 2>&5
+>+  ac_status=$?
+>+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+>+  (exit $ac_status); }; }; then
+>+  ac_cv_sizeof_long=`cat conftest.val`
+>+else
+>+  echo "$as_me: program exited with status $ac_status" >&5
+>+echo "$as_me: failed program was:" >&5
+>+sed 's/^/| /' conftest.$ac_ext >&5
+>+
+>+( exit $ac_status )
+>+{ { echo "$as_me:$LINENO: error: cannot compute sizeof (long), 77
+>+See \`config.log' for more details." >&5
+>+echo "$as_me: error: cannot compute sizeof (long), 77
+>+See \`config.log' for more details." >&2;}
+>+   { (exit 1); exit 1; }; }
+>+fi
+>+rm -f core *.core gmon.out bb.out conftest$ac_exeext conftest.$ac_objext conftest.$ac_ext
+>+fi
+>+fi
+>+rm -f conftest.val
+>+else
+>+  ac_cv_sizeof_long=0
+>+fi
+>+fi
+>+echo "$as_me:$LINENO: result: $ac_cv_sizeof_long" >&5
+>+echo "${ECHO_T}$ac_cv_sizeof_long" >&6
+>+cat >>confdefs.h <<_ACEOF
+>+#define SIZEOF_LONG $ac_cv_sizeof_long
+>+_ACEOF
+>+
+>+
+>+echo "$as_me:$LINENO: checking for long long" >&5
+>+echo $ECHO_N "checking for long long... $ECHO_C" >&6
+>+if test "${ac_cv_type_long_long+set}" = set; then
+>+  echo $ECHO_N "(cached) $ECHO_C" >&6
+>+else
+>+  cat >conftest.$ac_ext <<_ACEOF
+>+/* confdefs.h.  */
+>+_ACEOF
+>+cat confdefs.h >>conftest.$ac_ext
+>+cat >>conftest.$ac_ext <<_ACEOF
+>+/* end confdefs.h.  */
+>+$ac_includes_default
+>+int
+>+main ()
+>+{
+>+if ((long long *) 0)
+>+  return 0;
+>+if (sizeof (long long))
+>+  return 0;
+>+  ;
+>+  return 0;
+>+}
+>+_ACEOF
+>+rm -f conftest.$ac_objext
+>+if { (eval echo "$as_me:$LINENO: \"$ac_compile\"") >&5
+>+  (eval $ac_compile) 2>conftest.er1
+>+  ac_status=$?
+>+  grep -v '^ *+' conftest.er1 >conftest.err
+>+  rm -f conftest.er1
+>+  cat conftest.err >&5
+>+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+>+  (exit $ac_status); } &&
+>+	 { ac_try='test -z "$ac_cxx_werror_flag"			 || test ! -s conftest.err'
+>+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+>+  (eval $ac_try) 2>&5
+>+  ac_status=$?
+>+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+>+  (exit $ac_status); }; } &&
+>+	 { ac_try='test -s conftest.$ac_objext'
+>+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+>+  (eval $ac_try) 2>&5
+>+  ac_status=$?
+>+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+>+  (exit $ac_status); }; }; then
+>+  ac_cv_type_long_long=yes
+>+else
+>+  echo "$as_me: failed program was:" >&5
+>+sed 's/^/| /' conftest.$ac_ext >&5
+>+
+>+ac_cv_type_long_long=no
+>+fi
+>+rm -f conftest.err conftest.$ac_objext conftest.$ac_ext
+>+fi
+>+echo "$as_me:$LINENO: result: $ac_cv_type_long_long" >&5
+>+echo "${ECHO_T}$ac_cv_type_long_long" >&6
+>+
+>+echo "$as_me:$LINENO: checking size of long long" >&5
+>+echo $ECHO_N "checking size of long long... $ECHO_C" >&6
+>+if test "${ac_cv_sizeof_long_long+set}" = set; then
+>+  echo $ECHO_N "(cached) $ECHO_C" >&6
+>+else
+>+  if test "$ac_cv_type_long_long" = yes; then
+>+  # The cast to unsigned long works around a bug in the HP C Compiler
+>+  # version HP92453-01 B.11.11.23709.GP, which incorrectly rejects
+>+  # declarations like `int a3[[(sizeof (unsigned char)) >= 0]];'.
+>+  # This bug is HP SR number 8606223364.
+>+  if test "$cross_compiling" = yes; then
+>+  # Depending upon the size, compute the lo and hi bounds.
+>+cat >conftest.$ac_ext <<_ACEOF
+>+/* confdefs.h.  */
+>+_ACEOF
+>+cat confdefs.h >>conftest.$ac_ext
+>+cat >>conftest.$ac_ext <<_ACEOF
+>+/* end confdefs.h.  */
+>+$ac_includes_default
+>+int
+>+main ()
+>+{
+>+static int test_array [1 - 2 * !(((long) (sizeof (long long))) >= 0)];
+>+test_array [0] = 0
+>+
+>+  ;
+>+  return 0;
+>+}
+>+_ACEOF
+>+rm -f conftest.$ac_objext
+>+if { (eval echo "$as_me:$LINENO: \"$ac_compile\"") >&5
+>+  (eval $ac_compile) 2>conftest.er1
+>+  ac_status=$?
+>+  grep -v '^ *+' conftest.er1 >conftest.err
+>+  rm -f conftest.er1
+>+  cat conftest.err >&5
+>+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+>+  (exit $ac_status); } &&
+>+	 { ac_try='test -z "$ac_cxx_werror_flag"			 || test ! -s conftest.err'
+>+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+>+  (eval $ac_try) 2>&5
+>+  ac_status=$?
+>+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+>+  (exit $ac_status); }; } &&
+>+	 { ac_try='test -s conftest.$ac_objext'
+>+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+>+  (eval $ac_try) 2>&5
+>+  ac_status=$?
+>+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+>+  (exit $ac_status); }; }; then
+>+  ac_lo=0 ac_mid=0
+>+  while :; do
+>+    cat >conftest.$ac_ext <<_ACEOF
+>+/* confdefs.h.  */
+>+_ACEOF
+>+cat confdefs.h >>conftest.$ac_ext
+>+cat >>conftest.$ac_ext <<_ACEOF
+>+/* end confdefs.h.  */
+>+$ac_includes_default
+>+int
+>+main ()
+>+{
+>+static int test_array [1 - 2 * !(((long) (sizeof (long long))) <= $ac_mid)];
+>+test_array [0] = 0
+>+
+>+  ;
+>+  return 0;
+>+}
+>+_ACEOF
+>+rm -f conftest.$ac_objext
+>+if { (eval echo "$as_me:$LINENO: \"$ac_compile\"") >&5
+>+  (eval $ac_compile) 2>conftest.er1
+>+  ac_status=$?
+>+  grep -v '^ *+' conftest.er1 >conftest.err
+>+  rm -f conftest.er1
+>+  cat conftest.err >&5
+>+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+>+  (exit $ac_status); } &&
+>+	 { ac_try='test -z "$ac_cxx_werror_flag"			 || test ! -s conftest.err'
+>+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+>+  (eval $ac_try) 2>&5
+>+  ac_status=$?
+>+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+>+  (exit $ac_status); }; } &&
+>+	 { ac_try='test -s conftest.$ac_objext'
+>+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+>+  (eval $ac_try) 2>&5
+>+  ac_status=$?
+>+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+>+  (exit $ac_status); }; }; then
+>+  ac_hi=$ac_mid; break
+>+else
+>+  echo "$as_me: failed program was:" >&5
+>+sed 's/^/| /' conftest.$ac_ext >&5
+>+
+>+ac_lo=`expr $ac_mid + 1`
+>+		    if test $ac_lo -le $ac_mid; then
+>+		      ac_lo= ac_hi=
+>+		      break
+>+		    fi
+>+		    ac_mid=`expr 2 '*' $ac_mid + 1`
+>+fi
+>+rm -f conftest.err conftest.$ac_objext conftest.$ac_ext
+>+  done
+>+else
+>+  echo "$as_me: failed program was:" >&5
+>+sed 's/^/| /' conftest.$ac_ext >&5
+>+
+>+cat >conftest.$ac_ext <<_ACEOF
+>+/* confdefs.h.  */
+>+_ACEOF
+>+cat confdefs.h >>conftest.$ac_ext
+>+cat >>conftest.$ac_ext <<_ACEOF
+>+/* end confdefs.h.  */
+>+$ac_includes_default
+>+int
+>+main ()
+>+{
+>+static int test_array [1 - 2 * !(((long) (sizeof (long long))) < 0)];
+>+test_array [0] = 0
+>+
+>+  ;
+>+  return 0;
+>+}
+>+_ACEOF
+>+rm -f conftest.$ac_objext
+>+if { (eval echo "$as_me:$LINENO: \"$ac_compile\"") >&5
+>+  (eval $ac_compile) 2>conftest.er1
+>+  ac_status=$?
+>+  grep -v '^ *+' conftest.er1 >conftest.err
+>+  rm -f conftest.er1
+>+  cat conftest.err >&5
+>+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+>+  (exit $ac_status); } &&
+>+	 { ac_try='test -z "$ac_cxx_werror_flag"			 || test ! -s conftest.err'
+>+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+>+  (eval $ac_try) 2>&5
+>+  ac_status=$?
+>+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+>+  (exit $ac_status); }; } &&
+>+	 { ac_try='test -s conftest.$ac_objext'
+>+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+>+  (eval $ac_try) 2>&5
+>+  ac_status=$?
+>+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+>+  (exit $ac_status); }; }; then
+>+  ac_hi=-1 ac_mid=-1
+>+  while :; do
+>+    cat >conftest.$ac_ext <<_ACEOF
+>+/* confdefs.h.  */
+>+_ACEOF
+>+cat confdefs.h >>conftest.$ac_ext
+>+cat >>conftest.$ac_ext <<_ACEOF
+>+/* end confdefs.h.  */
+>+$ac_includes_default
+>+int
+>+main ()
+>+{
+>+static int test_array [1 - 2 * !(((long) (sizeof (long long))) >= $ac_mid)];
+>+test_array [0] = 0
+>+
+>+  ;
+>+  return 0;
+>+}
+>+_ACEOF
+>+rm -f conftest.$ac_objext
+>+if { (eval echo "$as_me:$LINENO: \"$ac_compile\"") >&5
+>+  (eval $ac_compile) 2>conftest.er1
+>+  ac_status=$?
+>+  grep -v '^ *+' conftest.er1 >conftest.err
+>+  rm -f conftest.er1
+>+  cat conftest.err >&5
+>+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+>+  (exit $ac_status); } &&
+>+	 { ac_try='test -z "$ac_cxx_werror_flag"			 || test ! -s conftest.err'
+>+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+>+  (eval $ac_try) 2>&5
+>+  ac_status=$?
+>+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+>+  (exit $ac_status); }; } &&
+>+	 { ac_try='test -s conftest.$ac_objext'
+>+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+>+  (eval $ac_try) 2>&5
+>+  ac_status=$?
+>+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+>+  (exit $ac_status); }; }; then
+>+  ac_lo=$ac_mid; break
+>+else
+>+  echo "$as_me: failed program was:" >&5
+>+sed 's/^/| /' conftest.$ac_ext >&5
+>+
+>+ac_hi=`expr '(' $ac_mid ')' - 1`
+>+		       if test $ac_mid -le $ac_hi; then
+>+			 ac_lo= ac_hi=
+>+			 break
+>+		       fi
+>+		       ac_mid=`expr 2 '*' $ac_mid`
+>+fi
+>+rm -f conftest.err conftest.$ac_objext conftest.$ac_ext
+>+  done
+>+else
+>+  echo "$as_me: failed program was:" >&5
+>+sed 's/^/| /' conftest.$ac_ext >&5
+>+
+>+ac_lo= ac_hi=
+>+fi
+>+rm -f conftest.err conftest.$ac_objext conftest.$ac_ext
+>+fi
+>+rm -f conftest.err conftest.$ac_objext conftest.$ac_ext
+>+# Binary search between lo and hi bounds.
+>+while test "x$ac_lo" != "x$ac_hi"; do
+>+  ac_mid=`expr '(' $ac_hi - $ac_lo ')' / 2 + $ac_lo`
+>+  cat >conftest.$ac_ext <<_ACEOF
+>+/* confdefs.h.  */
+>+_ACEOF
+>+cat confdefs.h >>conftest.$ac_ext
+>+cat >>conftest.$ac_ext <<_ACEOF
+>+/* end confdefs.h.  */
+>+$ac_includes_default
+>+int
+>+main ()
+>+{
+>+static int test_array [1 - 2 * !(((long) (sizeof (long long))) <= $ac_mid)];
+>+test_array [0] = 0
+>+
+>+  ;
+>+  return 0;
+>+}
+>+_ACEOF
+>+rm -f conftest.$ac_objext
+>+if { (eval echo "$as_me:$LINENO: \"$ac_compile\"") >&5
+>+  (eval $ac_compile) 2>conftest.er1
+>+  ac_status=$?
+>+  grep -v '^ *+' conftest.er1 >conftest.err
+>+  rm -f conftest.er1
+>+  cat conftest.err >&5
+>+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+>+  (exit $ac_status); } &&
+>+	 { ac_try='test -z "$ac_cxx_werror_flag"			 || test ! -s conftest.err'
+>+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+>+  (eval $ac_try) 2>&5
+>+  ac_status=$?
+>+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+>+  (exit $ac_status); }; } &&
+>+	 { ac_try='test -s conftest.$ac_objext'
+>+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+>+  (eval $ac_try) 2>&5
+>+  ac_status=$?
+>+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+>+  (exit $ac_status); }; }; then
+>+  ac_hi=$ac_mid
+>+else
+>+  echo "$as_me: failed program was:" >&5
+>+sed 's/^/| /' conftest.$ac_ext >&5
+>+
+>+ac_lo=`expr '(' $ac_mid ')' + 1`
+>+fi
+>+rm -f conftest.err conftest.$ac_objext conftest.$ac_ext
+>+done
+>+case $ac_lo in
+>+?*) ac_cv_sizeof_long_long=$ac_lo;;
+>+'') { { echo "$as_me:$LINENO: error: cannot compute sizeof (long long), 77
+>+See \`config.log' for more details." >&5
+>+echo "$as_me: error: cannot compute sizeof (long long), 77
+>+See \`config.log' for more details." >&2;}
+>+   { (exit 1); exit 1; }; } ;;
+>+esac
+>+else
+>+  if test "$cross_compiling" = yes; then
+>+  { { echo "$as_me:$LINENO: error: internal error: not reached in cross-compile" >&5
+>+echo "$as_me: error: internal error: not reached in cross-compile" >&2;}
+>+   { (exit 1); exit 1; }; }
+>+else
+>+  cat >conftest.$ac_ext <<_ACEOF
+>+/* confdefs.h.  */
+>+_ACEOF
+>+cat confdefs.h >>conftest.$ac_ext
+>+cat >>conftest.$ac_ext <<_ACEOF
+>+/* end confdefs.h.  */
+>+$ac_includes_default
+>+long longval () { return (long) (sizeof (long long)); }
+>+unsigned long ulongval () { return (long) (sizeof (long long)); }
+>+#include <stdio.h>
+>+#include <stdlib.h>
+>+int
+>+main ()
+>+{
+>+
+>+  FILE *f = fopen ("conftest.val", "w");
+>+  if (! f)
+>+    exit (1);
+>+  if (((long) (sizeof (long long))) < 0)
+>+    {
+>+      long i = longval ();
+>+      if (i != ((long) (sizeof (long long))))
+>+	exit (1);
+>+      fprintf (f, "%ld\n", i);
+>+    }
+>+  else
+>+    {
+>+      unsigned long i = ulongval ();
+>+      if (i != ((long) (sizeof (long long))))
+>+	exit (1);
+>+      fprintf (f, "%lu\n", i);
+>+    }
+>+  exit (ferror (f) || fclose (f) != 0);
+>+
+>+  ;
+>+  return 0;
+>+}
+>+_ACEOF
+>+rm -f conftest$ac_exeext
+>+if { (eval echo "$as_me:$LINENO: \"$ac_link\"") >&5
+>+  (eval $ac_link) 2>&5
+>+  ac_status=$?
+>+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+>+  (exit $ac_status); } && { ac_try='./conftest$ac_exeext'
+>+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+>+  (eval $ac_try) 2>&5
+>+  ac_status=$?
+>+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+>+  (exit $ac_status); }; }; then
+>+  ac_cv_sizeof_long_long=`cat conftest.val`
+>+else
+>+  echo "$as_me: program exited with status $ac_status" >&5
+>+echo "$as_me: failed program was:" >&5
+>+sed 's/^/| /' conftest.$ac_ext >&5
+>+
+>+( exit $ac_status )
+>+{ { echo "$as_me:$LINENO: error: cannot compute sizeof (long long), 77
+>+See \`config.log' for more details." >&5
+>+echo "$as_me: error: cannot compute sizeof (long long), 77
+>+See \`config.log' for more details." >&2;}
+>+   { (exit 1); exit 1; }; }
+>+fi
+>+rm -f core *.core gmon.out bb.out conftest$ac_exeext conftest.$ac_objext conftest.$ac_ext
+>+fi
+>+fi
+>+rm -f conftest.val
+>+else
+>+  ac_cv_sizeof_long_long=0
+>+fi
+>+fi
+>+echo "$as_me:$LINENO: result: $ac_cv_sizeof_long_long" >&5
+>+echo "${ECHO_T}$ac_cv_sizeof_long_long" >&6
+>+cat >>confdefs.h <<_ACEOF
+>+#define SIZEOF_LONG_LONG $ac_cv_sizeof_long_long
+>+_ACEOF
+>+
+>+
+>+echo "$as_me:$LINENO: checking for 64bit type" >&5
+>+echo $ECHO_N "checking for 64bit type... $ECHO_C" >&6
+>+if test "$ac_cv_sizeof_long" = "8"; then
+>+  echo "$as_me:$LINENO: result: long" >&5
+>+echo "${ECHO_T}long" >&6
+>+  POOMA_INT64="long"
+>+elif test "$ac_cv_sizeof_long_long" = "8"; then
+>+  echo "$as_me:$LINENO: result: long long" >&5
+>+echo "${ECHO_T}long long" >&6
+>+  POOMA_INT64="long long"
+>+else
+>+  echo "$as_me:$LINENO: result: none - using long anyway" >&5
+>+echo "${ECHO_T}none - using long anyway" >&6
+>+  POOMA_INT64="long"
+>+fi
+>+
+>+if test ! "$ac_cv_sizeof_long_long" = "0"; then
+>+  POOMA_HAS_LONG_LONG=POOMA_YES
+>+else
+>+  POOMA_HAS_LONG_LONG=POOMA_NO
+>+fi
+>+
+>+
+> 
+> echo "$as_me:$LINENO: checking for way to enable OpenMP support" >&5
+> echo $ECHO_N "checking for way to enable OpenMP support... $ECHO_C" >&6
+>@@ -5005,7 +5832,7 @@
+> cat >&5 <<_CSEOF
+> 
+> This file was extended by pooma $as_me 2.4.0, which was
+>-generated by GNU Autoconf 2.58.  Invocation command line was
+>+generated by GNU Autoconf 2.59.  Invocation command line was
+> 
+>   CONFIG_FILES    = $CONFIG_FILES
+>   CONFIG_HEADERS  = $CONFIG_HEADERS
+>@@ -5060,7 +5887,7 @@
+> cat >>$CONFIG_STATUS <<_ACEOF
+> ac_cs_version="\\
+> pooma config.status 2.4.0
+>-configured by $0, generated by GNU Autoconf 2.58,
+>+configured by $0, generated by GNU Autoconf 2.59,
+>   with options \\"`echo "$ac_configure_args" | sed 's/[\\""\`\$]/\\\\&/g'`\\"
+> 
+> Copyright (C) 2003 Free Software Foundation, Inc.
+>@@ -5277,6 +6104,8 @@
+> s, at POOMA_NO_OSTREAM_ITERATOR_1ARG@,$POOMA_NO_OSTREAM_ITERATOR_1ARG,;t t
+> s, at POOMA_NO_STD_MIN_MAX@,$POOMA_NO_STD_MIN_MAX,;t t
+> s, at POOMA_NONSTANDARD_ITERATOR@,$POOMA_NONSTANDARD_ITERATOR,;t t
+>+s, at POOMA_INT64@,$POOMA_INT64,;t t
+>+s, at POOMA_HAS_LONG_LONG@,$POOMA_HAS_LONG_LONG,;t t
+> s, at openmpargs@,$openmpargs,;t t
+> s, at cppargs@,$cppargs,;t t
+> s, at cargs@,$cargs,;t t
+>  
+>
+
+
+-- 
+Jeffrey D. Oldham
+oldham at codesourcery.com
+
+
+
+From rguenth at tat.physik.uni-tuebingen.de  Thu Sep  2 15:51:07 2004
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Thu, 02 Sep 2004 17:51:07 +0200
+Subject: [pooma-dev] Re: [PATCH] Fix FileSetReader/Writer
+In-Reply-To: <41373B81.5020702@codesourcery.com>
+References: <Pine.LNX.4.44.0409011538400.9036-200000@alwazn.tat.physik.uni-tuebingen.de> <41373B81.5020702@codesourcery.com>
+Message-ID: <4137416B.3050904@tat.physik.uni-tuebingen.de>
+
+Jeffrey D. Oldham wrote:
+> Richard Guenther wrote:
+> 
+>> On Wed, 1 Sep 2004, Richard Guenther wrote:
+>>
+>>  
+>>
+>>> On Wed, 1 Sep 2004 oldham at sirius.codesourcery.com wrote:
+>>>
+>>>   
+>>>
+>>>>  regressions.io.filesetreadertest1             : FAIL
+>>>>    Unexpected exit_code, standard error.
+>>>>
+>>>>  regressions.io.filesetreadertest2             : FAIL
+>>>>    Unexpected exit_code, standard error.
+>>>>     
+>>>
+>>> I finally figured out why these fail on ia32 (but not on amd64 and 
+>>> ia64).
+>>> The test data was appearantly generated on a 64bit big-endian host 
+>>> and the
+>>> reader just reads bytes and expects a C++ long to be 64bit everywhere
+>>> (which is not true obviously).
+>>>
+>>> There is also the POOMA_HAS_LONG_LONG define which is set nowhere
+>>> and used only in the FileSetReader/Writer and ElementProperties.
+>>>
+>>> We could check for an appropriate 64bit type during configure and
+>>> use that or just ignore the issue.
+>>>   
+>>
+>>
+>> Yay, and of course this is not enough, as required alignment for 64bit
+>> datatypes is of course different.  We should shoot the one that came up
+>> with
+>>
+>>  template <class T>
+>>  struct OffsetData
+>>  {
+>>    void reverseBytes();
+>>
+>>    int nodedata[6*Dim];  // domain data (same format as .layout)
+>>    bool isCompressed;    // Is the data compressed
+>>    Offset_t offset;      // offset in sizeof(T) units
+>>    T compressedValue;    // Data value, if compressed
+>>  };
+>>
+>> as possibly "portable" structure to write byte-for-byte to a file.
+>> Placing bool between int and long long is surely not a good idea.
+>>
+>> Changing the above to
+>>
+>>    int nodedata[6*Dim];  // domain data (same format as .layout)
+>>    union {
+>>      bool isCompressed;  // Is the data compressed
+>>      char pad[8];
+>>    } u;
+>>    Offset_t offset;      // offset in sizeof(T) units
+>>
+>> _seems_ to "fix" the problem.
+>>
+>> So, is the following patch ok?  Tested on ia32, amd64 and ia64 linux.
+>>
+>>  
+>>
+> This patch seems to contain two ideas: 1) add POOMA_INT64 and 2) 
+> changing OffsetData.  Ensuring use of 64-bit values seems to be a good 
+> idea.  I am unsure why the order of structure data members is 
+> important.  C++ compilers should obey the C++ ABI 
+> (http://www.codesourcery.com/cxx-abi/) so the structure will be laid out 
+> in the same way on all machines.
+
+I don't think so.  Fact is, that different compilers obey different C++ 
+ABIs, so the structure may be layed out differently on IRIX with CC than 
+on ia32 with g++.  I'm not trying to fix all possible problems, but just 
+the fact that all 64bit ABIs I know of force alignment of 8-byte types
+(like Offset_t) on 8-byte boundaries.  The 32bit g++ ABI on ia32 though
+requires only 4-byte boundary for the 8-byte long long (or maybe it's a
+bug in g++).
+
+Of course properly fixing it for all cases would need a
+packed structure for the read/write with a byte-wise copy to a properly
+aligned structure for further use.  But that is beyond the patch. 
+Rather than doing that I'd bring over parts of my HDF5 support.
+
+> Does using just (1) solve the problem?
+
+No.  You'll get sizeof(OffsetData) of 96 for ia64 and 92 for ia32 with
+offset of offset being 80 for the one case and 76 for the other.
+
+I just tested the patch on a 32bit big-endian machine (ppc) and it works 
+there, too.
+
+Richard.
+
+
+From oldham at codesourcery.com  Thu Sep  2 16:55:03 2004
+From: oldham at codesourcery.com (Jeffrey D. Oldham)
+Date: Thu, 02 Sep 2004 09:55:03 -0700
+Subject: [pooma-dev] Re: [PATCH] Fix FileSetReader/Writer
+In-Reply-To: <4137416B.3050904@tat.physik.uni-tuebingen.de>
+References: <Pine.LNX.4.44.0409011538400.9036-200000@alwazn.tat.physik.uni-tuebingen.de> <41373B81.5020702@codesourcery.com> <4137416B.3050904@tat.physik.uni-tuebingen.de>
+Message-ID: <41375067.1040603@codesourcery.com>
+
+Richard Guenther wrote:
+
+> Jeffrey D. Oldham wrote:
+>
+>> Richard Guenther wrote:
+>>
+>>> On Wed, 1 Sep 2004, Richard Guenther wrote:
+>>>
+>>>  
+>>>
+>>>> On Wed, 1 Sep 2004 oldham at sirius.codesourcery.com wrote:
+>>>>
+>>>>  
+>>>>
+>>>>>  regressions.io.filesetreadertest1             : FAIL
+>>>>>    Unexpected exit_code, standard error.
+>>>>>
+>>>>>  regressions.io.filesetreadertest2             : FAIL
+>>>>>    Unexpected exit_code, standard error.
+>>>>>     
+>>>>
+>>>>
+>>>> I finally figured out why these fail on ia32 (but not on amd64 and 
+>>>> ia64).
+>>>> The test data was appearantly generated on a 64bit big-endian host 
+>>>> and the
+>>>> reader just reads bytes and expects a C++ long to be 64bit everywhere
+>>>> (which is not true obviously).
+>>>>
+>>>> There is also the POOMA_HAS_LONG_LONG define which is set nowhere
+>>>> and used only in the FileSetReader/Writer and ElementProperties.
+>>>>
+>>>> We could check for an appropriate 64bit type during configure and
+>>>> use that or just ignore the issue.
+>>>>   
+>>>
+>>>
+>>>
+>>> Yay, and of course this is not enough, as required alignment for 64bit
+>>> datatypes is of course different.  We should shoot the one that came up
+>>> with
+>>>
+>>>  template <class T>
+>>>  struct OffsetData
+>>>  {
+>>>    void reverseBytes();
+>>>
+>>>    int nodedata[6*Dim];  // domain data (same format as .layout)
+>>>    bool isCompressed;    // Is the data compressed
+>>>    Offset_t offset;      // offset in sizeof(T) units
+>>>    T compressedValue;    // Data value, if compressed
+>>>  };
+>>>
+>>> as possibly "portable" structure to write byte-for-byte to a file.
+>>> Placing bool between int and long long is surely not a good idea.
+>>>
+>>> Changing the above to
+>>>
+>>>    int nodedata[6*Dim];  // domain data (same format as .layout)
+>>>    union {
+>>>      bool isCompressed;  // Is the data compressed
+>>>      char pad[8];
+>>>    } u;
+>>>    Offset_t offset;      // offset in sizeof(T) units
+>>>
+>>> _seems_ to "fix" the problem.
+>>>
+>>> So, is the following patch ok?  Tested on ia32, amd64 and ia64 linux.
+>>>
+>>>  
+>>>
+>> This patch seems to contain two ideas: 1) add POOMA_INT64 and 2) 
+>> changing OffsetData.  Ensuring use of 64-bit values seems to be a 
+>> good idea.  I am unsure why the order of structure data members is 
+>> important.  C++ compilers should obey the C++ ABI 
+>> (http://www.codesourcery.com/cxx-abi/) so the structure will be laid 
+>> out in the same way on all machines.
+>
+>
+> I don't think so.  Fact is, that different compilers obey different 
+> C++ ABIs, so the structure may be layed out differently on IRIX with 
+> CC than on ia32 with g++.  I'm not trying to fix all possible 
+> problems, but just the fact that all 64bit ABIs I know of force 
+> alignment of 8-byte types
+> (like Offset_t) on 8-byte boundaries.  The 32bit g++ ABI on ia32 though
+> requires only 4-byte boundary for the 8-byte long long (or maybe it's a
+> bug in g++).
+>
+> Of course properly fixing it for all cases would need a
+> packed structure for the read/write with a byte-wise copy to a properly
+> aligned structure for further use.  But that is beyond the patch. 
+> Rather than doing that I'd bring over parts of my HDF5 support.
+>
+>> Does using just (1) solve the problem?
+>
+>
+> No.  You'll get sizeof(OffsetData) of 96 for ia64 and 92 for ia32 with
+> offset of offset being 80 for the one case and 76 for the other.
+>
+> I just tested the patch on a 32bit big-endian machine (ppc) and it 
+> works there, too.
+>
+> Richard.
+
+It is possible to change your patch to use an Offset_t instead of 
+char[8]?  This seems a more portable way to align to 64 bits.
+
+Regardless, please commit your patch.  I guess these two items will no 
+longer fail in the nightly tests starting 03Sep.
+
+Thanks for fixing this.
+
+-- 
+Jeffrey D. Oldham
+oldham at codesourcery.com
+
+
+
+From rguenth at tat.physik.uni-tuebingen.de  Thu Sep  2 17:13:23 2004
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Thu, 02 Sep 2004 19:13:23 +0200
+Subject: [pooma-dev] Re: [PATCH] Fix FileSetReader/Writer
+In-Reply-To: <41375067.1040603@codesourcery.com>
+References: <Pine.LNX.4.44.0409011538400.9036-200000@alwazn.tat.physik.uni-tuebingen.de> <41373B81.5020702@codesourcery.com> <4137416B.3050904@tat.physik.uni-tuebingen.de> <41375067.1040603@codesourcery.com>
+Message-ID: <413754B3.1060305@tat.physik.uni-tuebingen.de>
+
+Jeffrey D. Oldham wrote:
+
+> It is possible to change your patch to use an Offset_t instead of 
+> char[8]?  This seems a more portable way to align to 64 bits.
+
+I don't think it makes a difference.  But I don't know possible oddities
+of the C++ standard regarding struct layout - I'm only familiar here 
+with C for which it doesn't make a difference.  I only know that (for C) 
+for two standard conforming compilers there still can be layout 
+differences due to allowed padding.  And there is no portable way of
+specifying __attribute__((packed)).  But I guess that's an academic issue.
+
+> Regardless, please commit your patch.  I guess these two items will no 
+> longer fail in the nightly tests starting 03Sep.
+> 
+> Thanks for fixing this.
+
+Done,
+
+Richard.
+
+
+
+From oldham at codesourcery.com  Thu Sep  2 17:36:07 2004
+From: oldham at codesourcery.com (Jeffrey D. Oldham)
+Date: Thu, 02 Sep 2004 10:36:07 -0700
+Subject: [pooma-dev] Re: [PATCH] Fix FileSetReader/Writer
+In-Reply-To: <413754B3.1060305@tat.physik.uni-tuebingen.de>
+References: <Pine.LNX.4.44.0409011538400.9036-200000@alwazn.tat.physik.uni-tuebingen.de> <41373B81.5020702@codesourcery.com> <4137416B.3050904@tat.physik.uni-tuebingen.de> <41375067.1040603@codesourcery.com> <413754B3.1060305@tat.physik.uni-tuebingen.de>
+Message-ID: <41375A07.5090003@codesourcery.com>
+
+Richard Guenther wrote:
+
+> Jeffrey D. Oldham wrote:
+>
+>> It is possible to change your patch to use an Offset_t instead of 
+>> char[8]?  This seems a more portable way to align to 64 bits.
+>
+>
+> I don't think it makes a difference.  But I don't know possible oddities
+> of the C++ standard regarding struct layout - I'm only familiar here 
+> with C for which it doesn't make a difference.  I only know that (for 
+> C) for two standard conforming compilers there still can be layout 
+> differences due to allowed padding.  And there is no portable way of
+> specifying __attribute__((packed)).  But I guess that's an academic 
+> issue.
+>
+>> Regardless, please commit your patch.  I guess these two items will 
+>> no longer fail in the nightly tests starting 03Sep.
+>>
+>> Thanks for fixing this.
+>
+>
+> Done,
+>
+> Richard.
+>
+http://www.codesourcery.com/cxx-abi/abi.html#layout defines C++ object 
+layout.  It does depend on the machine's alignment, which is what we are 
+seeing and why my comment that the structure should be laid out the same 
+on all machines was wrong.
+
+-- 
+Jeffrey D. Oldham
+oldham at codesourcery.com
+
+
+
+From rguenth at tat.physik.uni-tuebingen.de  Thu Sep  2 17:46:47 2004
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Thu, 02 Sep 2004 19:46:47 +0200
+Subject: [pooma-dev] Re: [PATCH] Fix FileSetReader/Writer
+In-Reply-To: <41375A07.5090003@codesourcery.com>
+References: <Pine.LNX.4.44.0409011538400.9036-200000@alwazn.tat.physik.uni-tuebingen.de> <41373B81.5020702@codesourcery.com> <4137416B.3050904@tat.physik.uni-tuebingen.de> <41375067.1040603@codesourcery.com> <413754B3.1060305@tat.physik.uni-tuebingen.de> <41375A07.5090003@codesourcery.com>
+Message-ID: <41375C87.90404@tat.physik.uni-tuebingen.de>
+
+Jeffrey D. Oldham wrote:
+
+> http://www.codesourcery.com/cxx-abi/abi.html#layout defines C++ object 
+> layout.  It does depend on the machine's alignment, which is what we are 
+> seeing and why my comment that the structure should be laid out the same 
+> on all machines was wrong.
+
+Yes, section 2.2 would be relevant here, as OffsetData is POD.  But I 
+still think http://www.codesourcery.com/cxx-abi/ is not relevant to the 
+discussion of portability.
+
+Richard.
+
+
+From rkrylov at mail.ru  Wed Sep  8 10:53:16 2004
+From: rkrylov at mail.ru (Roman Krylov)
+Date: Wed, 08 Sep 2004 14:53:16 +0400
+Subject: SIunits experience?
+Message-ID: <413EE49C.4070605@mail.ru>
+
+Hi.
+Is there anybody experienced with pooma+siunits ?
+I've found it via google as most convenient, but hadn't learned it too much.
+Could thier 'Rep'/*representation type*/ parameter be any pooma's 
+aggregate type?
+I think it could be very useful to find inconsistencies in programs, 
+specially because it hasn't runtime performance penalties.
+They say they have plans to propose it to boost.org as stlib part.
+wbw,
+    Roman.
+
+
+From rguenth at tat.physik.uni-tuebingen.de  Wed Sep  8 10:58:45 2004
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Wed, 8 Sep 2004 12:58:45 +0200 (CEST)
+Subject: [pooma-dev] SIunits experience?
+In-Reply-To: <413EE49C.4070605@mail.ru>
+Message-ID: <Pine.LNX.4.44.0409081257401.9036-100000@alwazn.tat.physik.uni-tuebingen.de>
+
+On Wed, 8 Sep 2004, Roman Krylov wrote:
+
+> Hi.
+> Is there anybody experienced with pooma+siunits ?
+> I've found it via google as most convenient, but hadn't learned it too much.
+
+I found
+http://www.fnal.gov/docs/working-groups/fpcltf/html/SIunits-summary.html
+
+but all links to further documentation seem to be dead
+
+> Could thier 'Rep'/*representation type*/ parameter be any pooma's
+> aggregate type?
+
+so I cannot answer this question.  Just try.
+
+Richard.
+
+> I think it could be very useful to find inconsistencies in programs,
+> specially because it hasn't runtime performance penalties.
+> They say they have plans to propose it to boost.org as stlib part.
+> wbw,
+>     Roman.
+>
+
+--
+Richard Guenther <richard dot guenther at uni-tuebingen dot de>
+WWW: http://www.tat.physik.uni-tuebingen.de/~rguenth/
+
+
+

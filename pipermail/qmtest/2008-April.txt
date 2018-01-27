@@ -1,0 +1,507 @@
+From mohamedb at sgi.com  Thu Apr 10 07:36:58 2008
+From: mohamedb at sgi.com (Mohamed Barwani)
+Date: Thu, 10 Apr 2008 17:36:58 +1000
+Subject: Questions [context scope, prerequisites enforcement]
+Message-ID: <47FDC39A.7080305@sgi.com>
+
+Hello there..
+
+_1_
+Am trying to get my head around python.. Looking at the context variable 
+I can easily create new items it in a 'resource' object, but not in a 
+'test' object.
+
+Scenario, test_b depends on test_a. test_a sets a context variable so 
+test_b can use. Can't seem to get this working? Am I missing something.
+
+_2_
+Does prerequisites get enforced at run time? i.e. test_b has a 
+prerequisite test_a. If you run test_b does test_a get run?
+
+
+Other than that.. well done!! QMTest seems like a great tool.
+
+-- 
+Mohamed Barwani
+ASGQA
+"The greatest challenge to any thinker is stating the problem in a way 
+that will allow a solution."
+     - Bertrand Russell
+
+
+From stefan at codesourcery.com  Thu Apr 10 18:54:47 2008
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Thu, 10 Apr 2008 14:54:47 -0400
+Subject: [qmtest] Questions [context scope, prerequisites enforcement]
+In-Reply-To: <47FDC39A.7080305@sgi.com>
+References: <47FDC39A.7080305@sgi.com>
+Message-ID: <47FE6277.5000105@codesourcery.com>
+
+Hi Mohamed,
+
+Mohamed Barwani wrote:
+> Hello there..
+> 
+> _1_
+> Am trying to get my head around python.. Looking at the context variable 
+> I can easily create new items it in a 'resource' object, but not in a 
+> 'test' object.
+
+All context variables live in the Context object, which is passed to 
+Resource.SetUp() as well as Test.Run(), where you can access as well as 
+modify them.
+
+(see 
+http://www.codesourcery.com/public/qmtest/qmtest-snapshot/share/doc/qmtest/html/tutorial/concepts-context.html 
+)
+
+> Scenario, test_b depends on test_a. test_a sets a context variable so 
+> test_b can use. Can't seem to get this working? Am I missing something.
+
+QMTest provides only a weak dependency between tests: By registering 
+'prerequisite' tests you can instruct QMTest that a dependent test 
+shouldn't be run if a prerequisite failed (for example). However, you 
+can still invoke the dependent test only, and it will run happily even 
+without the prerequisite test being executed first. This is a mere 
+optimization that allows to skip tests if it is clear that they aren't 
+even expected to pass if a prerequisite test failed, too.
+
+(see 
+http://www.codesourcery.com/public/qmtest/qmtest-snapshot/share/doc/qmtest/html/tutorial/concepts.html#concepts-tests)
+
+For real dependencies you may use a Resource instead.
+
+(see 
+http://www.codesourcery.com/public/qmtest/qmtest-snapshot/share/doc/qmtest/html/tutorial/concepts.html#concepts-tests)
+
+> _2_
+> Does prerequisites get enforced at run time? i.e. test_b has a 
+> prerequisite test_a. If you run test_b does test_a get run?
+
+No. However, resources that a test depends on, will.
+
+> Other than that.. well done!! QMTest seems like a great tool.
+
+Thanks !
+
+Regards,
+		Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+
+
+From mohamedb at sgi.com  Fri Apr 11 00:14:52 2008
+From: mohamedb at sgi.com (Mohamed Barwani)
+Date: Fri, 11 Apr 2008 10:14:52 +1000
+Subject: [qmtest] Questions [context scope, prerequisites enforcement]
+In-Reply-To: <47FE6277.5000105@codesourcery.com>
+References: <47FDC39A.7080305@sgi.com> <47FE6277.5000105@codesourcery.com>
+Message-ID: <47FEAD7C.4070206@sgi.com>
+
+Thanks Stefan!
+
+Question 2 solved..
+
+Stefan Seefeld wrote:
+> Hi Mohamed,
+> 
+> Mohamed Barwani wrote:
+>> Hello there..
+>> 
+>> _1_ Am trying to get my head around python.. Looking at the context
+>>  variable I can easily create new items it in a 'resource' object,
+>> but not in a 'test' object.
+> 
+> All context variables live in the Context object, which is passed to
+>  Resource.SetUp() as well as Test.Run(), where you can access as well
+> as modify them.
+
+An example would illustrate what I mean. test_a sets a context variable, 
+where test_b tries to use it.
+
+?<[shark:~/workarea/qmtest_bed]
+?<> cat test_*
+<?xml version="1.0" ?>
+<!DOCTYPE extension
+   PUBLIC '-//QM/2.4/Extension//EN'
+   'http://www.codesourcery.com/qm/dtds/2.4/-//qm/2.4/extension//en.dtd'>
+<extension class="python.ExecTest" kind="test">
+    <argument name="prerequisites"><set/></argument>
+    <argument name="source">
+      <text>context['test_a.var'] = &quot;some_val&quot;</text>
+    </argument>
+    <argument name="target_group"><text>.*</text></argument>
+    <argument name="expression"><text>1</text></argument>
+    <argument name="resources"><set/></argument>
+</extension>
+<?xml version="1.0" ?>
+<!DOCTYPE extension
+   PUBLIC '-//QM/2.4/Extension//EN'
+   'http://www.codesourcery.com/qm/dtds/2.4/-//qm/2.4/extension//en.dtd'>
+<extension class="python.ExecTest" kind="test">
+   <argument name="prerequisites"><set/></argument>
+   <argument name="source">
+     <text>print context
+print context['test_a.var']
+     </text>
+   </argument>
+   <argument name="target_group"><text>.*</text></argument>
+   <argument name="expression"><text>1</text></argument>
+   <argument name="resources"><set/></argument>
+</extension>
+?<[shark:~/workarea/qmtest_bed]
+?<> qmtest run test_a test_b
+--- TEST RESULTS 
+-------------------------------------------------------------
+
+   test_a                                        : PASS
+
+{'qmtest.tmpdir': '/tmp/tmpRA4MY8', 'qmtest.target': 'local', 
+'qmtest.dbpath': '/home/mohamedb/workarea/qmtest_bed', 'qmtest.id': 
+'test_b'}
+   test_b                                        : ERROR
+     Exception executing source.
+
+     qmtest.context_variable:
+       test_a.var
+
+     qmtest.end_time:
+       2008-04-11T00:08:16Z
+
+     qmtest.exception:
+
+       qm.test.context.ContextException: The context variable 
+"test_a.var" was not defined.
+
+
+     qmtest.start_time:
+       2008-04-11T00:08:16Z
+
+     qmtest.target:
+       local
+
+     qmtest.traceback:
+
+         File 
+"/usr/lib/python2.4/site-packages/qm/test/classes/python.py", line 87, 
+in Run
+           exec self.source in global_namespace, local_namespace
+
+         File "<string>", line 2, in ?
+
+         File 
+"/home/mohamedb/Desktop/qmtest-2.4/build/lib.linux-x86_64-2.4/qm/test/context.py", 
+line 298, in __getitem__
+           return self.__context[key]
+
+         File 
+"/home/mohamedb/Desktop/qmtest-2.4/build/lib.linux-x86_64-2.4/qm/test/context.py", 
+line 296, in __getitem__
+           raise ContextException(key)
+
+
+--- TESTS THAT DID NOT PASS 
+--------------------------------------------------
+
+   test_b                                        : ERROR
+     Exception executing source.
+
+
+--- STATISTICS 
+---------------------------------------------------------------
+
+        2        tests total
+        1 ( 50%) tests ERROR
+        1 ( 50%) tests PASS
+
+
+Thanks for your help again..
+-- 
+Mohamed Barwani
+ASGQA
+"The greatest challenge to any thinker is stating the problem in a way
+that will allow a solution."
+     - Bertrand Russell
+
+
+From stefan at codesourcery.com  Fri Apr 11 13:11:29 2008
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Fri, 11 Apr 2008 09:11:29 -0400
+Subject: [qmtest] Questions [context scope, prerequisites enforcement]
+In-Reply-To: <47FEAD7C.4070206@sgi.com>
+References: <47FDC39A.7080305@sgi.com> <47FE6277.5000105@codesourcery.com> <47FEAD7C.4070206@sgi.com>
+Message-ID: <47FF6381.2040705@codesourcery.com>
+
+Mohamed Barwani wrote:
+> Thanks Stefan!
+> 
+> Question 2 solved..
+> 
+> Stefan Seefeld wrote:
+>> Hi Mohamed,
+>>
+>> Mohamed Barwani wrote:
+>>> Hello there..
+>>>
+>>> _1_ Am trying to get my head around python.. Looking at the context
+>>>  variable I can easily create new items it in a 'resource' object,
+>>> but not in a 'test' object.
+>>
+>> All context variables live in the Context object, which is passed to
+>>  Resource.SetUp() as well as Test.Run(), where you can access as well
+>> as modify them.
+> 
+> An example would illustrate what I mean. test_a sets a context variable, 
+> where test_b tries to use it.
+
+That doesn't work:
+
+First, as I mentioned in my last mail, your dependent test must not rely 
+on prerequisite tests having been run at the time it is executed.
+Second, those tests don't share the same context object, and thus can't 
+use it to communicate state. In fact, *no* two tests should depend on 
+each other. That's just how QMTest is designed.
+
+However, the context object is shared between a test and its resource 
+objects, so whatever changes a prerequisite resource applies to a 
+context will be propagated to the subsequent test run. (See 
+http://www.codesourcery.com/public/qmtest/qmtest-snapshot/share/doc/qmtest/html/tutorial/concepts-context.html)
+
+
+Regards,
+		Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+
+
+From jrjones1956 at cox.net  Wed Apr 16 23:17:15 2008
+From: jrjones1956 at cox.net (jrjones1956 at cox.net)
+Date: Wed, 16 Apr 2008 19:17:15 -0400
+Subject: Browser timeout in Windows XP
+Message-ID: <20080416191715.KJMUB.224277.imail@fed1rmwml39>
+
+I really wish I could find the Search feature in the list archives!  It might have saved me posting this question if it has already been answered.
+
+I am running QMTest 2.4 on Windows XP SP2.  I have a large number of tests that I would like to run with the QMTest GUI, but when I do, the results page times out.  I can run subgroups of these tests with no problem, but not the entire suite.
+
+Is there some way of changing the default timeout value for the browser?  I usually use Mozilla Firefox, but Internet Explorer 7 is also available to me.
+
+If anyone has any ideas about how to solve this problem, I would be glad to know about it.
+
+Thanks!
+ 
+Jeff Jones
+
+
+
+
+From mohamedb at sgi.com  Tue Apr 22 08:10:46 2008
+From: mohamedb at sgi.com (Mohamed Barwani)
+Date: Tue, 22 Apr 2008 18:10:46 +1000
+Subject: Is there a reason why BooleanField does not return boolean objects?
+Message-ID: <480D9D86.6070403@sgi.com>
+
+class BooleanField(EnumerationField):
+     """A field containing a boolean value.
+
+     The enumeration contains two values: true and false."""
+
+     def __init__(self, name = "", default_value = None, **properties):
+
+         # Construct the base class.
+         EnumerationField.__init__(self, name, default_value,
+                                   ["true", "false"], **properties)
+                                       ^^____^^ both are strings not 
+bolean objects. Why?
+
+cheers
+-- 
+Mohamed Barwani
+ASGQA
+"The greatest challenge to any thinker is stating the problem in a way 
+that will allow a solution."
+     - Bertrand Russell
+
+
+From stefan at codesourcery.com  Tue Apr 22 10:35:19 2008
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Tue, 22 Apr 2008 06:35:19 -0400
+Subject: [qmtest] Is there a reason why BooleanField does not return boolean
+ objects?
+In-Reply-To: <480D9D86.6070403@sgi.com>
+References: <480D9D86.6070403@sgi.com>
+Message-ID: <480DBF67.8030501@codesourcery.com>
+
+Mohamed Barwani wrote:
+> class BooleanField(EnumerationField):
+>     """A field containing a boolean value.
+> 
+>     The enumeration contains two values: true and false."""
+> 
+>     def __init__(self, name = "", default_value = None, **properties):
+> 
+>         # Construct the base class.
+>         EnumerationField.__init__(self, name, default_value,
+>                                   ["true", "false"], **properties)
+>                                       ^^____^^ both are strings not 
+> bolean objects. Why?
+
+That's a good question. I believe this is because QMTest used to be much 
+more GUI-centric than it is today, and there isn't a very robust 
+separation between 'Model' and 'View' in QMTest.
+
+Regards,
+		Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+
+
+From mohamedb at sgi.com  Thu Apr 24 00:36:47 2008
+From: mohamedb at sgi.com (Mohamed Barwani)
+Date: Thu, 24 Apr 2008 10:36:47 +1000
+Subject: [qmtest] Is there a reason why BooleanField does not return boolean
+ objects?
+In-Reply-To: <480DBF67.8030501@codesourcery.com>
+References: <480D9D86.6070403@sgi.com> <480DBF67.8030501@codesourcery.com>
+Message-ID: <480FD61F.9050803@sgi.com>
+
+Stefan Seefeld wrote:
+> 
+> That's a good question. I believe this is because QMTest used to be
+> much more GUI-centric than it is today, and there isn't a very robust
+>  separation between 'Model' and 'View' in QMTest.
+> 
+
+Would the following patch be any use to anyone.. Certainly makes my life
+easier :)
+
+
+---
+  qm/fields.py |   26 ++++++++++++++++++++++----
+  1 files changed, 22 insertions(+), 4 deletions(-)
+
+diff --git a/qm/fields.py b/qm/fields.py
+index 6434680..db1c2fe 100644
+--- a/qm/fields.py
++++ b/qm/fields.py
+@@ -1804,12 +1804,30 @@ class BooleanField(EnumerationField):
+
+      def Validate(self, value):
+
+-        if qm.common.parse_boolean(value):
+-            value = "true"
+-        else:
+-            value = "false"
++        qm.common.parse_boolean(value)
+          return super(BooleanField, self).Validate(value)
++
++    def GetValueFromDomNode(self, node, attachment_store):
++
++        value = super(BooleanField, self).GetValueFromDomNode(
++                                              node, attachment_store)
++
++        return bool(qm.common.parse_boolean(value))
++
++    def ParseTextValue(self, value):
++
++        # make sure its valid and convert too boolean
++        return bool(qm.common.parse_boolean(value))
++
++    def FormatValueAsHtml(self, server, value, style, name = None):
+
++       if value:
++           value = "true"
++       else:
++           value = "false"
++
++        return super(BooleanField, self).FormatValueAsHtml(
++                                             server, value ,style, name)
+
+  ########################################################################
+
+
+-- 
+Mohamed Barwani
+ASGQA
+"The greatest challenge to any thinker is stating the problem in a way
+that will allow a solution."
+     - Bertrand Russell
+
+
+From eichin at metacarta.com  Fri Apr 25 17:51:54 2008
+From: eichin at metacarta.com (Mark Eichin)
+Date: Fri, 25 Apr 2008 13:51:54 -0400
+Subject: qmtest 2.4: Warning: 'with' will become a reserved keyword in Python 2.6
+Message-ID: <s9xy7719611.fsf@maneki-neko.metacarta.com>
+
+Caught this when installing qmtest on Ubuntu 8.04:
+
+Setting up qmtest (2.4-3) ...
+/usr/lib/python2.5/site-packages/qm/external/DocumentTemplate/DT_Util.py:212: Warning: 'with' will become a reserved keyword in Python 2.6
+/usr/lib/python2.5/site-packages/qm/external/DocumentTemplate/DT_Util.py:213: Warning: 'with' will become a reserved keyword in Python 2.6
+/usr/lib/python2.5/site-packages/qm/external/DocumentTemplate/DT_Util.py:213: Warning: 'with' will become a reserved keyword in Python 2.6
+/usr/lib/python2.5/site-packages/qm/external/DocumentTemplate/DT_Util.py:229: Warning: 'with' will become a reserved keyword in Python 2.6
+
+A quick look in svn (r1024) showed that it's a named argument of the
+"reorder" function, which would be trivial to change except that there
+might be callers using it by name instead of position... and I
+couldn't find any callers at all [which implies that there are no
+tests of it either :-) ] so I don't know if it's worth fixing as opposed to
+just deleting...
+
+
+
+From stefan at codesourcery.com  Fri Apr 25 20:37:05 2008
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Fri, 25 Apr 2008 16:37:05 -0400
+Subject: [qmtest] qmtest 2.4: Warning: 'with' will become a reserved keyword
+ in Python 2.6
+In-Reply-To: <s9xy7719611.fsf@maneki-neko.metacarta.com>
+References: <s9xy7719611.fsf@maneki-neko.metacarta.com>
+Message-ID: <481240F1.7060801@codesourcery.com>
+
+Mark Eichin wrote:
+> Caught this when installing qmtest on Ubuntu 8.04:
+> 
+> Setting up qmtest (2.4-3) ...
+> /usr/lib/python2.5/site-packages/qm/external/DocumentTemplate/DT_Util.py:212: Warning: 'with' will become a reserved keyword in Python 2.6
+> /usr/lib/python2.5/site-packages/qm/external/DocumentTemplate/DT_Util.py:213: Warning: 'with' will become a reserved keyword in Python 2.6
+> /usr/lib/python2.5/site-packages/qm/external/DocumentTemplate/DT_Util.py:213: Warning: 'with' will become a reserved keyword in Python 2.6
+> /usr/lib/python2.5/site-packages/qm/external/DocumentTemplate/DT_Util.py:229: Warning: 'with' will become a reserved keyword in Python 2.6
+> 
+> A quick look in svn (r1024) showed that it's a named argument of the
+> "reorder" function, which would be trivial to change except that there
+> might be callers using it by name instead of position... and I
+> couldn't find any callers at all [which implies that there are no
+> tests of it either :-) ] so I don't know if it's worth fixing as opposed to
+> just deleting...
+
+Everything under 'external' is an import from Zope (which I already 
+reluctantly updated once as some old 'regex' module was replaced by 're'.
+
+I do have plans to replace the GUI entirely (based on Zope's TAL), so 
+may be Python's invalidating the above code will provide enough 
+incentive for me to finish that. :-)
+
+Thanks,
+		Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+
+

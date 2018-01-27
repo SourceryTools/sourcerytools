@@ -1,0 +1,146 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [pooma-dev] performance concern with Mappers
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bpooma-dev%5D%20performance%20concern%20with%20Mappers&In-Reply-To=%3CB6EA0F70.49CE%25jcrotinger%40mac.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000146.html">
+   <LINK REL="Next"  HREF="000148.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[pooma-dev] performance concern with Mappers</H1>
+    <B>James Crotinger</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bpooma-dev%5D%20performance%20concern%20with%20Mappers&In-Reply-To=%3CB6EA0F70.49CE%25jcrotinger%40mac.com%3E"
+       TITLE="[pooma-dev] performance concern with Mappers">jcrotinger at mac.com
+       </A><BR>
+    <I>Fri Mar 30 17:24:48 UTC 2001</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000146.html">performance concern with Mappers
+</A></li>
+        <LI>Next message: <A HREF="000148.html">goofy Domain constructors
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#147">[ date ]</a>
+              <a href="thread.html#147">[ thread ]</a>
+              <a href="subject.html#147">[ subject ]</a>
+              <a href="author.html#147">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>on 3/30/01 4:00 AM, Allan Stokes at <A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">allan at stokes.ca</A> wrote:
+&gt;<i> What I found interesting is that there does not appear to be any kind of
+</I>&gt;<i> Context data structure which can be informed about what work units (nodes)
+</I>&gt;<i> have been assigned into each context.  Without having this structure as a
+</I>&gt;<i> reference point, it's not clear to me how the system can collect information
+</I>&gt;<i> about the effectiveness of the different mapping heuristics.
+</I>
+I'm not sure what you mean by &quot;node&quot; here. Do you mean &quot;patch&quot;? Or are you
+wanting to have run-time monitoring of the actual amount of work done.
+
+My own view of Pooma's mappers and partitioners is that the ones provided
+are relatively simple examples. None of our stuff knows about NUMA topology
+or about the topology of the equations being solved. My hope is that users
+can write these to support their hardware and application. I think there is
+a question as to whether or not we provide enough services for users to do
+this effectively. I don't know. Until someone proposes and tries to write
+something more complicated, it is a bit difficult to predict what will be
+needed. 
+
+&gt;<i> A second consequence of not having a Context data structure is that each
+</I>&gt;<i> mapping becomes an independent event.  If a context is already under a
+</I>&gt;<i> larger than average work assignment there is no way to discover or avert
+</I>&gt;<i> this as additional slabs of data are sliced and diced.
+</I>&gt;<i> 
+</I>&gt;<i> My observation about the Mapper implementation is that a built-in bias
+</I>&gt;<i> exists which causes low numbered contexts to receive more than their fair
+</I>&gt;<i> share of node assignments.
+</I>
+For the simple examples that we've looked at, one tends to want all of the
+arrays to have the same partitioning and mapping. If this is the case, then
+there is no particular benefit to assigning the remainder patches to random
+contexts. If, however, one had two relatively independent calculations going
+on then there would be some advantage to having their remainder patches go
+to different contexts. Again, I only think of our mappers as simple examples
+so I guess I'm not too worried about this.
+
+I think that what we should do here is develop custom mappers and
+partitioners for these kernel programs. That'll give us a chance to see
+whether they make much difference and to see what functionality the
+underlying Pooma framework should be providing to support such mappers.
+
+&gt;<i> I suspect that higher dimensionality objects might compound this issue.
+</I>&gt;<i> Suppose we have a three dimensional array of size (101,101,101) and we
+</I>&gt;<i> partition each dimension into ten segments.  If this works the way I think
+</I>&gt;<i> it does, this process would create 1000 nodes (guard cells ignored).  Most
+</I>&gt;<i> of the nodes would be 10x10x10 in size.  But there would also be one node
+</I>&gt;<i> 11x11x11 in size.  This is a fairly substantial 30% extra work if the
+</I>&gt;<i> largest node were rate limiting.  If the partitioning logic has the same
+</I>&gt;<i> bias (putting the larger nodes first in the mapper lists) these two effects
+</I>&gt;<i> could be compounding negatively.
+</I>
+My only comment is that these are pretty small patches. If instead you're
+looking at (1001,1001,1001) then the extra work for the last patch is pretty
+small.
+
+I do see your point about the two effects compounding. That should be fixed
+in the simple partitioner/mappers.
+
+&gt;<i> One of the properties in the algorithms I've inspected is that the Node list
+</I>&gt;<i> is partitioned among the available contexts in contiguous segments.  (Does
+</I>&gt;<i> this matter?) 
+</I>
+I think it does matter - if I remember correctly it simplifies the patch
+lookup. 
+
+&gt;<i> My second suggestion is that context-to-node bindings be made through some
+</I>&gt;<i> kind of function call which could, at some point in the future, also notify
+</I>&gt;<i> a global Context data structure about Node assignments accrued.  In the
+</I>&gt;<i> meantime, one could at least toss a trace statement at such a control point
+</I>&gt;<i> to determine, for example, whether the Mapper issues I've identified are a
+</I>&gt;<i> practical concern.
+</I>
+Are you simply proposing that instead of
+
+    templist[i]-&gt;context() = c;
+
+we do something like
+
+    Pooma::setcontext(templist[i]-&gt;context(),c)
+
+or do we need to pass more info than this to setcontext? I would think that
+analysis might also need to know the domain size, affinity, etc.
+
+  Jim
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000146.html">performance concern with Mappers
+</A></li>
+	<LI>Next message: <A HREF="000148.html">goofy Domain constructors
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#147">[ date ]</a>
+              <a href="thread.html#147">[ thread ]</a>
+              <a href="subject.html#147">[ subject ]</a>
+              <a href="author.html#147">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

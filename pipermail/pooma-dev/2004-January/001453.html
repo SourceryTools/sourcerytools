@@ -1,0 +1,183 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [PATCH] Add --mpi configure switch
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20Add%20--mpi%20configure%20switch&In-Reply-To=%3CPine.LNX.4.58.0401021329160.572%40goofy%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001459.html">
+   <LINK REL="Next"  HREF="001457.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[PATCH] Add --mpi configure switch</H1>
+    <B>Richard Guenther</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20Add%20--mpi%20configure%20switch&In-Reply-To=%3CPine.LNX.4.58.0401021329160.572%40goofy%3E"
+       TITLE="[PATCH] Add --mpi configure switch">rguenth at tat.physik.uni-tuebingen.de
+       </A><BR>
+    <I>Fri Jan  2 12:34:16 UTC 2004</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001459.html">[PATCH] Initialize MPI
+</A></li>
+        <LI>Next message: <A HREF="001457.html">[PATCH] Add --mpi configure switch
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1453">[ date ]</a>
+              <a href="thread.html#1453">[ thread ]</a>
+              <a href="subject.html#1453">[ subject ]</a>
+              <a href="author.html#1453">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Hi!
+
+This (finally) adds --mpi configure switch to enable POOMA_MPI.  It checks
+for mpiCC or mpic++ in either $MPICH_ROOT/bin or the current $PATH and
+uses the first one found as new $cpp and $link.
+
+I didn't change the Cheetah configure switch which now has the slightly
+confusing name --messaging.  Maybe we want to change this to --cheetah.
+
+Ok?
+
+I'll start full testing of serial, MPI and Cheetah to see if I forgot a
+part of the changes after the pending stuff is committed.
+
+Thanks,
+
+Richard.
+
+
+2004Jan02  Richard Guenther &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">richard.guenther at uni-tuebingen.de</A>&gt;
+
+	* configure: add --mpi switch to enable MPI messaging using
+	mpiCC/mpic++.
+
+--- /home/richard/src/pooma/cvs/r2/configure	2003-12-30 18:19:29.000000000 +0100
++++ configure	2004-01-02 00:40:10.000000000 +0100
+@@ -209,8 +208,9 @@
+ $hdf5nm = &quot;--hdf5&quot;;
+ $fftwnm = &quot;--fftw&quot;;
+ $cheetahnm = &quot;--messaging&quot;;
++$mpinm = &quot;--mpi&quot;;
+ $strictnm = &quot;--strict&quot;;
+ $archfnsnm = &quot;--arch-specific-functions&quot;;
+
+ ### configure options
+ $dbgprntnm = &quot;-v&quot;;		# turn on verbose output from configure
+@@ -236,10 +237,11 @@
+   [$sharednm,    &quot;&quot;,         &quot;create a shared library.&quot;],
+   [$finternm,    &quot;&quot;,         &quot;include fortran support libraries.&quot;],
+   [$nofinternm,  &quot;&quot;,         &quot;do not include the fortran libraries.&quot;],
+   [$preinstnm,   &quot;&quot;,         &quot;build preinstantiations of several classes.&quot;],
+   [$serialnm,    &quot;&quot;,         &quot;configure to run serially, no parallelism.&quot;],
+-  [$threadsnm,  &quot;&quot;,         &quot;include threads capability, if available.&quot;],
++  [$threadsnm,   &quot;&quot;,         &quot;include threads capability, if available.&quot;],
+   [$cheetahnm,   &quot;&quot;,         &quot;enable use of CHEETAH communications package.&quot;],
++  [$mpinm,       &quot;&quot;,         &quot;enable use of MPI communications package.&quot;],
+   [$schednm,     &quot;&lt;scheduler&gt;&quot;, &quot;use &lt;scheduler&gt; for thread scheduling.&quot;],
+   [$pawsnm,      &quot;&quot;,         &quot;enable PAWS program coupling, if available.&quot;],
+   [$pawsdevnm,   &quot;&quot;,         &quot;enable PAWS program coupling for PAWS devel.&quot;],
+@@ -1276,13 +1266,22 @@
+     {
+       $cheetah = 1;
+     }
+-  print &quot;Set cheetah = $cheetah\n&quot; if $dbgprnt;
++  if (scalar @{$arghash{$mpinm}} &gt; 1)
++    {
++      $mpi = 1;
++    }
+   $messaging = $cheetah + $mpi;
++  if ($messaging&gt;1 or $messaging and scalar @{$arghash{$serialnm}}&gt; 1)
++    {
++      printerror &quot;$cheetahnm and/or $mpinm and/or $serialnm given.  Use only one.&quot;;
++    }
++  print &quot;Set messaging = $messaging\n&quot; if $dbgprnt;
+
+   # add a define indicating whether CHEETAH/MPI is available, and configure
+   # extra options to include and define lists
+   my $defmessaging = $messaging;
+   my $defcheetah = 0;
++  my $defmpi = 0;
+   if ($cheetah)
+     {
+       if (exists $ENV{&quot;CHEETAHDIR&quot;})
+@@ -1299,7 +1298,6 @@
+         }
+
+       $defcheetah = 1;
+-
+       $scheduler = &quot;serialAsync&quot;;
+
+       # add in the extra compilation settings for CHEETAH.
+@@ -1315,8 +1313,40 @@
+ 	  $link = $cheetah_link;
+         }
+     }
++  elsif ($mpi)
++    {
++      my $mpiCC = &quot;\$(MPICH_ROOT)/bin/mpiCC&quot;;
++      if (system(&quot;test -x $MPICH_ROOT/bin/mpiCC&quot;) == 0)
++        {
++          $mpiCC = &quot;\$(MPICH_ROOT)/bin/mpiCC&quot;;
++        }
++      elsif (system(&quot;test -x $MPICH_ROOT/bin/mpic++&quot;) == 0)
++        {
++          $mpiCC = &quot;\$(MPICH_ROOT)/bin/mpic++&quot;;
++        }
++      elsif (system(&quot;which mpiCC&quot;) == 0)
++        {
++          $mpiCC = &quot;mpiCC&quot;;
++        }
++      elsif (system(&quot;which mpic++&quot;) == 0)
++        {
++          $mpiCC = &quot;mpic++&quot;;
++        }
++      else
++        {
++          die &quot;There is no known MPI location.  Select one by setting MPICH_ROOT or adjusting your PATH.\n&quot;;
++        }
++
++      $defmpi = 1;
++      $scheduler = &quot;serialAsync&quot;;
++
++      # use special compiler script for MPI.
++      $cpp  = $mpiCC;
++      $link = $mpiCC;
++    }
+   add_yesno_define(&quot;POOMA_MESSAGING&quot;, $defmessaging);
+   add_yesno_define(&quot;POOMA_CHEETAH&quot;, $defcheetah);
++  add_yesno_define(&quot;POOMA_MPI&quot;, $defmpi);
+ }
+
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001459.html">[PATCH] Initialize MPI
+</A></li>
+	<LI>Next message: <A HREF="001457.html">[PATCH] Add --mpi configure switch
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1453">[ date ]</a>
+              <a href="thread.html#1453">[ thread ]</a>
+              <a href="subject.html#1453">[ subject ]</a>
+              <a href="author.html#1453">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

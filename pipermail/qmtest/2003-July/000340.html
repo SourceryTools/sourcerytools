@@ -1,0 +1,210 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [qmtest] [PATCH] Run metadata and first pass at SQL results	storage.
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:qmtest%40codesourcery.com?Subject=Re%3A%20%5Bqmtest%5D%20%5BPATCH%5D%20Run%20metadata%20and%20first%20pass%20at%20SQL%20results%0A%09storage.&In-Reply-To=%3C1057213258.3330.0.camel%40minax.codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000339.html">
+   <LINK REL="Next"  HREF="000341.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[qmtest] [PATCH] Run metadata and first pass at SQL results	storage.</H1>
+    <B>Mark Mitchell</B> 
+    <A HREF="mailto:qmtest%40codesourcery.com?Subject=Re%3A%20%5Bqmtest%5D%20%5BPATCH%5D%20Run%20metadata%20and%20first%20pass%20at%20SQL%20results%0A%09storage.&In-Reply-To=%3C1057213258.3330.0.camel%40minax.codesourcery.com%3E"
+       TITLE="[qmtest] [PATCH] Run metadata and first pass at SQL results	storage.">mark at codesourcery.com
+       </A><BR>
+    <I>Thu Jul  3 06:20:59 UTC 2003</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000339.html">[PATCH] Run metadata and first pass at SQL results storage.
+</A></li>
+        <LI>Next message: <A HREF="000341.html">[qmtest] [PATCH] Run metadata and first pass at SQL results storage.
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#340">[ date ]</a>
+              <a href="thread.html#340">[ thread ]</a>
+              <a href="subject.html#340">[ subject ]</a>
+              <a href="author.html#340">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>On Wed, 2003-07-02 at 19:53, Nathaniel Smith wrote:
+&gt;<i> Attached for review.  This patch also renames 'ResultSource' to
+</I>&gt;<i> 'ResultReader', since that better describes the interface we ended up
+</I>&gt;<i> with.
+</I>
+Nathaniel --
+
+This patch is very good.  I'm a little pedantic (as you'll see below),
+but the bottom line is that this should go in, after a few very minor
+changes get made.  Nice work!
+
+-- Mark
+
++	* qm/extension.py (get_class_arguments): Mark's fixes to
++	support diamond inheritance.
+
+This is too cryptic.  If you really want to give me credit, put my
+name in the ChangeLog entry.  But there's no need for that -- just say
+&quot;Support diamond inheritance.&quot;
+
++    'time_secs' -- the time to be formatted, as returned by
++                   e.g. 'time.time()'.&quot;&quot;&quot;
+
+We don't indent the second line: just write:
+
+   'time_secs' -- the time to be formatted, as returned by
+   e.g. 'time.time()'.&quot;&quot;&quot;
+
++class Connection:
++    &quot;&quot;&quot;A little wrapper around a DB 2.0 connection that preserves a
++    reference to the containing module, and provides a minimal
++    interface to said connection.  This is useful because it gives us
++    a hook to attach our SQL-quoting code in to.&quot;&quot;&quot;
+
+Every class or method should have a 1-line description and then some
+details, like so:
+
+   &quot;&quot;&quot;A wrapper around a DB 2.0 connection.
+
+   An instance of 'Connection' preserves a reference to the containing
+   module, and provides a minimal interface to said connection.  This
+   is useful because it gives us a hook to attach our SQL-quoting code
+   in to.&quot;&quot;&quot;
+
+But then, showing massive amounts of uptightness, we'd fix this
+because (a) we don't use &quot;this&quot; as a noun, only as an ajdective, and
+(b) we avoid the first person in comments.  Unfortunately, these
+commandments have not always been obeyed. :-(  But, we want something
+like the following for the second sentence:
+
+  In addition, a 'Connection' quotes SQL queries as necessary for the
+  underlying DB 2.0 connection.
+
++def connect(modname, *args, **moreargs):
+
+Why not make this the __init__ method for Connection?
+
++                        [&quot;dummy element to make __import__ behave&quot;])
+
+Wasteful: should just be [&quot;&quot;] with a comment:
+
+  # There must be at least one element or __import__ will crash.
+
++def quotestr(string):
++    &quot;&quot;&quot;Quotes a string for SQL.&quot;&quot;&quot;
++
++    # Replace each ' with '', then surround with more 's.  Also double
++    # backslashes.  It'd be nice to handle things like quoting
+non-ASCII
++    # characters (by replacing them with octal escapes), but we don't.
++    return &quot;'&quot; + string.replace(&quot;'&quot;, &quot;''&quot;).replace(&quot;\\&quot;, &quot;\\\\&quot;) + &quot;'&quot;
+
+Two comments:
+
+(1) Does it make sense to make this a member of Connection?
+
+(2) The:
+
+    'string' -- ???
+
+    returns -- ???
+
+    comments are missing.
+
++# A nice subtlety is that because of how extension classes are loaded,
+
+Let's not be editorial: it's a subtlety, but not a nice one.
+
++_annotation_sentinel = None
+
+Shouldn't these be packaged up into a mix-in for
+PickleResult{Stream,Reader}?
+
++    &quot;Version 1&quot;, and all later versions, contain a pickled version
++    number as the first thing in the file.  In version 1, this is
+
+Thanks for spelling this out!
+
++        elif version == 1:
++            self._ReadMetadata()
+
+I'm not sure why we read this at __init__ time rather than lazily when
+GetAnnotations is called, but that can be changed easily later if it
+needs to be.
+
++class SQLConnected(Extension):
++    &quot;&quot;&quot;Mixin class for classes that need a database connection.&quot;&quot;&quot;
+
+Shouldn't this be a module-private class? (e.g., _SQL_Connected?)
+
++        for result_id, result_kind, key, value in self._a_buffer:
++            if (result_id, result_kind) != (id, kind):
++                self._a_buffer.rewind()
++                break
+
+Interesting -- I see that you avoid a separate SELECT per result.
+
++class XMLResultReader(FileResultReader):
+
+Should this go in xml_result_stream.py?  (It seems to make sense to
+group the readers and writers together?)
+
++                rs.WriteAnnotation(&quot;qmtest.run.end_time&quot;, end_time_str)
+
+That's a slight extension of the &quot;foo.bar&quot; format we've used until
+now; we've never had two &quot;.&quot; characters in an annotation.  I think
+that's OK, though; it's a natural generalization and nothing depends
+on that.
+
+     A 'StorageResultsStream' does not write any output.  It simply
+     stores the results for future display.&quot;&quot;&quot;
+
+-    def __init__(self):
++    def __init__(self, arguments):
+
+What's the rationale for this change?
+
++        # Put in a note.  No software currently pays any attention to
++        # this key, but it's useful to mark runs that were done from
++        # the GUI, because they may be an amalgamation of multiple
++        # runs, and therefore cannot be trusted to describe a single
++        # version of the software under test.
++        self.__annotations = { &quot;qmtest.created_from_gui&quot;: &quot;true&quot; }
+
+Let's leave this out for now.  It's not that I disagree, but I'm also
+not sure that I agree, and we might want some kind of more general
+&quot;where did this run come from?&quot; field.
+
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000339.html">[PATCH] Run metadata and first pass at SQL results storage.
+</A></li>
+	<LI>Next message: <A HREF="000341.html">[qmtest] [PATCH] Run metadata and first pass at SQL results storage.
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#340">[ date ]</a>
+              <a href="thread.html#340">[ thread ]</a>
+              <a href="subject.html#340">[ subject ]</a>
+              <a href="author.html#340">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">More information about the qmtest
+mailing list</a><br>
+</body></html>

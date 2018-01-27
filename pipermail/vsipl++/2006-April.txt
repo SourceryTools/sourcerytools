@@ -1,0 +1,2956 @@
+From don at codesourcery.com  Sun Apr  2 21:01:29 2006
+From: don at codesourcery.com (Don McCoy)
+Date: Sun, 02 Apr 2006 15:01:29 -0600
+Subject: [vsipl++] [patch] FIR Filter bank benchmark
+In-Reply-To: <442D8E21.1090500@codesourcery.com>
+References: <442C93CE.2020103@codesourcery.com> <442D8E21.1090500@codesourcery.com>
+Message-ID: <44303BA9.3010109@codesourcery.com>
+
+Jules Bergmann wrote:
+> Don McCoy wrote:
+> 
+> This patch looks good.  The only real change I have is you should put 
+> the output into a global matrix (see below).  Let me know if that makes 
+> sense.  Once that is changed, please check it in.
+> 
+...
+> 
+> Instead of declaring 'test' to be a local matrix, can you instead 
+> declare a global results matrix, use the local view of that matrix here, 
+> and then check the local portion below?
+> 
+
+
+It seemed easiest to pass around yet another matrix and keep all the 
+declarations in one place.  That satisfies the above, but I'm not sure 
+that is what you meant.
+
+The code makes a bit more sense now I think.  The calculation now uses 
+'outputs' and they are compared against 'expected'.  It may be a bit 
+confusing where it reads data in from file in that it refers to those 
+files as outputs, but then puts the data into 'expected'.  It's not too 
+bad as is I hope.
+
+
+> Nice diffs (for the following files)!  You did this manually right?  I 
+> didn't think CVS handled renaming of files.  Thanks!
+> 
+Yes, it made it easier to compare them.
+
+
+ >> Similarly with fast convolution, a temporary is used.  I.e.:
+ >>
+ >>     for (index_type l=0; l<loop; ++l)
+ >>     {
+ >>       // Perform FIR convolutions
+ >>       for ( length_type i = 0; i < local_M; ++i )
+ >>       {
+ >>         Vector<T> tmp(N, T());
+ >>         fwd_fft(l_inputs.row(i), tmp);
+ >>         tmp *= response.row(0);    // assume fft already done on 
+response
+ >>         inv_fft(tmp, test.row(i));
+ >>       }
+ >>     }
+ >
+ >
+ > It should be OK to move the declaration of tmp entirely outside the
+ > loop.  If fwd_fft's size is N, it will completely overwrite the values
+ > in 'tmp'
+ >
+
+I agree.  Done.  Thanks.
+
+ >>
+ >> Moving the declaration and initialization of 'tmp' outside the loop
+ >> has the same effect as with 'state_save' because the contents of tmp
+ >> are not zeroed between rows.  With it inside the loop (as it should
+ >> be), performance does not appear to be affected noticeably, though it
+ >> should have a slight impact.
+
+I believe I had myself confused over what turned out to be problems with 
+comparing near-zero floating-point numbers.  Disregard the above please.
+
+On that note, however, I found that I can construct data sets that will 
+  fail the data comparison.  I.e. when the output data set contains 
+zeroes and the fast convolution algorithm is used, the 'view_equal' 
+check will fail.  The reason for this is the method we use for comparing 
+values looks at the relative error of say a and b, as (a-b)/a.  This 
+works well for most small values, but evaluates to 1 when b == 0 (the 
+relative error check returns false for anything over 1e-4).
+
+The example set that cause this error results from leaving the imaginary 
+portion of the inputs set to zero and setting the filter coefficients to 
+all ones.  Doing this results in outputs where the imaginary portion is 
+exactly zero, but the fast conv algorithm will produce numbers on the 
+order of 1e-6, which are only a few bits off of zero (for floats) but 
+will fail the current comparison check.
+
+In any case, this is a separate topic and I don't think it affects 
+whether or not we check this in at this time.  Sound ok?
+
+
+One other item is worth bringing up though.  There was an error in the 
+previous patch for the not-from-file case where the output (now 
+'expected') vectors were not seeded with the correct answers.  I believe 
+I let this one in by failing to compile and test in debug mode.  Given 
+that assert() does nothing in optimized builds, the data checks will not 
+be run the way the benchmark will normally be configured.
+
+Perhaps it would be nice to insert something that printed a nice warning 
+if the call to view_equal() fails, then passes the result to assert() 
+which will halt execution in the debug case (handy) but allow it to 
+continue in the optimized case (ok since warning printed?).  Better 
+warnings could be printed from within the view_equal() function, e.g. 
+ones that show the location of the error and the values that failed 
+comparison.
+
+In addition, perhaps we always want to check the data.  It is done 
+outside the timing loop, so doesn't affect results, but it does slow the 
+overall execution time.  Suggestions?
+
+
+Ok to check in with these changes?
+
+
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: fb2.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060402/37c3690c/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: fb2.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060402/37c3690c/attachment-0001.ksh>
+
+From jules at codesourcery.com  Mon Apr  3 15:18:03 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Mon, 03 Apr 2006 11:18:03 -0400
+Subject: [vsipl++] [patch] FIR Filter bank benchmark
+In-Reply-To: <44303BA9.3010109@codesourcery.com>
+References: <442C93CE.2020103@codesourcery.com> <442D8E21.1090500@codesourcery.com> <44303BA9.3010109@codesourcery.com>
+Message-ID: <44313CAB.7090207@codesourcery.com>
+
+Don McCoy wrote:
+> Jules Bergmann wrote:
+
+>>
+>> Instead of declaring 'test' to be a local matrix, can you instead 
+>> declare a global results matrix, use the local view of that matrix 
+>> here, and then check the local portion below?
+>>
+> 
+> 
+> It seemed easiest to pass around yet another matrix and keep all the 
+> declarations in one place.  That satisfies the above, but I'm not sure 
+> that is what you meant.
+
+That sounds fine.
+
+
+
+
+> 
+> On that note, however, I found that I can construct data sets that will 
+>  fail the data comparison.  I.e. when the output data set contains 
+> zeroes and the fast convolution algorithm is used, the 'view_equal' 
+> check will fail.  The reason for this is the method we use for comparing 
+> values looks at the relative error of say a and b, as (a-b)/a.  This 
+> works well for most small values, but evaluates to 1 when b == 0 (the 
+> relative error check returns false for anything over 1e-4).
+> 
+> The example set that cause this error results from leaving the imaginary 
+> portion of the inputs set to zero and setting the filter coefficients to 
+> all ones.  Doing this results in outputs where the imaginary portion is 
+> exactly zero, but the fast conv algorithm will produce numbers on the 
+> order of 1e-6, which are only a few bits off of zero (for floats) but 
+> will fail the current comparison check.
+> 
+> In any case, this is a separate topic and I don't think it affects 
+> whether or not we check this in at this time.  Sound ok?
+
+That is fine.  In the future, we may want to use 'error_db' to compare 
+the results.
+
+> 
+> 
+> One other item is worth bringing up though.  There was an error in the 
+> previous patch for the not-from-file case where the output (now 
+> 'expected') vectors were not seeded with the correct answers.  I believe 
+> I let this one in by failing to compile and test in debug mode.  Given 
+> that assert() does nothing in optimized builds, the data checks will not 
+> be run the way the benchmark will normally be configured.
+> 
+> Perhaps it would be nice to insert something that printed a nice warning 
+> if the call to view_equal() fails, then passes the result to assert() 
+> which will halt execution in the debug case (handy) but allow it to 
+> continue in the optimized case (ok since warning printed?).  Better 
+> warnings could be printed from within the view_equal() function, e.g. 
+> ones that show the location of the error and the values that failed 
+> comparison.
+> 
+> In addition, perhaps we always want to check the data.  It is done 
+> outside the timing loop, so doesn't affect results, but it does slow the 
+> overall execution time.  Suggestions?
+
+Is 'test_assert()' officially available for the benchmarks?  It is not 
+disabled by -DNDEBUG.  I started using it in the benchmarks of the 
+regular 'assert()' for that reason.
+
+For view_equal, we could add a 'verbose' flag that would cause an error 
+message to be printed if a miscompare is detected.  view_equal() would 
+still return true/false, so it could be used in an assert() or 
+test_assert().
+
+
+
+> 
+> 
+> Ok to check in with these changes?
+> 
+
+Yes, these look good.  Please check them in.
+
+			thanks,
+			-- Jules
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From assem at codesourcery.com  Mon Apr  3 15:42:18 2006
+From: assem at codesourcery.com (Assem Salama)
+Date: Mon, 03 Apr 2006 11:42:18 -0400
+Subject: Index and Length
+Message-ID: <4431425A.7030601@codesourcery.com>
+
+Everyone,
+  This patch completely removes the use of Point in the library. Index 
+and Length are now used instead.
+
+Thanks,
+Assem Salama
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: cvs.diff.04032006.2.log
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060403/689523a3/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: ChangeLog.04032006
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060403/689523a3/attachment-0001.ksh>
+
+From jules at codesourcery.com  Mon Apr  3 20:35:03 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Mon, 03 Apr 2006 16:35:03 -0400
+Subject: [patch] Changes for GTRI build
+Message-ID: <443186F7.9030205@codesourcery.com>
+
+I'm getting ready to build a snapshot on the GTRI cluster.  To do this 
+cleanly, I need to incorporate the following fixes/feeatures:
+
+  - fixes GNUmakefile.in to install headers in src/vsip/impl/simd
+
+  - adds a '--version=VERSION' option to scripts.  This is useful for
+    building snapshots when you can't fit everything in to one day!
+
+
+While I'm at it, I figured I would include the following optimizations:
+
+  - optimizes matrix copy to use memcpy or an explicit loop when
+    possible.
+
+  - optimizes transpose to use SIMD instructions when possible.
+
+
+				-- Jules
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From jules at codesourcery.com  Mon Apr  3 20:37:01 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Mon, 03 Apr 2006 16:37:01 -0400
+Subject: [vsipl++] [patch] Changes for GTRI build
+In-Reply-To: <443186F7.9030205@codesourcery.com>
+References: <443186F7.9030205@codesourcery.com>
+Message-ID: <4431876D.5010606@codesourcery.com>
+
+Oops, forgot the patch. -- Jules
+
+Jules Bergmann wrote:
+> I'm getting ready to build a snapshot on the GTRI cluster.  To do this 
+> cleanly, I need to incorporate the following fixes/feeatures:
+> 
+>  - fixes GNUmakefile.in to install headers in src/vsip/impl/simd
+> 
+>  - adds a '--version=VERSION' option to scripts.  This is useful for
+>    building snapshots when you can't fit everything in to one day!
+> 
+> 
+> While I'm at it, I figured I would include the following optimizations:
+> 
+>  - optimizes matrix copy to use memcpy or an explicit loop when
+>    possible.
+> 
+>  - optimizes transpose to use SIMD instructions when possible.
+> 
+> 
+>                 -- Jules
+> 
+> 
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: gtri.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060403/951dedc8/attachment.ksh>
+
+From jules at codesourcery.com  Mon Apr  3 23:25:34 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Mon, 03 Apr 2006 19:25:34 -0400
+Subject: [vsipl++] Index and Length
+In-Reply-To: <4431425A.7030601@codesourcery.com>
+References: <4431425A.7030601@codesourcery.com>
+Message-ID: <4431AEEE.80503@codesourcery.com>
+
+Assem Salama wrote:
+> Everyone,
+>  This patch completely removes the use of Point in the library. Index 
+> and Length are now used instead.
+> 
+> Thanks,
+> Assem Salama
+
+Assem,
+
+This patch looks good.  I have several comments below, please check it 
+in after fixing them.
+
+				thanks,
+				-- Jules
+
+> 
+> 
+> ------------------------------------------------------------------------
+> 
+
+> Index: src/vsip/dense.hpp
+> ===================================================================
+> RCS file: /home/cvs/Repository/vpp/src/vsip/dense.hpp,v
+> retrieving revision 1.35
+> diff -u -r1.35 dense.hpp
+> --- src/vsip/dense.hpp	27 Mar 2006 23:19:34 -0000	1.35
+> +++ src/vsip/dense.hpp	3 Apr 2006 15:26:15 -0000
+> @@ -23,7 +23,7 @@
+>  #include <vsip/impl/layout.hpp>
+>  #include <vsip/impl/extdata.hpp>
+>  #include <vsip/impl/block-traits.hpp>
+> -#include <vsip/impl/point.hpp>
+> +#include <vsip/domain.hpp>
+>  
+>  /// Complex storage format for dense blocks.
+>  #if VSIP_IMPL_PREFER_SPLIT_COMPLEX
+> @@ -33,6 +33,7 @@
+>  #endif
+>  
+>  
+> +using vsip::Index;
+
+This isn't necessary.  The uses of Index in the body of dense.hpp are 
+inside of a "namespace vsip { ... }" block, so they will see vsip::Index 
+fine.
+
+Moreover, putting this 'using' statement here will put 'Index' in the 
+top-level namespace for user programs, which we're not allowed to do.
+
+>  
+>  /***********************************************************************
+>    Declarations
+> @@ -536,8 +537,8 @@
+>  
+>  protected:
+>    // Dim-dimensional get/put
+> -  T    get(Point<Dim> const& idx) const VSIP_NOTHROW;
+> -  void put(Point<Dim> const& idx, T val) VSIP_NOTHROW;
+> +  T    get(Index<Dim> const& idx) const VSIP_NOTHROW;
+> +  void put(Index<Dim> const& idx, T val) VSIP_NOTHROW;
+>  
+>    // 2-diminsional get/put
+>    T    impl_get(index_type idx0, index_type idx1) const VSIP_NOTHROW
+> @@ -558,8 +559,8 @@
+>  
+>  protected:
+>    // Dim-dimensional lvalue.
+> -  reference_type       impl_ref(Point<Dim> const& idx) VSIP_NOTHROW;
+> -  const_reference_type impl_ref(Point<Dim> const& idx) const VSIP_NOTHROW;
+> +  reference_type       impl_ref(Index<Dim> const& idx) VSIP_NOTHROW;
+> +  const_reference_type impl_ref(Index<Dim> const& idx) const VSIP_NOTHROW;
+>  
+>    // Accessors.
+>  public:
+> @@ -779,11 +780,11 @@
+>  
+>    reference_type impl_ref(index_type idx0, index_type idx1)
+>      VSIP_NOTHROW
+> -    { return base_type::impl_ref(impl::Point<2>(idx0, idx1)); }
+> +    { return base_type::impl_ref(Index<2>(idx0, idx1)); }
+>  
+>    const_reference_type impl_ref(index_type idx0, index_type idx1)
+>      const VSIP_NOTHROW
+> -    { return base_type::impl_ref(impl::Point<2>(idx0, idx1)); }
+> +    { return base_type::impl_ref(Index<2>(idx0, idx1)); }
+>  };
+>  
+>  
+> @@ -901,12 +902,12 @@
+>  
+>    reference_type impl_ref(index_type idx0, index_type idx1, index_type idx2)
+>      VSIP_NOTHROW
+> -    { return base_type::impl_ref(impl::Point<3>(idx0, idx1, idx2)); }
+> +    { return base_type::impl_ref(Index<3>(idx0, idx1, idx2)); }
+>  
+>    const_reference_type impl_ref(index_type idx0, index_type idx1,
+>  				  index_type idx2)
+>      const VSIP_NOTHROW
+> -    { return base_type::impl_ref(impl::Point<3>(idx0, idx1, idx2)); }
+> +    { return base_type::impl_ref(Index<3>(idx0, idx1, idx2)); }
+>  };
+>  
+>  
+> @@ -1329,7 +1330,7 @@
+>  inline
+>  T
+>  Dense_impl<Dim, T, OrderT, MapT>::get(
+> -  Point<Dim> const& idx)
+> +  Index<Dim> const& idx)
+>    const VSIP_NOTHROW
+>  {
+>    for (dimension_type d=0; d<Dim; ++d)
+> @@ -1346,7 +1347,7 @@
+>  inline
+>  void
+>  Dense_impl<Dim, T, OrderT, MapT>::put(
+> -  Point<Dim> const& idx,
+> +  Index<Dim> const& idx,
+>    T                 val)
+>    VSIP_NOTHROW
+>  {
+> @@ -1364,7 +1365,7 @@
+>  inline
+>  typename Dense_impl<Dim, T, OrderT, MapT>::reference_type
+>  Dense_impl<Dim, T, OrderT, MapT>::impl_ref(
+> -  Point<Dim> const& idx) VSIP_NOTHROW
+> +  Index<Dim> const& idx) VSIP_NOTHROW
+>  {
+>    for (dimension_type d=0; d<Dim; ++d)
+>      assert(idx[d] < layout_.size(d));
+> @@ -1380,7 +1381,7 @@
+>  inline
+>  typename Dense_impl<Dim, T, OrderT, MapT>::const_reference_type
+>  Dense_impl<Dim, T, OrderT, MapT>::impl_ref(
+> -  Point<Dim> const& idx) const VSIP_NOTHROW
+> +  Index<Dim> const& idx) const VSIP_NOTHROW
+>  {
+>    for (dimension_type d=0; d<Dim; ++d)
+>      assert(idx[d] < layout_.size(d));
+> Index: src/vsip/domain.hpp
+> ===================================================================
+> RCS file: /home/cvs/Repository/vpp/src/vsip/domain.hpp,v
+> retrieving revision 1.15
+> diff -u -r1.15 domain.hpp
+> --- src/vsip/domain.hpp	19 Sep 2005 03:39:54 -0000	1.15
+> +++ src/vsip/domain.hpp	3 Apr 2006 15:26:15 -0000
+> @@ -31,6 +31,8 @@
+>    Index(index_type x) VSIP_NOTHROW : Vertex<index_type, 1>(x) {}
+>  };
+>  
+> +// mathematical operations for Index
+> +/*
+>  inline bool 
+>  operator==(Index<1> const& i, Index<1> const& j) VSIP_NOTHROW
+>  {
+> @@ -38,6 +40,46 @@
+>      static_cast<Vertex<index_type, 1> >(i) == 
+>      static_cast<Vertex<index_type, 1> >(j);
+>  }
+> +*/
+
+If you comment code out, you should include some reason why it is 
+commented out to avoid confusion.
+
+In this case, there is no reason to keep the old code around, so you 
+should just remove it.
+
+> +
+> +template <dimension_type Dim>
+> +inline bool 
+> +operator==(Index<Dim> const& i, Index<Dim> const& j) VSIP_NOTHROW
+> +{
+> +  for (dimension_type d=0; d<Dim; ++d)
+> +    if (i[d] != j[d])
+> +      return false;
+> +  return true;
+> +}
+
+This looks good.
+
+
+>  {
+> Index: src/vsip/matrix.hpp
+> ===================================================================
+> RCS file: /home/cvs/Repository/vpp/src/vsip/matrix.hpp,v
+> retrieving revision 1.30
+> diff -u -r1.30 matrix.hpp
+> --- src/vsip/matrix.hpp	11 Jan 2006 16:22:44 -0000	1.30
+> +++ src/vsip/matrix.hpp	3 Apr 2006 15:26:15 -0000
+> @@ -401,6 +401,18 @@
+>    return Domain<2>(view.size(0), view.size(1));
+>  }
+>  
+> +/// Get the extent of a matrix view, as a Length.
+> +
+> +template <typename T,
+> +	  typename Block>
+> +Length<2>
+
+This should be 'inline'.  Small template functions like this in header 
+files should be declared inline.  It improves efficiency, and some 
+compilers (such as greenhills) have trouble with leaving them non-inline 
+functions.
+
+We haven't 100% good about following this rule.  When you come across a 
+small non-inline template function in a header, chances are it should be 
+'inline'.
+
+> +extent(const_Matrix<T, Block> v)
+> +{
+> +  return Length<2>(v.size(0), v.size(1));
+> +}
+> +
+> +
+> +
+>  } // namespace vsip::impl
+>  
+>  } // namespace vsip
+> Index: src/vsip/vector.hpp
+> ===================================================================
+> RCS file: /home/cvs/Repository/vpp/src/vsip/vector.hpp,v
+> retrieving revision 1.38
+> diff -u -r1.38 vector.hpp
+> --- src/vsip/vector.hpp	22 Mar 2006 20:48:58 -0000	1.38
+> +++ src/vsip/vector.hpp	3 Apr 2006 15:26:15 -0000
+> @@ -354,6 +354,18 @@
+>    return Domain<1>(view.size(0));
+>  }
+>  
+> +/// Get the extent of a vector view, as a Length. 
+> +
+> +template <typename T,
+> +	  typename Block>
+> +Length<1>
+
+this should be 'inline'
+
+> +extent(const_Vector<T, Block> v)
+> +{
+> +  return Length<1>(v.size(0));
+> +}
+> +
+> +
+> +
+>  } // namespace vsip::impl
+>  
+>  
+
+> 
+> ------------------------------------------------------------------------
+> 
+> 2006-04-03  Assem Salama <assem at codesourcery.com>
+> 	* src/vsip/dense.hpp: Converted this file to use Index and Length
+> 	  instead of Point.
+> 	* src/vsip/matrix.hpp: Same as above.
+> 	* src/vsip/vector.hpp: Same as above.
+> 	* src/vsip/impl/block-copy.hpp: Same as above.
+> 	* src/vsip/impl/extdata.hpp: Same as above.
+> 	* src/vsip/impl/fast-block.hpp: Same as above.
+> 	* src/vsip/impl/lvalue-proxy.hpp: Same as above.
+> 	* src/vsip/impl/par-assign.hpp: Same as above.
+> 	* src/vsip/impl/par-chain-assign.hpp: Same as above.
+> 	* src/vsip/impl/par-foreach.hpp: Same as above.
+> 	* src/vsip/impl/layout.hpp: Same as above. Had to change index
+> 	  index functions to take Index instead of Point.
+> 	* src/vsip/domain.hpp: Added operators ==,-,and + for Index.
+> 	* src/vsip/impl/domain-utils.hpp: Added extent functions that return
+> 	  Length instead of point.
+> 	* src/vsip/impl/par-util.hpp: Changed the foreach_point function to
+> 	  work on Index instead of Point.
+> 	* src/vsip/impl/point-fcn.hpp: Removed this file from cvs. The use of
+> 	  Point is deprecated. We now use Index and Length.
+> 	* src/vsip/impl/point.hpp: Removed this from cvs. We now use Length and
+> 	  Index instead of Point.
+
+comments look good, just check that they fit into 80 columns
+
+> 	* tests/output.hpp: Changed the << operator to operate on an Index.
+> 	* tests/appmap.cpp: Converted this test to use Length and Index.
+> 	* tests/fast-block.cpp: Same as appmap.cpp
+> 	* tests/us-block.cpp: Same as above.
+> 	* tests/user_storage.cpp: Same as above.
+> 	* tests/util-par.hpp: Same as above.
+> 	* tests/view.cpp: Same as above.
+> 	* tests/vmmul.cpp: Same as above.
+> 	* tests/parallel/block.cpp: Same as above.
+> 	* tests/parallel/expr.cpp: Same as above.
+> 	* tests/parallel/subviews.cpp: Same as above.
+> 
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From assem at codesourcery.com  Tue Apr  4 02:23:24 2006
+From: assem at codesourcery.com (Assem Salama)
+Date: Mon, 03 Apr 2006 22:23:24 -0400
+Subject: [vsipl++] Index and Length
+In-Reply-To: <4431AEEE.80503@codesourcery.com>
+References: <4431425A.7030601@codesourcery.com> <4431AEEE.80503@codesourcery.com>
+Message-ID: <4431D89C.3020804@codesourcery.com>
+
+Jules,
+  Applied suggested changes and checked them in.
+
+Assem Salama
+
+Jules Bergmann wrote:
+> Assem Salama wrote:
+>> Everyone,
+>>  This patch completely removes the use of Point in the library. Index 
+>> and Length are now used instead.
+>>
+>> Thanks,
+>> Assem Salama
+>
+> Assem,
+>
+> This patch looks good.  I have several comments below, please check it 
+> in after fixing them.
+>
+>                 thanks,
+>                 -- Jules
+>
+>>
+>>
+>> ------------------------------------------------------------------------
+>>
+>
+>> Index: src/vsip/dense.hpp
+>> ===================================================================
+>> RCS file: /home/cvs/Repository/vpp/src/vsip/dense.hpp,v
+>> retrieving revision 1.35
+>> diff -u -r1.35 dense.hpp
+>> --- src/vsip/dense.hpp    27 Mar 2006 23:19:34 -0000    1.35
+>> +++ src/vsip/dense.hpp    3 Apr 2006 15:26:15 -0000
+>> @@ -23,7 +23,7 @@
+>>  #include <vsip/impl/layout.hpp>
+>>  #include <vsip/impl/extdata.hpp>
+>>  #include <vsip/impl/block-traits.hpp>
+>> -#include <vsip/impl/point.hpp>
+>> +#include <vsip/domain.hpp>
+>>  
+>>  /// Complex storage format for dense blocks.
+>>  #if VSIP_IMPL_PREFER_SPLIT_COMPLEX
+>> @@ -33,6 +33,7 @@
+>>  #endif
+>>  
+>>  
+>> +using vsip::Index;
+>
+> This isn't necessary.  The uses of Index in the body of dense.hpp are 
+> inside of a "namespace vsip { ... }" block, so they will see 
+> vsip::Index fine.
+>
+> Moreover, putting this 'using' statement here will put 'Index' in the 
+> top-level namespace for user programs, which we're not allowed to do.
+>
+>>  
+>>  /*********************************************************************** 
+>>
+>>    Declarations
+>> @@ -536,8 +537,8 @@
+>>  
+>>  protected:
+>>    // Dim-dimensional get/put
+>> -  T    get(Point<Dim> const& idx) const VSIP_NOTHROW;
+>> -  void put(Point<Dim> const& idx, T val) VSIP_NOTHROW;
+>> +  T    get(Index<Dim> const& idx) const VSIP_NOTHROW;
+>> +  void put(Index<Dim> const& idx, T val) VSIP_NOTHROW;
+>>  
+>>    // 2-diminsional get/put
+>>    T    impl_get(index_type idx0, index_type idx1) const VSIP_NOTHROW
+>> @@ -558,8 +559,8 @@
+>>  
+>>  protected:
+>>    // Dim-dimensional lvalue.
+>> -  reference_type       impl_ref(Point<Dim> const& idx) VSIP_NOTHROW;
+>> -  const_reference_type impl_ref(Point<Dim> const& idx) const 
+>> VSIP_NOTHROW;
+>> +  reference_type       impl_ref(Index<Dim> const& idx) VSIP_NOTHROW;
+>> +  const_reference_type impl_ref(Index<Dim> const& idx) const 
+>> VSIP_NOTHROW;
+>>  
+>>    // Accessors.
+>>  public:
+>> @@ -779,11 +780,11 @@
+>>  
+>>    reference_type impl_ref(index_type idx0, index_type idx1)
+>>      VSIP_NOTHROW
+>> -    { return base_type::impl_ref(impl::Point<2>(idx0, idx1)); }
+>> +    { return base_type::impl_ref(Index<2>(idx0, idx1)); }
+>>  
+>>    const_reference_type impl_ref(index_type idx0, index_type idx1)
+>>      const VSIP_NOTHROW
+>> -    { return base_type::impl_ref(impl::Point<2>(idx0, idx1)); }
+>> +    { return base_type::impl_ref(Index<2>(idx0, idx1)); }
+>>  };
+>>  
+>>  
+>> @@ -901,12 +902,12 @@
+>>  
+>>    reference_type impl_ref(index_type idx0, index_type idx1, 
+>> index_type idx2)
+>>      VSIP_NOTHROW
+>> -    { return base_type::impl_ref(impl::Point<3>(idx0, idx1, idx2)); }
+>> +    { return base_type::impl_ref(Index<3>(idx0, idx1, idx2)); }
+>>  
+>>    const_reference_type impl_ref(index_type idx0, index_type idx1,
+>>                    index_type idx2)
+>>      const VSIP_NOTHROW
+>> -    { return base_type::impl_ref(impl::Point<3>(idx0, idx1, idx2)); }
+>> +    { return base_type::impl_ref(Index<3>(idx0, idx1, idx2)); }
+>>  };
+>>  
+>>  
+>> @@ -1329,7 +1330,7 @@
+>>  inline
+>>  T
+>>  Dense_impl<Dim, T, OrderT, MapT>::get(
+>> -  Point<Dim> const& idx)
+>> +  Index<Dim> const& idx)
+>>    const VSIP_NOTHROW
+>>  {
+>>    for (dimension_type d=0; d<Dim; ++d)
+>> @@ -1346,7 +1347,7 @@
+>>  inline
+>>  void
+>>  Dense_impl<Dim, T, OrderT, MapT>::put(
+>> -  Point<Dim> const& idx,
+>> +  Index<Dim> const& idx,
+>>    T                 val)
+>>    VSIP_NOTHROW
+>>  {
+>> @@ -1364,7 +1365,7 @@
+>>  inline
+>>  typename Dense_impl<Dim, T, OrderT, MapT>::reference_type
+>>  Dense_impl<Dim, T, OrderT, MapT>::impl_ref(
+>> -  Point<Dim> const& idx) VSIP_NOTHROW
+>> +  Index<Dim> const& idx) VSIP_NOTHROW
+>>  {
+>>    for (dimension_type d=0; d<Dim; ++d)
+>>      assert(idx[d] < layout_.size(d));
+>> @@ -1380,7 +1381,7 @@
+>>  inline
+>>  typename Dense_impl<Dim, T, OrderT, MapT>::const_reference_type
+>>  Dense_impl<Dim, T, OrderT, MapT>::impl_ref(
+>> -  Point<Dim> const& idx) const VSIP_NOTHROW
+>> +  Index<Dim> const& idx) const VSIP_NOTHROW
+>>  {
+>>    for (dimension_type d=0; d<Dim; ++d)
+>>      assert(idx[d] < layout_.size(d));
+>> Index: src/vsip/domain.hpp
+>> ===================================================================
+>> RCS file: /home/cvs/Repository/vpp/src/vsip/domain.hpp,v
+>> retrieving revision 1.15
+>> diff -u -r1.15 domain.hpp
+>> --- src/vsip/domain.hpp    19 Sep 2005 03:39:54 -0000    1.15
+>> +++ src/vsip/domain.hpp    3 Apr 2006 15:26:15 -0000
+>> @@ -31,6 +31,8 @@
+>>    Index(index_type x) VSIP_NOTHROW : Vertex<index_type, 1>(x) {}
+>>  };
+>>  
+>> +// mathematical operations for Index
+>> +/*
+>>  inline bool  operator==(Index<1> const& i, Index<1> const& j) 
+>> VSIP_NOTHROW
+>>  {
+>> @@ -38,6 +40,46 @@
+>>      static_cast<Vertex<index_type, 1> >(i) ==      
+>> static_cast<Vertex<index_type, 1> >(j);
+>>  }
+>> +*/
+>
+> If you comment code out, you should include some reason why it is 
+> commented out to avoid confusion.
+>
+> In this case, there is no reason to keep the old code around, so you 
+> should just remove it.
+>
+>> +
+>> +template <dimension_type Dim>
+>> +inline bool +operator==(Index<Dim> const& i, Index<Dim> const& j) 
+>> VSIP_NOTHROW
+>> +{
+>> +  for (dimension_type d=0; d<Dim; ++d)
+>> +    if (i[d] != j[d])
+>> +      return false;
+>> +  return true;
+>> +}
+>
+> This looks good.
+>
+>
+>>  {
+>> Index: src/vsip/matrix.hpp
+>> ===================================================================
+>> RCS file: /home/cvs/Repository/vpp/src/vsip/matrix.hpp,v
+>> retrieving revision 1.30
+>> diff -u -r1.30 matrix.hpp
+>> --- src/vsip/matrix.hpp    11 Jan 2006 16:22:44 -0000    1.30
+>> +++ src/vsip/matrix.hpp    3 Apr 2006 15:26:15 -0000
+>> @@ -401,6 +401,18 @@
+>>    return Domain<2>(view.size(0), view.size(1));
+>>  }
+>>  
+>> +/// Get the extent of a matrix view, as a Length.
+>> +
+>> +template <typename T,
+>> +      typename Block>
+>> +Length<2>
+>
+> This should be 'inline'.  Small template functions like this in header 
+> files should be declared inline.  It improves efficiency, and some 
+> compilers (such as greenhills) have trouble with leaving them 
+> non-inline functions.
+>
+> We haven't 100% good about following this rule.  When you come across 
+> a small non-inline template function in a header, chances are it 
+> should be 'inline'.
+>
+>> +extent(const_Matrix<T, Block> v)
+>> +{
+>> +  return Length<2>(v.size(0), v.size(1));
+>> +}
+>> +
+>> +
+>> +
+>>  } // namespace vsip::impl
+>>  
+>>  } // namespace vsip
+>> Index: src/vsip/vector.hpp
+>> ===================================================================
+>> RCS file: /home/cvs/Repository/vpp/src/vsip/vector.hpp,v
+>> retrieving revision 1.38
+>> diff -u -r1.38 vector.hpp
+>> --- src/vsip/vector.hpp    22 Mar 2006 20:48:58 -0000    1.38
+>> +++ src/vsip/vector.hpp    3 Apr 2006 15:26:15 -0000
+>> @@ -354,6 +354,18 @@
+>>    return Domain<1>(view.size(0));
+>>  }
+>>  
+>> +/// Get the extent of a vector view, as a Length. +
+>> +template <typename T,
+>> +      typename Block>
+>> +Length<1>
+>
+> this should be 'inline'
+>
+>> +extent(const_Vector<T, Block> v)
+>> +{
+>> +  return Length<1>(v.size(0));
+>> +}
+>> +
+>> +
+>> +
+>>  } // namespace vsip::impl
+>>  
+>>  
+>
+>>
+>> ------------------------------------------------------------------------
+>>
+>> 2006-04-03  Assem Salama <assem at codesourcery.com>
+>>     * src/vsip/dense.hpp: Converted this file to use Index and Length
+>>       instead of Point.
+>>     * src/vsip/matrix.hpp: Same as above.
+>>     * src/vsip/vector.hpp: Same as above.
+>>     * src/vsip/impl/block-copy.hpp: Same as above.
+>>     * src/vsip/impl/extdata.hpp: Same as above.
+>>     * src/vsip/impl/fast-block.hpp: Same as above.
+>>     * src/vsip/impl/lvalue-proxy.hpp: Same as above.
+>>     * src/vsip/impl/par-assign.hpp: Same as above.
+>>     * src/vsip/impl/par-chain-assign.hpp: Same as above.
+>>     * src/vsip/impl/par-foreach.hpp: Same as above.
+>>     * src/vsip/impl/layout.hpp: Same as above. Had to change index
+>>       index functions to take Index instead of Point.
+>>     * src/vsip/domain.hpp: Added operators ==,-,and + for Index.
+>>     * src/vsip/impl/domain-utils.hpp: Added extent functions that return
+>>       Length instead of point.
+>>     * src/vsip/impl/par-util.hpp: Changed the foreach_point function to
+>>       work on Index instead of Point.
+>>     * src/vsip/impl/point-fcn.hpp: Removed this file from cvs. The 
+>> use of
+>>       Point is deprecated. We now use Index and Length.
+>>     * src/vsip/impl/point.hpp: Removed this from cvs. We now use 
+>> Length and
+>>       Index instead of Point.
+>
+> comments look good, just check that they fit into 80 columns
+>
+>>     * tests/output.hpp: Changed the << operator to operate on an Index.
+>>     * tests/appmap.cpp: Converted this test to use Length and Index.
+>>     * tests/fast-block.cpp: Same as appmap.cpp
+>>     * tests/us-block.cpp: Same as above.
+>>     * tests/user_storage.cpp: Same as above.
+>>     * tests/util-par.hpp: Same as above.
+>>     * tests/view.cpp: Same as above.
+>>     * tests/vmmul.cpp: Same as above.
+>>     * tests/parallel/block.cpp: Same as above.
+>>     * tests/parallel/expr.cpp: Same as above.
+>>     * tests/parallel/subviews.cpp: Same as above.
+>>
+>
+>
+
+
+
+From assem at codesourcery.com  Tue Apr  4 16:45:37 2006
+From: assem at codesourcery.com (Assem Salama)
+Date: Tue, 04 Apr 2006 12:45:37 -0400
+Subject: Tests
+Message-ID: <4432A2B1.8080001@codesourcery.com>
+
+Everyone,
+  I realized one of the tests didn't compile OK with my latest changes. 
+Here is the patch and ChangeLog.
+
+Thanks,
+Assem Salama
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: cvs.diff.04042006.1.log
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060404/46499d51/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: ChangeLog.04042006
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060404/46499d51/attachment-0001.ksh>
+
+From jules at codesourcery.com  Tue Apr  4 18:18:35 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Tue, 04 Apr 2006 14:18:35 -0400
+Subject: [vsipl++] Tests
+In-Reply-To: <4432A2B1.8080001@codesourcery.com>
+References: <4432A2B1.8080001@codesourcery.com>
+Message-ID: <4432B87B.3010708@codesourcery.com>
+
+Assem Salama wrote:
+> Everyone,
+>  I realized one of the tests didn't compile OK with my latest changes. 
+> Here is the patch and ChangeLog.
+> 
+> Thanks,
+> Assem Salama
+
+Assem,
+
+Can you hold off on applying this patch?  I need to look at the 
+specification to see how we should handle a comparison between Index<1> 
+and index_type.  I suspect that this ma may be related to the 
+replacement of operator==(Index<1>, Index<1>) with template 
+<dimensino_type Dim> operator==(Index<dim>, Index<dim).
+
+				-- Jules
+
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From don at codesourcery.com  Wed Apr  5 14:59:05 2006
+From: don at codesourcery.com (Don McCoy)
+Date: Wed, 05 Apr 2006 08:59:05 -0600
+Subject: [patch] fft benchmark
+Message-ID: <4433DB39.2030607@codesourcery.com>
+
+This patch combines two things: fixes for the benchmark fft.cpp and some 
+  other changes that were uncovered from building a debug version of the 
+benchmarks against the reference implementation.
+
+Regards,
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: fft.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060405/08bf68ec/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: fft.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060405/08bf68ec/attachment-0001.ksh>
+
+From don at codesourcery.com  Wed Apr  5 19:10:10 2006
+From: don at codesourcery.com (Don McCoy)
+Date: Wed, 05 Apr 2006 13:10:10 -0600
+Subject: [patch] Benchmark enhancement - 'latency' metric
+Message-ID: <44341612.90703@codesourcery.com>
+
+This patch allows us to do a straight comparison of one routine's 
+execution time to another's, rather than just looking at the number of 
+fp operations per second.  This makes sense to do when comparing say, 
+the efficiency of different algorithms such as an FIR done with FFT's vs 
+the brute-force method used by the Fir class (each has a different 
+number of FLOPS used per point).
+
+Note that the units are in *micro*seconds per point.
+
+Regards,
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: lat.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060405/d97bfd93/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: lat.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060405/d97bfd93/attachment-0001.ksh>
+
+From jules at codesourcery.com  Tue Apr 11 12:22:38 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Tue, 11 Apr 2006 08:22:38 -0400
+Subject: [patch] Fix transpose
+Message-ID: <443B9F8E.6020202@codesourcery.com>
+
+This patch fixes the illegal instruction error with the new fast 
+transpose when running on EM64t machines.  The code was using the macro 
+__amd64__ to determine if 3DNow! instructions were supported.  However, 
+this macro is defined when compiling for both EM64t and AMD64.  Now it 
+uses the __3dNOW__ macro.
+
+It adds some options to the benchmark driver.  The '-single SIZE' option 
+runs a single benchmark size with a loop count of 1.  The center_range 
+sweeps the problem sizes so that a specific non-power-of-2 value (the 
+center) is covered.  This is useful for the HPEC corner-turn benchmark, 
+which has a 50x5000 sized matrix.
+
+It adds several cases to the mpi_alltoall benchmark:
+  - MPI_Alltoallv case, with support for different sets of
+    source and destination processors (previously the benchmark required
+    that source and destination be the same)
+  - Extended persistent_x case, with support for different sets of
+    src/dst processors and an attempt to order messages to reduce
+    contention.
+
+Finally, it updates the interface of Plain_block (a block used only for 
+testing) to make the Direct Data Access interface public.  This is 
+necessary for subblocks to implement their own DDA.  This bug in 
+Plain_block was exposed by previous changes to use memcpy for matrix 
+copy when possible.
+
+				-- Jules
+
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: misc.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060411/c2f330a2/attachment.ksh>
+
+From jules at codesourcery.com  Tue Apr 11 17:25:50 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Tue, 11 Apr 2006 13:25:50 -0400
+Subject: [vsipl++] [patch] Benchmark enhancement - 'latency' metric
+In-Reply-To: <44341612.90703@codesourcery.com>
+References: <44341612.90703@codesourcery.com>
+Message-ID: <443BE69E.2060806@codesourcery.com>
+
+Don McCoy wrote:
+> This patch allows us to do a straight comparison of one routine's 
+> execution time to another's, rather than just looking at the number of 
+> fp operations per second.  This makes sense to do when comparing say, 
+> the efficiency of different algorithms such as an FIR done with FFT's vs 
+> the brute-force method used by the Fir class (each has a different 
+> number of FLOPS used per point).
+> 
+> Note that the units are in *micro*seconds per point.
+
+Don, patch looks good.  Please check it in.  thanks -- Jules
+
+> 
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From jules at codesourcery.com  Tue Apr 11 17:28:08 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Tue, 11 Apr 2006 13:28:08 -0400
+Subject: [vsipl++] [patch] fft benchmark
+In-Reply-To: <4433DB39.2030607@codesourcery.com>
+References: <4433DB39.2030607@codesourcery.com>
+Message-ID: <443BE728.9050706@codesourcery.com>
+
+Don McCoy wrote:
+> This patch combines two things: fixes for the benchmark fft.cpp and some 
+>  other changes that were uncovered from building a debug version of the 
+> benchmarks against the reference implementation.
+> 
+> Regards,
+
+Don, this patch looks good, please check it in. thanks, -- Jules
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From assem at codesourcery.com  Wed Apr 12 02:18:49 2006
+From: assem at codesourcery.com (Assem Salama)
+Date: Tue, 11 Apr 2006 22:18:49 -0400
+Subject: SAL LUD solver
+Message-ID: <443C6389.7010209@codesourcery.com>
+
+Everyone,
+  Here is the patch to include SAL LUD solver in the library. I'm still 
+working on the split complex format.
+
+Thanks,
+Assem Salama
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: cvs.diff.04112006.log
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060411/937f8677/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: ChangeLog.04112006
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060411/937f8677/attachment-0001.ksh>
+
+From don at codesourcery.com  Wed Apr 12 13:41:39 2006
+From: don at codesourcery.com (Don McCoy)
+Date: Wed, 12 Apr 2006 07:41:39 -0600
+Subject: [patch] HPEC benchmark makefiles
+Message-ID: <443D0393.50800@codesourcery.com>
+
+The attached patch moves the HPEC Kernel benchmarks to their own 
+directory in benchmarks/hpec-kernel/ and includes new makefiles for both 
+developers and users.
+
+It also fixes an oversight from when the vsip_csl directory was added - 
+i.e. the installation of this directory when 'make install' is invoked. 
+  For this, a new makefile was created.  It also contains some of the 
+directives needed for when we add .cpp files to the extensions library, 
+although they are not being used at this time.
+
+Regards,
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: hpec.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060412/45bb1d06/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: hpec.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060412/45bb1d06/attachment-0001.ksh>
+
+From jules at codesourcery.com  Wed Apr 12 13:52:19 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Wed, 12 Apr 2006 09:52:19 -0400
+Subject: [patch] SVD flop counts
+Message-ID: <443D0613.4070402@codesourcery.com>
+
+Add missing flop counts for lapack routines called by SVD decompose 
+(taken from MKL manual).
+
+Patch applied.
+
+				-- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: svd.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060412/443fcced/attachment.ksh>
+
+From don at codesourcery.com  Thu Apr 13 17:11:33 2006
+From: don at codesourcery.com (Don McCoy)
+Date: Thu, 13 Apr 2006 11:11:33 -0600
+Subject: [patch] Benchmark enhancements - linear sweep option
+Message-ID: <443E8645.1050102@codesourcery.com>
+
+This patch, along with existing -start and -stop options, increases our 
+ability to select ranges of interest when sweeping the benchmark size.
+
+The -linear SCALE option will take the starting value and multiply it by 
+SCALE (instead of using a power of two).  The -center option can shift 
+this range of values to highlight a specific region of interest.
+
+Regards,
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: lin.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060413/0739a248/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: lin.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060413/0739a248/attachment-0001.ksh>
+
+From jules at codesourcery.com  Thu Apr 13 17:56:57 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Thu, 13 Apr 2006 13:56:57 -0400
+Subject: [vsipl++] [patch] Benchmark enhancements - linear sweep option
+In-Reply-To: <443E8645.1050102@codesourcery.com>
+References: <443E8645.1050102@codesourcery.com>
+Message-ID: <443E90E9.1070709@codesourcery.com>
+
+Don McCoy wrote:
+> This patch, along with existing -start and -stop options, increases our 
+> ability to select ranges of interest when sweeping the benchmark size.
+> 
+> The -linear SCALE option will take the starting value and multiply it by 
+> SCALE (instead of using a power of two).  The -center option can shift 
+> this range of values to highlight a specific region of interest.
+> 
+> Regards,
+
+Don, looks good.  Please check this in.  thanks -- Jules
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From stefan at codesourcery.com  Thu Apr 13 18:15:38 2006
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Thu, 13 Apr 2006 14:15:38 -0400
+Subject: patch: allow to 'make sdist' from inside source directory
+Message-ID: <443E954A.5020401@codesourcery.com>
+
+The attached patch allows the execution of 'make sdist'
+from inside the source directory.
+Checked in.
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: patch
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060413/677c02c6/attachment.ksh>
+
+From assem at codesourcery.com  Fri Apr 14 01:14:51 2006
+From: assem at codesourcery.com (Assem Salama)
+Date: Thu, 13 Apr 2006 21:14:51 -0400
+Subject: SAL Solvers
+Message-ID: <443EF78B.7030005@codesourcery.com>
+
+Everyone,
+  This patch adds the SAL LU and Cholesky solvers to the library. This 
+has support for interleaved and split complex formats.
+
+Thanks,
+Assem Salama
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: ChangeLog.04132006
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060413/693b830b/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: cvs.diff.04132006.1.log
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060413/693b830b/attachment-0001.ksh>
+
+From jules at codesourcery.com  Fri Apr 14 14:23:24 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Fri, 14 Apr 2006 10:23:24 -0400
+Subject: [vsipl++] SAL Solvers
+In-Reply-To: <443EF78B.7030005@codesourcery.com>
+References: <443EF78B.7030005@codesourcery.com>
+Message-ID: <443FB05C.2040503@codesourcery.com>
+
+Assem Salama wrote:
+> Everyone,
+>  This patch adds the SAL LU and Cholesky solvers to the library. This 
+> has support for interleaved and split complex formats.
+
+Assem,
+
+This is looking good.  I have a couple of minor comments below.  Once 
+you address those, please check it in.
+
+One note: the declaration of Is_impl_chold_avail is missing a template 
+parameters.  For this code to compile, VSIP_IMPL_USE_SAL_SOL is not 
+defined.  Before checking this code in, please double check that 
+VSIP_IMPL_USE_SAL_SOL is defined and that the SAL solvers are being 
+exercised.
+
+				thanks,
+				-- Jules
+
+
+>  
+> Index: src/vsip/impl/solver_common.hpp
+> ===================================================================
+> RCS file: src/vsip/impl/solver_common.hpp
+> diff -N src/vsip/impl/solver_common.hpp
+> --- /dev/null	1 Jan 1970 00:00:00 -0000
+> +++ src/vsip/impl/solver_common.hpp	14 Apr 2006 01:14:06 -0000
+> @@ -0,0 +1,57 @@
+> +/* Copyright (c) 2005, 2006 by CodeSourcery, LLC.  All rights reserved. */
+> +
+> +/** @file    vsip/impl/solver_common.hpp
+> +    @author  Assem Salama
+> +    @date    2005-04-13
+> +    @brief   VSIPL++ Library: Common stuff for linear system solvers.
+> +
+> +*/
+> +
+> +#ifndef VSIP_IMPL_SOLVER_COMMON_HPP
+> +#define VSIP_IMPL_SOLVER_COMMON_HPP
+> +
+> +namespace vsip
+> +{
+> +namespace impl
+> +{
+> +
+
+Important!  the template <...> associates with the subsequent 'struct' 
+(or 'class' or function, etc).  It is important that the template 
+declaration be contiguous with the struct it templates.  Otherwise, 
+someone reading the code might think the struct is a regular struct and 
+not a template struct.  The comment below "Structures for availability" 
+should go before the 'template' decl.
+
+> +template <typename   ImplTag,
+> +          typename   T>
+> +
+> +// Structures for availability
+> +struct Is_lud_impl_avail
+> +{
+> +  static bool const value = false;
+> +};
+> +
+
+The Is_chold_impl_avail struct is not templated, but it should be:
+
+> +struct Is_chold_impl_avail
+> +{
+> +  static bool const value = false;
+> +};
+> +
+> +// LUD solver impl class
+> +template <typename T,
+> +          typename ImplTag>
+> +class Lud_impl;
+> +
+> +// CHOLESKY solver impl class
+> +template <typename T,
+> +          typename ImplTag>
+> +class Chold_impl;
+> +
+> +// Implementation tags
+> +struct Lapack_tag;
+> +
+> +
+> +} // namespace vsip::impl
+> +
+> +// Common enums
+> +enum mat_uplo
+> +{
+> +  lower,
+> +  upper
+> +};
+> +
+> +} // namespace vsip
+> +
+> +#endif
+> Index: src/vsip/impl/lapack/solver_cholesky.hpp
+> ===================================================================
+> RCS file: src/vsip/impl/lapack/solver_cholesky.hpp
+> diff -N src/vsip/impl/lapack/solver_cholesky.hpp
+> --- /dev/null	1 Jan 1970 00:00:00 -0000
+> +++ src/vsip/impl/lapack/solver_cholesky.hpp	14 Apr 2006 01:14:06 -0000
+> @@ -0,0 +1,192 @@
+> +/* Copyright (c) 2005, 2006 by CodeSourcery, LLC.  All rights reserved. */
+> +
+> +/** @file    vsip/impl/lapack/solver_cholesky.hpp
+> +    @author  Assem Salama
+> +    @date    2006-04-13
+> +    @brief   VSIPL++ Library: Cholesky Linear system solver using LAPACK.
+> +
+> +*/
+> +
+> +#ifndef VSIP_IMPL_LAPACK_SOLVER_CHOLESKY_HPP
+> +#define VSIP_IMPL_LAPACK_SOLVER_CHOLESKY_HPP
+> +
+> +/***********************************************************************
+> +  Included Files
+> +***********************************************************************/
+> +
+> +#include <algorithm>
+> +
+> +#include <vsip/support.hpp>
+> +#include <vsip/matrix.hpp>
+> +#include <vsip/impl/math-enum.hpp>
+> +#include <vsip/impl/lapack.hpp>
+> +#include <vsip/impl/temp_buffer.hpp>
+> +#include <vsip/impl/solver_common.hpp>
+> +
+> +
+> +/***********************************************************************
+> +  Declarations
+> +***********************************************************************/
+> +
+> +namespace vsip
+> +{
+> +
+> +namespace impl
+> +{
+
+Need to specialize Is_chold_avail for types that Lapack supports
+
+> +
+> +/// Cholesky factorization implementation class.  Common functionality
+> +/// for chold by-value and by-reference classes.
+> +
+> +template <typename T>
+> +class Chold_impl<T, Lapack_tag>
+> +  : Compile_time_assert<blas::Blas_traits<T>::valid>
+> +{
+> +  // BLAS/LAPACK require complex data to be in interleaved format.
+> +  typedef Layout<2, col2_type, Stride_unit_dense, Cmplx_inter_fmt> data_LP;
+> +  typedef Fast_block<2, T, data_LP> data_block_type;
+> +
+> +  // Constructors, copies, assignments, and destructors.
+> +public:
+> +  Chold_impl(mat_uplo, length_type)
+> +    VSIP_THROW((std::bad_alloc));
+> +  Chold_impl(Chold_impl const&)
+> +    VSIP_THROW((std::bad_alloc));
+> +
+> +  Chold_impl& operator=(Chold_impl const&) VSIP_NOTHROW;
+> +  ~Chold_impl() VSIP_NOTHROW;
+> +
+> +  // Accessors.
+> +public:
+> +  length_type length()const VSIP_NOTHROW { return length_; }
+> +  mat_uplo    uplo()  const VSIP_NOTHROW { return uplo_; }
+> +
+> +  // Solve systems.
+> +public:
+> +  template <typename Block>
+> +  bool decompose(Matrix<T, Block>) VSIP_NOTHROW;
+> +
+> +protected:
+> +  template <typename Block0,
+> +	    typename Block1>
+> +  bool impl_solve(const_Matrix<T, Block0>, Matrix<T, Block1>)
+> +    VSIP_NOTHROW;
+> +
+> +  // Member data.
+> +private:
+> +  typedef std::vector<T, Aligned_allocator<T> > vector_type;
+> +
+> +  mat_uplo     uplo_;			// A upper/lower triangular
+> +  length_type  length_;			// Order of A.
+> +
+> +  Matrix<T, data_block_type> data_;	// Factorized Cholesky matrix (A)
+> +};
+
+You should put  a definitions comment block here before starting the 
+member function definitions.  I.e.
+
+/****************** ...
+  Definitions
+  ***************** ... */
+
+> +
+> +
+> +
+> +template <typename T>
+> +Chold_impl<T,Lapack_tag>::Chold_impl(
+> +  mat_uplo    uplo,
+> +  length_type length
+> +  )
+> +VSIP_THROW((std::bad_alloc))
+> +  : uplo_   (uplo),
+> +    length_ (length),
+> +    data_   (length_, length_)
+> +{
+> +  assert(length_ > 0);
+> +  assert(uplo_ == upper || uplo_ == lower);
+> +}
+> +
+
+
+
+
+> Index: src/vsip/impl/lapack/solver_lu.hpp
+> ===================================================================
+> RCS file: src/vsip/impl/lapack/solver_lu.hpp
+> diff -N src/vsip/impl/lapack/solver_lu.hpp
+> --- /dev/null	1 Jan 1970 00:00:00 -0000
+> +++ src/vsip/impl/lapack/solver_lu.hpp	14 Apr 2006 01:14:06 -0000
+> @@ -0,0 +1,225 @@
+> +/* Copyright (c) 2005, 2006 by CodeSourcery, LLC.  All rights reserved. */
+> +
+> +/** @file    vsip/impl/lapack/solver_lu.hpp
+> +    @author  Assem Salama
+> +    @date    2006-04-13
+> +    @brief   VSIPL++ Library: LU linear system solver using lapack.
+> +
+> +*/
+> +
+> +#ifndef VSIP_IMPL_LAPACK_SOLVER_LU_HPP
+> +#define VSIP_IMPL_LAPACK_SOLVER_LU_HPP
+> +
+> +/***********************************************************************
+> +  Included Files
+> +***********************************************************************/
+> +
+> +#include <algorithm>
+> +
+> +#include <vsip/support.hpp>
+> +#include <vsip/matrix.hpp>
+> +#include <vsip/impl/math-enum.hpp>
+> +#include <vsip/impl/lapack.hpp>
+> +#include <vsip/impl/temp_buffer.hpp>
+> +#include <vsip/impl/solver_common.hpp>
+> +
+> +
+> +
+> +/***********************************************************************
+> +  Declarations
+> +***********************************************************************/
+> +
+> +namespace vsip
+> +{
+> +
+> +namespace impl
+> +{
+
+Need to specialize Is_lud_impl_avail for types Lapack supports.
+
+
+
+> Index: src/vsip/impl/sal/solver_cholesky.hpp
+> ===================================================================
+> RCS file: src/vsip/impl/sal/solver_cholesky.hpp
+> diff -N src/vsip/impl/sal/solver_cholesky.hpp
+> --- /dev/null	1 Jan 1970 00:00:00 -0000
+> +++ src/vsip/impl/sal/solver_cholesky.hpp	14 Apr 2006 01:14:06 -0000
+> @@ -0,0 +1,274 @@
+> +/* Copyright (c) 2005, 2006 by CodeSourcery, LLC.  All rights reserved. */
+> +
+> +/** @file    vsip/impl/sal/solver_cholesky.hpp
+> +    @author  Assem Salama
+> +    @date    2006-04-13
+> +    @brief   VSIPL++ Library: Cholesky linear system solver using SAL.
+> +
+> +*/
+> +
+> +#ifndef VSIP_IMPL_SAL_SOLVER_CHOLESKY_HPP
+> +#define VSIP_IMPL_SAL_SOLVER_CHOLESKY_HPP
+> +
+> +/***********************************************************************
+> +  Included Files
+> +***********************************************************************/
+> +
+> +#include <algorithm>
+> +
+> +#include <vsip/support.hpp>
+> +#include <vsip/matrix.hpp>
+> +#include <vsip/impl/math-enum.hpp>
+> +#include <vsip/impl/temp_buffer.hpp>
+> +#include <vsip/impl/working-view.hpp>
+> +#include <vsip/impl/fns_elementwise.hpp>
+> +#include <vsip/impl/solver_common.hpp>
+> +
+> +
+> +/***********************************************************************
+> +  Declarations
+> +***********************************************************************/
+> +
+> +namespace vsip
+> +{
+> +namespace impl
+> +{
+
+Need to specialize Is_chold_impl_avail for types that Mercury_sal_impl 
+supports.
+
+
+
+> +/// Cholesky factorization implementation class.  Common functionality
+> +/// for chold by-value and by-reference classes.
+> +
+> +template <typename T>
+> +class Chold_impl<T,Mercury_sal_tag>
+> +  : impl::Compile_time_assert<blas::Blas_traits<T>::valid>
+
+This isn't the right assertion (Blas_traits<double>::valid is true, but 
+the SAL Chold_impl doesn't support double ... yet!)
+
+Let's drop this compile_time_assert.  We can craft the right one, but 
+Compile_time_assert's do impact compile time, and we're already using 
+Choose_chold_impl to select a good ImplTag.
+
+
+
+> +/// Form Cholesky factorization of matrix A
+> +///
+> +/// Requires
+> +///   A to be a square matrix, either
+> +///     symmetric positive definite (T real), or
+> +///     hermitian positive definite (T complex).
+> +///
+> +/// FLOPS:
+> +///   real   : (1/3) n^3
+> +///   complex: (4/3) n^3
+> +
+> +template <typename T>
+> +template <typename Block>
+> +bool
+> +Chold_impl<T,Mercury_sal_tag>::decompose(Matrix<T, Block> m)
+> +  VSIP_NOTHROW
+> +{
+> +  assert(m.size(0) == length_ && m.size(1) == length_);
+> +
+> +  data_ = m;
+> +  Ext_data<data_block_type> ext(data_.block());
+> +
+> +  if(length_ > 1) 
+> +    sal_mat_chol_dec(
+> +                  ext.data(),               // matrix A, will also store output
+> +		  &idv_[0],                // diagnal vector
+                                              ^^ diagonal (spelling)
+
+> +		  length_);		    // order of matrix A
+> +  return true;
+> +}
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From jules at codesourcery.com  Fri Apr 14 16:31:11 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Fri, 14 Apr 2006 12:31:11 -0400
+Subject: [vsipl++] patch: FFT refactored
+In-Reply-To: <440D0897.2060602@codesourcery.com>
+References: <440D0897.2060602@codesourcery.com>
+Message-ID: <443FCE4F.1060303@codesourcery.com>
+
+Stefan Seefeld wrote:
+> Please find attached a patch containing a first step towards a refactored
+> FFT implementation. This patch factors out different backend into their
+> respective implementation (and subdirectory, for simpler maintenance).
+> Once finished, different backends can be enabled via configure at the same
+> time, and a compile-/runtime-dispatcher will instantiate the appropriate
+> backend for a given FFT(M) object.
+> 
+> Here is a short list of the new files:
+> 
+> src/vsip/impl/fft.hpp : Contains the new public Fft(m) API.
+> src/vsip/impl/fft/backend.hpp : Contains the backend interface definition.
+> src/vsip/impl/fft/factory.hpp : Contains the generic backend factory bits.
+> src/vsip/impl/fft/util.hpp : Contains some utility templates.
+> src/vsip/impl/fft/workspace.hpp : Contains the code responsible for 
+> temporary buffers.
+> src/vsip/impl/fftw3/ : Directory containing the fftw3 bridge (eventually).
+> src/vsip/impl/ipp/ : Directory containing IPP glue code (eventually).
+> src/vsip/impl/sal/ : Directory containing SAL glue code (eventually).
+> 
+> The SAL binding is complete as far as the fft.cpp and fftm.cpp tests are
+> concerned (these new bindings directly support split complex transforms).
+> 
+> However, a number of stubs are still empty, or even wrong. To fill / fix
+> them I would prefer to start by writing more tests to get better coverage
+> of all the supported parameters (non-square matrixes, notably, as well as
+> subviews where strides differ from sizes), before moving forward.
+> 
+> This new code is mostly independent of existing files, i.e. it can coexist
+> and even be tested with minimal changes to the existing sources / build 
+> system.
+> 
+> Thanks,
+>         Stefan
+
+Stefan,
+
+The big picture here looks good.  I have a few comments below, but they 
+are very minor.  I'm looking forward to the updated patch!
+
+
+Also, here are the ideas on using Ext_data that I promised
+
+For a 1-dimensional FFT, you might have something like this:
+
+    template <typename In_LP,
+              typename Out_LP,
+              typename InBlockT,
+              typename OutBlockT>
+    actual_by_ref(InBlockT const& in, OutBlockT& out)
+    {
+      Ext_data<InBlockT, In_LP> in_ext(in);
+      Ext_data<OutBlockT, Out_LP> out_ext(out);
+
+      backend->by_reference(in_ext.data(), in_ext.stride(0),
+                            out_ext.data(), out_ext.stride(0),
+                            in.size(1, 0));
+    }
+
+
+
+    template <typename T,
+              typename Block1,
+              typename Block2>
+    by_ref(const_Vector<T, Block1> in, Vector<T, Block2> out)
+    {
+      // Assumptions
+      //  - if backend supports non-unit-stride, input and output
+      //    can have different strides
+      //  - input and output must have same split/interleaved format.
+
+
+      // Get layout policies for in and out:
+      typedef typename Block_layout<Block1>::type in_LP;
+      typedef typename Block_layout<Block2>::type out_LP;
+
+
+      if (backend_->supports_split_or_interleaved())
+      {
+        // Backend supports either split or interleaved, but
+        // requires both input and output to have same complex
+        // format.  We'll use the output complex format for both:
+        typedef typename out_LP::complex_type complex_type;
+
+
+        // If the backend requires data to be unit-stride, force
+        //    unit-stride.
+        // Also, if the blocks do not support direct-access, then
+        //    were going to copy, so force unit-stride.
+        if (backend_->requires_unit_stride() ||
+            Ext_data_cost<Block1>::value != 0 ||
+            Ext_data_cost<Block2>::value != 0)
+        {
+          // Use same layout for both in and out
+          typedef Layout<1, row1_type, Stride_unit, complex_type>
+                  use_LP;
+
+          actual_by_ref<use_LP, use_LP>(in.block(), out.block());
+        }
+        else
+        {
+          // We want to use the input block's existing layout, except we
+          // want to force the complex_type to match the output block's.
+          typedef typename Adjust_layout<
+                  Layout<1, row1_type, Any_type, complex_type>,
+                  in_LP>::type
+              use_in_LP;
+
+          typedef typename out_LP use_out_LP;
+
+          actual_by_ref<use_in_LP, use_out_LP>(in.block(), out.block());
+        }
+      else if (backend->supports_only_split())
+      {
+        typedef Cmplx_split_fmt complex_type;
+
+        ... repeat everything else ... ugly ...
+      }
+      else // if (backend->supports_only_interleaved())
+      {
+        typedef Cmplx_inter_fmt complex_type;
+
+        ... repeat everything else ... ugly ...
+      }
+    }
+
+This extends to 2-dim by checking whether the backend requires row-major 
+or column-major, but the number of code paths explodes.
+
+If we had a Runtime_ext_data, we could do:
+
+    // assume Runtime_layout looks something like this:
+    struct Runtime_layout
+    {
+      dimension_type Dim;
+      enum_dim_order_type dim_order;
+      enum_packing_type   packing;
+      enum_complex_type   cmplx;
+    };
+
+    template <typename T,
+              typename Block1,
+              typename Block2>
+    by_ref(const_Vector<T, Block1> in, Vector<T, Block2> out)
+    {
+      Runtime_layout in_layout  = layout(in.block());
+      Runtime_layout out_layout = layout(out.block());
+
+      // Setup complex format: split or interleaved.
+      if (backend_->supports_only_split())
+      {
+        in_layout.cmplx  = cmplx_split_format;
+        out_layout.cmplx = cmplx_split_format;
+      }
+      else if (backend_->supports_only_inter())
+      {
+        in_layout.cmplx  = cmplx_inter_format;
+        out_layout.cmplx = cmplx_inter_format;
+      }
+      else // backend_->supports_split_or_inter())
+      {
+        // force both to have same format:
+        in_layout.cmplx = out_layout.cmplx;
+      }
+
+      if (backend->supports_only_row_major())
+      {
+        in_layout.dim_order = row2_value;
+        ...
+      }
+      else if (backend->supports_only_col_major())
+      {
+        ...
+      }
+      else
+      {
+        Q: do we require input and output to have same dim-order?
+      }
+
+      ... check unit-stride & adjust in similar way ...
+
+      // Finally, use Runtime_ext_data
+      Runtime_ext_data<Block1> in_ext(in.block(), in_layout);
+      Runtime_ext-data<Block2> out_ext(out.block(), out_layout);
+
+      backend->by_reference(in_ext.data(), in_ext.stride(0), ...);
+    }
+
+The wrinkle here is that the complex format (split vs interleaved) 
+actually changes the type returned by Ext_data::data(), so we probably 
+need to leave that handled at compile-time.
+
+You could envision pushing the updating of runtime type into the backend:
+
+
+    template <typename T,
+              typename Block1,
+              typename Block2>
+    by_ref(const_Vector<T, Block1> in, Vector<T, Block2> out)
+    {
+      Runtime_layout in_layout  = layout(in.block());
+      Runtime_layout out_layout = layout(out.block());
+
+      // let backend modify these to its liking ...
+      // i.e. maybe it supports different dim-order for input and output,
+      //      maybe it doesn't.
+      backend_->adjust_layout(in_layout, out_layout);
+
+      Runtime_ext_data<Block1> in_ext(in.block(), in_layout);
+      Runtime_ext-data<Block2> out_ext(out.block(), out_layout);
+
+      backend->by_reference(in_ext.data(), in_ext.stride(0), ...);
+    }
+
+
+
+
+
+> Index: src/vsip/impl/fft.hpp
+> ===================================================================
+> RCS file: src/vsip/impl/fft.hpp
+> diff -N src/vsip/impl/fft.hpp
+> --- /dev/null	1 Jan 1970 00:00:00 -0000
+> +++ src/vsip/impl/fft.hpp	7 Mar 2006 03:55:20 -0000
+> @@ -0,0 +1,284 @@
+> +/* Copyright (c) 2006 by CodeSourcery, LLC.  All rights reserved. */
+> +
+> +/** @file    vsip/impl/fft.hpp
+> +    @author  Stefan Seefeld
+> +    @date    2006-02-20
+> +    @brief   VSIPL++ Library: Fft & Fftm class definitions.
+> +*/
+> +
+> +#ifndef VSIP_IMPL_FFT_HPP
+> +#define VSIP_IMPL_FFT_HPP
+> +
+> +#include <vsip/support.hpp>
+> +#include <vsip/impl/config.hpp>
+> +#include <vsip/impl/signal-types.hpp>
+> +#include <vsip/impl/type_list.hpp>
+> +#include <vsip/impl/fft/backend.hpp>
+> +#include <vsip/impl/fft/factory.hpp>
+> +#include <vsip/impl/fft/workspace.hpp>
+> +#ifdef VSIP_IMPL_HAVE_SAL
+> +#include <vsip/impl/sal/fft.hpp>
+> +#endif
+> +#ifdef VSIP_IMPL_HAVE_IPP
+> +#include <vsip/impl/ipp/fft.hpp>
+> +#endif
+> +#if defined(VSIP_IMPL_FFTW3)
+> +#include <vsip/impl/fftw3/fft.hpp>
+> +#endif
+> +
+> +namespace vsip
+> +{
+> +
+> +const int fft_fwd = -2;
+> +const int fft_inv = -1;
+
+Why not use fft_fwd = -1 and fft_inv = 1 ?  Those are more standard, we 
+might be able to pass those values directly to some libraries.
+
+> +
+> +namespace impl
+> +{
+> +namespace fft
+> +{
+
+> +
+> +template <typename inT,
+> +	  typename outT,
+> +	  int A,
+> +	  int D,
+> +	  unsigned nT,
+> +	  alg_hint_type ahT>
+> +class Fftm<inT, outT, A, D, by_value, nT, ahT>
+> +  : public impl::Fft_base<2, inT, outT, 1 - A, by_value>
+
+I'm not convinced that sharing the same base between Fft and Fftm really 
+gains us much.  That said, if it is working and you are happy with it, 
+that is fine, there is no need to change.
+
+Also, it looks like Fft_base doesn't do as much (the backend really does 
+the heavy lifting), making this less of an issue.
+
+
+
+
+> Index: src/vsip/impl/metaprogramming.hpp
+> ===================================================================
+> RCS file: /home/cvs/Repository/vpp/src/vsip/impl/metaprogramming.hpp,v
+> retrieving revision 1.11
+> diff -u -r1.11 metaprogramming.hpp
+> --- src/vsip/impl/metaprogramming.hpp	11 Jan 2006 16:22:45 -0000	1.11
+> +++ src/vsip/impl/metaprogramming.hpp	7 Mar 2006 03:55:20 -0000
+> @@ -125,6 +125,9 @@
+>  struct Int_type
+>  {};
+>  
+> +struct false_type { static const bool value = false; };
+> +struct true_type  { static const bool value = true; };
+> +
+
+Shouldn't we name these 'False_type' and 'True_type' to avoid confusion 
+with typedefs?
+
+
+
+
+> Index: src/vsip/impl/fft/workspace.hpp
+> ===================================================================
+> RCS file: src/vsip/impl/fft/workspace.hpp
+> diff -N src/vsip/impl/fft/workspace.hpp
+> --- /dev/null	1 Jan 1970 00:00:00 -0000
+> +++ src/vsip/impl/fft/workspace.hpp	7 Mar 2006 03:55:20 -0000
+> @@ -0,0 +1,240 @@
+> +/* Copyright (c) 2006 by CodeSourcery, LLC.  All rights reserved. */
+> +
+> +/** @file    vsip/impl/fft/workspace.cpp
+> +    @author  Stefan Seefeld
+> +    @date    2006-02-21
+> +    @brief   VSIPL++ Library: FFT common infrastructure used by all 
+> +    implementations.
+> +*/
+
+
+
+> +
+> +/// workspace for column-wise FFTMs (and column-first 2D FFTs). As all backends
+> +/// support unit-stride in the major dimension, this is optimized for col-major
+> +/// storage.
+> +template <typename inT, typename outT>
+> +class workspace<2, inT, outT, 0>
+> +{
+> +  // TODO: Does this really have to be a block ?
+> +  // A raw array ought to be sufficient...
+
+Yes, a raw array would work fine.  The way input_buffer_ and 
+output_buffer_ are used to allocate buffers for the in_ext and out_ext 
+objects is a bit of a hack.  The pointer returned by Ext_data::data() is 
+only guaranteed to be valid during the lifetime of the Ext_data object.
+
+Two benefits of this approach are: the blocks provide exception handling 
+for bad_alloc, and the block will get the size of the buffer right, in 
+particular if you use Stride_unit_align<> packing format.
+
+I would probably use a raw array here.
+
+
+> +  typedef Fast_block<2, inT,
+> +		     Layout<2, tuple<1,0,2>, Stride_unit_dense, Cmplx_inter_fmt>,
+> +		     Local_map> in_buffer_type;
+> +  typedef Fast_block<2, outT,
+> +		     Layout<2, tuple<1,0,2>, Stride_unit_dense, Cmplx_inter_fmt>,
+> +		     Local_map> out_buffer_type;
+> +
+> +public:
+> +  workspace(Domain<2> const &in, Domain<2> const &out)
+> +    : input_buffer_(in), output_buffer_(out) {}
+> +  
+> +  template <typename BE, typename Block0, typename Block1>
+> +  void by_reference(BE *backend, Block0 const &in, Block1 &out)
+> +  {
+> +    typedef typename Block_layout<Block0>::layout_type in_l;
+> +    typedef typename Block_layout<Block1>::layout_type out_l;
+> +
+> +    typedef Layout<2, tuple<1,0,2>, Stride_unit, typename in_l::complex_type>
+> +      in_trans_layout;
+> +    typedef Layout<2, tuple<1,0,2>, Stride_unit, typename out_l::complex_type>
+> +      out_trans_layout;
+> +
+> +    typedef typename Adjust_layout<typename Block0::value_type,
+> +      in_trans_layout, in_l>::type
+> +      in_layout;
+> +    typedef typename Adjust_layout<typename Block0::value_type,
+> +      out_trans_layout, out_l>::type
+> +      out_layout;
+> +
+> +    Ext_data<Block0, in_layout,No_count_policy,Copy_access_tag>
+> +      in_ext(in, SYNC_IN, Ext_data<in_buffer_type>(input_buffer_).data());
+> +    Ext_data<Block1, out_layout,No_count_policy,Copy_access_tag>
+> +      out_ext(out, SYNC_OUT, Ext_data<out_buffer_type>(output_buffer_).data());
+> +    // If this is a real FFT we need to make sure we pass N, not N/2+1 as size.
+> +    length_type rows = std::max(in_ext.size(0), out_ext.size(0));
+> +    length_type cols = std::max(in_ext.size(1), out_ext.size(1));
+> +    // These blocks are col-major, so we always accept them if their rows have
+> +    // unit-stride.
+> +    if (in_ext.stride(0) == 1 && out_ext.stride(0) == 1)
+> +      backend->by_reference(in_ext.data(), in_ext.stride(0), in_ext.stride(1),
+> +			    out_ext.data(), out_ext.stride(0), out_ext.stride(1),
+> +			    rows, cols);
+> +  }
+> +  template <typename BE, typename BlockT>
+> +  void in_place(BE *backend, BlockT &inout)
+> +  {
+> +    typedef typename Block_layout<BlockT>::layout_type l;
+> +    typedef Layout<2, tuple<1,0,2>, Stride_unit, typename l::complex_type>
+> +      trans_layout;
+> +    typedef typename Adjust_layout<typename BlockT::value_type,
+> +      trans_layout, l>::type
+> +      layout;
+> +    Ext_data<BlockT, layout, No_count_policy,Copy_access_tag> 
+> +      inout_ext(inout, SYNC_INOUT, Ext_data<in_buffer_type>(input_buffer_).data());
+> +    // This block is col-major, so we always accept it if its rows have
+> +    // unit-stride.
+> +    if (inout_ext.stride(0) == 1)
+> +      backend->in_place(inout_ext.data(), inout_ext.stride(0), inout_ext.stride(1),
+> +			inout_ext.size(0), inout_ext.size(1));
+> +  }
+> +private:
+> +  in_buffer_type input_buffer_;
+> +  out_buffer_type output_buffer_;
+> +};
+
+
+> Index: src/vsip/impl/sal/fft.cpp
+> ===================================================================
+> RCS file: src/vsip/impl/sal/fft.cpp
+> diff -N src/vsip/impl/sal/fft.cpp
+> --- /dev/null	1 Jan 1970 00:00:00 -0000
+> +++ src/vsip/impl/sal/fft.cpp	7 Mar 2006 03:55:21 -0000
+> @@ -0,0 +1,1050 @@
+> +/* Copyright (c) 2006 by CodeSourcery, LLC.  All rights reserved. */
+> +
+> +/** @file    vsip/impl/sal/fft.cpp
+> +    @author  Stefan Seefeld
+> +    @date    2006-02-20
+> +    @brief   VSIPL++ Library: FFT wrappers and traits to bridge with 
+> +             Mercury's SAL.
+> +*/
+> +
+
+> +
+> +template <dimension_type D, bool single> struct fft_base;
+> +
+> +template <dimension_type D> struct fft_base<D, true /* single precision */>
+> +{
+> +  typedef float rtype;
+> +  typedef COMPLEX ctype;
+> +  typedef COMPLEX_SPLIT ztype;
+> +
+> +  fft_base(Domain<D> const &dom, long options, rtype scale)
+> +    : scale_(scale)
+> +  {
+> +    length_type size = get_sizes(dom, size_, l2size_);
+> +    unsigned long nbytes = 0;
+> +    fft_setup(size, options, &setup_, &nbytes);
+> +    buffer_ = alloc_align<ctype>(32, dom.size());
+> +  }
+> +  ~fft_base() 
+> +  {
+> +    free_align(buffer_);
+> +    fft_free(&setup_);
+> +  }
+> +  
+> +  void scale(std::complex<rtype> *data, length_type size, rtype s)
+> +  {
+> +    rtype *d = reinterpret_cast<rtype*>(data);
+> +    vsmulx(d, 1, &s, d, 1, 2 * size, ESAL);
+> +  }
+> +  void scale(rtype *data, length_type size, rtype s)
+> +  {
+> +    vsmulx(data, 1, &s, data, 1, size, ESAL);
+> +  }
+
+You could add a scale for split complex data.  It wouldn't remove any of 
+the functions in class fft below, but it would make them more similar.
+
+
+> +
+> +template <typename T, int Axis, bool Fwd>
+> +class impl<1, std::complex<T>, std::complex<T>, Axis, Fwd>
+> +  : private fft_base<1, precision<T>::single>,
+> +    public fft::backend<1, std::complex<T>, std::complex<T>, Axis, Fwd>
+> +{
+> +public:
+> +  impl(Domain<1> const &dom, T scale)
+> +    : fft_base<1, precision<T>::single>(dom, 0, scale) 
+> +  {
+> +  }
+> +
+> +  virtual void in_place(std::complex<T> *data,
+> +			stride_type stride, length_type size)
+> +  {
+> +    assert(stride == 1);
+> +    assert(size == this->size_[0]);
+> +    cip(data, Fwd ? FFT_FORWARD : FFT_INVERSE);
+> +    if (!almost_equal(this->scale_, T(1.)))
+> +      scale(data, this->size_[0], this->scale_);
+> +  }
+> +
+> +  virtual void in_place(std::pair<T *, T *> data,
+> +			stride_type stride, length_type size)
+> +  {
+> +    assert(size == this->size_[0]);
+> +    zip(data, stride, Fwd ? FFT_FORWARD : FFT_INVERSE);
+> +    if (!almost_equal(this->scale_, T(1.)))
+
+If fft_base provided a scale' for split, this would be identical to the 
+previous function.
+
+> +    {
+> +      scale(data.first, this->size_[0], this->scale_);
+> +      scale(data.second, this->size_[0], this->scale_);
+> +    }
+> +  }
+> +
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From syedmoin at dsl.net.pk  Tue Apr 18 02:50:56 2006
+From: syedmoin at dsl.net.pk (syedmoin at dsl.net.pk)
+Date: Tue, 18 Apr 2006 07:50:56 +0500
+Subject: vsipl++ porting
+Message-ID: <20060418075056.ejvgd1tj40gcwoo4@mail.dsl.net.pk>
+
+Dear Sir,
+         am porting VSIPL++ to High Performance DSP i.e Analog Devices 
+TigerSharc TS201S.The FFT routine is provided by Analog Devices and i 
+have incorporated it as function ,calls are similar to FFTW. I am 
+confused wether to incorporate Matrix handling in native assembly or 
+use vsipl++ matrix classes
+
+Anohter thing is TigerSharc has instruction level parallilsm and can 
+execute 4 instructions simultaneously how can i incorporate this thing
+
+
+Regards
+Syed Moinuddin
+
+
+----------------------------------------------------------------
+This message was sent using IMP, the Internet Messaging Program.
+
+
+
+From jules at codesourcery.com  Tue Apr 18 13:16:47 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Tue, 18 Apr 2006 09:16:47 -0400
+Subject: [vsipl++] vsipl++ porting
+In-Reply-To: <20060418075056.ejvgd1tj40gcwoo4@mail.dsl.net.pk>
+References: <20060418075056.ejvgd1tj40gcwoo4@mail.dsl.net.pk>
+Message-ID: <4444E6BF.1070001@codesourcery.com>
+
+
+
+syedmoin at dsl.net.pk wrote:
+> Dear Sir,
+>         am porting VSIPL++ to High Performance DSP i.e Analog Devices 
+> TigerSharc TS201S.The FFT routine is provided by Analog Devices and i 
+> have incorporated it as function ,calls are similar to FFTW. I am 
+> confused wether to incorporate Matrix handling in native assembly or use 
+> vsipl++ matrix classes
+
+Syed,
+
+That is very exciting!
+
+Unfortunately, the FFT dispatch is one of the more complex parts of the 
+library, so it is difficult to suggest exactly how to insert your Matrix 
+FFT routines.  In general, I would recommend something like the following:
+
+For Matrix FFTM (multiple 1-D FFT along either rows or columns of a matrix):
+
+   - Determine if layout of input and output matrices is supported by
+     the Sharc Matrix FFT routine (in particular element strides and
+     row/column strides).  If supported, use the Matrix FFT routine.
+
+   - If the layout is not supported, you can do one of two things:
+
+      - Ask VSIPL++ to reorganize the data into a temporary buffer
+        with the right layout
+
+      - Check if the layout allows Sharc Vector FFT routines to
+        be used.
+
+We're currently updating the FFT dispatch mechanism to make it easier to 
+plug new FFT back-ends in (such as the Sharc FFT routine).  We are also 
+writing documentation on how to call external libraries from VSIPL++, 
+which you may find useful.  I will update you on these as they are ready.
+
+> 
+> Anohter thing is TigerSharc has instruction level parallilsm and can 
+> execute 4 instructions simultaneously how can i incorporate this thing
+>
+
+Are these SIMD type instructions that perform the same operation on 
+multiple data values?
+
+If so, the easiest way to incorporate them right now is to map specific 
+VSIPL++ operations (such as '+') to an external routine that uses the 
+SIMD instructions to add two vectors together.
+
+The 1.0 release of the library does this for the IPP library (vsipl++ 
+element-wise operations such as '+', '-', '*', etc get mapped into 
+corresponding IPP functions).
+
+Our most recent snapshot release of the library provides some generic 
+SIMD functionality.  Using a traits class to describe the SIMD 
+instructions (src/vsip/impl/simd/simd.hpp), it provides generic 
+implementations of vector element-wise multiply 
+(src/vsip/impl/simd/vmul.hpp).  Extending the traits to describe the 
+SHARC's SIMD instructions would let VSIPL++ take advantage of those 
+instructions.
+
+http://www.codesourcery.com/public/vsiplplusplus/sourceryvsipl++-20060403.tar.bz2
+
+Finally, in September 2006, we will release a version of the library 
+that generates SIMD instructions for general loop fusion.  As that 
+becomes available, we can work with you on how to best support the SHARC 
+instructions.
+
+
+If you don't mind, I have a few questions for you to help us serve you 
+better:
+
+  - Can you describe the systems that you are targeting?
+      - Hardware: processor, memory, I/O
+      - Parallelism: Do you have multiple processors?
+      - Software: What compiler do you use?  What computation libraries
+        do you use?  How do you communicate between multiple
+        processors?  What RTOS do you use?
+
+  - Do you use fixed-point or floating-point (or both)?
+
+  - What types of applications are you developing?
+     - signal processing?  image processing?
+     - Is your system real-time?
+
+  - How do you develop applications?
+     - Do you primarily develop on the target hardware, or
+     - Do you develop algorithms on the desktop and then
+       port them?
+     - Would you be interested in a Windows version of VISPL++?
+
+				thanks,
+				-- Jules
+
+> 
+> Regards
+> Syed Moinuddin
+> 
+> 
+> ----------------------------------------------------------------
+> This message was sent using IMP, the Internet Messaging Program.
+> 
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From assem at codesourcery.com  Thu Apr 20 13:26:45 2006
+From: assem at codesourcery.com (Assem Salama)
+Date: Thu, 20 Apr 2006 09:26:45 -0400
+Subject: Matrix mirroring
+Message-ID: <44478C15.8060501@codesourcery.com>
+
+Everyone,
+  It seams this code causes a seg fault. I'm trying to mirror a matrix 
+and transpose at the same time.
+
+Thanks,
+Assem Salama
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: output.hpp
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060420/50aabcc9/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: main.cpp
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060420/50aabcc9/attachment-0001.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: Makefile
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060420/50aabcc9/attachment-0002.ksh>
+
+From jules at codesourcery.com  Thu Apr 20 13:41:25 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Thu, 20 Apr 2006 09:41:25 -0400
+Subject: [vsipl++] Matrix mirroring
+In-Reply-To: <44478C15.8060501@codesourcery.com>
+References: <44478C15.8060501@codesourcery.com>
+Message-ID: <44478F85.8050506@codesourcery.com>
+
+Assem Salama wrote:
+> Everyone,
+>  It seams this code causes a seg fault. I'm trying to mirror a matrix 
+> and transpose at the same time.
+> 
+> Thanks,
+> Assem Salama
+
+Assem,
+
+Can you send out the backtrace from the segfault?  When I run this 
+locally I don't see the segfault.
+
+				-- Jules
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: out
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060420/2dbef6e2/attachment.ksh>
+
+From jules at codesourcery.com  Fri Apr 21 01:18:36 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Thu, 20 Apr 2006 21:18:36 -0400
+Subject: [patch] Transpose fixes, LU/Cholesky fixes
+Message-ID: <444832EC.7030605@codesourcery.com>
+
+This patch fixes transpose to work properly with negative strides. 
+Previously, strides were passed to the transpose functions as 'unsigned' 
+values causing negative strides appeared as large positive strides.  Now 
+strides are passed with 'stride_type' from support.hpp.  Also, 
+length_type and index_type are now used as necessary. 
+transpose-mirror.cpp is a new regression test that exercises this bug/fix.
+
+The patch also fixes a more general problem with transposes of 
+non-unit-stride matrices, which was assuming unit-stride for matrices 
+when subdividing.  transpose-nonunit.cpp is a new regression test that 
+excercises this bug/fix.
+
+Finally, this patch uses the macro VSIP_IMPL_HAVE_SAL to determine 
+whether solver-lu and solver-cholesky should include and use the SAL 
+solvers.  Previously this was using the macro VSIP_IMPL_USE_SAL_SOL 
+which wasn't defined.
+
+Will apply once test suite finishes.
+
+				-- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: trans.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060420/7ce39cbe/attachment.ksh>
+
+From don at codesourcery.com  Fri Apr 21 07:09:08 2006
+From: don at codesourcery.com (Don McCoy)
+Date: Fri, 21 Apr 2006 01:09:08 -0600
+Subject: [patch] HPEC SVD benchmark
+Message-ID: <44488514.7030201@codesourcery.com>
+
+Attached is the Singular Value Decomposition benchmark.  As with the FIR 
+Filter Bank benchmark, there are sets of "interesting" parameters 
+defined by HPEC.
+
+                    SVD input parameters.
+Parameter                                      Values
+   Name    Description                    Set 1  Set 2 Set 3
+     m     Matrix rows                     500    180   150
+
+     n     Matrix columns                  100     60   150
+
+This benchmark covers these parameters in several different ways. 
+First, m is held constant at each of the three specified values while n 
+is varied linearly (from 20 to 210 by default) for both float and 
+complex<float> data types.  A second set of options allow n to be fixed 
+while m is swept similarly.  Lastly, both m and n may be swept together 
+while holding the ratio between them constant (1:1, 3:1 and 1:3).  A 
+full decomposition as well as a "reduced" version may be chosen when 
+sweeping m and n together.
+
+The additional coverage ability provides the means to investigate where 
+performance improvements can be made.  Test runs were done using VSIPL++ 
+configured for ATLAS as well as Intel's MKL.
+
+One note regarding the header test-precision.hpp:  This file currently 
+resides in tests/ but will likely move to src/vsip_csl.  For now, a 
+relative path is hardcoded as "../../tests/".
+
+Regards,
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: svd.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060421/6518fe6f/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: svd.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060421/6518fe6f/attachment-0001.ksh>
+
+From jules at codesourcery.com  Tue Apr 25 18:59:56 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Tue, 25 Apr 2006 14:59:56 -0400
+Subject: [vsipl++] [patch] HPEC benchmark makefiles
+In-Reply-To: <443D0393.50800@codesourcery.com>
+References: <443D0393.50800@codesourcery.com>
+Message-ID: <444E71AC.9070006@codesourcery.com>
+
+Don McCoy wrote:
+> The attached patch moves the HPEC Kernel benchmarks to their own 
+> directory in benchmarks/hpec-kernel/ and includes new makefiles for both 
+> developers and users.
+> 
+> It also fixes an oversight from when the vsip_csl directory was added - 
+> i.e. the installation of this directory when 'make install' is invoked. 
+>  For this, a new makefile was created.  It also contains some of the 
+> directives needed for when we add .cpp files to the extensions library, 
+> although they are not being used at this time.
+> 
+
+Don,
+
+This looks good.  Please check it in.  thanks, -- Jules
+
+
+
+> Index: benchmarks/hpec-kernel/GNUmakefile.inc.in
+> ===================================================================
+> RCS file: benchmarks/hpec-kernel/GNUmakefile.inc.in
+> diff -N benchmarks/hpec-kernel/GNUmakefile.inc.in
+> *** /dev/null	1 Jan 1970 00:00:00 -0000
+> --- benchmarks/hpec-kernel/GNUmakefile.inc.in	12 Apr 2006 07:22:58 -0000
+> ***************
+> *** 0 ****
+> --- 1,43 ----
+> + ######################################################### -*-Makefile-*-
+> + #
+> + # File:   GNUmakefile.inc.in
+> + # Author: Don McCoy
+> + # Date:   2006-04-11
+> + #
+> + # Contents: Makefile fragment for HPEC benchmarks.
+> + #
+> + ########################################################################
+> + 
+> + ########################################################################
+> + # Variables
+> + ########################################################################
+> + 
+> + benchmarks_hpec-kernel_CXXINCLUDES := -I$(srcdir)/benchmarks
+> + benchmarks_hpec-kernel_CXXFLAGS := $(benchmarks_hpec-kernel_CXXINCLUDES)
+
+Does gnumake allow variable names with "-" in them?  If so, this is OK.
+
+If not, let's replace the "-" with a "_" (and update the GNUmakefile.in 
+'norm_dir' function accordingly).
+
+
+> Index: src/vsip_csl/GNUmakefile.inc.in
+> ===================================================================
+> RCS file: src/vsip_csl/GNUmakefile.inc.in
+> diff -N src/vsip_csl/GNUmakefile.inc.in
+> *** /dev/null	1 Jan 1970 00:00:00 -0000
+> --- src/vsip_csl/GNUmakefile.inc.in	12 Apr 2006 07:22:58 -0000
+> ***************
+> *** 0 ****
+> --- 1,43 ----
+> + ######################################################### -*-Makefile-*-
+> + #
+> + # File:   GNUmakefile.inc
+> + # Author: Don McCoy
+> + # Date:   2006-04-11
+> + #
+> + # Contents: Makefile fragment for src/vsip_csl.
+> + #
+> + ########################################################################
+> + 
+> + ########################################################################
+> + # Variables
+> + ########################################################################
+> + 
+> + src_vsip_csl_CXXINCLUDES := -I$(srcdir)/src
+> + src_vsip_csl_CXXFLAGS := $(src_vsip_csl_CXXINCLUDES)
+> + 
+> + src_vsip_csl_cxx_sources := $(wildcard $(srcdir)/src/vsip/*.cpp)
+> + 
+> + src_vsip_csl_cxx_objects := $(patsubst $(srcdir)/%.cpp, %.$(OBJEXT), \
+> + 	                               $(src_vsip_csl_cxx_sources))
+> + cxx_sources += $(src_vsip_csl_cxx_sources)
+> + 
+> + #libs += src/vsip/libvsip.a
+> + ########################################################################
+> + # Rules
+> + ########################################################################
+> + 
+> + all:: src/vsip/libvsip.a
+> + 
+> + #clean::
+> + #	rm -f src/vsip/libvsip_csl.a
+> + 
+> + #src/vsip/libvsip.a: $(src_vsip_csl_cxx_objects)
+> + #	$(AR) rc $@ $^ || rm -f $@
+
+Are these commented out because vsip_csl does not have any object files yet?
+
+Would they cause an error if "commented in"?  If possible, let's do that.
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From don at codesourcery.com  Wed Apr 26 07:11:58 2006
+From: don at codesourcery.com (Don McCoy)
+Date: Wed, 26 Apr 2006 01:11:58 -0600
+Subject: [patch] argument processing header dependency
+Message-ID: <444F1D3E.9040405@codesourcery.com>
+
+The attached patch checks for the presence of the required header before 
+using it in tests/fft_ext/fft_ext.cpp.  If not present, then it defaults 
+to accepting a file name only.
+
+This has not yet been tested on a non-gnu system yet.  (I need a bit of 
+help getting the build environment set correctly on a Sun machine.)
+
+Regards,
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: fe.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060426/c0cd5c2b/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: fe.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060426/c0cd5c2b/attachment-0001.ksh>
+
+From stefan at codesourcery.com  Wed Apr 26 11:23:00 2006
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Wed, 26 Apr 2006 07:23:00 -0400
+Subject: [vsipl++] [patch] argument processing header dependency
+In-Reply-To: <444F1D3E.9040405@codesourcery.com>
+References: <444F1D3E.9040405@codesourcery.com>
+Message-ID: <444F5814.4090103@codesourcery.com>
+
+Don McCoy wrote:
+> The attached patch checks for the presence of the required header before 
+> using it in tests/fft_ext/fft_ext.cpp.  If not present, then it defaults 
+> to accepting a file name only.
+
+Don,
+
+since we do need to make this work without argp.h at least on those
+systems that don't have that header, why not make it work without it
+uniformly ? Each branch point requires additional logic to test that
+each branch works correctly, and configure.ac gets longer with each
+additional test.
+
+In my opinion, if we can avoid argp.h (in particular as it is totally
+orthogonal to the domain we serve), we should.
+
+Regards,
+		Stefan
+
+
+From jules at codesourcery.com  Wed Apr 26 14:51:02 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Wed, 26 Apr 2006 10:51:02 -0400
+Subject: [patch] CLAPACK, Solaris bits
+Message-ID: <444F88D6.2090500@codesourcery.com>
+
+This patch allows either the builtin lapack to use either Fortran LAPACK 
+(--with-lapack=fortran-builtin) or C LAPACK (--with-lapack=builtin). 
+Fortran LAPACK has slightly better performance, but it requires a 
+fortran compiler to build and a libg2c library.  CLAPACK doesn't require 
+a fortran compiler, and it uses libF77, which is now built by VSIPL++.
+
+This lets us continue to use the Fortran LAPACK when building binary 
+packages, while making it easier to build the library from the source 
+package.
+
+This patch also builds libF77 when using CLAPACK, which removes our 
+dependency on libg2c.
+
+This patch changes the ATLAS configure to use 'test =' instead of 'test 
+=='.  Solaris was tripping up on this.
+
+Finally, this patch moves the hypotf decl to the global namespace.  I 
+will test Stefan's suggestion for leaving it in the vsip::impl::fn 
+namespace to see if that works.
+
+				-- Jules
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: solaris.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060426/9afea1ad/attachment.ksh>
+
+From mark at codesourcery.com  Wed Apr 26 15:48:23 2006
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Wed, 26 Apr 2006 08:48:23 -0700
+Subject: [vsipl++] [patch] argument processing header dependency
+In-Reply-To: <444F5814.4090103@codesourcery.com>
+References: <444F1D3E.9040405@codesourcery.com> <444F5814.4090103@codesourcery.com>
+Message-ID: <444F9647.8000503@codesourcery.com>
+
+Stefan Seefeld wrote:
+> Don McCoy wrote:
+>> The attached patch checks for the presence of the required header
+>> before using it in tests/fft_ext/fft_ext.cpp.  If not present, then it
+>> defaults to accepting a file name only.
+> 
+> Don,
+> 
+> since we do need to make this work without argp.h at least on those
+> systems that don't have that header, why not make it work without it
+> uniformly ? Each branch point requires additional logic to test that
+> each branch works correctly, and configure.ac gets longer with each
+> additional test.
+
+I think the thing to do is to choose which option-processing
+functionality to emulate (UNIX getopt, getopt_long, or argp), and then
+emulate it everywhere.  Since implementations of argp and getopt_long
+are probably going to be GPL'd, or at least LGPL'd, we'd probably have
+to roll our own.  Rolling our own getopt implementation (for Windows,
+say) would be easy, so I guess I'd suggest we stick with that limited
+interface, even though clearly argp is the coolest of the three.
+
+The toolchain group has recently been having an active debate about how
+to make things work on Windows, and one of the lessons is that sticking
+to lowest common denominators from the outset makes things easier. :-)
+
+-- 
+Mark Mitchell
+CodeSourcery
+mark at codesourcery.com
+(650) 331-3385 x713
+
+
+From don at codesourcery.com  Wed Apr 26 19:00:12 2006
+From: don at codesourcery.com (Don McCoy)
+Date: Wed, 26 Apr 2006 13:00:12 -0600
+Subject: [vsipl++] [patch] argument processing header dependency
+In-Reply-To: <444F5814.4090103@codesourcery.com>
+References: <444F1D3E.9040405@codesourcery.com> <444F5814.4090103@codesourcery.com>
+Message-ID: <444FC33C.5050005@codesourcery.com>
+
+Stefan Seefeld wrote:
+> since we do need to make this work without argp.h at least on those
+> systems that don't have that header, why not make it work without it
+> uniformly ? 
+
+Revised as suggested.  Ok to commit?
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: fe2.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060426/c860d185/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: fe2.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060426/c860d185/attachment-0001.ksh>
+
+From stefan at codesourcery.com  Wed Apr 26 19:02:11 2006
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Wed, 26 Apr 2006 15:02:11 -0400
+Subject: [vsipl++] [patch] argument processing header dependency
+In-Reply-To: <444FC33C.5050005@codesourcery.com>
+References: <444F1D3E.9040405@codesourcery.com> <444F5814.4090103@codesourcery.com> <444FC33C.5050005@codesourcery.com>
+Message-ID: <444FC3B3.5090801@codesourcery.com>
+
+Don McCoy wrote:
+> Stefan Seefeld wrote:
+>> since we do need to make this work without argp.h at least on those
+>> systems that don't have that header, why not make it work without it
+>> uniformly ? 
+> 
+> Revised as suggested.  Ok to commit?
+
+Looks good.
+
+Thanks,
+		Stefan
+
+
+
+From jules at codesourcery.com  Wed Apr 26 19:03:11 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Wed, 26 Apr 2006 15:03:11 -0400
+Subject: [vsipl++] [patch] argument processing header dependency
+In-Reply-To: <444FC33C.5050005@codesourcery.com>
+References: <444F1D3E.9040405@codesourcery.com> <444F5814.4090103@codesourcery.com> <444FC33C.5050005@codesourcery.com>
+Message-ID: <444FC3EF.2060003@codesourcery.com>
+
+Don McCoy wrote:
+> Stefan Seefeld wrote:
+>> since we do need to make this work without argp.h at least on those
+>> systems that don't have that header, why not make it work without it
+>> uniformly ? 
+> 
+> Revised as suggested.  Ok to commit?
+
+Looks good to me. -- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From jules at codesourcery.com  Fri Apr 28 21:22:59 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Fri, 28 Apr 2006 17:22:59 -0400
+Subject: [patch] Misc fixes
+Message-ID: <445287B3.5050000@codesourcery.com>
+
+This patch
+
+  - Fixes a bug in Aligned_allocator when allocating a block of size 0.
+    alloc_align() would return NULL, which would cause Aligned_allocator
+    to throw an exception.  This did not happen with LAM because it
+    interacts badly with memalign, which caused us to roll our own).
+
+    Now Aligned_allocator bumps size up to 1 if size == 0 so that a
+    valid pointer is always returned.  This is consistent with the
+    behavior of new char[] and std::allocator.
+
+  - Fixes a bug in the parallel/expr.cpp test.  It was using the wrong
+    map to determine if the local processor had a piece of the view to
+    be checked.
+
+  - Fixes a bug in map.hpp when calling impl_subblock_domain
+    subblock == no_subblock.  Should return empty domain.
+
+  - Updates makefiles to install headers for the new vsip/impl
+    subdirectories (sal, lapack, etc).  Also installs new libF77.
+
+  - Replaces MPI prefixes in pkg-config files with a variable
+    that is more easy to override (similar to the replacement
+    done for IPP and MKL).  Updates set-prefix.sh script to
+    set the MPI prefix.
+
+  - Updates quickstart to mention Solaris and using set-prefix.sh
+    to set the MPI prefix.
+
+Patch applied.
+
+				-- Jules
+
+
+
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: sol2.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060428/12321761/attachment.ksh>
+
+From jules at codesourcery.com  Sat Apr 29 04:05:46 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Sat, 29 Apr 2006 00:05:46 -0400
+Subject: [patch] Misc fixes
+Message-ID: <4452E61A.6010104@codesourcery.com>
+
+These patches:
+
+  - Have create src/vsip/impl/{lapack,sal,fft,fftw3,ipp} subdirectories
+    in the $builddir.  These are necessary to build synopsis
+    documentation.
+
+  - Update config file:
+     - Use --with-lapack=fortran-builtin on linux configuratins.
+     - Add configurations for solaris (SerialBuiltinSolaris and
+       ParallelBuiltinSolaris).
+
+  - Separates support for Intel MPI from MPICH.  They're very similar.
+    Intel MPI needs an extra flag '-nocompchk' when calling
+    'mpicxx -show'.  (Before we were passing '-nocompchk' to both
+    MPICH and Intel MPI.  MPICH ignores the flag, passing it to GCC,
+    which was issuing a warning.)
+
+  - Makes installation more portable.  In particular, solaris
+    /bin/sh doesn't like to get an empty list from make.  I.e.
+    in the lib directory, we have something like:
+
+	for file in $(wildcard lib/*.a); do
+	  $(INSTALL) $file
+	done
+
+    If there are no files matching 'lib/*.a', then /bin/sh
+    sees 'for file in ; do ...' which makes it unhappy.
+
+    The fix is to put a bogus entry at the end of the list
+    ('justincase') and check that '$file != justincase'
+    before calling install.
+
+    Seems pretty ugly, but it works.  Any suggestions?
+
+  - Fix /bin/sh portability issues in fix-pkg-config-prefix.sh
+    and release.sh.
+
+  - Fix XML typo in quickstart.
+
+  - Preemptively make Map::impl_num_patches support sb == no_subblock.
+
+Patches applied.
+
+				-- Jules
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: c2.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060429/6123af2e/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: c1.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060429/6123af2e/attachment-0001.ksh>
+

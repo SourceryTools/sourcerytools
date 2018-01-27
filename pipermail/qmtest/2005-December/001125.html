@@ -1,0 +1,257 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> PATCH: Enhance summarize command
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:qmtest%40codesourcery.com?Subject=Re%3A%20PATCH%3A%20Enhance%20summarize%20command&In-Reply-To=%3C200512012117.jB1LH1Ni025956%40sethra.codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001124.html">
+   <LINK REL="Next"  HREF="001126.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>PATCH: Enhance summarize command</H1>
+    <B>Mark Mitchell</B> 
+    <A HREF="mailto:qmtest%40codesourcery.com?Subject=Re%3A%20PATCH%3A%20Enhance%20summarize%20command&In-Reply-To=%3C200512012117.jB1LH1Ni025956%40sethra.codesourcery.com%3E"
+       TITLE="PATCH: Enhance summarize command">mark at codesourcery.com
+       </A><BR>
+    <I>Thu Dec  1 21:17:01 UTC 2005</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001124.html">PATCH: Two small issues
+</A></li>
+        <LI>Next message: <A HREF="001126.html">PATCH: Standardize directory for QMTest extensions
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1125">[ date ]</a>
+              <a href="thread.html#1125">[ thread ]</a>
+              <a href="subject.html#1125">[ subject ]</a>
+              <a href="author.html#1125">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>
+This patch improves the output from commands like:
+
+  qmtest summarize results.qmr foo bar
+
+This command asks for just the results pertaining to the tests for
+&quot;foo&quot; and &quot;bar&quot;.  Previously, if &quot;foo&quot; was UNTESTED because it
+depended on a resource which was not set up successfully, the
+&quot;summarize&quot; output did not show the resource result for the failing
+resource.  This patch teaches &quot;qmtest summarize&quot; to show the resource
+reuslt in that case.
+
+Also, I created standardized names for the C and C++ programming
+languages in CompilerTable.
+
+Applied.
+
+--
+Mark Mitchell
+CodeSourcery, LLC
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">mark at codesourcery.com</A>
+
+2005-12-01  Mark Mitchell  &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">mark at codesourcery.com</A>&gt;
+
+	* qm/test/cmdline.py (QMTest.__ExecuteSummarize): Print resource
+	results for UNTESTED tests.
+	
+	* qm/test/classes/compiler_table.py: Provide standard names for
+	the C and C++ programming languages.
+
+Index: qm/test/cmdline.py
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/test/cmdline.py,v
+retrieving revision 1.117
+diff -c -5 -p -r1.117 cmdline.py
+*** qm/test/cmdline.py	4 Nov 2005 22:07:28 -0000	1.117
+--- qm/test/cmdline.py	1 Dec 2005 21:08:28 -0000
+*************** Valid formats are %s.
+*** 1465,1475 ****
+              filter = 0
+  
+          # Get an iterator over the results.
+          try:
+              results = base.load_results(results_path, database)
+!         except (IOError, xml.sax.SAXException), exception:
+              raise QMException, \
+                    qm.error(&quot;invalid results file&quot;,
+                             path=results_path,
+                             problem=str(exception))
+  
+--- 1465,1475 ----
+              filter = 0
+  
+          # Get an iterator over the results.
+          try:
+              results = base.load_results(results_path, database)
+!         except Exception, exception:
+              raise QMException, \
+                    qm.error(&quot;invalid results file&quot;,
+                             path=results_path,
+                             problem=str(exception))
+  
+*************** Valid formats are %s.
+*** 1484,1515 ****
+              s.WriteAllAnnotations(results.GetAnnotations())
+  
+          # Get the expected outcomes.
+          outcomes = self.__GetExpectedOutcomes()
+  
+!         # Our filtering function.  Should use itertools.ifilter, once
+!         # we can depend on having Python 2.3.
+!         def good(r):
+!             return r.GetKind() == Result.TEST \
+!                    and r.GetId() in test_ids
+! 
+!         # Simulate the events that would have occurred during an
+!         # actual test run.
+          for r in results:
+!             if not filter or good(r):
+!                 for s in streams:
+!                     s.WriteResult(r)
+!                 if (r.GetOutcome()
+!                     != outcomes.get(r.GetId(), Result.PASS)):
+                      any_unexpected_outcomes = 1
+          for s in streams:
+              s.Summarize()
+  
+!         if any_unexpected_outcomes:
+!             return 1
+!         
+!         return 0
+          
+  
+      def __ExecuteRemote(self):
+          &quot;&quot;&quot;Execute the 'remote' command.&quot;&quot;&quot;
+  
+--- 1484,1530 ----
+              s.WriteAllAnnotations(results.GetAnnotations())
+  
+          # Get the expected outcomes.
+          outcomes = self.__GetExpectedOutcomes()
+  
+!         resource_results = {}
+          for r in results:
+!             if filter and r.GetKind() == Result.RESOURCE_SETUP:
+!                 resource_results[r.GetId()] = r
+!             if r.GetKind() != Result.TEST:
+!                 if not filter:
+!                     for s in streams:
+!                         s.WriteResult(r)
+!                 continue
+!             # We now known that r is test result.  If it's not one
+!             # that interests us, we're done.
+!             if filter and r.GetId() not in test_ids:
+!                 continue
+!             # If we're filtering, and this test was not run because it
+!             # depended on a resource that was not set up, emit the
+!             # resource result here.
+!             if (filter
+!                 and r.GetOutcome() == Result.UNTESTED
+!                 and r.has_key(Result.RESOURCE)):
+!                 rid = r[Result.RESOURCE]
+!                 rres = resource_results.get(rid)
+!                 if rres:
+!                     del resource_results[rid]
+!                     for s in streams:
+!                         s.WriteResult(rres)
+!             # Write out the test result.             
+!             for s in streams:
+!                 s.WriteResult(r)
+!                 if (not any_unexpected_outcomes
+!                     and r.GetOutcome() != outcomes.get(r.GetId(),
+!                                                        Result.PASS)):
+                      any_unexpected_outcomes = 1
++         # Shut down the streams.            
+          for s in streams:
+              s.Summarize()
+  
+!         return any_unexpected_outcomes
+          
+  
+      def __ExecuteRemote(self):
+          &quot;&quot;&quot;Execute the 'remote' command.&quot;&quot;&quot;
+  
+Index: qm/test/classes/compiler_table.py
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/test/classes/compiler_table.py,v
+retrieving revision 1.5
+diff -c -5 -p -r1.5 compiler_table.py
+*** qm/test/classes/compiler_table.py	16 Nov 2005 20:41:38 -0000	1.5
+--- qm/test/classes/compiler_table.py	1 Dec 2005 21:08:42 -0000
+*************** class CompilerTable(Resource):
+*** 38,48 ****
+      compiler tests should arrange for the tests they compain to depend
+      on a 'CompilerTable' resource.
+  
+      The first context variable which is examined is
+      'CompilerTable.languages'.  The value should be a
+!     whitespace-separated list of programming language names.
+  
+      Then, for each language 'l' in the list of languages, the
+      following context variables are examined:
+  
+      - 'CompilerTable.l_kind'
+--- 38,49 ----
+      compiler tests should arrange for the tests they compain to depend
+      on a 'CompilerTable' resource.
+  
+      The first context variable which is examined is
+      'CompilerTable.languages'.  The value should be a
+!     whitespace-separated list of programming language names.  (See
+!     below for standardized names for some languages.)
+  
+      Then, for each language 'l' in the list of languages, the
+      following context variables are examined:
+  
+      - 'CompilerTable.l_kind'
+*************** class CompilerTable(Resource):
+*** 79,88 ****
+--- 80,95 ----
+      - 'CompilerTable.target'
+  
+         An instance of 'Host' that can be used to run compiler
+         programs.&quot;&quot;&quot;
+  
++     LANG_C = &quot;c&quot;
++     &quot;&quot;&quot;The name of the C programming language.&quot;&quot;&quot;
++     
++     LANG_CPLUSPLUS = &quot;cplusplus&quot;
++     &quot;&quot;&quot;The name of the C++ programming language.&quot;&quot;&quot;
++     
+      def SetUp(self, context, result):
+  
+          # There are no compilers yet.
+          compilers = {}
+          
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001124.html">PATCH: Two small issues
+</A></li>
+	<LI>Next message: <A HREF="001126.html">PATCH: Standardize directory for QMTest extensions
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1125">[ date ]</a>
+              <a href="thread.html#1125">[ thread ]</a>
+              <a href="subject.html#1125">[ subject ]</a>
+              <a href="author.html#1125">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">More information about the qmtest
+mailing list</a><br>
+</body></html>

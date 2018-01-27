@@ -1,0 +1,798 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> PATCH: Generalize &quot;qmtest create&quot;
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:qmtest%40codesourcery.com?Subject=Re%3A%20PATCH%3A%20Generalize%20%22qmtest%20create%22&In-Reply-To=%3C200507210809.j6L89hB4018139%40sethra.codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001058.html">
+   <LINK REL="Next"  HREF="001062.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>PATCH: Generalize &quot;qmtest create&quot;</H1>
+    <B>Mark Mitchell</B> 
+    <A HREF="mailto:qmtest%40codesourcery.com?Subject=Re%3A%20PATCH%3A%20Generalize%20%22qmtest%20create%22&In-Reply-To=%3C200507210809.j6L89hB4018139%40sethra.codesourcery.com%3E"
+       TITLE="PATCH: Generalize &quot;qmtest create&quot;">mark at codesourcery.com
+       </A><BR>
+    <I>Thu Jul 21 08:09:43 UTC 2005</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001058.html">PATCH: Deprecate special-purpose database methods
+</A></li>
+        <LI>Next message: <A HREF="001062.html">PATCH: Fix typo in DGTest
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1059">[ date ]</a>
+              <a href="thread.html#1059">[ thread ]</a>
+              <a href="subject.html#1059">[ subject ]</a>
+              <a href="author.html#1059">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>
+This patch adds support for generating new entries in a test database
+from the command line.  For example, you can say:
+
+  qmtest create --id=simple -a program=testprog test command.ExecTest
+
+to create a new test named &quot;simple&quot; in your database, using the
+&quot;command.ExecTest&quot; test class, with the &quot;program&quot; argument
+&quot;testprog&quot;.  This will work independently of the storage format used
+by your database.
+
+The old &quot;qmtest create&quot; behavior (generating an XML file) still works;
+if you don't use &quot;--id&quot; you get the old behavior.
+
+Committed.
+
+--
+Mark Mitchell
+CodeSourcery, LLC
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">mark at codesourcery.com</A>
+
+2005-07-21  Mark Mitchell  &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">mark at codesourcery.com</A>&gt;
+
+	* qm/extension.py (Extension.GetClassName): New method.
+	(Extension.GetExplicitArguments): Likewise.
+	(Extension.MakeDomEelement): Use GetExplicitArguments.
+	(parse_descriptor): Add extension_loader.
+	* qm/test/cmdline.py (qm.test.runnable.Runnable): Import it.
+	(QMTest.extension_id_option_spec): New variable.
+	(QMTest.conflicting_option_specs): Update.
+	(QMTest.__ExecuteCreate): Support writing extensions to the
+	database.
+	* qm/test/database.py (Database.GetExtension): Fix typo.
+	* qm/test/doc/reference.xml: Document --id option to &quot;qmtest
+	create&quot;.
+	* qm/test/share/messages/diagnostics.txt (db not modifiable): New
+	message.
+	(no db specified): Update message.
+
+Index: qm/extension.py
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/extension.py,v
+retrieving revision 1.18
+diff -c -5 -p -r1.18 extension.py
+*** qm/extension.py	10 Jun 2005 20:49:40 -0000	1.18
+--- qm/extension.py	21 Jul 2005 08:05:39 -0000
+*************** class Extension(object):
+*** 163,186 ****
+          if field is None:
+              raise AttributeError, name
+          return field.GetDefaultValue()
+  
+  
+!     def MakeDomElement(self, document, element = None):
+!         &quot;&quot;&quot;Create a DOM node for 'self'.
+  
+-         'document' -- The DOM document that will contain the new
+-         element.
+-         
+-         'element' -- If not 'None' the extension element to which items
+-         will be added.  Otherwise, a new element will be created by this
+-         function.
+          
+!         returns -- A new DOM element corresponding to an instance of the
+!         extension class.  The caller is responsible for attaching it to
+!         the 'document'.&quot;&quot;&quot;
+  
+          # Get all of the arguments.
+          arguments = get_class_arguments_as_dictionary(self.__class__)
+          # Determine which subset of the 'arguments' have been set
+          # explicitly.
+          explicit_arguments = {}
+--- 163,187 ----
+          if field is None:
+              raise AttributeError, name
+          return field.GetDefaultValue()
+  
+  
+!     def GetClassName(self):
+!         &quot;&quot;&quot;Return the name of the extension class.
+! 
+!         returns -- A string giving the name of this etension class.&quot;&quot;&quot;
+! 
+!         return get_extension_class_name(self.__class__)
+  
+          
+!     def GetExplicitArguments(self):
+!         &quot;&quot;&quot;Return the arguments to this extension instance.
+  
++         returns -- A dictionary mapping argument names to their
++         values.  Computed arguments are ommitted from the
++         dictionary.&quot;&quot;&quot;
++         
+          # Get all of the arguments.
+          arguments = get_class_arguments_as_dictionary(self.__class__)
+          # Determine which subset of the 'arguments' have been set
+          # explicitly.
+          explicit_arguments = {}
+*************** class Extension(object):
+*** 189,199 ****
+              if field.IsComputed():
+                  continue
+              if self.__dict__.has_key(name):
+                  explicit_arguments[name] = self.__dict__[name]
+  
+!         return make_dom_element(self.__class__, explicit_arguments,
+                                  document, element)
+  
+  
+      def MakeDomDocument(self):
+          &quot;&quot;&quot;Create a DOM document for 'self'.
+--- 190,218 ----
+              if field.IsComputed():
+                  continue
+              if self.__dict__.has_key(name):
+                  explicit_arguments[name] = self.__dict__[name]
+  
+!         return explicit_arguments
+! 
+!         
+!     def MakeDomElement(self, document, element = None):
+!         &quot;&quot;&quot;Create a DOM node for 'self'.
+! 
+!         'document' -- The DOM document that will contain the new
+!         element.
+!         
+!         'element' -- If not 'None' the extension element to which items
+!         will be added.  Otherwise, a new element will be created by this
+!         function.
+!         
+!         returns -- A new DOM element corresponding to an instance of the
+!         extension class.  The caller is responsible for attaching it to
+!         the 'document'.&quot;&quot;&quot;
+! 
+!         return make_dom_element(self.__class__,
+!                                 self.GetExplicitArguments(),
+                                  document, element)
+  
+  
+      def MakeDomDocument(self):
+          &quot;&quot;&quot;Create a DOM document for 'self'.
+*************** def get_class_arguments(extension_class)
+*** 236,245 ****
+--- 255,265 ----
+      arguments in the class hierarchy.&quot;&quot;&quot;
+  
+      assert issubclass(extension_class, Extension)
+      return extension_class._argument_list        
+  
++ 
+  def get_class_arguments_as_dictionary(extension_class):
+      &quot;&quot;&quot;Return the arguments associated with 'extension_class'.
+  
+      'extension_class' -- A class derived from 'Extension'.
+  
+*************** def read_extension_file(file, class_load
+*** 487,511 ****
+      document = qm.xmlutil.load_xml(file)
+      return parse_dom_element(document.documentElement,
+                               class_loader,
+                               attachment_store)
+  
+!     
+! def parse_descriptor(descriptor, class_loader):
+      &quot;&quot;&quot;Parse a descriptor representing an instance of 'Extension'.
+  
+      'descriptor' -- A string representing an instance of 'Extension'.
+      The 'descriptor' has the form 'class(arg1 = &quot;val1&quot;, arg2 = &quot;val2&quot;,
+      ...)'.  The arguments and the parentheses are optional.
+  
+!     If 'class' names a file in the file system, it is assumed to be an
+!     extension file.  Any attributes provided in the descriptor
+!     override those in the file.
+  
+!     'class_loader' -- A callable.  The callable will be passed the
+!     name of the extension class and must return the actual class
+!     object.
+  
+      returns -- A pair ('extension_class', 'arguments') containing the
+      extension class (a class derived from 'Extension') and the
+      arguments (a dictionary mapping names to values) stored in the
+      'element'.  The 'arguments' will have already been processed by
+--- 507,535 ----
+      document = qm.xmlutil.load_xml(file)
+      return parse_dom_element(document.documentElement,
+                               class_loader,
+                               attachment_store)
+  
+! 
+! def parse_descriptor(descriptor, class_loader, extension_loader = None):
+      &quot;&quot;&quot;Parse a descriptor representing an instance of 'Extension'.
+  
+      'descriptor' -- A string representing an instance of 'Extension'.
+      The 'descriptor' has the form 'class(arg1 = &quot;val1&quot;, arg2 = &quot;val2&quot;,
+      ...)'.  The arguments and the parentheses are optional.
+  
+!     'class_loader' -- A callable that, when passed the name of the
+!     extension class, will return the actual Python class object.
+  
+!     'extension_loader' -- A callable that loads an existing extension
+!     given the name of that extension and returns a tuple '(class,
+!     arguments)' where 'class' is a class derived from 'Extension'.  If
+!     'extension_loader' is 'None', or if the 'class' returned is
+!     'None', then if a file exists named 'class', the extension is read
+!     from 'class' as XML.  Any arguments returned by the extension
+!     loader or read from the file system are overridden by the
+!     arguments explicitly provided in the descriptor.
+  
+      returns -- A pair ('extension_class', 'arguments') containing the
+      extension class (a class derived from 'Extension') and the
+      arguments (a dictionary mapping names to values) stored in the
+      'element'.  The 'arguments' will have already been processed by
+*************** def parse_descriptor(descriptor, class_l
+*** 520,536 ****
+      else:
+          # The class name is the part of the descriptor up to the
+          # parenthesis.
+          class_name = descriptor[:open_paren]
+  
+!     # Load the extension class.
+!     if os.path.exists(class_name):
+!         extension_class, orig_arguments \
+!             = read_extension_file(open(class_name), class_loader)
+!     else:
+!         extension_class = class_loader(class_name)
+!         orig_arguments = {}
+  
+      arguments = {}
+      
+      # Parse the arguments.
+      if open_paren != -1:
+--- 544,567 ----
+      else:
+          # The class name is the part of the descriptor up to the
+          # parenthesis.
+          class_name = descriptor[:open_paren]
+  
+!     # Load the extension, if it already exists.
+!     extension_class = None
+!     if extension_loader:
+!         extension = extension_loader(class_name)
+!         if extension:
+!             extension_class = extension.__class__
+!             orig_arguments = extension.GetExplicitArguments()
+!     if not extension_class:
+!         if os.path.exists(class_name):
+!             extension_class, orig_arguments \
+!                 = read_extension_file(open(filename), class_loader)
+!         else:
+!             extension_class = class_loader(class_name)
+!             orig_arguments = {}
+  
+      arguments = {}
+      
+      # Parse the arguments.
+      if open_paren != -1:
+Index: qm/test/cmdline.py
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/test/cmdline.py,v
+retrieving revision 1.108
+diff -c -5 -p -r1.108 cmdline.py
+*** qm/test/cmdline.py	6 Jul 2005 06:24:17 -0000	1.108
+--- qm/test/cmdline.py	21 Jul 2005 08:05:39 -0000
+*************** import qm.platform
+*** 27,36 ****
+--- 27,37 ----
+  from   qm.test import test
+  from   qm.test.result import Result
+  from   qm.test.context import *
+  from   qm.test.execution_engine import *
+  from   qm.test.result_stream import ResultStream
++ from   qm.test.runnable import Runnable
+  from   qm.test.report import ReportGenerator
+  from   qm.trace import *
+  import qm.test.web.web
+  import qm.xmlutil
+  import Queue
+*************** class QMTest:
+*** 138,147 ****
+--- 139,155 ----
+          &quot;o&quot;,
+          &quot;output&quot;,
+          &quot;FILE&quot;,
+          &quot;Write the extension to FILE.&quot;,
+          )
++ 
++     extension_id_option_spec = (
++         &quot;i&quot;,
++         &quot;id&quot;,
++         &quot;NAME&quot;,
++         &quot;Write the extension to the database as NAME.&quot;,
++         )
+          
+      output_option_spec = (
+          &quot;o&quot;,
+          &quot;output&quot;,
+          &quot;FILE&quot;,
+*************** class QMTest:
+*** 298,307 ****
+--- 306,316 ----
+  
+      # Groups of options that should not be used together.
+      conflicting_option_specs = (
+          ( output_option_spec, no_output_option_spec ),
+          ( concurrent_option_spec, targets_option_spec ),
++         ( extension_output_option_spec, extension_id_option_spec ),
+          )
+  
+      global_options_spec = [
+          help_option_spec,
+          version_option_spec,
+*************** class QMTest:
+*** 315,342 ****
+           &quot;&quot;&quot;Create (or update) an extension.
+  
+           The EXTENSION-KIND indicates what kind of extension to
+           create; it must be one of &quot;&quot;&quot; + __extension_kinds_string + &quot;&quot;&quot;.
+  
+!          The CLASS-NAME indicates the name of the extension class.  It
+!          must have the form 'MODULE.CLASS'.  For a list of available
+!          extension classes use &quot;qmtest extensions&quot;.  If the extension
+!          class takes arguments, those arguments can be specified after
+!          the CLASS-NAME as show above.
+  
+           Any &quot;--attribute&quot; options are processed before the arguments
+           specified after the class name.  Therefore, the &quot;--attribute&quot;
+           options can be overridden by the arguments provided after the
+           CLASS-NAME.  If no attributes are specified, the parentheses
+           following the 'CLASS-NAME' can be omitted.
+  
+!          The extension instance is written to the file given by the
+!          &quot;--output&quot; option, or to the standard output if no &quot;--output&quot;
+!          option is present.&quot;&quot;&quot;,
+           ( attribute_option_spec,
+             help_option_spec,
+!            extension_output_option_spec,
+             ),
+           ),
+             
+          (&quot;create-target&quot;,
+           &quot;Create (or update) a target specification.&quot;,
+--- 324,358 ----
+           &quot;&quot;&quot;Create (or update) an extension.
+  
+           The EXTENSION-KIND indicates what kind of extension to
+           create; it must be one of &quot;&quot;&quot; + __extension_kinds_string + &quot;&quot;&quot;.
+  
+!          The CLASS-NAME indicates the name of the extension class, or
+!          the name of an existing extension object.  If the CLASS-NAME
+!          is the name of a extension in the test database, then the 
+! 
+!          In the former case, it must have the form 'MODULE.CLASS'.  For
+!          a list of available extension classes use &quot;qmtest extensions&quot;.
+!          If the extension class takes arguments, those arguments can be
+!          specified after the CLASS-NAME as show above.  In the latter
+!          case,
+  
+           Any &quot;--attribute&quot; options are processed before the arguments
+           specified after the class name.  Therefore, the &quot;--attribute&quot;
+           options can be overridden by the arguments provided after the
+           CLASS-NAME.  If no attributes are specified, the parentheses
+           following the 'CLASS-NAME' can be omitted.
+  
+!          If the &quot;--id&quot; option is given, the extension is written to the
+!          database.  Otherwise, if the &quot;--output&quot; option is given, the
+!          extension is written as XML to the file indicated.  If neither
+!          option is given, the extension is written as XML to the
+!          standard output.&quot;&quot;&quot;,
+           ( attribute_option_spec,
+             help_option_spec,
+!            extension_id_option_spec,
+!            extension_output_option_spec
+             ),
+           ),
+             
+          (&quot;create-target&quot;,
+           &quot;Create (or update) a target specification.&quot;,
+*************** Valid formats are %s.
+*** 882,917 ****
+          
+          # Get the extension kind.
+          kind = self.__arguments[0]
+          self.__CheckExtensionKind(kind)
+  
+!         # Get the --attribute options.
+!         arguments = self.__GetAttributeOptions()
+  
+          # Process the descriptor.
+          (extension_class, more_arguments) \
+               = (qm.extension.parse_descriptor
+!                 (self.__arguments[1],
+!                  lambda n: \
+!                      qm.test.base.get_extension_class(n, kind, database)))
+  
+          # Validate the --attribute options.
+          arguments = qm.extension.validate_arguments(extension_class,
+                                                      arguments)
+          # Override the --attribute options with the arguments provided
+          # as part of the descriptor.
+          arguments.update(more_arguments)
+  
+!         # Figure out what file to use.
+!         filename = self.GetCommandOption(&quot;output&quot;)
+!         if filename is not None:
+!             file = open(filename, &quot;w&quot;)
+          else:
+!             file = sys.stdout
+!                                      
+!         # Write out the file.
+!         qm.extension.write_extension_file(extension_class, arguments, file)
+  
+          return 0
+      
+          
+      def __ExecuteCreateTdb(self, db_path):
+--- 898,954 ----
+          
+          # Get the extension kind.
+          kind = self.__arguments[0]
+          self.__CheckExtensionKind(kind)
+  
+!         extension_id = self.GetCommandOption(&quot;id&quot;)
+!         if extension_id is not None:
+!             if not database:
+!                 raise QMException, qm.error(&quot;no db specified&quot;)
+!             if not database.IsModifiable():
+!                 raise QMException, qm.error(&quot;db not modifiable&quot;)
+!             extension_loader = database.GetExtension
+!         else:
+!             extension_loader = None
+  
++         class_loader = lambda n: \
++             qm.test.base.get_extension_class(n, kind, database)
++         
+          # Process the descriptor.
+          (extension_class, more_arguments) \
+               = (qm.extension.parse_descriptor
+!                 (self.__arguments[1], class_loader, extension_loader))
+  
+          # Validate the --attribute options.
++         arguments = self.__GetAttributeOptions()
+          arguments = qm.extension.validate_arguments(extension_class,
+                                                      arguments)
+          # Override the --attribute options with the arguments provided
+          # as part of the descriptor.
+          arguments.update(more_arguments)
+  
+!         if extension_id is not None:
+!             # Create the extension instance.  Objects derived from
+!             # Runnable require magic additional arguments.
+!             if issubclass(extension_class, Runnable):
+!                 extras = { Runnable.EXTRA_ID : extension_id, 
+!                            Runnable.EXTRA_DATABASE : database }
+!             else:
+!                 extras = {}
+!             extension = extension_class(arguments, **extras)
+!             # Write the extension to the database.
+!             database.WriteExtension(extension_id, extension)
+          else:
+!             # Figure out what file to use.
+!             filename = self.GetCommandOption(&quot;output&quot;)
+!             if filename is not None:
+!                 file = open(filename, &quot;w&quot;)
+!             else:
+!                 file = sys.stdout
+!             # Write out the file.
+!             qm.extension.write_extension_file(extension_class, arguments,
+!                                               file)
+  
+          return 0
+      
+          
+      def __ExecuteCreateTdb(self, db_path):
+Index: qm/test/database.py
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/test/database.py,v
+retrieving revision 1.43
+diff -c -5 -p -r1.43 database.py
+*** qm/test/database.py	21 Jul 2005 05:06:37 -0000	1.43
+--- qm/test/database.py	21 Jul 2005 08:05:39 -0000
+*************** class Database(qm.extension.Extension):
+*** 620,630 ****
+          implements this generic method in terms of the special-purpose
+          methods.&quot;&quot;&quot;
+  
+          for kind in (Database.TEST, Database.RESOURCE):
+              try:
+!                 item = self.GetItem(kind, id).GetItem()
+              except NoSuchItemError:
+                  pass
+              
+          try:
+              return self.GetSuite(id)
+--- 620,630 ----
+          implements this generic method in terms of the special-purpose
+          methods.&quot;&quot;&quot;
+  
+          for kind in (Database.TEST, Database.RESOURCE):
+              try:
+!                 return self.GetItem(kind, id).GetItem()
+              except NoSuchItemError:
+                  pass
+              
+          try:
+              return self.GetSuite(id)
+Index: qm/test/doc/reference.xml
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/test/doc/reference.xml,v
+retrieving revision 1.41
+diff -c -5 -p -r1.41 reference.xml
+*** qm/test/doc/reference.xml	21 Jul 2005 05:06:38 -0000	1.41
+--- qm/test/doc/reference.xml	21 Jul 2005 08:05:46 -0000
+***************
+*** 687,728 ****
+      create a new test or resource.  For a list of the kinds of
+      extensions supported by &qmtest;, run &lt;command&gt;&amp;qmtest-cmd;
+      extensions&lt;/command&gt;.  The &lt;replaceable&gt;kind&lt;/replaceable&gt;
+      must be one of these extension kinds.&lt;/para&gt;
+  
+      &lt;para&gt;The descriptor specifies an extension class and (optionally)
+      attributes for that extension class.  The form of the descriptor is
+      &lt;command&gt;&lt;replaceable&gt;class&lt;/replaceable&gt;(&lt;replaceable&gt;attributes&lt;/replaceable&gt;)&lt;/command&gt;,
+      where the attributes are of the form
+      &lt;command&gt;&lt;replaceable&gt;attr&lt;/replaceable&gt; =
+      &quot;&lt;replaceable&gt;val&lt;/replaceable&gt;&quot;&lt;/command&gt;.  If there
+      are no attributes, the parentheses may be omitted.&lt;/para&gt;
+  
+      &lt;para&gt;The &lt;replaceable&gt;class&lt;/replaceable&gt; may be either the path
+!     to an extension file or a QMTest class name in the form
+      &lt;replaceable&gt;module.class&lt;/replaceable&gt;.  If the
+!     &lt;replaceable&gt;class&lt;/replaceable&gt; is the path to an extension file
+!     (such as an existing test or resource file), the class name used
+!     is the one provided in the file; otherwise the class named used is
+!     the name provided on the command line.&lt;/para&gt;
+  
+      &lt;para&gt;The attributes used to construct the extension instance come
+!     from three sources: the attributes in the extension file (if the
+      &lt;replaceable&gt;class&lt;/replaceable&gt; is the path to an extension
+      file), the &lt;option&gt;&dashdash;attribute&lt;/option&gt; options provided
+      on the command line, and the explicit attributes provided in the
+      descriptor.  If multiple values for the the same attribute name
+      are provided, the value used is taken from the first source in the
+      following list for which there is a value: the rightmost attribute
+      provided in the descriptor, the extension file, or the rightmost
+      &lt;option&gt;&dashdash;attribute&lt;/option&gt; present on the command
+      line.&lt;/para&gt;
+  
+-     &lt;para&gt;The new extension file is written to the file specified with
+-     the &lt;option&gt;&dashdash;output&lt;/option&gt; option, or to the standard
+-     output if no &lt;option&gt;&dashdash;output&lt;/option&gt; is specified.&lt;/para&gt;
+- 
+      &lt;para&gt;The &lt;command&gt;create&lt;/command&gt; command accepts these
+      options:&lt;/para&gt;    
+  
+      &lt;variablelist&gt;
+       &lt;varlistentry&gt;
+--- 687,736 ----
+      create a new test or resource.  For a list of the kinds of
+      extensions supported by &qmtest;, run &lt;command&gt;&amp;qmtest-cmd;
+      extensions&lt;/command&gt;.  The &lt;replaceable&gt;kind&lt;/replaceable&gt;
+      must be one of these extension kinds.&lt;/para&gt;
+  
++     &lt;para&gt;If the &lt;option&gt;&dashdash;id&lt;/option&gt; option is provided then
++     the new instance is created in the test database.  The argument to
++     the &lt;option&gt;&dashdash;id&lt;/option&gt; option gives the name of the
++     instance.  Otherwise, the extension is written as XML to the
++     filename specified by &lt;option&gt;&dashdash;output&lt;/option&gt; option, or
++     to the standard output if no &lt;option&gt;&dashdash;output&lt;/option&gt; is
++     specified.&lt;/para&gt;
++ 
+      &lt;para&gt;The descriptor specifies an extension class and (optionally)
+      attributes for that extension class.  The form of the descriptor is
+      &lt;command&gt;&lt;replaceable&gt;class&lt;/replaceable&gt;(&lt;replaceable&gt;attributes&lt;/replaceable&gt;)&lt;/command&gt;,
+      where the attributes are of the form
+      &lt;command&gt;&lt;replaceable&gt;attr&lt;/replaceable&gt; =
+      &quot;&lt;replaceable&gt;val&lt;/replaceable&gt;&quot;&lt;/command&gt;.  If there
+      are no attributes, the parentheses may be omitted.&lt;/para&gt;
+  
+      &lt;para&gt;The &lt;replaceable&gt;class&lt;/replaceable&gt; may be either the path
+!     to an extensing extension or a QMTest class name in the form
+      &lt;replaceable&gt;module.class&lt;/replaceable&gt;.  If the
+!     &lt;option&gt;&dashdash;id&lt;/option&gt; option has been provided, QMTest
+!     will look for an existing extension in the test database named
+!     &lt;replaceable&gt;class&lt;/replaceable&gt;.  If the
+!     &lt;option&gt;&dashdash;id&lt;/option&gt; option has not been provided, QMTest
+!     will look for an XML file named &lt;replaceable&gt;class&lt;/replaceable&gt;.
+!     In either case, if an existing extension cannot be found, the
+!     &lt;replaceable&gt;class&lt;/replaceable&gt; is interepreted as the name of an
+!     extension class.&lt;/para&gt;
+  
+      &lt;para&gt;The attributes used to construct the extension instance come
+!     from three sources: the attributes in the extant extension (if the
+      &lt;replaceable&gt;class&lt;/replaceable&gt; is the path to an extension
+      file), the &lt;option&gt;&dashdash;attribute&lt;/option&gt; options provided
+      on the command line, and the explicit attributes provided in the
+      descriptor.  If multiple values for the the same attribute name
+      are provided, the value used is taken from the first source in the
+      following list for which there is a value: the rightmost attribute
+      provided in the descriptor, the extension file, or the rightmost
+      &lt;option&gt;&dashdash;attribute&lt;/option&gt; present on the command
+      line.&lt;/para&gt;
+  
+      &lt;para&gt;The &lt;command&gt;create&lt;/command&gt; command accepts these
+      options:&lt;/para&gt;    
+  
+      &lt;variablelist&gt;
+       &lt;varlistentry&gt;
+***************
+*** 738,754 ****
+         and valid values is dependent on the extension class in use.&lt;/para&gt;
+        &lt;/listitem&gt;
+       &lt;/varlistentry&gt;
+  
+       &lt;varlistentry&gt;
+        &lt;term&gt;&lt;option&gt;-o&lt;/option&gt; &lt;replaceable&gt;file&lt;/replaceable&gt;&lt;/term&gt;
+        &lt;term&gt;
+         &lt;option&gt;&dashdash;output&lt;/option&gt; 
+         &lt;replaceable&gt;file&lt;/replaceable&gt;
+        &lt;/term&gt;
+        &lt;listitem&gt;
+!        &lt;para&gt;Write a description of the extension instance to
+         &lt;replaceable&gt;file&lt;/replaceable&gt;.&lt;/para&gt;
+        &lt;/listitem&gt;
+       &lt;/varlistentry&gt;
+      &lt;/variablelist&gt;
+     &lt;/section&gt;
+--- 746,774 ----
+         and valid values is dependent on the extension class in use.&lt;/para&gt;
+        &lt;/listitem&gt;
+       &lt;/varlistentry&gt;
+  
+       &lt;varlistentry&gt;
++       &lt;term&gt;&lt;option&gt;-i&lt;/option&gt; &lt;replaceable&gt;id&lt;/replaceable&gt;&lt;/term&gt;
++       &lt;term&gt;
++        &lt;option&gt;&dashdash;id&lt;/option&gt; 
++        &lt;replaceable&gt;id&lt;/replaceable&gt;
++       &lt;/term&gt;
++       &lt;listitem&gt;
++        &lt;para&gt;Add the extension instance to the database, using 
++        &lt;replaceable&gt;id&lt;/replaceable&gt; as the name of the instance.&lt;/para&gt;
++       &lt;/listitem&gt;
++      &lt;/varlistentry&gt;
++ 
++      &lt;varlistentry&gt;
+        &lt;term&gt;&lt;option&gt;-o&lt;/option&gt; &lt;replaceable&gt;file&lt;/replaceable&gt;&lt;/term&gt;
+        &lt;term&gt;
+         &lt;option&gt;&dashdash;output&lt;/option&gt; 
+         &lt;replaceable&gt;file&lt;/replaceable&gt;
+        &lt;/term&gt;
+        &lt;listitem&gt;
+!        &lt;para&gt;Write the extension instance to
+         &lt;replaceable&gt;file&lt;/replaceable&gt;.&lt;/para&gt;
+        &lt;/listitem&gt;
+       &lt;/varlistentry&gt;
+      &lt;/variablelist&gt;
+     &lt;/section&gt;
+***************
+*** 762,771 ****
+--- 782,809 ----
+    qmtest create -a format=stats -o rs
+           result_stream text_result_stream.TextResultStream(filename=&quot;rs&quot;)]]&gt;&lt;/userinput&gt;&lt;/screen&gt;
+       creates a file called &lt;filename&gt;rs&lt;/filename&gt; containing an
+       instance of &lt;classname&gt;TextResultStream&lt;/classname&gt;.
+      &lt;/para&gt;
++ 
++     &lt;para&gt;
++      This command:
++      &lt;screen&gt;
++       &prompt;&lt;userinput&gt;qmtest create --id=simple -a program=testprog test command.ExecTest&lt;/userinput&gt;
++      &lt;/screen&gt;
++      creates a test named &quot;simple&quot; that executes the program 
++      &lt;filename&gt;testprog&lt;/filename&gt;:
++     &lt;/para&gt;
++ 
++     &lt;para&gt;
++      This command:
++      &lt;screen&gt;
++       &prompt;&lt;userinput&gt;qmtest create --id=copy test simple&lt;/userinput&gt;
++      &lt;/screen&gt;
++      creates a copy of the &quot;simple&quot; test, naming the new version
++      &quot;copy&quot;.
++     &lt;/para&gt;
+     &lt;/section&gt;
+  
+    &lt;/section&gt;
+  
+    &lt;section id=&quot;sec-testcmd-create-target&quot;&gt;
+Index: qm/test/share/messages/diagnostics.txt
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/test/share/messages/diagnostics.txt,v
+retrieving revision 1.12
+diff -c -5 -p -r1.12 diagnostics.txt
+*** qm/test/share/messages/diagnostics.txt	20 Jul 2005 00:42:18 -0000	1.12
+--- qm/test/share/messages/diagnostics.txt	21 Jul 2005 08:05:46 -0000
+*************** The &quot;%(class_name)s&quot; extension class cou
+*** 34,43 ****
+--- 34,46 ----
+  The &quot;%(file)s&quot; target file could not be loaded.
+  
+  @ db path doesn't exist
+  &quot;%(path)s&quot; does not exist. 
+  
++ @ db not modifiable
++ The test database is not modifiable.
++ 
+  @ dependency cycle
+  This test depends on itself, either directly or by way of other tests.
+  
+  @ error loading xml resource
+  A problem occurred while loading the XML resource file &quot;%(resource_id)s&quot;:
+*************** QMTest has created a new test database a
+*** 144,155 ****
+  @ no db specified
+  You must specify the location of the test database.  
+  
+    * Specify the '--db-path' option with the path to the database.
+  
+!   * Or, set the '%(envvar)s' environment variable to the path to the
+!     database. 
+  
+  @ loading class
+  QMTest will load '%(class_name)s' from '%(file_name)s'.
+  
+  @ no id for edit
+--- 147,158 ----
+  @ no db specified
+  You must specify the location of the test database.  
+  
+    * Specify the '--db-path' option with the path to the database.
+  
+!   * Or, set the 'QMTEST_DB_PATH' environment variable to the path 
+!     to the database. 
+  
+  @ loading class
+  QMTest will load '%(class_name)s' from '%(file_name)s'.
+  
+  @ no id for edit
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001058.html">PATCH: Deprecate special-purpose database methods
+</A></li>
+	<LI>Next message: <A HREF="001062.html">PATCH: Fix typo in DGTest
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1059">[ date ]</a>
+              <a href="thread.html#1059">[ thread ]</a>
+              <a href="subject.html#1059">[ subject ]</a>
+              <a href="author.html#1059">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">More information about the qmtest
+mailing list</a><br>
+</body></html>

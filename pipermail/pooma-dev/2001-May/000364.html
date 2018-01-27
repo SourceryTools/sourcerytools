@@ -1,0 +1,169 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> RFA: Patch: Reverse Overzealous makeOwnCopy() Changes
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20RFA%3A%20Patch%3A%20Reverse%20Overzealous%20makeOwnCopy%28%29%20Changes&In-Reply-To=%3C20010523093818.A8449%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000366.html">
+   <LINK REL="Next"  HREF="000365.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>RFA: Patch: Reverse Overzealous makeOwnCopy() Changes</H1>
+    <B>Jeffrey Oldham</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20RFA%3A%20Patch%3A%20Reverse%20Overzealous%20makeOwnCopy%28%29%20Changes&In-Reply-To=%3C20010523093818.A8449%40codesourcery.com%3E"
+       TITLE="RFA: Patch: Reverse Overzealous makeOwnCopy() Changes">oldham at codesourcery.com
+       </A><BR>
+    <I>Wed May 23 16:38:18 UTC 2001</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000366.html">[pooma-dev] Expanding Supported Explicit Instantiations
+</A></li>
+        <LI>Next message: <A HREF="000365.html">RFA: src/Connect/Lux/LuxConnection.h: Add two preprocessor inclusions.
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#364">[ date ]</a>
+              <a href="thread.html#364">[ thread ]</a>
+              <a href="subject.html#364">[ subject ]</a>
+              <a href="author.html#364">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>OK to commit?
+
+Jim Crotinger pointed out that &quot;View&quot; engines aren't supposed to have
+makeOwnCopy().  Thus, I suggest reversing part of my overzealous
+makeOwnCopy() patch.  With the patch (and with the patch I sent out
+yesterday), Dave Nystrom's explicit instantiation code still compiles.
+Also, the Pooma library and all the array_test&lt;N&gt; tests still compile.
+
+2001-05-23  Jeffrey D. Oldham  &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">oldham at codesourcery.com</A>&gt;
+
+        * Engine/CompressibleBrick.cpp
+        (Engine&lt;Dim,T,CompressibleBrickView&gt;::makeOwnCopy()): Remove this
+	incorrectly introduced function.
+        * Engine/CompressibleBrick.h
+	(Engine&lt;Dim,T,CompressibleBrickView&gt;::makeOwnCopy()): Likewise.
+
+Tested on	sequential Linux using gcc 3.0
+Approved by	???Jim Crotinger (<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">jcrotinger at mac.com</A>)???
+
+Thanks,
+Jeffrey D. Oldham
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">oldham at codesourcery.com</A>
+-------------- next part --------------
+Index: CompressibleBrick.cpp
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/Engine/CompressibleBrick.cpp,v
+retrieving revision 1.25
+diff -c -p -r1.25 CompressibleBrick.cpp
+*** CompressibleBrick.cpp	2001/05/14 21:11:23	1.25
+--- CompressibleBrick.cpp	2001/05/15 14:20:24
+*************** Engine(const Engine&lt;Dim,T,CompressibleBr
+*** 501,542 ****
+  
+  //-----------------------------------------------------------------------------
+  //
+- // Engine&lt;Dim,T,CompressibleBrickView&gt; &amp; makeOwnCopy()
+- //
+- // Causes the CompressibleBrickView-Engine to obtain a private copy of the data
+- // that it refers to.
+- //
+- //-----------------------------------------------------------------------------
+- 
+- template &lt;int Dim, class T&gt;
+- Engine&lt;Dim,T,CompressibleBrickView&gt; &amp;Engine&lt;Dim,T,CompressibleBrickView&gt;::makeOwnCopy()
+- {
+-   // JIM: This is probably not thread safe??? 
+-   // There is a race from checking isShared to getting into cblock's
+-   // makeOwnCopy, which is thread safe. As a result, this should only
+-   // be called after a blockAndEvaluate() to ensure that nobody else
+-   // is messing with the underlying CBC while this is
+-   // occuring. (Logically, this is necessary anyway since you probably
+-   // want a copy of the data that results from all previous
+-   // computations having taken place.)  Also, as mentioned elsewhere,
+-   // the current implementation results in copying uncompressed data
+-   // in the parse thread, which will result in incorrect memory
+-   // affinity.
+-   
+-   if (cblock_m.isControllerValidUnlocked() &amp;&amp; cblock_m.isShared()) 
+-     {
+-       cblock_m.detach(this);
+-       cblock_m.makeOwnCopy();
+-       cblock_m.attach(this);
+- 
+-       data0_m = cblock_m.data() + (cblock_m.compressed() ? 0 : baseOffset());
+-     }
+- 
+-   return *this;
+- }
+- 
+- //-----------------------------------------------------------------------------
+- //
+  // Engine&lt;Dim, T, CompressibleBrickView&gt;::
+  // elementsCompressed() const
+  //
+--- 501,506 ----
+Index: CompressibleBrick.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/Engine/CompressibleBrick.h,v
+retrieving revision 1.68
+diff -c -p -r1.68 CompressibleBrick.h
+*** CompressibleBrick.h	2001/05/14 21:11:23	1.68
+--- CompressibleBrick.h	2001/05/15 14:20:25
+*************** public:
+*** 573,582 ****
+      return Layout_t(domain_m).domain();
+    }
+  
+-   // Get a private copy of data viewed by this Engine.
+- 
+-   Engine_t &amp;makeOwnCopy();
+- 
+    // Return the block controller (uncompressed). 
+    // See comments in CompressibleBrick above.
+    
+--- 573,578 ----
+*************** struct NewEngine&lt;Engine&lt;Dim,T,Compressib
+*** 821,831 ****
+  template &lt;int Dim, class T&gt;
+  struct ElementProperties&lt;Engine&lt;Dim, T, CompressibleBrick&gt; &gt; 
+    : public MakeOwnCopyProperties&lt;Engine&lt;Dim, T, CompressibleBrick&gt; &gt;
+- { };
+- 
+- template &lt;int Dim, class T&gt;
+- struct ElementProperties&lt;Engine&lt;Dim, T, CompressibleBrickView&gt; &gt; 
+-   : public MakeOwnCopyProperties&lt;Engine&lt;Dim, T, CompressibleBrickView&gt; &gt;
+  { };
+  
+  
+--- 817,822 ----
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000366.html">[pooma-dev] Expanding Supported Explicit Instantiations
+</A></li>
+	<LI>Next message: <A HREF="000365.html">RFA: src/Connect/Lux/LuxConnection.h: Add two preprocessor inclusions.
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#364">[ date ]</a>
+              <a href="thread.html#364">[ thread ]</a>
+              <a href="subject.html#364">[ subject ]</a>
+              <a href="author.html#364">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

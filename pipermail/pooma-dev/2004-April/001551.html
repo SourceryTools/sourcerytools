@@ -1,0 +1,153 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [PATCH] Add relation like constructor to ScalarCode
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20Add%20relation%20like%20constructor%20to%20ScalarCode&In-Reply-To=%3CPine.LNX.4.53.0404021343430.16380%40bellatrix.tat.physik.uni-tuebingen.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   
+   <LINK REL="Next"  HREF="001553.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[PATCH] Add relation like constructor to ScalarCode</H1>
+    <B>Richard Guenther</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20Add%20relation%20like%20constructor%20to%20ScalarCode&In-Reply-To=%3CPine.LNX.4.53.0404021343430.16380%40bellatrix.tat.physik.uni-tuebingen.de%3E"
+       TITLE="[PATCH] Add relation like constructor to ScalarCode">rguenth at tat.physik.uni-tuebingen.de
+       </A><BR>
+    <I>Fri Apr  2 11:52:30 UTC 2004</I>
+    <P><UL>
+        
+        <LI>Next message: <A HREF="001553.html">[PATCH] Add relation like constructor to ScalarCode
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1551">[ date ]</a>
+              <a href="thread.html#1551">[ thread ]</a>
+              <a href="subject.html#1551">[ subject ]</a>
+              <a href="author.html#1551">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Hi!
+
+This adds a relation functor required constructor to ScalarCode to be able
+to use ScalarCode objects as relation functors.  It also updates
+TestBasicRelations check to excercise this and also adds actual checking
+to the test.
+
+Tested partly (relation and scalarcode tests) on ia32-linux, ok?
+
+Richard.
+
+
+2004Apr02  Richard Guenther &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">richard.guenther at uni-tuebingen.de</A>&gt;
+
+	* src/Evaluator/ScalarCode.h: add copy constructor with
+	extra LHS argument for relation functor compatibility.
+	src/Field/tests/TestBasicRelations.cpp: check using
+	ScalarCode object as relation functor.
+
+===== Evaluator/ScalarCode.h 1.5 vs edited =====
+--- 1.5/r2/src/Evaluator/ScalarCode.h	Thu Oct 23 14:41:02 2003
++++ edited/Evaluator/ScalarCode.h	Fri Apr  2 13:29:26 2004
+@@ -403,6 +403,14 @@
+   {
+   }
+
++  /// Constructor to allow ScalarCode being used as RelationFunctor
++
++  template &lt;class LHS&gt;
++  ScalarCode(const ScalarCode&lt;Function&gt;&amp; sc, const LHS&amp;)
++    : function_m(sc.function_m)
++  {
++  }
++
+   template&lt;class F&gt;
+   static inline bool checkValidity(const F&amp; f, WrappedInt&lt;false&gt;)
+   {
+===== Field/tests/TestBasicRelations.cpp 1.1 vs edited =====
+--- 1.1/r2/src/Field/tests/TestBasicRelations.cpp	Mon May 13 17:47:37 2002
++++ edited/Field/tests/TestBasicRelations.cpp	Fri Apr  2 13:37:14 2004
+@@ -54,10 +54,31 @@
+   }
+ };
+
+-void computePotentialEnergy(const Field_t &amp;U, const Field_t &amp;m, const Field_t &amp;h)
+-{
+-  U = m * g * h;
+-}
++template&lt;int Dim&gt;
++struct computePotentialEnergy {
++  computePotentialEnergy() {}
++  void scalarCodeInfo(ScalarCodeInfo&amp; info) const
++  {
++    info.dimensions(Dim);
++    info.arguments(3);
++    info.write(0, true);
++    info.write(1, false);
++    info.write(2, false);
++    info.useGuards(0, false);
++    info.useGuards(1, false);
++    info.useGuards(2, false);
++    for (int i=0; i&lt;Dim; ++i)
++    {
++      info.lowerExtent(i) = 0;
++      info.upperExtent(i) = 0;
++    }
++  }
++  template &lt;class F1, class F2, class F3&gt;
++  void operator()(const F1&amp; U, const F2&amp; m, const F3&amp; h, const Loc&lt;Dim&gt;&amp; loc) const
++  {
++    U(loc) = m(loc) * g * h(loc);
++  }
++};
+
+ struct ComputeVelocity
+ {
+@@ -102,14 +123,16 @@
+
+   Pooma::newRelation(Pooma::functionPtr(computeTotalEnergy), E, K, U);
+   Pooma::newRelation(ComputeKineticEnergy(), K, m, v);
+-  Pooma::newRelation(Pooma::functionPtr(computePotentialEnergy), U, m, h);
++  Pooma::newRelation(ScalarCode&lt;computePotentialEnergy&lt;2&gt; &gt;(), U, m, h);
+   Pooma::newRelation(Pooma::memberPtr(obj, &amp;ComputeVelocity::doit), v, p, m);
+
+   tester.out() &lt;&lt; E &lt;&lt; std::endl;
++  tester.check(&quot;Total energy at h=4.0&quot;, all(E == 3.0*g*4.0 + 0.5*3.0*pow(2.0/3.0, 2)));
+
+   h = 0;
+
+   tester.out() &lt;&lt; E &lt;&lt; std::endl;
++  tester.check(&quot;Total energy at h=0.0&quot;, all(E == 3.0*g*0.0 + 0.5*3.0*pow(2.0/3.0, 2)));
+
+   int ret = tester.results(&quot;TestBasicRelations&quot;);
+   Pooma::finalize();
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	
+	<LI>Next message: <A HREF="001553.html">[PATCH] Add relation like constructor to ScalarCode
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1551">[ date ]</a>
+              <a href="thread.html#1551">[ thread ]</a>
+              <a href="subject.html#1551">[ subject ]</a>
+              <a href="author.html#1551">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

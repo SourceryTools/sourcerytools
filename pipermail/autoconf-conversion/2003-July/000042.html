@@ -1,0 +1,138 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> New tools and multilibs fight with one another
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:autoconf-conversion%40codesourcery.com?Subject=Re%3A%20New%20tools%20and%20multilibs%20fight%20with%20one%20another&In-Reply-To=%3C20030725190746.GA25246%40disaster.jaj.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000041.html">
+   <LINK REL="Next"  HREF="000043.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>New tools and multilibs fight with one another</H1>
+    <B>Phil Edwards</B> 
+    <A HREF="mailto:autoconf-conversion%40codesourcery.com?Subject=Re%3A%20New%20tools%20and%20multilibs%20fight%20with%20one%20another&In-Reply-To=%3C20030725190746.GA25246%40disaster.jaj.com%3E"
+       TITLE="New tools and multilibs fight with one another">phil at jaj.com
+       </A><BR>
+    <I>Fri Jul 25 19:07:46 UTC 2003</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000041.html">[autoconf-conversion] Updating top-level files for automake
+</A></li>
+        <LI>Next message: <A HREF="000043.html">[autoconf-conversion] New tools and multilibs fight with one another
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#42">[ date ]</a>
+              <a href="thread.html#42">[ thread ]</a>
+              <a href="subject.html#42">[ subject ]</a>
+              <a href="author.html#42">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>But it's a very subtle fight.  Goes like this:
+
+Autoconf 2 has always taken note of env variables like CC.  This is the
+norm for target libraries, since nearly all of their compiler-related
+settings are passed in the environment during the initial configure.
+Autoconf 2.5x now remembers which settings come from the environment,
+and what their values are.  And when it needs to reconfigure, it re-passes
+those arguments on the configure command line.
+
+So, when a target library's configure &quot;source&quot;s the toplevel config-ml.in,
+and config-ml.in looks at the command-line args, all the env variables
+passed down from the toplevel are also visible in the argument list.
+
+Somewhere, some quoting gets lost.
+
+For libstdc++-v3, one of the env options is
+
+    'CXX= ...... -nostdinc++ ....'
+
+config-ml.in loops over each one of the words in CXX, and does the little
+&quot;if they only typed one leading dash, make it two&quot; helper bits, so it's
+&quot;as if&quot;
+
+    'CXX= ...... --nostdinc++ ....'
+
+Then, it tries to interpret each of the options in a manner best described
+as greedy:
+
+      case $option in
+        --*) ;;
+        -*) option=-$option ;;
+      esac
+
+      [....]
+
+      case $option in
+      [....]
+        --norecursion | --no*)
+            ml_norecursion=yes
+            ;;
+
+Using printf-style debugging, I've verified that it sees -nostdinc++,
+and thinks it's seen --norecursion.  And with ml_norecursion set, the
+entire loop (later in the script) which creates the multilibs directory
+structure in the build tree is skipped.
+
+All of the target libraries Makefiles then have code which looks like
+
+    if test -d $the_multilib_dir; then
+        cd there &amp;&amp; do everything
+    else true; fi
+
+As a result, libstdc++ silently fails to build any multilibs.  Only the
+primary library tree is built.  And I suspect that any target library
+which uses a -no* flag passed down from the toplevel configure would see
+the same misbehavior if the new autoconf were applied.  Looking at toplevel
+configure.in, I think that means only libjava at present.
+
+
+Two possible simple fixes, both in config-ml.in:
+
+1)  Kill that &quot;add a leading dash&quot; bit.
+
+2)  Stop assuming that anything beginning with --no must be --no-recursion.
+    (We can insert the - in the middle of the word while we're at it.)
+
+Other fixes are not so simple.  Clearly config-ml.in should not be looking
+&quot;inside&quot; env variables, but I don't know how to change that.
+
+
+Phil
+
+-- 
+If ye love wealth greater than liberty, the tranquility of servitude greater
+than the animating contest for freedom, go home and leave us in peace.  We seek
+not your counsel, nor your arms.  Crouch down and lick the hand that feeds you;
+and may posterity forget that ye were our countrymen.            - Samuel Adams
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000041.html">[autoconf-conversion] Updating top-level files for automake
+</A></li>
+	<LI>Next message: <A HREF="000043.html">[autoconf-conversion] New tools and multilibs fight with one another
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#42">[ date ]</a>
+              <a href="thread.html#42">[ thread ]</a>
+              <a href="subject.html#42">[ subject ]</a>
+              <a href="author.html#42">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/autoconf-conversion">More information about the autoconf-conversion
+mailing list</a><br>
+</body></html>

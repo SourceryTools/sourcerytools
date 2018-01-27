@@ -1,0 +1,115 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [pooma-dev] [PATCH] Fix Engine&lt;.., MultiPatch&lt;..&gt; &gt;::makeOwnC  opy()
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bpooma-dev%5D%20%5BPATCH%5D%20Fix%20Engine%3C..%2C%20MultiPatch%3C..%3E%20%3E%3A%3AmakeOwnC%20%0A%20opy%28%29&In-Reply-To=%3CPine.LNX.4.44.0304222048330.538-100000%40goofy%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001244.html">
+   <LINK REL="Next"  HREF="001246.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[pooma-dev] [PATCH] Fix Engine&lt;.., MultiPatch&lt;..&gt; &gt;::makeOwnC  opy()</H1>
+    <B>Richard Guenther</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bpooma-dev%5D%20%5BPATCH%5D%20Fix%20Engine%3C..%2C%20MultiPatch%3C..%3E%20%3E%3A%3AmakeOwnC%20%0A%20opy%28%29&In-Reply-To=%3CPine.LNX.4.44.0304222048330.538-100000%40goofy%3E"
+       TITLE="[pooma-dev] [PATCH] Fix Engine&lt;.., MultiPatch&lt;..&gt; &gt;::makeOwnC  opy()">rguenth at tat.physik.uni-tuebingen.de
+       </A><BR>
+    <I>Tue Apr 22 18:52:14 UTC 2003</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001244.html">[pooma-dev] [PATCH] Fix Engine&lt;.., MultiPatch&lt;..&gt; &gt;::makeOwnC	 opy()
+</A></li>
+        <LI>Next message: <A HREF="001246.html">GCC 3.2 on Redhat 8.0--a fair number of compiler warnings?
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1245">[ date ]</a>
+              <a href="thread.html#1245">[ thread ]</a>
+              <a href="subject.html#1245">[ subject ]</a>
+              <a href="author.html#1245">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>On Tue, 22 Apr 2003, James Crotinger wrote:
+
+&gt;<i> Ah - gotcha. I missed the '-'.
+</I>&gt;<i>
+</I>&gt;<i> The right thing is to fix makeOwnCopy, of course. This looks like a traits
+</I>&gt;<i> problem - the MultiPatchEngine::PatchContainer_t is a RCBPtr of engines, but
+</I>&gt;<i> the underlying engines have shallow copy semantics. There is a traits class
+</I>&gt;<i> that marks shallow-copy objects appropriately and that can be used to
+</I>&gt;<i> implement copy correctly. In ElementProperties.h there is an
+</I>&gt;<i> ElementProperties base class called MakeOwnCopyProperties that is set up to
+</I>&gt;<i> handle this - what there should be, somewhere, is a specialization:
+</I>&gt;<i>
+</I>&gt;<i>   template &lt;int Dim, class T, class ETag&gt;
+</I>&gt;<i>   template &lt;&gt;
+</I>&gt;<i>   struct ElementProperties&lt;Engine&lt;Dim,T,ETag&gt; &gt;
+</I>&gt;<i>     : public MakeOwnCopyProperties&lt;Engine&lt;Dim,T,ETag&gt; &gt;
+</I>&gt;<i>   { };
+</I>&gt;<i>
+</I>&gt;<i> What puzzles me is that I see this specialization (a partial one) for Brick
+</I>&gt;<i> and several others. So this ought to work for MultiPatch&lt;Brick&gt; and any of
+</I>&gt;<i> the other engines that have done this specialization. (It will not work on
+</I>&gt;<i> views - we went around on this and ultimately decided that doing makeOwnCopy
+</I>&gt;<i> on a view should not be allowed)
+</I>&gt;<i>
+</I>&gt;<i> Hmmm. I don't see a specialization for Remote&lt;Brick&gt;. (Just saw your
+</I>&gt;<i> example.) Is this failing for both Brick and Remote&lt;Brick&gt;? The lack of a
+</I>
+It fails for multipatch engines, both MultiPatch&lt;Tag, Brick&gt; and
+MultiPatch&lt;Tag, Remote&lt;Brick&gt; &gt;, it works for Remote&lt;Brick&gt;.
+
+&gt;<i> ElementProperties specialization for Remote&lt;Brick&gt; is a bug. Any class that
+</I>&gt;<i> has shallow copy semantics and that implements the makeOwnCopy() function
+</I>&gt;<i> should specialize ElementProperties as above.
+</I>
+The problem is, the specialization for ElementProperties for the RCB is
+somehow not working correctly. I dont have time to track this down, so I
+went the route used in FieldEngine::makeOwnCopy(), do it all manually, and
+this solved my problem.
+
+&gt;<i> At any rate, it would probably be good to step through the old code and see
+</I>&gt;<i> where it is ending up in the wrong specialization of ElementProperties.
+</I>&gt;<i> That's a bug that could bite in other places.
+</I>&gt;<i>
+</I>&gt;<i> Looks like spotted another bug wrt the dirty flag - that deep copy is needed
+</I>&gt;<i> regardless of how the engines are copied.
+</I>
+Yes, indeed.
+
+I'll leave it to Jeffrey, wether to apply this patch or leave the bug in.
+
+Thanks,
+
+Richard.
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001244.html">[pooma-dev] [PATCH] Fix Engine&lt;.., MultiPatch&lt;..&gt; &gt;::makeOwnC	 opy()
+</A></li>
+	<LI>Next message: <A HREF="001246.html">GCC 3.2 on Redhat 8.0--a fair number of compiler warnings?
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1245">[ date ]</a>
+              <a href="thread.html#1245">[ thread ]</a>
+              <a href="subject.html#1245">[ subject ]</a>
+              <a href="author.html#1245">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

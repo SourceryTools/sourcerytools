@@ -1,0 +1,2148 @@
+From rguenth at tat.physik.uni-tuebingen.de  Thu Aug  1 09:49:15 2002
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Thu, 1 Aug 2002 11:49:15 +0200 (CEST)
+Subject: Shrink.h and shrinkRightInPlace()
+Message-ID: <Pine.LNX.4.33.0208011146580.1375-100000@bellatrix.tat.physik.uni-tuebingen.de>
+
+Hi!
+
+I just noticed there is exactly one user of shrinkRightInPlace() -
+FieldEngine.h. growRightInPlace is used nowhere. As *Right() and
+*RightInPlace() are functionally equivalent, what about dropping one or
+the other? Were they supposed to be different in any case?
+
+I'd vote for dropping the *InPlace() ones and adding grow/shrinkLeft()
+equivalents (just have a need for them).
+
+Comments?
+
+Richard.
+
+--
+Richard Guenther <richard.guenther at uni-tuebingen.de>
+WWW: http://www.tat.physik.uni-tuebingen.de/~rguenth/
+The GLAME Project: http://www.glame.de/
+
+
+
+From rguenth at tat.physik.uni-tuebingen.de  Fri Aug  2 11:20:53 2002
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Fri, 2 Aug 2002 13:20:53 +0200 (CEST)
+Subject: [PATCH] remove (grow|shrink)InPlace(), add (grow|shrink)Left()
+Message-ID: <Pine.LNX.4.33.0208021316420.1375-300000@bellatrix.tat.physik.uni-tuebingen.de>
+
+Hi!
+
+As suggested - this removes the nearly unused InPlace variants of the
+domain grow/shrink functions. The compiler should optimize this anyway.
+
+Note: this patch contains changes to documentation to be recognized by
+the doxygen tool. This crept in from my local changes to the tree to
+autogenerate reference documentation. I'd like to hear if having local
+diversions of documentation is ok.
+
+Richard.
+
+--
+Richard Guenther <richard.guenther at uni-tuebingen.de>
+WWW: http://www.tat.physik.uni-tuebingen.de/~rguenth/
+The GLAME Project: http://www.glame.de/
+-------------- next part --------------
+2002Aug02  Richard Guenther <richard.guenther at uni-tuebingen.de>
+
+        * Domain/Shrink.h: Doxygen documentation.
+	shrinkRightInPlace(), growRightInPlace(): removed.
+	shrinkLeft(), growLeft(): new.
+	* Field/FieldEngine/FieldEngine.h: Doxygen documentation.
+	FieldEngine(): use shrinkRight(), shrink().
+	* Layout/GuardLayers.h: Doxygen documentation.
+	growInPlace(), shrinkInPlace(): removed.
+
+-------------- next part --------------
+Index: src/Domain/Shrink.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/Domain/Shrink.h,v
+retrieving revision 1.7
+diff -u -r1.7 Shrink.h
+--- src/Domain/Shrink.h	2000/07/25 01:08:39	1.7
++++ src/Domain/Shrink.h	2002/08/02 10:27:45
+@@ -37,12 +37,15 @@
+ 
+ //////////////////////////////////////////////////////////////////////
+ 
+-//-----------------------------------------------------------------------------
+-// Overview: 
+-//
+-// shrinkRight(Interval<Dim>,Loc<Dim>) returns an Interval<Dim> which is
+-// Loc<Dim> shorter in each direction.
+-//-----------------------------------------------------------------------------
++/** @file
++ * @ingroup Domain
++ * @brief
++ * Interval<Dim> shrinking and growing on either side by int or Loc<Dim>.
++ *
++ * Examples:
++ * - shrinkRight(Interval<1>(0, 4), 1) == Interval<1>(0, 3)
++ * - growLeft(Interval<1>(0, 4), 1) == Interval<1>(-1, 4)
++ */
+ 
+ //-----------------------------------------------------------------------------
+ // Typedefs:
+@@ -59,94 +62,126 @@
+ // Forward Declarations:
+ //-----------------------------------------------------------------------------
+ 
+-//-----------------------------------------------------------------------------
+-//
+-// Full Description:
+-//
+-//-----------------------------------------------------------------------------
+ 
++/// Shrinks the Interval dom from the right by s[i] in direction i.
+ template<int Dim>
+-Interval<Dim> &
+-shrinkRightInPlace(Interval<Dim> &dom, const Loc<Dim> &s)
++inline Interval<Dim> 
++shrinkRight(const Interval<Dim> &dom, const Loc<Dim> &s)
+ {
++  Interval<Dim> ret = Pooma::NoInit();
+   for (int d = 0; d < Dim; ++d)
+     {
+       int a = dom[d].first();
+       int b = dom[d].last() - s[d].first();
+-      dom[d] = Interval<1>(a, b);
++      ret[d] = Interval<1>(a, b);
+     }
+-  return dom;
++  return ret;
+ }
+ 
++/// Shrinks the Interval dom from the right by s in every direction.
+ template<int Dim>
+-Interval<Dim> &
+-shrinkRightInPlace(Interval<Dim> &dom, int s)
++inline Interval<Dim> 
++shrinkRight(const Interval<Dim> &dom, int s)
+ {
++  Interval<Dim> ret = Pooma::NoInit();
+   for (int d = 0; d < Dim; ++d)
+     {
+       int a = dom[d].first();
+       int b = dom[d].last() - s;
+-      dom[d] = Interval<1>(a, b);
++      ret[d] = Interval<1>(a, b);
+     }
+-  return dom;
++  return ret;
+ }
+ 
++/// Grows the Interval dom to the right by s[i] in direction i.
+ template<int Dim>
+-Interval<Dim> &
+-growRightInPlace(Interval<Dim> &dom, const Loc<Dim> &s)
++inline Interval<Dim> 
++growRight(const Interval<Dim> &dom, const Loc<Dim> &s)
+ {
++  Interval<Dim> ret = Pooma::NoInit();
+   for (int d = 0; d < Dim; ++d)
+     {
+       int a = dom[d].first();
+       int b = dom[d].last() + s[d].first();
+-      dom[d] = Interval<1>(a, b);
++      ret[d] = Interval<1>(a, b);
+     }
+-  return dom;
++  return ret;
+ }
+ 
++/// Grows the Interval dom to the right by s in every direction.
+ template<int Dim>
+-Interval<Dim> &
+-growRightInPlace(Interval<Dim> &dom, int s)
++inline Interval<Dim> 
++growRight(const Interval<Dim> &dom, int s)
+ {
++  Interval<Dim> ret = Pooma::NoInit();
+   for (int d = 0; d < Dim; ++d)
+     {
+       int a = dom[d].first();
+       int b = dom[d].last() + s;
+-      dom[d] = Interval<1>(a, b);
++      ret[d] = Interval<1>(a, b);
+     }
+-  return dom;
++  return ret;
+ }
+ 
++
++/// Shrinks the Interval dom from the left by s[i] in direction i.
+ template<int Dim>
+-inline Interval<Dim> 
+-shrinkRight(const Interval<Dim> &dom, const Loc<Dim> &s)
++Interval<Dim>
++shrinkLeft(const Interval<Dim> &dom, const Loc<Dim> &s)
+ {
+-  Interval<Dim> ret(dom);
+-  return shrinkRightInPlace(ret, s);
++  Interval<Dim> ret = Pooma::NoInit();
++  for (int d = 0; d < Dim; ++d)
++    {
++      int a = dom[d].first() + s[d].first();
++      int b = dom[d].last();
++      ret[d] = Interval<1>(a, b);
++    }
++  return ret;
+ }
+ 
++/// Shrinks the Interval dom from the left by s in every direction.
+ template<int Dim>
+-inline Interval<Dim> 
+-shrinkRight(const Interval<Dim> &dom, int s)
++Interval<Dim>
++shrinkLeft(const Interval<Dim> &dom, int s)
+ {
+-  Interval<Dim> ret(dom);
+-  return shrinkRightInPlace(ret, s);
++  Interval<Dim> ret = Pooma::NoInit();
++  for (int d = 0; d < Dim; ++d)
++    {
++      int a = dom[d].first() + s;
++      int b = dom[d].last();
++      ret[d] = Interval<1>(a, b);
++    }
++  return ret;
+ }
+ 
++/// Grows the Interval dom to the left by s[i] in direction i.
+ template<int Dim>
+-inline Interval<Dim> 
+-growRight(const Interval<Dim> &dom, const Loc<Dim> &s)
++Interval<Dim>
++growLeft(const Interval<Dim> &dom, const Loc<Dim> &s)
+ {
+-  Interval<Dim> ret(dom);
+-  return growRightInPlace(ret, s);
++  Interval<Dim> ret = Pooma::NoInit();
++  for (int d = 0; d < Dim; ++d)
++    {
++      int a = dom[d].first() - s[d].first();
++      int b = dom[d].last();
++      ret[d] = Interval<1>(a, b);
++    }
++  return ret;
+ }
+ 
++/// Grows the Interval dom to the left by s in every direction.
+ template<int Dim>
+-inline Interval<Dim> 
+-growRight(const Interval<Dim> &dom, int s)
++Interval<Dim>
++growLeft(const Interval<Dim> &dom, int s)
+ {
+-  Interval<Dim> ret(dom);
+-  return growRightInPlace(ret, s);
++  Interval<Dim> ret = Pooma::NoInit();
++  for (int d = 0; d < Dim; ++d)
++    {
++      int a = dom[d].first() - s;
++      int b = dom[d].last();
++      ret[d] = Interval<1>(a, b);
++    }
++  return ret;
+ }
+ 
+ 
+Index: src/Field/FieldEngine/FieldEngine.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/Field/FieldEngine/FieldEngine.h,v
+retrieving revision 1.3
+diff -u -r1.3 FieldEngine.h
+--- src/Field/FieldEngine/FieldEngine.h	2002/07/01 22:25:53	1.3
++++ src/Field/FieldEngine/FieldEngine.h	2002/08/02 10:27:45
+@@ -34,14 +34,16 @@
+ #ifndef POOMA_FIELD_FIELDENGINE_FIELDENGINE_H
+ #define POOMA_FIELD_FIELDENGINE_FIELDENGINE_H
+ 
+-//-----------------------------------------------------------------------------
+-// Overview: 
+-// 
+-// FieldEngineBase and related classes. POOMA supports a flexible form 
+-// of "centering" that allows a hierarchy of multiple centering points per 
+-// cell. The centering information, managed by the FieldEngineBase
+-// class, is initialized using a flexible set of functors.
+-//-----------------------------------------------------------------------------
++/** @file
++ * @ingroup Field
++ * @brief
++ * FieldEngineBase and related classes.
++ *
++ * POOMA supports a flexible form 
++ * of "centering" that allows a hierarchy of multiple centering points per 
++ * cell. The centering information, managed by the FieldEngineBase
++ * class, is initialized using a flexible set of functors.
++ */
+ 
+ //-----------------------------------------------------------------------------
+ // Includes:
+@@ -69,7 +71,7 @@
+ 
+ 
+ // ----------------------------------------------------------------------------
+-// FieldEngineBaseData holds an engine and the relations.
++/// FieldEngineBaseData holds an engine and the relations.
+ // ----------------------------------------------------------------------------
+ 
+ template <int Dim, class T, class EngineTag>
+@@ -119,8 +121,8 @@
+ 
+ 
+ // ----------------------------------------------------------------------------
+-// FieldEngineBase manages a hierarchy of engines, making it possible for
+-// FieldEngine specializations to implement geometry-specific behavior only.
++/// FieldEngineBase manages a hierarchy of engines, making it possible for
++/// FieldEngine specializations to implement geometry-specific behavior only.
+ // ----------------------------------------------------------------------------
+ 
+ template<class Mesh, class T, class EngineTag>
+@@ -146,7 +148,7 @@
+   //---------------------------------------------------------------------------
+   // Constructors.
+ 
+-  // Default constructor.
++  /// Default constructor.
+   
+   FieldEngine()
+     : num_materials_m(0),
+@@ -154,7 +156,7 @@
+       guards_m(0)
+   { }
+   
+-  // General version takes centering, layout, mesh, materials
++  /// General version takes centering, layout, mesh, materials
+ 
+   template<class Layout2>
+   FieldEngine(const Centering<Dim> &centering, const Layout2 &layout,
+@@ -166,8 +168,7 @@
+       guards_m(layout.externalGuards()),
+       mesh_m(mesh)
+   {
+-    shrinkInPlace(physicalCellDomain_m, guards_m);
+-    shrinkRightInPlace(physicalCellDomain_m, 1);
++    physicalCellDomain_m = shrinkRight(shrink(physicalCellDomain_m, guards_m), 1);
+     addSubFields();
+     for (int m = 0; m < num_materials_m; ++m)
+     {
+@@ -178,7 +179,7 @@
+     }
+   }
+ 
+-  // Copy constructor.
++  /// Copy constructor.
+   
+   FieldEngine(const This_t &model)
+     : num_materials_m(model.num_materials_m),
+@@ -191,8 +192,8 @@
+   {
+   }
+ 
+-  // Sub-field view constructor. This is when we want to construct a view of
+-  // one of the subFields in our top-level list.
++  /// Sub-field view constructor. This is when we want to construct a view of
++  /// one of the subFields in our top-level list.
+   
+   FieldEngine(const This_t &model, int subField)
+     : num_materials_m(1),
+@@ -238,7 +239,7 @@
+     data_m = model.data_m + c;
+   }
+ 
+-  // View constructors.  
++  /// View constructors.  
+ 
+   template<class T2, class EngineTag2>
+   FieldEngine(const FieldEngine<Mesh, T2, EngineTag2> &model,
+@@ -276,7 +277,7 @@
+     }
+   }
+ 
+-  // This constructor handle weird things like range views.
++  /// This constructor handle weird things like range views.
+ 
+   template<class Mesh2, class T2, class EngineTag2, class Domain>
+   FieldEngine(const FieldEngine<Mesh2, T2, EngineTag2> &model,
+@@ -437,7 +438,8 @@
+ 
+ 
+   //---------------------------------------------------------------------------
+-  // Accessors and modifiers.
++  //@name Accessors and modifiers.
++  //@{
+     
+   void addSubFields()
+   {
+@@ -449,7 +451,7 @@
+     data_m.resize(size);
+   }
+ 
+-  // FIXME: This function is deprecated.
++  /// FIXME: This function is deprecated.
+   inline int numSubFields() const
+   {
+     if (numMaterials() > 1)
+@@ -509,8 +511,11 @@
+     return num_materials_m;
+   }
+ 
++  //@}
++
+   //---------------------------------------------------------------------------
+-  // Domain accessor functions. 
++  //@name Domain accessor functions. 
++  //@{
+         
+   inline Domain_t &physicalCellDomain()
+   {
+@@ -553,8 +558,11 @@
+     return cellDomainToCenteringDomain(totalCellDomain(), centering_m, i);
+   }
+ 
++  //@}
++
+   //---------------------------------------------------------------------------
+-  // Centering accessors.
++  //@name Centering accessors.
++  //@{
+ 
+   const Centering<Dim> &centering() const
+   {
+@@ -566,8 +574,11 @@
+       return centering_m.size();
+     }
+ 
++  //@}
++
+   //---------------------------------------------------------------------------
+-  // Mesh accessors.
++  //@name Mesh accessors.
++  //@{
+ 
+   Mesh &mesh()
+   {
+@@ -579,8 +590,10 @@
+     return mesh_m;
+   }        
+ 
++  //@}
++
+   //---------------------------------------------------------------------------
+-  // Make a distinct copy of this fieldEngineBase.   
++  /// Make a distinct copy of this fieldEngineBase.
+  
+   template<class Subject>
+   void makeOwnCopy(const Subject &s)
+@@ -609,10 +622,9 @@
+ 
+ 
+   //---------------------------------------------------------------------------
+-  // Domain translation function. 
+-  
+-  // FIXME: This function should go away.  Currently it's only used by
+-  // the lagrangian field engine.
++  /// Domain translation function.
++  /// FIXME: This function should go away.  Currently it's only used by
++  /// the lagrangian field engine.
+ 
+   inline Domain_t
+   translateToVertexDomain(const Domain_t &d) const
+@@ -633,7 +645,8 @@
+   }
+ 
+   //---------------------------------------------------------------------------
+-  // Access material, centering subfield data.
++  //@name Access material, centering subfield data.
++  //@{
+   
+   inline Data_t &
+   data(int material, int centering)
+@@ -641,14 +654,15 @@
+     PAssert(data_m.isValid());
+     return data_m[material * stride_m + centering];
+   }
+-      
++
+   inline const Data_t &
+   data(int material, int centering) const
+   {
+     PAssert(data_m.isValid());
+     return data_m[material * stride_m + centering];
+   }
+-      
++
++  //@}      
+       
+ private:
+ 
+Index: src/Layout/GuardLayers.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/Layout/GuardLayers.h,v
+retrieving revision 1.9
+diff -u -r1.9 GuardLayers.h
+--- src/Layout/GuardLayers.h	2000/07/11 22:10:51	1.9
++++ src/Layout/GuardLayers.h	2002/08/02 10:27:45
+@@ -34,11 +34,11 @@
+ #ifndef POOMA_LAYOUT_GUARDLAYERS_H
+ #define POOMA_LAYOUT_GUARDLAYERS_H
+ 
+-//-----------------------------------------------------------------------------
+-// Overview:
+-//
+-// A simple container for a set of guard layer specifications.
+-//-----------------------------------------------------------------------------
++/** @file
++ * @ingroup Layout
++ * @brief
++ * A simple container for a set of guard layer specifications.
++ */
+ 
+ //-----------------------------------------------------------------------------
+ // Include Files
+@@ -49,12 +49,12 @@
+ 
+ //-----------------------------------------------------------------------------
+ //
+-// Full Description:
++/**
+ //
+ // This class is a simple container for two arrays of Dim integers, 
+ // specifying the numbers of guard layers at the upper and lower extent
+ // of each dimension. 
+-//
++*/
+ //-----------------------------------------------------------------------------
+ 
+ template <int Dim>
+@@ -259,43 +259,31 @@
+ };
+ 
+ template<int Dim>
+-Interval<Dim> &growInPlace(Interval<Dim> &dom, const GuardLayers<Dim> &gcs)
++inline Interval<Dim> 
++grow(const Interval<Dim> &dom, const GuardLayers<Dim> &gcs)
+ {
++  Interval<Dim> ret = Pooma::NoInit();
+   for (int d = 0; d < Dim; ++d)
+     {
+       int a = dom[d].first() - gcs.lower(d);
+       int b = dom[d].last()  + gcs.upper(d);
+-      dom[d] = Interval<1>(a,b);
++      ret[d] = Interval<1>(a,b);
+     }
+-  return dom;
++  return ret;
+ }
+ 
+ template<int Dim>
+-Interval<Dim> &shrinkInPlace(Interval<Dim> &dom, const GuardLayers<Dim> &gcs)
++inline Interval<Dim> 
++shrink(const Interval<Dim> &dom, const GuardLayers<Dim> &gcs)
+ {
++  Interval<Dim> ret = Pooma::NoInit();
+   for (int d = 0; d < Dim; ++d)
+     {
+       int a = dom[d].first() + gcs.lower(d);
+       int b = dom[d].last()  - gcs.upper(d);
+-      dom[d] = Interval<1>(a,b);
++      ret[d] = Interval<1>(a,b);
+     }
+-  return dom;
+-}
+-
+-template<int Dim>
+-inline Interval<Dim> 
+-grow(const Interval<Dim> &dom, const GuardLayers<Dim> &gcs)
+-{
+-  Interval<Dim> ret(dom);
+-  return growInPlace(ret, gcs);
+-}
+-
+-template<int Dim>
+-inline Interval<Dim> 
+-shrink(const Interval<Dim> &dom, const GuardLayers<Dim> &gcs)
+-{
+-  Interval<Dim> ret(dom);
+-  return shrinkInPlace(ret, gcs);
++  return ret;
+ }
+ 
+ //-----------------------------------------------------------------------------
+
+From rguenth at tat.physik.uni-tuebingen.de  Fri Aug  2 11:22:03 2002
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Fri, 2 Aug 2002 13:22:03 +0200 (CEST)
+Subject: [pooma-dev] [PATCH] remove (grow|shrink)InPlace(), add
+ (grow|shrink)Left()
+In-Reply-To: <Pine.LNX.4.33.0208021316420.1375-300000@bellatrix.tat.physik.uni-tuebingen.de>
+Message-ID: <Pine.LNX.4.33.0208021321150.1375-100000@bellatrix.tat.physik.uni-tuebingen.de>
+
+On Fri, 2 Aug 2002, Richard Guenther wrote:
+
+> Hi!
+>
+> As suggested - this removes the nearly unused InPlace variants of the
+> domain grow/shrink functions. The compiler should optimize this anyway.
+
+Forgot to mention:
+
+Tested by compiling and testing serial pooma on ia32-linux.
+
+Richard.
+
+--
+Richard Guenther <richard.guenther at uni-tuebingen.de>
+WWW: http://www.tat.physik.uni-tuebingen.de/~rguenth/
+The GLAME Project: http://www.glame.de/
+
+
+
+From rguenth at tat.physik.uni-tuebingen.de  Tue Aug 13 13:05:13 2002
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Tue, 13 Aug 2002 15:05:13 +0200 (CEST)
+Subject: [PATCH] Make DomainLayout match LayoutBase interface wrt global
+ iterators
+Message-ID: <Pine.LNX.4.33.0208131502480.2429-300000@bellatrix.tat.physik.uni-tuebingen.de>
+
+Hi!
+
+The attached patch adds beginGlobal(), endGlobal() iterators and
+globalSize() to match the interface in LayoutBase.
+
+Compiled and tested on serial i686-pc-linux-gnu.
+
+Richard.
+
+--
+Richard Guenther <richard.guenther at uni-tuebingen.de>
+WWW: http://www.tat.physik.uni-tuebingen.de/~rguenth/
+The GLAME Project: http://www.glame.de/
+-------------- next part --------------
+2002Aug13  Richard Guenther <richard.guenther at uni-tuebingen.de>
+
+        * Layout/DomainLayout.h: added beginGlobal(), endGlobal()
+        iterators, sizeGlobal() as in LayoutBase
+
+-------------- next part --------------
+Index: src/Layout/DomainLayout.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/Layout/DomainLayout.h,v
+retrieving revision 1.25
+diff -u -r1.25 DomainLayout.h
+--- src/Layout/DomainLayout.h	2001/08/30 01:15:27	1.25
++++ src/Layout/DomainLayout.h	2002/08/13 13:01:30
+@@ -339,6 +339,29 @@
+       return size();
+     }
+ 
++  // Return begin and end iterators for the list of all global subdomains
++
++  inline iterator beginGlobal()
++    { 
++      return begin();
++    }
++  inline iterator endGlobal()
++    { 
++      return end();
++    }
++  inline const_iterator beginGlobal() const 
++    { 
++      return begin();
++    }
++  inline const_iterator endGlobal() const
++    { 
++      return end();
++    }
++  inline long sizeGlobal() const
++    {
++      return size();
++    }
++
+   // Return begin and end iterators for the list of all remote subdomains
+ 
+   inline iterator beginRemote()
+
+From rguenth at tat.physik.uni-tuebingen.de  Wed Aug 14 09:43:42 2002
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Wed, 14 Aug 2002 11:43:42 +0200 (CEST)
+Subject: [PATCH] Fix CHEETAH_ROOT in makefile stub
+Message-ID: <Pine.LNX.4.33.0208141139591.2429-300000@bellatrix.tat.physik.uni-tuebingen.de>
+
+Hi!
+
+The attached patch makes CHEETAH_ROOT in the generated makefile stub
+(lib/SUITE/Makefile.pooma-*) match the one in the suite file. This
+fixes problems with user Makefiles including this stub and relying on the
+cheetah lib location at link time.
+
+Tested by building and installing pooma and using the generated makefile
+stub. Tested with cheetah 1.1.4.
+
+Richard.
+
+--
+Richard Guenther <richard.guenther at uni-tuebingen.de>
+WWW: http://www.tat.physik.uni-tuebingen.de/~rguenth/
+The GLAME Project: http://www.glame.de/
+-------------- next part --------------
+2002Aug14  Richard Guenther <richard.guenther at uni-tuebingen.de>
+
+	* configure: Made CHEETAH_ROOT in makefile stub match
+        the one in the suite file.
+
+-------------- next part --------------
+Index: configure
+===================================================================
+RCS file: /home/pooma/Repository/r2/configure,v
+retrieving revision 1.105
+diff -u -r1.105 configure
+--- configure	2001/10/06 00:18:59	1.105
++++ configure	2002/08/14 09:37:55
+@@ -2239,7 +2239,7 @@
+   if ($cheetah)
+     {
+       print MFILE "### settings needed to use CHEETAH for communication\n";
+-      print MFILE "CHEETAH_ROOT          = $cheetah_dir\n";
++      print MFILE "CHEETAH_ROOT          = $cheetah_dir/$cheetah_arch\n";
+       print MFILE "include \$(CHEETAH_ROOT)/$cheetah_lib_subdir/$cheetah_include_makefile\n";
+       print MFILE "\n";
+     }
+
+From cantao at ime.unicamp.br  Wed Aug 14 18:03:23 2002
+From: cantao at ime.unicamp.br (Renato Fernandes =?ISO-8859-1?Q?Cant=E3o?=)
+Date: 14 Aug 2002 15:03:23 -0300
+Subject: Patches...
+Message-ID: <1029348203.2469.38.camel@lei061.lei.ime.unicamp.br>
+
+Hi Guys!
+
+All those patches submited by e-mail are being incorporated into the
+main 2.4 tgz file, or they are accessible only by CVS?
+
+Thanks a lot, Cantao!
+
+-- 
+                     '''
+                    (o o)
++--------------oOOO--(_)----------------------+
+| Renato F. Cantao!                           |
+| Depto. de Matematica Aplicada               |
+| IMECC - UNICAMP                             |
+| Sala 215 - Predio da Pos-graduacao - Lado B |
++--------------------------OOOo---------------+
+                   |__|__|
+                    || ||
+                   ooO Ooo   Linux User #207462
+
+
+
+
+From oldham at codesourcery.com  Wed Aug 14 18:56:33 2002
+From: oldham at codesourcery.com (Jeffrey Oldham)
+Date: Wed, 14 Aug 2002 11:56:33 -0700
+Subject: [pooma-dev] Patches...
+In-Reply-To: <1029348203.2469.38.camel@lei061.lei.ime.unicamp.br>; from cantao@ime.unicamp.br on Wed, Aug 14, 2002 at 03:03:23PM -0300
+References: <1029348203.2469.38.camel@lei061.lei.ime.unicamp.br>
+Message-ID: <20020814115633.C14428@codesourcery.com>
+
+On Wed, Aug 14, 2002 at 03:03:23PM -0300, Renato Fernandes Cant?o wrote:
+> Hi Guys!
+> 
+> All those patches submited by e-mail are being incorporated into the
+> main 2.4 tgz file, or they are accessible only by CVS?
+
+Right now, the patch-submission legal agreement is being decided so
+patches are not being incorporated.  Assuming such an agreeable
+agreement can be obtained, they will be incorporated into the CVS
+repository, not the tgz file.
+
+Thanks for your interest.
+
+Jeffrey D. Oldham
+oldham at codesourcery.com
+
+
+From rguenth at tat.physik.uni-tuebingen.de  Thu Aug 15 08:48:37 2002
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Thu, 15 Aug 2002 10:48:37 +0200 (CEST)
+Subject: [pooma-dev] Patches...
+In-Reply-To: <20020814115633.C14428@codesourcery.com>
+Message-ID: <Pine.LNX.4.33.0208151047470.2429-100000@bellatrix.tat.physik.uni-tuebingen.de>
+
+On Wed, 14 Aug 2002, Jeffrey Oldham wrote:
+
+> On Wed, Aug 14, 2002 at 03:03:23PM -0300, Renato Fernandes Cant?o wrote:
+> > Hi Guys!
+> >
+> > All those patches submited by e-mail are being incorporated into the
+> > main 2.4 tgz file, or they are accessible only by CVS?
+>
+> Right now, the patch-submission legal agreement is being decided so
+> patches are not being incorporated.  Assuming such an agreeable
+> agreement can be obtained, they will be incorporated into the CVS
+> repository, not the tgz file.
+
+I think for the small bugfix like patches such a legal agreement is not
+necessary and so I suppose such patches go into CVS anyway.
+
+Richard.
+
+--
+Richard Guenther <richard.guenther at uni-tuebingen.de>
+WWW: http://www.tat.physik.uni-tuebingen.de/~rguenth/
+The GLAME Project: http://www.glame.de/
+
+
+
+From rguenth at tat.physik.uni-tuebingen.de  Mon Aug 19 08:33:17 2002
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Mon, 19 Aug 2002 10:33:17 +0200 (CEST)
+Subject: [RFC] Use autoconf for (parts of) configuration
+Message-ID: <Pine.LNX.4.33.0208191029140.2429-200000@bellatrix.tat.physik.uni-tuebingen.de>
+
+Hi!
+
+I'd like to hear opinions to getting rid of config/arch/* and instead use
+autoconf to collect equivalent information. A quick try revealed the
+attached patch which shoves the compiler feature bits to a set of
+configure checks. The patch passes compile & check on gcc-2.95.4 and
+gcc-3.1. (The former needs additional patches which I'll send off later)
+
+Any comments, suggestions?
+
+Richard.
+
+--
+Richard Guenther <richard.guenther at uni-tuebingen.de>
+WWW: http://www.tat.physik.uni-tuebingen.de/~rguenth/
+The GLAME Project: http://www.glame.de/
+-------------- next part --------------
+diff --minimal -Nru a/r2/configure b/r2/configure
+--- a/r2/configure	Mon Aug 19 10:28:48 2002
++++ b/r2/configure	Mon Aug 19 10:28:48 2002
+@@ -1695,13 +1695,13 @@
+ ### add settings for non-standard behavior
+ sub setcharacteristics
+ {
+-  # if the system does not have the stringstream class, must use workaround
+-  add_yesno_define("POOMA_NO_STRINGSTREAM",
+-		   $no_stringstream);
++#  # if the system does not have the stringstream class, must use workaround
++#  add_yesno_define("POOMA_NO_STRINGSTREAM",
++#		   $no_stringstream);
+ 
+-  # if the system is missing some of the iostream manipulators, must avoid them
+-  add_yesno_define("POOMA_MISSING_IOMANIPS",
+-		   $no_complete_iomanips);
++#  # if the system is missing some of the iostream manipulators, must avoid them
++#  add_yesno_define("POOMA_MISSING_IOMANIPS",
++#		   $no_complete_iomanips);
+ 
+   # if the C++ compiler does not allow templated friends, must say so
+   add_yesno_define("POOMA_NO_TEMPLATE_FRIENDS",
+@@ -1716,34 +1716,34 @@
+   add_yesno_define("POOMA_NO_OSTREAM_ITERATOR_1ARG",
+ 		   $no_ostream_iterator_1arg);
+ 
+-  # if the compiler does not allow definitions of placement delete operations
+-  add_yesno_define("POOMA_NO_PLACEMENT_DELETE",
+-		   $no_placement_delete);
++#  # if the compiler does not allow definitions of placement delete operations
++#  add_yesno_define("POOMA_NO_PLACEMENT_DELETE",
++#		   $no_placement_delete);
+ 
+   # should we include extra specializations of some things for small dim?
+   add_yesno_define("POOMA_SMALL_DIM_SPECIALIZATIONS",
+ 		   $small_dim_specializations);
+ 
+-  # if the C++ compiler does not allow template parameters to be dependent, 
+-  # on others (e.g., template<int D1, int D2=D1, ...>,  must say so
+-  add_yesno_define("POOMA_NO_DEPENDENT_TEMPLATE_ARGS",
+-		   $no_dependent_templ_args);
++#  # if the C++ compiler does not allow template parameters to be dependent, 
++#  # on others (e.g., template<int D1, int D2=D1, ...>,  must say so
++#  add_yesno_define("POOMA_NO_DEPENDENT_TEMPLATE_ARGS",
++#		   $no_dependent_templ_args);
+ 
+-  # if the C++ library does not have templated complex number class, say so
+-  add_yesno_define("POOMA_NO_TEMPLATED_COMPLEX",
+-		   $no_templated_complex);
++#  # if the C++ library does not have templated complex number class, say so
++#  add_yesno_define("POOMA_NO_TEMPLATED_COMPLEX",
++#		   $no_templated_complex);
+ 
+-  # if the C++ library does not have complex number class in std::, say so
+-  add_yesno_define("POOMA_NO_STD_COMPLEX",
+-		   $no_std_complex);
++#  # if the C++ library does not have complex number class in std::, say so
++#  add_yesno_define("POOMA_NO_STD_COMPLEX",
++#		   $no_std_complex);
+ 
+   # if the C++ library has O_BINARY defined
+   add_yesno_define("POOMA_HAS_O_BINARY_OPEN_MODE",
+                    $o_binary_open_mode);
+ 
+-  # if the C++ library does not have ios_base class in std::, say so
+-  add_yesno_define("POOMA_NO_STD_IOSBASE",
+-		   $no_std_iosbase);
++#  # if the C++ library does not have ios_base class in std::, say so
++#  add_yesno_define("POOMA_NO_STD_IOSBASE",
++#		   $no_std_iosbase);
+ 
+   # if must include <sys/stat.h> for POSIX file modes, say so
+   add_yesno_define("POOMA_INC_SYS_STAT_H_FOR_FILE_MODES",
+@@ -2093,6 +2093,8 @@
+   print FHEADER "#ifndef POOMA_GENERATED_CONFIG_H\n";
+   print FHEADER "#define POOMA_GENERATED_CONFIG_H\n";
+   print FHEADER "\n";
++  print FHEADER "#include \"PoomaAutoconf.h\"\n";
++  print FHEADER "\n";
+ 
+   # go through all the defines, and write them out.  First find max length
+   # of macro names to get spacing right
+@@ -2316,6 +2318,13 @@
+   close MFILE;
+ }
+ 
++sub runautoconf
++{
++  chdir("scripts");
++  unlink("config.cache");
++  system("env CXX=$cpp ./configure");
++  chdir("..");
++}
+ 
+ ###########################################################################
+ #
+@@ -2408,6 +2417,9 @@
+ 
+ ### create dependencies
+ writedependfile;
++
++### run autoconfiguration part
++runautoconf;
+ 
+ ### print out final instructions
+ printinstructions;
+diff --minimal -Nru a/r2/scripts/acconfig.h b/r2/scripts/acconfig.h
+--- /dev/null	Wed Dec 31 16:00:00 1969
++++ b/r2/scripts/acconfig.h	Mon Aug 19 10:28:48 2002
+@@ -0,0 +1,7 @@
++#undef POOMA_NO_STRINGSTREAM
++#undef POOMA_MISSING_IOMANIPS
++#undef POOMA_NO_STD_IOSBASE
++#undef POOMA_NO_STD_COMPLEX
++#undef POOMA_NO_TEMPLATED_COMPLEX
++#undef POOMA_NO_DEPENDENT_TEMPLATE_ARGS
++#undef POOMA_NO_PLACEMENT_DELETE
+diff --minimal -Nru a/r2/scripts/configure.in b/r2/scripts/configure.in
+--- /dev/null	Wed Dec 31 16:00:00 1969
++++ b/r2/scripts/configure.in	Mon Aug 19 10:28:48 2002
+@@ -0,0 +1,123 @@
++AC_INIT(configure.in)
++AC_CONFIG_HEADER([../lib/$POOMASUITE/PoomaAutoconf.h])
++
++AC_PROG_CXX
++AC_PROG_CXXCPP
++
++AC_LANG_CPLUSPLUS
++
++dnl
++dnl check for IO manipulators
++dnl
++AC_MSG_CHECKING([wether we have complete IO manipulators])
++AC_TRY_COMPILE([
++#include <iostream>
++#include <iomanip>
++], [
++	std::cout << std::left;
++], [
++AC_MSG_RESULT([yes])
++] , [
++AC_MSG_RESULT([no])
++AC_DEFINE(POOMA_MISSING_IOMANIPS)
++])
++
++dnl
++dnl check for std iosbase
++dnl
++AC_MSG_CHECKING([wether we have a standard iosbase class])
++AC_TRY_COMPILE([
++#include <iostream>
++#include <iomanip>
++class Inform;
++inline Inform &operator<<(Inform &o, std::ios_base &(*d)(std::ios_base &))
++{
++}
++], [
++], [
++AC_MSG_RESULT([yes])
++] , [
++AC_MSG_RESULT([no])
++AC_DEFINE(POOMA_NO_STD_IOSBASE)
++])
++
++dnl
++dnl check for stringstream
++dnl
++AC_MSG_CHECKING([wether we have sstream])
++AC_TRY_COMPILE([
++#include <sstream>
++], [
++	std::ostringstream *msg;
++], [
++AC_MSG_RESULT([yes])
++] , [
++AC_MSG_RESULT([no])
++AC_DEFINE(POOMA_NO_STRINGSTREAM)
++])
++
++dnl
++dnl check for complex in std and templated complex
++dnl
++AC_MSG_CHECKING([wether we have a complex inside std])
++AC_TRY_COMPILE([
++#include <complex>
++], [
++	std::complex<double> val;
++], [
++complexok=yes
++AC_MSG_RESULT([yes])
++] , [
++AC_MSG_RESULT([no])
++AC_DEFINE(POOMA_NO_STD_COMPLEX)
++])
++if test x$complexok != xyes; then
++  AC_MSG_CHECKING([wether we have a not-templated complex])
++  AC_TRY_COMPILE([
++  #include <complex>
++  ], [
++	complex<double> val;
++  ], [
++  AC_MSG_RESULT([no])
++  ] , [
++  AC_MSG_RESULT([yes])
++  AC_DEFINE(POOMA_NO_TEMPLATED_COMPLEX)
++  ])
++fi
++
++dnl
++dnl check for dependent template arguments
++dnl
++AC_MSG_CHECKING([wether we support dependent template arguments])
++AC_TRY_COMPILE([
++template <int D1, int D2>
++class Foo;
++template <int D1, int D2=D1>
++class Foo {
++};
++], [
++], [
++AC_MSG_RESULT([yes])
++] , [
++AC_MSG_RESULT([no])
++AC_DEFINE(POOMA_NO_DEPENDENT_TEMPLATE_ARGS)
++])
++
++dnl
++dnl check for placement delete operator support
++dnl
++AC_MSG_CHECKING([wether we support delete operators with placement argument])
++AC_TRY_COMPILE([
++class foo {
++	void operator delete(void *, void *) { }
++};
++], [
++], [
++AC_MSG_RESULT([yes])
++] , [
++AC_MSG_RESULT([no])
++AC_DEFINE(POOMA_NO_PLACEMENT_DELETE)
++])
++
++
++AC_OUTPUT()
+
+From rguenth at tat.physik.uni-tuebingen.de  Mon Aug 19 08:35:58 2002
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Mon, 19 Aug 2002 10:35:58 +0200 (CEST)
+Subject: [pooma-dev] [RFC] Use autoconf for (parts of) configuration
+In-Reply-To: <Pine.LNX.4.33.0208191029140.2429-200000@bellatrix.tat.physik.uni-tuebingen.de>
+Message-ID: <Pine.LNX.4.33.0208191034520.2429-100000@bellatrix.tat.physik.uni-tuebingen.de>
+
+On Mon, 19 Aug 2002, Richard Guenther wrote:
+
+> Hi!
+>
+> I'd like to hear opinions to getting rid of config/arch/* and instead use
+> autoconf to collect equivalent information. A quick try revealed the
+> attached patch which shoves the compiler feature bits to a set of
+> configure checks. The patch passes compile & check on gcc-2.95.4 and
+> gcc-3.1. (The former needs additional patches which I'll send off later)
+
+Oh, you need to go into the scripts directory and issue 'autoheader' and
+'autoconf' there to be able to use configuration.
+
+Richard.
+
+--
+Richard Guenther <richard.guenther at uni-tuebingen.de>
+WWW: http://www.tat.physik.uni-tuebingen.de/~rguenth/
+The GLAME Project: http://www.glame.de/
+
+
+
+From rguenth at tat.physik.uni-tuebingen.de  Mon Aug 19 09:12:29 2002
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Mon, 19 Aug 2002 11:12:29 +0200 (CEST)
+Subject: Fields with replicated internal guards?
+Message-ID: <Pine.LNX.4.33.0208191107300.2429-100000@bellatrix.tat.physik.uni-tuebingen.de>
+
+Hi!
+
+If I want to have temporary fields to which I can apply a >0 order
+operator I need guards. Now I dont want to exchange any data between
+nodes, because I can create all data I need locally (in fact, I do, by
+assignment to the whole domain). How do I tell pooma to
+- replicate the internal guards on both affected nodes
+- not to do any communication
+
+For now I just use Remote<Brick> engines, but this seems to generate
+network traffic. I suppose the ReplicatedTag layout tag class is for this,
+but I read this replicates _all_ data for the total domain?
+
+Richard.
+
+--
+Richard Guenther <richard.guenther at uni-tuebingen.de>
+WWW: http://www.tat.physik.uni-tuebingen.de/~rguenth/
+The GLAME Project: http://www.glame.de/
+
+
+
+From rguenth at tat.physik.uni-tuebingen.de  Mon Aug 19 09:21:59 2002
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Mon, 19 Aug 2002 11:21:59 +0200 (CEST)
+Subject: Storing expressions / CSE
+Message-ID: <Pine.LNX.4.33.0208191112301.2429-100000@bellatrix.tat.physik.uni-tuebingen.de>
+
+Hi!
+
+Is there a way to store expressions and reuse them to do common
+subexpression elimination on a source level? Does the compiler
+handle CSE for expression templates?
+
+Storing intermediate results in Arrays uses lots of memory, so
+I want to do something like the following:
+
+  template <Expr1>
+  Expr1 s = 0.5*(v(I) + v(I+dI)) * dt;
+  template <Expr2>
+  Expr2 dd = v(I) * SUR(I);
+  flux(I) = where(s(I) > 0.0,
+	          dd(I) - 0.5*s(I)*grad(I),
+                  dd(I+dI) - 0.5*s(I)*grad(I+dI));
+
+and more complex stuff where it is not feasible to repeat the common
+subexpressions in the code. The only way I could get the compiler to
+create the types for the expressions was to use template functions, but
+this doesnt make the code any more readable.
+
+Is anything like the above possible at all with C++ and expression
+templates? The compiler should be able to deduce the types, as something
+like
+
+template <class Expr1, class Expr2, class Result>
+void foo(Result &lhs, const Expr1 &s, const Expr2 &dd)
+{
+   lhs = ...
+}
+
+and calling foo(flux(I), 0.5*(v(I) + v(I+dI))*dt, v(I)*SUR(I)) works.
+
+Any ideas?
+   Richard.
+
+--
+Richard Guenther <richard.guenther at uni-tuebingen.de>
+WWW: http://www.tat.physik.uni-tuebingen.de/~rguenth/
+The GLAME Project: http://www.glame.de/
+
+
+
+From rguenth at tat.physik.uni-tuebingen.de  Mon Aug 19 19:52:15 2002
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Mon, 19 Aug 2002 21:52:15 +0200 (CEST)
+Subject: [PATCH] Allow compilation with gcc 2.95
+Message-ID: <Pine.LNX.3.96.1020819212640.4605A-200000@mickey.hamnixda.de>
+
+Hi!
+
+I need the attached patch to allow compiling using 2.95.3+debian changes
+(aka 2.95.4). Running the testsuite I get a couple of extra failures, one
+due to out of virtual memory during compilation, one due to an internal
+compiler error and a few due to floating point comparison issues, it seems
+(no, didnt specify -ffast-math, but not -ffloat-store, too - so those
+might be false negatives).
+
+One main point of this patch is to add a check for 2.95 appearantly not
+handling default arguments to specialized function templates like the
+canonicalCentering<> template. This is plugged to the autoconf framework,
+but a classic-way patch can be constructed, too.
+
+Other chunks of the patch deal with missing/improper includes and contain
+a rather quick&dirty approach to detecting 2.95 gcc by just checking
+__GNUC_MINOR__ == 95 -- anyone with a better idea?
+
+As gcc 2.95 is no longer actively maintained (Mark?) I didnt bother to
+file GNAT reports on the C++ language bug, nor the ICE or the excessive
+memory use, as all those problems are fixed in 3.0 and 3.2 (didnt check
+3.1). But its nice to have the compilation speed of 2.95 during code
+development.
+
+No changelog this time, as it doesnt apply to mainline CVS anyway due to
+the configure dependency.
+
+Tested by building & testing serial pooma on debian-x86-linux with gcc
+2.95.4 and gcc 3.0.4.
+
+Richard.
+
+--
+Richard Guenther <richard.guenther at uni-tuebingen.de>
+WWW: http://www.tat.physik.uni-tuebingen.de/~rguenth/
+The GLAME Project: http://www.glame.de/
+-------------- next part --------------
+# This is a BitKeeper generated patch for the following project:
+# Project Name: pooma/cheetah repository tracking CVS/tarball
+# This patch format is intended for GNU patch command version 2.5 or higher.
+# This patch includes the following deltas:
+#	           ChangeSet	1.62    -> 1.63   
+#	r2/src/Tiny/Vector.h	1.2     -> 1.3    
+#	r2/src/Field/FieldCentering.h	1.3     -> 1.4    
+#	r2/scripts/configure.in	1.1     -> 1.2    
+#	r2/src/IO/DiskLayout.h	1.2     -> 1.3    
+#	r2/src/IO/DiskLayout.cmpl.cpp	1.1     -> 1.2    
+#	r2/scripts/acconfig.h	1.1     -> 1.2    
+#	r2/src/Tiny/TinyMatrix.h	1.2     -> 1.3    
+#
+# The following is the BitKeeper ChangeSet Log
+# --------------------------------------------
+# 02/08/19	richard at mickey.hamnixda.de	1.63
+# gcc 2.95 compile fixes, including a new language feature autoconf check
+# --------------------------------------------
+#
+diff --minimal -Nru a/r2/scripts/acconfig.h b/r2/scripts/acconfig.h
+--- a/r2/scripts/acconfig.h	Mon Aug 19 21:23:49 2002
++++ b/r2/scripts/acconfig.h	Mon Aug 19 21:23:49 2002
+@@ -5,3 +5,4 @@
+ #undef POOMA_NO_TEMPLATED_COMPLEX
+ #undef POOMA_NO_DEPENDENT_TEMPLATE_ARGS
+ #undef POOMA_NO_PLACEMENT_DELETE
++#undef POOMA_NO_TEMPLATEFUNC_DEFAULTARGS
+diff --minimal -Nru a/r2/scripts/configure.in b/r2/scripts/configure.in
+--- a/r2/scripts/configure.in	Mon Aug 19 21:23:49 2002
++++ b/r2/scripts/configure.in	Mon Aug 19 21:23:49 2002
+@@ -119,5 +119,26 @@
+ AC_DEFINE(POOMA_NO_PLACEMENT_DELETE)
+ ])
+ 
++dnl
++dnl check for correct handling of default arguments to specialized
++dnl template functions
++dnl
++AC_MSG_CHECKING([wether we handle default args to template functions correct])
++AC_TRY_COMPILE([
++template <int Dim>
++class Centering {};
++template <int Dim>
++const Centering<Dim> test(int a, int b = 0);
++template <>
++const Centering<1> test<1>(int a, int b);
++], [
++	Centering<1> c = test<1>(1);
++], [
++AC_MSG_RESULT([yes])
++] , [
++AC_MSG_RESULT([no])
++AC_DEFINE(POOMA_NO_TEMPLATEFUNC_DEFAULTARGS)
++])
++
+ 
+ AC_OUTPUT()
+diff --minimal -Nru a/r2/src/Field/FieldCentering.h b/r2/src/Field/FieldCentering.h
+--- a/r2/src/Field/FieldCentering.h	Mon Aug 19 21:23:49 2002
++++ b/r2/src/Field/FieldCentering.h	Mon Aug 19 21:23:49 2002
+@@ -548,11 +548,19 @@
+ extern const CanonicalCentering<2> canonicalCenteringTwo_g;
+ extern const CanonicalCentering<3> canonicalCenteringThree_g;
+ 
++#if POOMA_NO_TEMPLATEFUNC_DEFAULTARGS
++template <int Dim>
++const Centering<Dim> canonicalCentering
++    (const enum CenteringType type,
++     const enum ContinuityType discontinuous,
++     const int dimension);
++#else
+ template <int Dim>
+ const Centering<Dim> canonicalCentering
+     (const enum CenteringType type,
+      const enum ContinuityType discontinuous,
+      const int dimension = 0);
++#endif
+ 
+ template <>
+ const Centering<1> canonicalCentering<1>
+@@ -571,6 +579,16 @@
+     (const enum CenteringType type,
+      const enum ContinuityType discontinuous,
+      const int dimension);
++
++#if POOMA_NO_TEMPLATEFUNC_DEFAULTARGS
++template <int Dim>
++inline const Centering<Dim> canonicalCentering
++    (const enum CenteringType type,
++     const enum ContinuityType discontinuous)
++{
++	return canonicalCentering<Dim>(type, discontinuous, 0);
++}
++#endif
+ 
+ //@}
+ 
+diff --minimal -Nru a/r2/src/IO/DiskLayout.cmpl.cpp b/r2/src/IO/DiskLayout.cmpl.cpp
+--- a/r2/src/IO/DiskLayout.cmpl.cpp	Mon Aug 19 21:23:49 2002
++++ b/r2/src/IO/DiskLayout.cmpl.cpp	Mon Aug 19 21:23:49 2002
+@@ -55,7 +55,7 @@
+ 
+ // Re-check this when GCC 3.0 is ported
+ 
+-#if defined(__CYGWIN32__)
++#if defined(__CYGWIN32__) || (__GNUC_MINOR__ == 95)
+ #include <iostream>
+ #else
+ #include <ios>
+diff --minimal -Nru a/r2/src/IO/DiskLayout.h b/r2/src/IO/DiskLayout.h
+--- a/r2/src/IO/DiskLayout.h	Mon Aug 19 21:23:49 2002
++++ b/r2/src/IO/DiskLayout.h	Mon Aug 19 21:23:49 2002
+@@ -60,6 +60,7 @@
+ 
+ #include <fstream>  // file I/O
+ #include <vector>   // node lists
++#include <string>
+ 
+ //-----------------------------------------------------------------------------
+ /** struct DiskNode<Dim>
+diff --minimal -Nru a/r2/src/Tiny/TinyMatrix.h b/r2/src/Tiny/TinyMatrix.h
+--- a/r2/src/Tiny/TinyMatrix.h	Mon Aug 19 21:23:49 2002
++++ b/r2/src/Tiny/TinyMatrix.h	Mon Aug 19 21:23:49 2002
+@@ -57,7 +57,11 @@
+ #include "Tiny/TinyMatrixEngine.h"
+ #include "Tiny/TinyMatrixElements.h"
+ #include "Tiny/TinyMatrixOperators.h"
++#if defined(__CYGWIN32__) || (__GNUC_MINOR__ == 95)
++#include <iostream>
++#else
+ #include <ios>
++#endif
+ 
+ //-----------------------------------------------------------------------------
+ // Forward Declarations:
+diff --minimal -Nru a/r2/src/Tiny/Vector.h b/r2/src/Tiny/Vector.h
+--- a/r2/src/Tiny/Vector.h	Mon Aug 19 21:23:49 2002
++++ b/r2/src/Tiny/Vector.h	Mon Aug 19 21:23:49 2002
+@@ -57,7 +57,11 @@
+ #include "Tiny/VectorEngine.h"
+ #include "Tiny/VectorElements.h"
+ #include "Tiny/VectorOperators.h"
++#if defined(__CYGWIN32__) || (__GNUC_MINOR__ == 95)
++#include <iostream>
++#else
+ #include <ios>
++#endif
+ 
+ //-----------------------------------------------------------------------------
+ // Forward Declarations:
+
+From rguenth at tat.physik.uni-tuebingen.de  Wed Aug 21 09:32:15 2002
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Wed, 21 Aug 2002 11:32:15 +0200 (CEST)
+Subject: Where do reductions get handled for multipatch engines?
+Message-ID: <Pine.LNX.4.33.0208211127420.2429-100000@bellatrix.tat.physik.uni-tuebingen.de>
+
+Hi!
+
+I'd like to explore the way pooma handles reductions for multipatch
+engines, especially for remote ones using cheetah with MPI. I suspect we
+do neither use MPI reductions, nor doing something equivalent ourselves.
+The reason I believe this is that I see O(n) scaling with the number of
+nodes used rather than O(log(n)). So a project would be to teach pooma to
+use reduction operations from the parallelization engine where available -
+but I'm currently stuck in finding the places to add such code.
+
+Can anyone give me some hints where to look? Anybody tried to do something
+similar already?
+
+Thanks, Richard.
+
+--
+Richard Guenther <richard.guenther at uni-tuebingen.de>
+WWW: http://www.tat.physik.uni-tuebingen.de/~rguenth/
+The GLAME Project: http://www.glame.de/
+
+
+
+From mark at codesourcery.com  Fri Aug 23 00:22:12 2002
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Thu, 22 Aug 2002 17:22:12 -0700
+Subject: [pooma-dev] Patches...
+In-Reply-To: <Pine.LNX.4.33.0208151047470.2429-100000@bellatrix.tat.physik.uni-tuebingen.de>
+Message-ID: <247620000.1030062132@warlock.codesourcery.com>
+
+> I think for the small bugfix like patches such a legal agreement is not
+> necessary and so I suppose such patches go into CVS anyway.
+
+Sadly, this isn't true.  We need to get the legal stuff worked out
+before we can incorporate any changes.
+
+FYI, we're also working with LANL to try to get the license changed
+to the revised BSD license so that POOMA becomes GPL-compatible.  That,
+however, hasn't happenned yet.
+
+-- 
+Mark Mitchell                mark at codesourcery.com
+CodeSourcery, LLC            http://www.codesourcery.com
+
+
+From mark at codesourcery.com  Fri Aug 23 00:23:01 2002
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Thu, 22 Aug 2002 17:23:01 -0700
+Subject: [RFC] Use autoconf for (parts of) configuration
+In-Reply-To: <Pine.LNX.4.33.0208191029140.2429-200000@bellatrix.tat.physik.uni-tuebingen.de>
+Message-ID: <248010000.1030062181@warlock.codesourcery.com>
+
+> Any comments, suggestions?
+
+I think this is a good idea; I'd certainly rather we switched over to
+autoconf.
+
+-- 
+Mark Mitchell                mark at codesourcery.com
+CodeSourcery, LLC            http://www.codesourcery.com
+
+
+From garnet at bastille.cchem.berkeley.edu  Tue Aug 27 09:23:42 2002
+From: garnet at bastille.cchem.berkeley.edu (Garnet Kin-Lic Chan)
+Date: Tue, 27 Aug 2002 02:23:42 -0700 (PDT)
+Subject: how to apply mutating functors?
+Message-ID: <Pine.A41.3.96.1020827021743.16558A-100000@bastille.cchem.berkeley.edu>
+
+Hi -
+
+I've been using POOMA loosely as a framework for distributed arrays of
+objects, and I have many loops where I'd like to apply a functor to each
+of the objects in turn, changing their state. Because each object is
+large, it would not make sense to use a UserFunction and do the copying.
+Another thing I've been looking for is the ability to do reductions (in
+particular some kind of summation operation).
+
+I've had a browse through the code, and my guess is that I will have to
+look at the evalute functions, but I can't quite make
+out whether I can just pick LoopApplyEvaluator::evaluate and things will
+work in parallel? Also is the function clever enough to work with
+reductions, e.g. accumulating things into a variable in a stateful
+functor, in a parallel application? Does anyone have some simple examples
+of this kind of thing?
+
+Thanks in advance,
+
+Garnet
+
+
+
+
+
+
+From rguenth at tat.physik.uni-tuebingen.de  Tue Aug 27 09:33:10 2002
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Tue, 27 Aug 2002 11:33:10 +0200 (CEST)
+Subject: [pooma-dev] how to apply mutating functors?
+In-Reply-To: <Pine.A41.3.96.1020827021743.16558A-100000@bastille.cchem.berkeley.edu>
+Message-ID: <Pine.LNX.4.33.0208271127150.2429-100000@bellatrix.tat.physik.uni-tuebingen.de>
+
+On Tue, 27 Aug 2002, Garnet Kin-Lic Chan wrote:
+
+> Hi -
+>
+> I've been using POOMA loosely as a framework for distributed arrays of
+> objects, and I have many loops where I'd like to apply a functor to each
+> of the objects in turn, changing their state. Because each object is
+> large, it would not make sense to use a UserFunction and do the copying.
+
+I would suggest using a Stencil for this to stick your functor into and
+then just using
+  A = yourStencil(A);
+
+> Another thing I've been looking for is the ability to do reductions (in
+> particular some kind of summation operation).
+
+You may want to look at how this is implemented f.i. for the min(), max()
+reduction functions. Look at Array/Reductions.h and Evaluator/Reduction.h.
+
+> I've had a browse through the code, and my guess is that I will have to
+> look at the evalute functions, but I can't quite make
+> out whether I can just pick LoopApplyEvaluator::evaluate and things will
+> work in parallel? Also is the function clever enough to work with
+> reductions, e.g. accumulating things into a variable in a stateful
+> functor, in a parallel application? Does anyone have some simple examples
+> of this kind of thing?
+
+I dont have examples of simple reductions but like to know myself to how
+f.i. reduce a 32x32 array to a 16x16 array by interpolation in a parallel
+array operation.
+
+Richard.
+
+--
+Richard Guenther <richard.guenther at uni-tuebingen.de>
+WWW: http://www.tat.physik.uni-tuebingen.de/~rguenth/
+The GLAME Project: http://www.glame.de/
+
+
+
+From rguenth at tat.physik.uni-tuebingen.de  Tue Aug 27 16:04:00 2002
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Tue, 27 Aug 2002 18:04:00 +0200 (CEST)
+Subject: [pooma-dev] Compiling SMARTS
+In-Reply-To: <1024673409.1736.5.camel@lei061.lei.ime.unicamp.br>
+Message-ID: <Pine.LNX.4.33.0208271758010.2429-100000@bellatrix.tat.physik.uni-tuebingen.de>
+
+On 21 Jun 2002, Renato Fernandes Cant?o wrote:
+
+> Hi Mr. Guenther!
+>
+> Yes, the configuration seems a little bit confuse. I'm try to work this
+> out. In case that SMARTS simply dies, does it exist an alternative?
+
+Just tried to compile smarts-1.2.0 myself again and the problem is that
+with recent gcc (2.95 and later) pthread types get pulled in by other
+system includes and smarts doesnt like this at all (it does define its own
+pthread types). The simple workaround is to #define _BITS_PTHREADTYPES_H 1
+to prevent this header to be pulled in.
+
+I.e. just do
+
+./configure --with-CXX=g++ --with-CXX-FLAGS="-D_BITS_PTHREADTYPES_H"
+
+and everything compiles ok for me. Didnt try using smarts yet, though.
+Checked the above works with both gcc 2.95 and gcc 3.0.
+
+I would be glad, if anyone would report success/failure using smarts with
+pooma.
+
+Thanx, Richard.
+
+--
+Richard Guenther <richard.guenther at uni-tuebingen.de>
+WWW: http://www.tat.physik.uni-tuebingen.de/~rguenth/
+The GLAME Project: http://www.glame.de/
+
+
+
+From garnet at bastille.cchem.berkeley.edu  Tue Aug 27 16:43:46 2002
+From: garnet at bastille.cchem.berkeley.edu (Garnet Kin-Lic Chan)
+Date: Tue, 27 Aug 2002 09:43:46 -0700 (PDT)
+Subject: [pooma-dev] how to apply mutating functors?
+In-Reply-To: <Pine.LNX.4.33.0208271127150.2429-100000@bellatrix.tat.physik.uni-tuebingen.de>
+Message-ID: <Pine.A41.3.96.1020827094220.16520B-100000@bastille.cchem.berkeley.edu>
+
+
+I had a further look, and it seems that the best thing to use woudl be a
+PatchFunction in Evaluator/PatchFunction.h. I haven't tried it out yet
+though.
+
+
+
+From candel at itp.phys.ethz.ch  Wed Aug 28 15:14:32 2002
+From: candel at itp.phys.ethz.ch (Arno Candel)
+Date: Wed, 28 Aug 2002 14:14:32 -0100
+Subject: Parallel File I/O
+Message-ID: <3D6CE8D8.8030608@itp.phys.ethz.ch>
+
+Hi,
+
+Is there a clever way to handle large distributed Array I/O to disk? I 
+don't want all contexts to block each other while reading/writing.
+
+
+A straight-forward reader implementation like
+
+
+
+Array<3, double, MultiPatch<GridTag,Remote<Brick> >  A;
+A.initialize(Domain, Partition, DistributedTag());
+
+for i=A.domain()[0].first() to A.domain()[0].last()
+ for j=A.domain()[1].first() to A.domain()[1].last()
+  for k=A.domain()[2].first() to A.domain()[2].last()
+    {
+      my_ifstream >> value;
+      A(i,j,k) = value;
+    }
+
+
+
+
+scales miserably when reading a small 18 MB input ASCII file due to 
+blocking and communication:
+
+
+1 node: 15.5176 s
+2 nodes: 84.5347 s
+4 nodes: 212.838 s
+6 nodes: 798.704 s
+12 nodes: 1538.78 s
+
+
+I would appreciate any suggestions for using exisiting (binary) parallel 
+I/O tools provided by Pooma r2.4.0
+
+"IO/FileSetReader.h" and "IO/FileSetWriter.h" seem to have problems with 
+the latest release.
+
+
+Thanks,
+Arno Candel
+
+
+
+From rguenth at tat.physik.uni-tuebingen.de  Wed Aug 28 14:19:50 2002
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Wed, 28 Aug 2002 16:19:50 +0200 (CEST)
+Subject: [pooma-dev] Parallel File I/O
+In-Reply-To: <3D6CE8D8.8030608@itp.phys.ethz.ch>
+Message-ID: <Pine.LNX.4.33.0208281612510.2429-100000@bellatrix.tat.physik.uni-tuebingen.de>
+
+On Wed, 28 Aug 2002, Arno Candel wrote:
+
+> Hi,
+>
+> Is there a clever way to handle large distributed Array I/O to disk? I
+> don't want all contexts to block each other while reading/writing.
+>
+> A straight-forward reader implementation like
+>
+> Array<3, double, MultiPatch<GridTag,Remote<Brick> >  A;
+> A.initialize(Domain, Partition, DistributedTag());
+>
+> for i=A.domain()[0].first() to A.domain()[0].last()
+>  for j=A.domain()[1].first() to A.domain()[1].last()
+>   for k=A.domain()[2].first() to A.domain()[2].last()
+>     {
+>       my_ifstream >> value;
+>       A(i,j,k) = value;
+>     }
+
+You are effectively doing all work n times here ;)
+
+I use something like the following (which does I/O on one node only - the
+only way to work reliably with something like NFS):
+
+  for (Layout_t::const_iterator domain = A.layout().beginGlobal(); domain
+!= A.layout().endGlobal(); domain++) {
+     Interval<Dim> d = intersect((*domain).domain(), totalDomain);
+     // make local copy of remote data
+     Array<Dim, TypeofA::Element_t, Remote<Brick> > a;
+     a.engine() = Engine<Dim, TypeofA::Element_t, Remote<Brick> >(0, d);
+     a = A(d);
+     Pooma::blockAndEvaluate();
+     // do I/O - on node 0 only
+     if (Pooma::context() != 0)
+       continue;
+     // from here on, use a.engine().localEngine() for all access to a!
+  }
+
+An equivalent loop for distributed I/O would loop through the layouts
+local patch list and use the localEngine() of A directly.
+
+Hope this helps, Richard.
+
+--
+Richard Guenther <richard.guenther at uni-tuebingen.de>
+WWW: http://www.tat.physik.uni-tuebingen.de/~rguenth/
+The GLAME Project: http://www.glame.de/
+
+
+
+From rguenth at tat.physik.uni-tuebingen.de  Thu Aug 29 09:52:27 2002
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Thu, 29 Aug 2002 11:52:27 +0200 (CEST)
+Subject: [pooma-dev] Parallel File I/O
+In-Reply-To: <Pine.A41.3.96.1020829023213.5780E-100000@bastille.cchem.berkeley.edu>
+Message-ID: <Pine.LNX.4.33.0208291150140.2429-100000@bellatrix.tat.physik.uni-tuebingen.de>
+
+On Thu, 29 Aug 2002, Garnet Kin-Lic Chan wrote:
+
+> Dear Richard,
+>
+> Thank you for your mail. Essentially that's what I need to do. A criticism
+> I have of POOMA, is that doing things in such a simple fashion aren't
+> really documented anywhere ...
+
+Yes - documentation, or better, documented small examples for such common
+tasks is needed desperately. I started creating reference documentation
+using doxygen at
+http://www.tat.physik.uni-tuebingen.de/~rguenth/pooma/reference/
+
+A user manual with overhauled examples is needed though (the old one is
+outdated wrt the new field representation).
+
+Volunteers welcome!
+
+Richard.
+
+--
+Richard Guenther <richard.guenther at uni-tuebingen.de>
+WWW: http://www.tat.physik.uni-tuebingen.de/~rguenth/
+The GLAME Project: http://www.glame.de/
+
+
+
+From candel at itp.phys.ethz.ch  Thu Aug 29 15:29:47 2002
+From: candel at itp.phys.ethz.ch (Arno Candel)
+Date: Thu, 29 Aug 2002 14:29:47 -0100
+Subject: [pooma-dev] Parallel File I/O
+References: <Pine.LNX.4.33.0208281612510.2429-100000@bellatrix.tat.physik.uni-tuebingen.de>
+Message-ID: <3D6E3DEB.4000201@itp.phys.ethz.ch>
+
+Many thanks!
+
+I just implemented a serial writer. Can you give me a hint how to 
+structure a reader which reads a file from NFS into a distributed array?
+
+Thanks in advance,
+Arno
+
+Richard Guenther wrote:
+
+>On Wed, 28 Aug 2002, Arno Candel wrote:
+>
+>  
+>
+>>Hi,
+>>
+>>Is there a clever way to handle large distributed Array I/O to disk? I
+>>don't want all contexts to block each other while reading/writing.
+>>
+>>A straight-forward reader implementation like
+>>
+>>Array<3, double, MultiPatch<GridTag,Remote<Brick> >  A;
+>>A.initialize(Domain, Partition, DistributedTag());
+>>
+>>for i=A.domain()[0].first() to A.domain()[0].last()
+>> for j=A.domain()[1].first() to A.domain()[1].last()
+>>  for k=A.domain()[2].first() to A.domain()[2].last()
+>>    {
+>>      my_ifstream >> value;
+>>      A(i,j,k) = value;
+>>    }
+>>    
+>>
+>
+>You are effectively doing all work n times here ;)
+>
+>I use something like the following (which does I/O on one node only - the
+>only way to work reliably with something like NFS):
+>
+>  for (Layout_t::const_iterator domain = A.layout().beginGlobal(); domain
+>!= A.layout().endGlobal(); domain++) {
+>     Interval<Dim> d = intersect((*domain).domain(), totalDomain);
+>     // make local copy of remote data
+>     Array<Dim, TypeofA::Element_t, Remote<Brick> > a;
+>     a.engine() = Engine<Dim, TypeofA::Element_t, Remote<Brick> >(0, d);
+>     a = A(d);
+>     Pooma::blockAndEvaluate();
+>     // do I/O - on node 0 only
+>     if (Pooma::context() != 0)
+>       continue;
+>     // from here on, use a.engine().localEngine() for all access to a!
+>  }
+>
+>An equivalent loop for distributed I/O would loop through the layouts
+>local patch list and use the localEngine() of A directly.
+>
+>Hope this helps, Richard.
+>
+>--
+>Richard Guenther <richard.guenther at uni-tuebingen.de>
+>WWW: http://www.tat.physik.uni-tuebingen.de/~rguenth/
+>The GLAME Project: http://www.glame.de/
+>  
+>
+
+-------------- next part --------------
+An HTML attachment was scrubbed...
+URL: <http://sourcerytools.com/pipermail/pooma-dev/attachments/20020829/c1502ec6/attachment.html>
+
+From rguenth at tat.physik.uni-tuebingen.de  Thu Aug 29 12:34:40 2002
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Thu, 29 Aug 2002 14:34:40 +0200 (CEST)
+Subject: [pooma-dev] Parallel File I/O
+In-Reply-To: <3D6E3DEB.4000201@itp.phys.ethz.ch>
+Message-ID: <Pine.LNX.4.33.0208291432190.2429-100000@bellatrix.tat.physik.uni-tuebingen.de>
+
+On Thu, 29 Aug 2002, Arno Candel wrote:
+
+> Many thanks!
+>
+> I just implemented a serial writer. Can you give me a hint how to
+> structure a reader which reads a file from NFS into a distributed array?
+
+Just do it the same way as in the writer, but read your data into your
+"local copy" (was "a" in my writer example) and copy it to the distributed
+array A. Note that this copying has to be done by all contexts, i.e.
+
+if (Pooma::context() == 0)
+  read into a (using a.engine().localEngine())
+A(domain) = a;
+
+Richard.
+
+--
+Richard Guenther <richard.guenther at uni-tuebingen.de>
+WWW: http://www.tat.physik.uni-tuebingen.de/~rguenth/
+The GLAME Project: http://www.glame.de/
+
+
+
+From cantao at ime.unicamp.br  Thu Aug 29 13:21:44 2002
+From: cantao at ime.unicamp.br (Renato F. Cantao)
+Date: Thu, 29 Aug 2002 10:21:44 -0300 (EST)
+Subject: Unstructured meshes
+In-Reply-To: <Pine.LNX.4.33.0208291432190.2429-100000@bellatrix.tat.physik.uni-tuebingen.de>
+Message-ID: <Pine.GSO.4.10.10208291019381.7114-100000@athenas.ime.unicamp.br>
+
+Hello Guys (well, eventually girls also...)!
+
+I'm stuck with the new Pooma Field concept. In the old days (Pooma
+2.3.0), I've managed to create an UnstructuredMesh class (for finite
+elements), based on the guidelines in DiscreteGeometry.URM.h, Field.h,
+UniformRectiliearMesh.{h,cpp}, etc.
+
+The distinction bewteen
+
+    . "dimensions" = number of indices needed to address an element in
+    the mesh, and
+
+    . "coordinateDimensions" = number of indices needed to address a
+    position in the mesh (or, equivalently, the mesh spatial dimension)
+
+made possible the implementation of something like:
+
+template< int Dim, class coordinateSystem_t, class element_t, class T
+>
+class UnstructuredMesh
+{
+...
+};
+
+with the extra template parameter "element_t" as the finite element
+being stored in the mesh.
+
+Due to the distinction above mentioned, I'm able to store the elements
+into an Array< 1 >, the coordinates are Vector< Dim > also into an
+Array< 1 >, as well as any other FEM pertinent information not related
+to Fields. In other word, the dimensionality of  the underlying data
+structures does not relate directly to the Field or Mesh spatial
+dimension.
+
+I have also an equivalent DiscreteGeometry like:
+
+template< int D, class coordinateSystem_t, class element_t, class T >
+class DiscreteGeometry< Vert,
+			UnstructuredMesh< D, coordinateSystem_t,
+			element_t, T > >
+{
+...
+
+	// The demanded x() method...
+	const PositionsArray_t& x() const {...}
+};
+
+and with this (and some other stuff like Views), my finite element
+meshes worked fine with Pooma Fields (2.3.0) - at least very basic
+things, like using a UserFunction<> in a Field.
+
+*But*, now, with this new abstraction:
+
+       . Centering, Layout and Field work very tied together (at least
+       it seems to me, as far as I could dig in the code), and
+
+       . The distinction between "dimensions" and
+       "coordinateDimensions" seems to have disapeared...
+
+So the question is: Pooma Field version 2.4.0 seems to be much more
+"tied" to Finite Differences concept. There's a way to re-integrate my
+UnstructuredMesh into this new Field concept, or it's so far way from
+this new architecture that I should simply forget the matter?
+
+Thanks a lot, Cantao!
+
+
+                     '''
+                    (o o)
++--------------oOOO--(_)----------------------+
+| Renato F. Cantao!                           |
+| Depto. de Matematica Aplicada               |
+| IMECC - UNICAMP                             |
+| Sala 215 - Predio da Pos-graduacao - Lado B |
++--------------------------OOOo---------------+
+                   |__|__|
+                    || ||
+                   ooO Ooo   Linux User #207462
+
+
+
+
+From rguenth at tat.physik.uni-tuebingen.de  Thu Aug 29 13:30:10 2002
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Thu, 29 Aug 2002 15:30:10 +0200 (CEST)
+Subject: [pooma-dev] Unstructured meshes
+In-Reply-To: <Pine.GSO.4.10.10208291019381.7114-100000@athenas.ime.unicamp.br>
+Message-ID: <Pine.LNX.4.33.0208291525300.2429-100000@bellatrix.tat.physik.uni-tuebingen.de>
+
+On Thu, 29 Aug 2002, Renato F. Cantao wrote:
+
+> Hello Guys (well, eventually girls also...)!
+>
+> I'm stuck with the new Pooma Field concept. In the old days (Pooma
+> 2.3.0), I've managed to create an UnstructuredMesh class (for finite
+> elements), based on the guidelines in DiscreteGeometry.URM.h, Field.h,
+> UniformRectiliearMesh.{h,cpp}, etc.
+>
+> The distinction bewteen
+>
+>     . "dimensions" = number of indices needed to address an element in
+>     the mesh, and
+>
+>     . "coordinateDimensions" = number of indices needed to address a
+>     position in the mesh (or, equivalently, the mesh spatial dimension)
+>
+> made possible the implementation of something like:
+
+[...]
+
+> *But*, now, with this new abstraction:
+>
+>        . Centering, Layout and Field work very tied together (at least
+>        it seems to me, as far as I could dig in the code), and
+>
+>        . The distinction between "dimensions" and
+>        "coordinateDimensions" seems to have disapeared...
+>
+> So the question is: Pooma Field version 2.4.0 seems to be much more
+> "tied" to Finite Differences concept. There's a way to re-integrate my
+> UnstructuredMesh into this new Field concept, or it's so far way from
+> this new architecture that I should simply forget the matter?
+
+Having hacked a lot on the Mesh classes I can assure you the tying of
+those two dimensions is not really tied (it just happens to be the same).
+It would be trivial (err well - until we try, we dont know) to losen this
+again.
+
+If you want to work in this area maybe you want to look at my local
+versions of the mesh classes (they add a RectilinearMesh as well as
+reinstantiate coordinate system support). If yes, drop me a note and I'll
+tar up my local repository.
+
+Richard.
+
+--
+Richard Guenther <richard.guenther at uni-tuebingen.de>
+WWW: http://www.tat.physik.uni-tuebingen.de/~rguenth/
+The GLAME Project: http://www.glame.de/
+
+
+
+From rguenth at tat.physik.uni-tuebingen.de  Fri Aug 30 12:18:53 2002
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Fri, 30 Aug 2002 14:18:53 +0200 (CEST)
+Subject: Distributed temporaries
+Message-ID: <Pine.LNX.4.33.0208301406260.2429-100000@bellatrix.tat.physik.uni-tuebingen.de>
+
+Hi!
+
+A while back I asked how to best create distributed temporary arrays with
+internal guards but with completely locally managed (internal) guards. I
+figured out there is no way to do this (cleanly) at the moment.
+
+There are two ways to hack around this problem:
+1. create an extra layout for the temps and clear the layouts gcFillList_m
+vector
+2. every time you write to the temps, block and evaluate and then clear
+the dirty flag of the engine
+
+While 1. seems to be somehow reasonable (you could even add new
+constructors with a tag that dont fill the list in the first place),
+adding a separate MultiPatch engine which doesnt manage the
+internal guards would be another possibility. This can be done by
+either adding a template argument to the existing MultiPatch engine or by
+copying and stripping it down.
+
+Any suggestions on which is the recommended/better way to do this?
+
+Just to motivate this a little bit more - having code like:
+
+Field A, B, C;
+...
+{
+   Field temp;
+   temp.all() = A + 2.0*B;
+   C(I) = (1.0 - temp(I)) * where(A > 0.0, temp(I+1), temp(I-1));
+}
+
+referencing temp would exchange internal guards even if this is not
+strictly necessary.
+
+In the long run we maybe want to make the dirty flag more fine-grained so
+we can just update really dirty data (we have exact domain information for
+reading and writing operations, dont we?). I.e. for each patch have an
+array of 2*dim Interval<dim>'s which hold the currently dirty domain, at
+gc exchange time we can just intersect this with the gcFillList domains
+and skip unnecessary ones. (This does also help directional splitted
+code!)
+
+Well - things to try out for someone with lots of spare time ;)
+
+Richard.
+
+--
+Richard Guenther <richard.guenther at uni-tuebingen.de>
+WWW: http://www.tat.physik.uni-tuebingen.de/~rguenth/
+The GLAME Project: http://www.glame.de/
+
+
+
+From rguenth at tat.physik.uni-tuebingen.de  Fri Aug 30 13:23:25 2002
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Fri, 30 Aug 2002 15:23:25 +0200 (CEST)
+Subject: [pooma-dev] Distributed temporaries
+In-Reply-To: <Pine.LNX.4.33.0208301406260.2429-100000@bellatrix.tat.physik.uni-tuebingen.de>
+Message-ID: <Pine.LNX.4.33.0208301521530.2429-100000@bellatrix.tat.physik.uni-tuebingen.de>
+
+On Fri, 30 Aug 2002, Richard Guenther wrote:
+
+> A while back I asked how to best create distributed temporary arrays with
+> internal guards but with completely locally managed (internal) guards. I
+> figured out there is no way to do this (cleanly) at the moment.
+>
+> There are two ways to hack around this problem:
+> 1. create an extra layout for the temps and clear the layouts gcFillList_m
+> vector
+> 2. every time you write to the temps, block and evaluate and then clear
+> the dirty flag of the engine
+
+Just to follow up myself here - you need to make sure to store into the
+internal guards, too. This can be done only through changing the layouts
+patch domain list contents to include the internal guards. Humm, well...
+
+Richard.
+
+--
+Richard Guenther <richard.guenther at uni-tuebingen.de>
+WWW: http://www.tat.physik.uni-tuebingen.de/~rguenth/
+The GLAME Project: http://www.glame.de/
+
+
+
+From nilsb at cns.mpg.de  Fri Aug 30 15:04:06 2002
+From: nilsb at cns.mpg.de (Nils H. Busch)
+Date: Fri, 30 Aug 2002 17:04:06 +0200
+Subject: Non-rectangular domains
+Message-ID: <3D6F8965.30DBCFA8@cns.mpg.de>
+
+Hello,
+
+has anyone any idea how to extend Pooma to handle non-rectangular
+domains? What are the caveats to observe ?
+I am currently thinking of storing a 1-dim array of mesh vertices/cells
+of those elements contained in that irregular shaped domain. But I am
+not sure how this will fit into the parallel Pooma machinery or how this
+can be broken down to patches.
+
+Cuurently, I am storing am additional mask field of the same size as the
+fields I do computation on and pass this to my custom defined
+stencils/functions etc.
+I think this is at least a waste of memory. Also, it cannot be applied
+to built-in Pooma functions directly.
+
+Any comments welcome.
+
+--
+    Nils H. Busch
+    Max-Planck-Institute of Cognitive Neuroscience
+    phone:  ++49 (341) 9940-035 fax:  ++49 (341) 9940-204
+    e-mail: nilsb at cns.mpg.de
+
+
+
+
+
+From rguenth at tat.physik.uni-tuebingen.de  Fri Aug 30 15:38:09 2002
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Fri, 30 Aug 2002 17:38:09 +0200 (CEST)
+Subject: [pooma-dev] Non-rectangular domains
+In-Reply-To: <3D6F8965.30DBCFA8@cns.mpg.de>
+Message-ID: <Pine.LNX.4.33.0208301731410.2429-100000@bellatrix.tat.physik.uni-tuebingen.de>
+
+On Fri, 30 Aug 2002, Nils H. Busch wrote:
+
+> Hello,
+>
+> has anyone any idea how to extend Pooma to handle non-rectangular
+> domains? What are the caveats to observe ?
+> I am currently thinking of storing a 1-dim array of mesh vertices/cells
+> of those elements contained in that irregular shaped domain. But I am
+> not sure how this will fit into the parallel Pooma machinery or how this
+> can be broken down to patches.
+>
+> Cuurently, I am storing am additional mask field of the same size as the
+> fields I do computation on and pass this to my custom defined
+> stencils/functions etc.
+> I think this is at least a waste of memory. Also, it cannot be applied
+> to built-in Pooma functions directly.
+>
+> Any comments welcome.
+
+Well... if irregular shaped is at least (locally, i.e. inside one
+rectangular patch) convex then this could be done by creating a new
+ShapedBrick engine having, for each dimension a domain[d] size array
+containing min/max indices. Of course this has an overhead (you'd have a
+flag, too, to indicate wether you have a shape at all). Handling bounds
+(both internal and external) will also need some thinking (you could
+simplify the case of internal bounds by just always having the cells and
+thus maybe copying just dummy data).
+
+An alternative is to have a complete shape mask and do what you are doing
+currently in an engine, but thats slow, too. And it doesnt solve the guard
+cell problems, too.
+
+So, if to be done correctly & clean it'll be a lot of work. Can't you
+construct your domain out of rectangular patches using a SparseTileLayout?
+
+Richard.
+
+--
+Richard Guenther <richard.guenther at uni-tuebingen.de>
+WWW: http://www.tat.physik.uni-tuebingen.de/~rguenth/
+The GLAME Project: http://www.glame.de/
+
+
+

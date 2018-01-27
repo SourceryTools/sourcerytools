@@ -1,0 +1,149 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [pooma-dev] RFA: delete_test1 Modifications
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bpooma-dev%5D%20RFA%3A%20delete_test1%20Modifications&In-Reply-To=%3C20010524183248.A2528%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000392.html">
+   <LINK REL="Next"  HREF="000401.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[pooma-dev] RFA: delete_test1 Modifications</H1>
+    <B>Jeffrey Oldham</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bpooma-dev%5D%20RFA%3A%20delete_test1%20Modifications&In-Reply-To=%3C20010524183248.A2528%40codesourcery.com%3E"
+       TITLE="[pooma-dev] RFA: delete_test1 Modifications">oldham at codesourcery.com
+       </A><BR>
+    <I>Fri May 25 01:32:48 UTC 2001</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000392.html">[pooma-dev] RFA: delete_test1 Modifications
+</A></li>
+        <LI>Next message: <A HREF="000401.html">Patch: Expanding Supported Explicit Instantiations
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#393">[ date ]</a>
+              <a href="thread.html#393">[ thread ]</a>
+              <a href="subject.html#393">[ subject ]</a>
+              <a href="author.html#393">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>On Thu, May 24, 2001 at 04:17:54PM -0700, James Crotinger wrote:
+&gt;<i> copy doesn't have the same semantics as memmove and so it is potentially
+</I>&gt;<i> faster (it can only copy overlapping regions if the destination is before
+</I>&gt;<i> the source, which is the case in the shift-up copies, which almost always
+</I>&gt;<i> involve overlapping regions). However, I did a lot of testing with KCC on
+</I>&gt;<i> the SGI and found that for larger moves, memmove was faster. This is why I
+</I>&gt;<i> put a test into the delete_shiftup algorithm to use copy only if the length
+</I>&gt;<i> of the copy was less than 100 (a good round number). Someone (named julianc)
+</I>&gt;<i> has since commented out that code without leaving a comment in the source as
+</I>&gt;<i> to the reason. Looking at the log I see that it was due to VC++ not having a
+</I>&gt;<i> proper std::advance. This should have just been coded around. At any rate, I
+</I>&gt;<i> didn't add this complication lightly. Now perhaps KCC has since written copy
+</I>&gt;<i> to use memmove so I don't know if my investigations from early 2000 are
+</I>&gt;<i> still valid.
+</I>&gt;<i> 
+</I>&gt;<i>   Jim
+</I>&gt;<i> 
+</I>&gt;<i> &gt; For those skipping intermediary emails, the discussion is whether
+</I>&gt;<i> &gt; memmove() is faster than copy().
+</I>&gt;<i> &gt; 
+</I>&gt;<i> &gt; Attached is a program that constructs a vector, copies its contents to
+</I>&gt;<i> &gt; another vector, and then checks the copy for correctness.  On
+</I>&gt;<i> &gt; Linux/gcc3.0 and Irix6.5/KCC, I cannot find any significant speed
+</I>&gt;<i> &gt; difference between std::copy and std::memmove for vectors of doubles.
+</I>&gt;<i> &gt; Given this result, may we use std::copy() everywhere since it is
+</I>&gt;<i> &gt; guaranteed to compile? 
+</I>
+OK, I am not going to argue with your timing data even though I cannot
+reproduce them.  Let's just end up with a program that compiles and
+uses std::memmove.
+
+OK to commit this patch?
+
+Compiling src/Utilities/tests/delete_test1.cpp showed that the vector
+type `Array_t' was declared to store doubles but actually stored
+integers.  Also, arguments for a call to std::memmove() was modified
+to permit compilation.
+
+2001 May 24  Jeffrey D. Oldham  &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">oldham at codesourcery.com</A>&gt;
+
+	* delete_test1.cpp (Array_t): s/vector&lt;double&gt;/vector&lt;int&gt;/
+	(delete_shiftup_test2): Modify memmove operands to permit compilation.
+
+Tested on       sequential Linux using gcc 3.0 by compiling the program
+Approved by     ???you???
+
+Thanks,
+Jeffrey D. Oldham
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">oldham at codesourcery.com</A>
+-------------- next part --------------
+Index: delete_test1.cpp
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/Utilities/tests/delete_test1.cpp,v
+retrieving revision 1.7
+diff -c -p -r1.7 delete_test1.cpp
+*** delete_test1.cpp	2001/03/21 00:56:09	1.7
+--- delete_test1.cpp	2001/05/25 01:28:27
+*************** void delete_shiftup_test2(Array_t &amp;data,
+*** 596,601 ****
+--- 596,602 ----
+    const int size   = data.size();
+    
+    const std::vector&lt;Array_t::value_type&gt;::iterator data_begin = data.begin();
++   const Array_t::pointer data_begin_ptr = &amp;(data[0]);
+    
+    // Now loop through the data and destroy the values
+    
+*************** void delete_shiftup_test2(Array_t &amp;data,
+*** 625,632 ****
+  	                  data_begin + copy_end_index,
+  	                  data_begin + insert_index);
+  	      else
+! 	        std::memmove(data_begin + insert_index,
+! 	                     data_begin + copy_begin_index,
+  	                     sizeof(Array_t::value_type)*length);
+  
+  	      insert_index += length;
+--- 626,636 ----
+  	                  data_begin + copy_end_index,
+  	                  data_begin + insert_index);
+  	      else
+! 		// Jim Crotinger, in early 2000, measured significant
+! 		// speedup using KCC by using std::memmove rather than
+! 		// std::copy.
+! 	        std::memmove(data_begin_ptr + insert_index,
+! 	                     data_begin_ptr + copy_begin_index,
+  	                     sizeof(Array_t::value_type)*length);
+  
+  	      insert_index += length;
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000392.html">[pooma-dev] RFA: delete_test1 Modifications
+</A></li>
+	<LI>Next message: <A HREF="000401.html">Patch: Expanding Supported Explicit Instantiations
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#393">[ date ]</a>
+              <a href="thread.html#393">[ thread ]</a>
+              <a href="subject.html#393">[ subject ]</a>
+              <a href="author.html#393">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

@@ -1,0 +1,198 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [pooma-dev] [PATCH] Fix PackUnpack bug
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bpooma-dev%5D%20%5BPATCH%5D%20Fix%20PackUnpack%20bug&In-Reply-To=%3CPine.LNX.4.44.0408250943360.9036-100000%40alwazn.tat.physik.uni-tuebingen.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001750.html">
+   <LINK REL="Next"  HREF="001745.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[pooma-dev] [PATCH] Fix PackUnpack bug</H1>
+    <B>Richard Guenther</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bpooma-dev%5D%20%5BPATCH%5D%20Fix%20PackUnpack%20bug&In-Reply-To=%3CPine.LNX.4.44.0408250943360.9036-100000%40alwazn.tat.physik.uni-tuebingen.de%3E"
+       TITLE="[pooma-dev] [PATCH] Fix PackUnpack bug">rguenth at tat.physik.uni-tuebingen.de
+       </A><BR>
+    <I>Wed Aug 25 07:49:12 UTC 2004</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001750.html">[pooma-dev] [PATCH] Fix PackUnpack bug
+</A></li>
+        <LI>Next message: <A HREF="001745.html">OpenMP status
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1755">[ date ]</a>
+              <a href="thread.html#1755">[ thread ]</a>
+              <a href="subject.html#1755">[ subject ]</a>
+              <a href="author.html#1755">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>On Tue, 24 Aug 2004, Jeffrey D. Oldham wrote:
+
+&gt;<i> Richard Guenther wrote:
+</I>&gt;<i>
+</I>&gt;<i> &gt;PackUnpack.h pack/unpack use a functor with LoopApplyEvaluator
+</I>&gt;<i> &gt;that violate the assumption of independent iterations.  Thus
+</I>&gt;<i> &gt;the Field/LocalPatch testcase fails for OpenMP.
+</I>&gt;<i> &gt;
+</I>&gt;<i> &gt;We have the required infrastructure for ordered LoopApply in
+</I>&gt;<i> &gt;RemoteEngine.h.  This patch uses that, but before needs to fix
+</I>&gt;<i> &gt;it as it works with zeroBased domain only due to a bug.
+</I>&gt;<i> &gt;
+</I>&gt;<i> &gt;
+</I>&gt;<i> I do not understand this last sentence.  I also do not understand the
+</I>&gt;<i> patch, mainly because of my ignorance.
+</I>&gt;<i>
+</I>&gt;<i> Each portion of the patch is internally consistent, but why should a
+</I>&gt;<i> local patch ignore its field?
+</I>
+I'll try to go through the patch with some explanations
+
+&gt;<i> &gt;Index: Engine/RemoteEngine.h
+</I>&gt;<i> &gt;===================================================================
+</I>&gt;<i> &gt;RCS file: /home/pooma/Repository/r2/src/Engine/RemoteEngine.h,v
+</I>&gt;<i> &gt;retrieving revision 1.42
+</I>&gt;<i> &gt;diff -u -u -r1.42 RemoteEngine.h
+</I>&gt;<i> &gt;--- Engine/RemoteEngine.h	19 Jan 2004 22:04:33 -0000	1.42
+</I>&gt;<i> &gt;+++ Engine/RemoteEngine.h	24 Aug 2004 14:23:53 -0000
+</I>&gt;<i> &gt;@@ -1055,8 +1055,8 @@
+</I>&gt;<i> &gt;     {
+</I>&gt;<i> &gt;       CTAssert(Domain::unitStride == 1);
+</I>&gt;<i> &gt;       int f0 = domain[0].first();
+</I>&gt;<i> &gt;-      int e0 = domain[0].length();
+</I>&gt;<i> &gt;-      for (int i0 = f0; i0&lt;e0; ++i0)
+</I>&gt;<i> &gt;+      int e0 = domain[0].last();
+</I>&gt;<i> &gt;+      for (int i0 = f0; i0&lt;=e0; ++i0)
+</I>&gt;<i> &gt; 	op(engine(i0));
+</I>&gt;<i> &gt;       return op.total_m;
+</I>&gt;<i> &gt;     }
+</I>
+This was clearly wrong.  Either it should go from zero to
+domain[0].length() or from domain[0].first() to domain[0].last().  We
+didn't catch this yet as the past use was with domain[0].first() == 0
+always.
+
+&gt;<i> &gt;Index: Functions/PackUnpack.h
+</I>&gt;<i> &gt;===================================================================
+</I>&gt;<i> &gt;RCS file: /home/pooma/Repository/r2/src/Functions/PackUnpack.h,v
+</I>&gt;<i> &gt;retrieving revision 1.5
+</I>&gt;<i> &gt;diff -u -u -r1.5 PackUnpack.h
+</I>&gt;<i> &gt;--- Functions/PackUnpack.h	25 Oct 2003 12:06:55 -0000	1.5
+</I>&gt;<i> &gt;+++ Functions/PackUnpack.h	24 Aug 2004 14:23:53 -0000
+</I>&gt;<i> &gt;@@ -59,6 +59,7 @@
+</I>&gt;<i> &gt; //-----------------------------------------------------------------------------
+</I>&gt;<i> &gt;
+</I>&gt;<i> &gt; #include &quot;Utilities/RefCountedBlockPtr.h&quot;
+</I>&gt;<i> &gt;+#include &quot;Engine/RemoteEngine.h&quot;
+</I>&gt;<i> &gt; #include &quot;Pooma/Pooma.h&quot;
+</I>&gt;<i> &gt;
+</I>&gt;<i> &gt; //-----------------------------------------------------------------------------
+</I>&gt;<i> &gt;@@ -93,38 +94,19 @@
+</I>&gt;<i> &gt; {
+</I>&gt;<i> &gt;   typedef typename InputField::Element_t Element_t;
+</I>&gt;<i> &gt;
+</I>&gt;<i> &gt;-  PackLocalPatches(const InputField &amp;field,
+</I>&gt;<i> &gt;-                   RefCountedBlockPtr&lt;Element_t&gt; block)
+</I>&gt;<i> &gt;-    : field_m(field), block_m(block)
+</I>&gt;<i> &gt;+  PackLocalPatches(RefCountedBlockPtr&lt;Element_t&gt; block)
+</I>&gt;<i> &gt;+    : block_m(block)
+</I>&gt;<i> &gt;   {
+</I>&gt;<i> &gt;   }
+</I>&gt;<i> &gt;
+</I>&gt;<i> &gt;-  void operator()(int i0) const
+</I>&gt;<i> &gt;+  inline void operator()(const Element_t &amp;t)
+</I>&gt;<i> &gt;   {
+</I>&gt;<i> &gt;-    *block_m = field_m.read(i0);
+</I>&gt;<i> &gt;+    *block_m = t;
+</I>&gt;<i> &gt;     ++block_m;
+</I>&gt;<i> &gt;   }
+</I>&gt;<i> &gt;
+</I>&gt;<i> &gt;-  void operator()(int i0, int i1) const
+</I>&gt;<i> &gt;-  {
+</I>&gt;<i> &gt;-    *block_m = field_m.read(i0, i1);
+</I>&gt;<i> &gt;-    ++block_m;
+</I>&gt;<i> &gt;-  }
+</I>&gt;<i> &gt;-
+</I>&gt;<i> &gt;-  void operator()(int i0, int i1, int i2) const
+</I>&gt;<i> &gt;-  {
+</I>&gt;<i> &gt;-    *block_m = field_m.read(i0, i1, i2);
+</I>&gt;<i> &gt;-    ++block_m;
+</I>&gt;<i> &gt;-  }
+</I>&gt;<i> &gt;-
+</I>&gt;<i> &gt;-  void operator()(int i0, int i1, int i2, int i3) const
+</I>&gt;<i> &gt;-  {
+</I>&gt;<i> &gt;-    *block_m = field_m.read(i0, i1, i2, i3);
+</I>&gt;<i> &gt;-    ++block_m;
+</I>&gt;<i> &gt;-  }
+</I>&gt;<i> &gt;-
+</I>&gt;<i> &gt;-  InputField field_m;
+</I>&gt;<i> &gt;-  mutable RefCountedBlockPtr&lt;Element_t&gt; block_m;
+</I>&gt;<i> &gt;+  RefCountedBlockPtr&lt;Element_t&gt; block_m;
+</I>&gt;<i> &gt;+  int total_m;
+</I>&gt;<i> &gt; };
+</I>
+Rewrite the functor to work with EngineBlockSerialize instead of
+LoopApplyEvaluator.
+
+&gt;<i> &gt; template&lt;class InputField&gt;
+</I>&gt;<i> &gt;@@ -149,8 +131,8 @@
+</I>&gt;<i> &gt;   {
+</I>&gt;<i> &gt;     typedef typename Patch&lt;InputField&gt;::Type_t PatchField_t;
+</I>&gt;<i> &gt;     PatchField_t patch = field.patchLocal(i);
+</I>&gt;<i> &gt;-    PackLocalPatches&lt;PatchField_t&gt; packFunctor(patch, current);
+</I>&gt;<i> &gt;-    LoopApplyEvaluator::evaluate(packFunctor, patch.domain());
+</I>&gt;<i> &gt;+    PackLocalPatches&lt;PatchField_t&gt; packFunctor(current);
+</I>&gt;<i> &gt;+    EngineBlockSerialize::apply(packFunctor, patch, patch.domain());
+</I>&gt;<i> &gt;     current += patch.domain().size();
+</I>&gt;<i> &gt;   }
+</I>
+Use EngineBlockSerialize with the PackLocalPatches functor.
+EngineBlockSerialize passes the read value to the functor, not the
+current index as LoopApplyEvaluator does.  So we don't need the local
+patch in the functor, but only in EngineBlockSerialize.
+
+And likewise for Pack.
+
+The problem with OpenMP and LoopApplyEvaluator was that the loop
+for that evaluator is OpenMP parallelized - and guess what happens
+to the block_m member of the functor if it's incremented and written
+to by multiple threads in parallel...
+
+Richard.
+
+--
+Richard Guenther &lt;richard dot guenther at uni-tuebingen dot de&gt;
+WWW: <A HREF="http://www.tat.physik.uni-tuebingen.de/~rguenth/">http://www.tat.physik.uni-tuebingen.de/~rguenth/</A>
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001750.html">[pooma-dev] [PATCH] Fix PackUnpack bug
+</A></li>
+	<LI>Next message: <A HREF="001745.html">OpenMP status
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1755">[ date ]</a>
+              <a href="thread.html#1755">[ thread ]</a>
+              <a href="subject.html#1755">[ subject ]</a>
+              <a href="author.html#1755">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

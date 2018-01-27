@@ -1,0 +1,243 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> Compile Time Problems and Pooma 2
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20Compile%20Time%20Problems%20and%20Pooma%202&In-Reply-To=%3C15122.47231.155261.717836%40mutley.lanl.gov%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000418.html">
+   <LINK REL="Next"  HREF="000427.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>Compile Time Problems and Pooma 2</H1>
+    <B>Dave Nystrom</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20Compile%20Time%20Problems%20and%20Pooma%202&In-Reply-To=%3C15122.47231.155261.717836%40mutley.lanl.gov%3E"
+       TITLE="Compile Time Problems and Pooma 2">wdn at lanl.gov
+       </A><BR>
+    <I>Mon May 28 20:46:58 UTC 2001</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000418.html">Pooma where and peephole optimization in CW
+</A></li>
+        <LI>Next message: <A HREF="000427.html">[pooma-dev] Compile Time Problems and Pooma 2
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#419">[ date ]</a>
+              <a href="thread.html#419">[ thread ]</a>
+              <a href="subject.html#419">[ subject ]</a>
+              <a href="author.html#419">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Hi Guys,
+
+I wanted to share some results which I have accumulated over the last week or 
+so regarding compile times and Pooma 2.  Some of these results I find to be
+truly stunning in a negative sense.  First, I spent most of last week trying
+to build a couple of versions of my Pooma2Instantiations library on the
+secure bluemountain b18 machine.  I built a debug and an optimized version of 
+the library using KCC-4.0d.  I had the source code for Pooma 2 and the
+Pooma2Instantiations library located on the local scratch disk.  I was doing
+a parallel using 16 processors including 16 processors for the parallel
+prelink phase.  The timing results which I will be reporting were accumulated 
+this last Friday when b18 was virtually idle except for my compiles.  The
+stunning result is that I could build either a debug or optimized version of
+the library faster on my 2 year old 366 MHz Pentium 2 laptop with 384 MBytes
+of memory than I could on an idle b18 using 16 processors.  I find this
+result to be truly stunning.  The majority of the compile time, at least 90%, 
+on b18 was spent in the backend C compiler.  Here are some timings that I did 
+on 5 files that were associated with instantiating the Pooma 2 global assign
+function on both b18 and my old laptop.  The timing results are not totally
+comparable because the prelinker chooses to assign templates a little
+differently from one machine to the other because of doing a parallel compile 
+on b18.  These compiles were +K0 compiles using KCC-4.0d.  Anyway, here they
+are:
+
+b18 results: Irix 6.5, MipsPro 7.3.1.2m
+---------------------------------------
+
+Filename           | # of .ii | # lines of | +K0 Compile | Line  | Time
+                   |  lines   | int C code |    Time     | Ratio | Ratio
+--------------------------------------------------------------------------
+assign_arg7_03.cc  |   341    |   566783   |  7070.603   |  5.46 |  24.14
+--------------------------------------------------------------------------
+assign_arg5_01.cc  |   349    |   314395   |  3266.179   |  3.03 |  11.15
+--------------------------------------------------------------------------
+assign_arg7_09.cc  |   144    |   314070   |  2320.959   |  3.02 |   7.92
+--------------------------------------------------------------------------
+assign_arg7_13.cc  |   124    |   209043   |  1142.474   |  2.01 |   3.90
+--------------------------------------------------------------------------
+assign_arg5_03.cc  |     0    |   103832   |   292.872   |  1.00 |   1.00
+--------------------------------------------------------------------------
+
+
+mutley results: RedHat 6.2
+--------------------------
+
+Filename           | # of .ii | # lines of | +K0 Compile | Line  | Time
+                   |  lines   | int C code |    Time     | Ratio | Ratio
+--------------------------------------------------------------------------
+assign_arg7_03.cc  |     0    |   478303   |   467.63    |  3.63 |  2.84
+--------------------------------------------------------------------------
+assign_arg5_01.cc  |   246    |   308959   |   428.92    |  2.28 |  2.61
+--------------------------------------------------------------------------
+assign_arg7_09.cc  |    91    |   272079   |   360.49    |  2.01 |  2.19
+--------------------------------------------------------------------------
+assign_arg7_13.cc  |   178    |   231415   |   254.78    |  1.71 |  1.55
+--------------------------------------------------------------------------
+assign_arg5_03.cc  |   207    |   135366   |   164.39    |  1.00 |  1.00
+--------------------------------------------------------------------------
+
+It seems that on my linux laptop, gcc's compile time scales roughly linearly
+with the number of lines of intermediate C code.  That does not seem to be
+the case for the SGI cc compiler.  I computed these results using both the
+MipsPro 7.2.1 C compiler and the MipsPro 7.3.1.2m C compiler and the results
+were essentially identical for practical purposes.
+
+Another experiment which I did was to take the instantiation request for the
+assign function which had the longest template argument and put that in a
+separate file and do some testing on my linux laptop.  The longest template
+argument was 1666 characters in length.  Here are the results with and
+without exceptions enabled.
+
+With Exceptions:
+----------------
+
+Case | # lines of | Compile | Optimization | # lines of int | Compile
+     | int C code |  Time   |    Level     | C code - base  | Time - base
+-------------------------------------------------------------------------
+  1  |   28804    |  33.34  |     +K0      |       51       |  12.50
+-------------------------------------------------------------------------
+  2  |   18263    |  35.27  |     +K1      |       37       |  12.33
+-------------------------------------------------------------------------
+  3  |   14451    |  62.21  |     +K2      |       18       |  12.35
+-------------------------------------------------------------------------
+  4  |   15767    |  76.47  |     +K3      |       18       |  12.30
+-------------------------------------------------------------------------
+
+Without Exceptions:
+-------------------
+
+Case | # lines of | Compile | Optimization | # lines of int | Compile
+     | int C code |  Time   |    Level     | C code - base  | Time - base
+-------------------------------------------------------------------------
+  1  |   26975    |  25.01  |     +K0      |       41       |  12.47
+-------------------------------------------------------------------------
+  2  |   16288    |  31.08  |     +K1      |       37       |  13.71
+-------------------------------------------------------------------------
+  3  |   12476    |  49.62  |     +K2      |       18       |  12.32
+-------------------------------------------------------------------------
+  4  |   13037    |  57.00  |     +K3      |       18       |  12.33
+-------------------------------------------------------------------------
+
+The results recorded in the &quot;base&quot; columns are results obtained when the
+template instantiation request is commented out and reflects the compile
+times and lines of intermediate C code for the case where only the included
+header files are being parsed.  Care was taken to record the number of lines
+of intermediate C code before the prelinker phase.  The prelinker phase
+determines that the explicit instantiation request for this single assign
+function triggers the need for an additional 292 templates and the lines of
+intermediate C code for these additional 292 templates nearly doubles the
+above numbers.  It seems amazing that a single assign function would need
+between 14430 and 28750 lines of intermediate C code to represent it
+depending on the optimization level and that it would trigger the need for
+another 292 templates.  Also, I don't think we have gotten to the level of
+complexity in the expressions for our Pooma 2 based code that we have in our
+Pooma 1 based code.  In our Pooma 1 based code, I have seen expressions which 
+generate template parameters over 2800 characters long.
+
+Here is another benchmark to compare the Pooma 2 base code and the Pooma 1
+based code.  In the Pooma 1 based code, my instantiation library explicitly
+instantiated nearly every Pooma 1 template.  The +K1 compilation of this
+instantiation library generated approximately 3.5 million lines of
+intermediate C code for the whole library and just under 1 million lines for
+the instantiation of all the global assign functions.  There were about 1196
+of these global assign functions that were instantiated.  In constrast, the
+Pooma 2 instantiation library instantiates 1282 global assign functions which 
+generates 4711082 lines of intermediate C code.  The complete Pooma 2
+instantiation library currently generates 5327932 lines of intermediate C
+code.  However, there are still lots of Pooma 2 templates that are currently
+being instantiated by the prelinker in our Blanca code that need to be moved
+to the Pooma 2 instantiation library.  So, it appears that there is alot more 
+intermediate C code generated by KCC for our Pooma 2 code than for our Pooma
+1 code.  I'm not sure what to make of all this since to a certain degree I am 
+comparing apples and oranges.  But I think it does provide some indication of 
+how Pooma 1 and Pooma 2 compare in regard to code generation which
+contributes to long compile times.
+
+Also, I tried out Jeffrey's fixes to allow instantiation of the View1 class
+and have some comments.  It appears that I can now instantiate the View1
+class but now I find that I have about 1000 AltView1 templates that I am
+unable to instantiate.  Perhaps we need a new AltAltView1 class:-).  Well,
+seriously, this fix is not solving the root problem which I have which is
+that I need to be able to explicitly instantiate anything that the compiler
+is able to instantiate so that I don't have to depend on the prelinker
+recompiling files.  Also, I tried the following template instantiation
+request which did not work.
+
+	template const bool View1&lt;Field&lt;T1,T2,T3&gt;,T4&gt;::sv;
+
+KCC using --strict complained that I did not provide an implementation.  So,
+I don't know what the problem is here.  I don't know if the syntax is wrong
+or there is some bug in KCC.  But I do know that the prelinker is capable of
+performing the instantiation of this member of the View1 class.  I have this
+problem with other Pooma 2 classes such as the ElementProperties class.  I
+wish I could get this problem solved because my compile times are at least
+twice as long as they would be if I were able to instantiate everything that
+the compiler is instantiating.
+
+I would like to know what the Pooma 2 team things about these results.  I
+find them sobering and not something that I want to see publicized.  Do you
+guys have any ideas about how to modify the relevant parts of Pooma 2 so that 
+less intermediate C code gets generated by KCC?  Are there tradeoffs here
+that you are aware of?  Is this code generation problem related specifically
+to the expression template engine or are there other things involved here?
+I've been wondering lately if Pooma 2 was designed in a way that would make
+it easy to use some other expression template engine.  I've also been
+wondering whether it would be possible to make expression templates a feature 
+selectable at compile time.  Then for debugging or development perhaps a more 
+lightweight version of Pooma 2 could be used that would run like a dog but
+compile much faster and facilitate an effective and efficient development
+environment.  Then building a high performance runtime version of our code
+could be banished to a batch script that was done only infrequently or by a
+very small group of people.  Are things like this reasonable to contemplate
+with Pooma 2?
+
+Please let me know if you have any questions about the results I have
+presented in this email or if I can supply additional information.  I plan to 
+also send a copy of the current version of my Pooma 2 instantiation stuff so
+you guys can do any testing of your own that you want to do.
+
+-- 
+Dave Nystrom			email: <A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">wdn at lanl.gov</A>
+LANL X-3			phone: 505-667-7913	fax: 505-665-3046
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000418.html">Pooma where and peephole optimization in CW
+</A></li>
+	<LI>Next message: <A HREF="000427.html">[pooma-dev] Compile Time Problems and Pooma 2
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#419">[ date ]</a>
+              <a href="thread.html#419">[ thread ]</a>
+              <a href="subject.html#419">[ subject ]</a>
+              <a href="author.html#419">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

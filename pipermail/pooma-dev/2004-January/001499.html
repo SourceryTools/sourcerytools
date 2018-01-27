@@ -1,0 +1,130 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [pooma-dev] Re: [PATCH] Fix deadlocks in MPI reduction evaluators
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bpooma-dev%5D%20Re%3A%20%5BPATCH%5D%20Fix%20deadlocks%20in%20MPI%20reduction%20evaluators&In-Reply-To=%3C4007534D.90101%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001491.html">
+   <LINK REL="Next"  HREF="001504.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[pooma-dev] Re: [PATCH] Fix deadlocks in MPI reduction evaluators</H1>
+    <B>Jeffrey D. Oldham</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bpooma-dev%5D%20Re%3A%20%5BPATCH%5D%20Fix%20deadlocks%20in%20MPI%20reduction%20evaluators&In-Reply-To=%3C4007534D.90101%40codesourcery.com%3E"
+       TITLE="[pooma-dev] Re: [PATCH] Fix deadlocks in MPI reduction evaluators">oldham at codesourcery.com
+       </A><BR>
+    <I>Fri Jan 16 02:58:21 UTC 2004</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001491.html">[pooma-dev] Re: [PATCH] Fix deadlocks in MPI reduction evaluators
+</A></li>
+        <LI>Next message: <A HREF="001504.html">[pooma-dev] Re: [PATCH] Fix deadlocks in MPI reduction evaluators
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1499">[ date ]</a>
+              <a href="thread.html#1499">[ thread ]</a>
+              <a href="subject.html#1499">[ subject ]</a>
+              <a href="author.html#1499">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Richard Guenther wrote:
+&gt;<i> On Tue, 13 Jan 2004, Jeffrey D. Oldham wrote:
+</I>&gt;<i> 
+</I>&gt;<i> 
+</I>&gt;&gt;<i>Richard Guenther wrote:
+</I>&gt;&gt;<i>
+</I>&gt;&gt;&gt;<i>Hi!
+</I>&gt;&gt;&gt;<i>
+</I>&gt;&gt;&gt;<i>The following patch is necessary to avoid deadlocks with the MPI
+</I>&gt;&gt;&gt;<i>implementation and multi-patch setups where one context does not
+</I>&gt;&gt;&gt;<i>participate in the reduction.
+</I>&gt;&gt;&gt;<i>
+</I>&gt;&gt;&gt;<i>Fixes failure of array_test_.. - I don't remember - with MPI.
+</I>&gt;&gt;&gt;<i>
+</I>&gt;&gt;&gt;<i>Basically the scenario is that the collective synchronous MPI_Gather is
+</I>&gt;&gt;&gt;<i>called from ReduceOverContexts&lt;&gt; on the non-participating (and thus
+</I>&gt;&gt;&gt;<i>not receiving) contexts while the SendIterates are still in the
+</I>&gt;&gt;&gt;<i>schedulers queue.  The calculation participating contexts will wait for
+</I>&gt;&gt;&gt;<i>the ReceiveIterates and patch reductions to complete using the CSem
+</I>&gt;&gt;&gt;<i>forever then.
+</I>&gt;&gt;&gt;<i>
+</I>&gt;&gt;&gt;<i>So the fix is to make the not participating contexts wait on the CSem,
+</I>&gt;&gt;&gt;<i>too, by using a fake write iterate queued after the send iterates which
+</I>&gt;&gt;&gt;<i>will trigger as soon as the send iterates complete.
+</I>&gt;&gt;<i>
+</I>&gt;&gt;<i>Instead of adding fake write iterate can we adjust the MPI_Gather so
+</I>&gt;&gt;<i>non-participating contexts do not participate?
+</I>&gt;<i> 
+</I>&gt;<i> 
+</I>&gt;<i> The problem is not easy to tackle in MPI_Gather, as collective
+</I>&gt;<i> communication primitives involve all contexts and this can be overcome
+</I>&gt;<i> only by creating a new MPI communicator, which is costly.  Also I'm not
+</I>&gt;<i> sure that this will solve the problem at all.
+</I>&gt;<i> 
+</I>&gt;<i> The problem is that contexts participating only via sending their data to
+</I>&gt;<i> a remote context (i.e. are participating, but not computing) don't have
+</I>&gt;<i> the counting semaphore to block on (its height is zero for them).  So
+</I>&gt;<i> after queuing the send iterates they go straight to the final reduction
+</I>&gt;<i> which is not done via an extra iterate and block there, not firing off the
+</I>&gt;<i> send iterate in the first place. Ugh. Same of course for completely non
+</I>&gt;<i> participating contexts, and even this may be a problem because of old
+</I>&gt;<i> unrun iterates.
+</I>&gt;<i> 
+</I>&gt;<i> So in first I thought of creating a DataObject to hold the reduction
+</I>&gt;<i> result, so we can do usual data-flow evaluation on it, and not ignore
+</I>&gt;<i> dependencies on it, as we do now.  But this turned out to be more invasive
+</I>&gt;<i> and I didn't have time to complete this.
+</I>&gt;<i> 
+</I>&gt;<i> So the fake writing iterate solves the problem (only partly, because, I
+</I>&gt;<i> could imagine for completely non-participating contexts the problem is
+</I>&gt;<i> still there) for me.
+</I>&gt;<i> 
+</I>&gt;<i> But anyway, I'm not pushing this very hard now, but it's guaranteed to
+</I>&gt;<i> deadlock at reductions otherwise for MPI for me (so there's a race even
+</I>&gt;<i> in the case of all-participating contexts, or the intersector is doing
+</I>&gt;<i> something strange).
+</I>&gt;<i> 
+</I>&gt;<i> Richard.
+</I>
+I appreciate your finding the difficulty and your taking the time to 
+explain the problem.  I am reluctant to add code that is known to be 
+broken for some situations.  Is there a way to mark the code so 1) the 
+known brokenness is marked and 2) the program asks sensibly when the 
+brokenness is experienced?
+
+-- 
+Jeffrey D. Oldham
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">oldham at codesourcery.com</A>
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001491.html">[pooma-dev] Re: [PATCH] Fix deadlocks in MPI reduction evaluators
+</A></li>
+	<LI>Next message: <A HREF="001504.html">[pooma-dev] Re: [PATCH] Fix deadlocks in MPI reduction evaluators
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1499">[ date ]</a>
+              <a href="thread.html#1499">[ thread ]</a>
+              <a href="subject.html#1499">[ subject ]</a>
+              <a href="author.html#1499">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

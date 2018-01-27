@@ -1,0 +1,219 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [vsipl++] [patch] Use new dispatch for matvec functions
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20%5Bpatch%5D%20Use%20new%20dispatch%20for%20matvec%20functions&In-Reply-To=%3C4922FB10.6090303%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001524.html">
+   <LINK REL="Next"  HREF="001525.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[vsipl++] [patch] Use new dispatch for matvec functions</H1>
+    <B>Jules Bergmann</B> 
+    <A HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20%5Bpatch%5D%20Use%20new%20dispatch%20for%20matvec%20functions&In-Reply-To=%3C4922FB10.6090303%40codesourcery.com%3E"
+       TITLE="[vsipl++] [patch] Use new dispatch for matvec functions">jules at codesourcery.com
+       </A><BR>
+    <I>Tue Nov 18 17:27:44 UTC 2008</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001524.html">[vsipl++] [patch] Use new dispatch for matvec functions
+</A></li>
+        <LI>Next message: <A HREF="001525.html">[vsipl++] [patch] Use new dispatch for matvec functions
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1522">[ date ]</a>
+              <a href="thread.html#1522">[ thread ]</a>
+              <a href="subject.html#1522">[ subject ]</a>
+              <a href="author.html#1522">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Don McCoy wrote:
+&gt;<i> This patch has been expanded to include SAL and CML matvec functions and 
+</I>&gt;<i> it completely replaces previous versions.  It also incorporates the 
+</I>&gt;<i> feedback received from Stefan.  BLAS modifications will be posted in a 
+</I>&gt;<i> later patch.
+</I>&gt;<i> 
+</I>&gt;<i> Ok to commit?
+</I>
+Don,
+
+I have several comments below.  Otherwise it looks good.
+
+			thanks,
+			-- Jules
+
+
+
+&gt;<i> Index: src/vsip/core/cvsip/matvec.hpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> --- src/vsip/core/cvsip/matvec.hpp	(revision 225932)
+</I>&gt;<i> +++ src/vsip/core/cvsip/matvec.hpp	(working copy)
+</I>&gt;<i> @@ -158,82 +158,47 @@
+</I>&gt;<i>  
+</I>&gt;<i>  } // namespace vsip::impl::cvsip
+</I>&gt;<i>  
+</I>&gt;<i> +namespace dispatcher
+</I>&gt;<i> +{
+</I>&gt;<i> +
+</I>&gt;<i>  template &lt;typename T,
+</I>&gt;<i> -          typename Block1,
+</I>&gt;<i> -          typename Block2&gt;
+</I>&gt;<i> -struct Evaluator&lt;Op_prod_vv_dot, Return_scalar&lt;T&gt;, Op_list_2&lt;Block1, Block2&gt;,
+</I>&gt;<i> -                 Cvsip_tag&gt;
+</I>&gt;<i> +          typename Block0,
+</I>&gt;<i> +          typename Block1&gt;
+</I>&gt;<i> +struct Evaluator&lt;Op_prod_vv_dot, Cvsip_tag,
+</I>&gt;<i> +                 Return_scalar&lt;T&gt;(Block0 const&amp;, Block1 const&amp;)&gt;
+</I>
+[1] I don't think the new dispatcher needs the Return_scalar&lt;T&gt;.  Just
+T should be fine.
+
+Return_scalar helped general dispatch determine wehther the exec
+function gave its result as a return value (mostly scalars) or as a
+by-reference variable (mostly blocks).  The new dispatcher uses
+function type to indicate this without ambiguity.
+
+
+
+&gt;<i>  
+</I>&gt;<i> -template &lt;typename T,
+</I>&gt;<i> -          typename Block1,
+</I>&gt;<i> -          typename Block2&gt;
+</I>&gt;<i> -struct Evaluator&lt;Op_prod_vv_dot, Return_scalar&lt;std::complex&lt;T&gt; &gt;,
+</I>&gt;<i> -                 Op_list_2&lt;Block1, 
+</I>&gt;<i> -                           Unary_expr_block&lt;1, conj_functor,
+</I>&gt;<i> -                                            Block2, std::complex&lt;T&gt; &gt; const&gt;,
+</I>&gt;<i> -                 Cvsip_tag&gt;
+</I>
+[2] Why is this evaluator being removed?
+
+&gt;<i> -{
+</I>&gt;<i> -  typedef cvsip::Op_traits&lt;std::complex&lt;T&gt; &gt; traits;
+</I>&gt;<i> -  typedef Unary_expr_block&lt;1, conj_functor, Block2, complex&lt;T&gt; &gt; block2_type;
+</I>&gt;<i>  
+</I>&gt;<i> -  static bool const ct_valid = 
+</I>&gt;<i> -    traits::valid &amp;&amp;
+</I>&gt;<i> -    Type_equal&lt;complex&lt;T&gt;, typename Block1::value_type&gt;::value &amp;&amp;
+</I>&gt;<i> -    Type_equal&lt;complex&lt;T&gt;, typename Block2::value_type&gt;::value &amp;&amp;
+</I>&gt;<i> -    // check that direct access is supported
+</I>&gt;<i> -    Ext_data_cost&lt;Block1&gt;::value == 0 &amp;&amp;
+</I>&gt;<i> -    Ext_data_cost&lt;Block2&gt;::value == 0;
+</I>&gt;<i> -
+</I>&gt;<i> -  static bool rt_valid(Block1 const&amp;, block2_type const&amp;)
+</I>&gt;<i> -  { return true; }
+</I>&gt;<i> -
+</I>&gt;<i> -  static complex&lt;T&gt; exec(Block1 const&amp; a, block2_type const&amp; b)
+</I>&gt;<i> -  {
+</I>&gt;<i> -    VSIP_IMPL_COVER_FCN(&quot;Op_prod_vv_dot(conj)/cvsip&quot;, exec);
+</I>&gt;<i> -    assert(a.size(1, 0) == b.size(1, 0));
+</I>&gt;<i> -
+</I>&gt;<i> -    Ext_data&lt;Block1&gt; ext_a(const_cast&lt;Block1&amp;&gt;(a));
+</I>&gt;<i> -    Ext_data&lt;Block2&gt; ext_b(const_cast&lt;Block2&amp;&gt;(b.op()));
+</I>&gt;<i> -    cvsip::View&lt;1, std::complex&lt;T&gt; &gt;
+</I>&gt;<i> -      aview(ext_a.data(), 0, ext_a.stride(0), a.size(1, 0));
+</I>&gt;<i> -    cvsip::View&lt;1, std::complex&lt;T&gt; &gt;
+</I>&gt;<i> -      bview(ext_b.data(), 0, ext_b.stride(0), b.size(1, 0));
+</I>&gt;<i> -    return traits::cvjdot(aview.ptr(), bview.ptr());
+</I>&gt;<i> -  }
+</I>&gt;<i> -};
+</I>&gt;<i> -
+</I>
+&gt;<i> +/* Copyright (c) 2008 by CodeSourcery.  All rights reserved. */
+</I>&gt;<i> +
+</I>&gt;<i> +/** @file    vsip/core/dispatch.hpp
+</I>&gt;<i> +    @author  Stefan Seefeld
+</I>&gt;<i> +    @date    2006-11-03
+</I>&gt;<i> +    @brief   VSIPL++ Library: Dispatcher harness.
+</I>
+[3] Can you adjust the author/date and mention that this file contains
+a simplified dispatch harness for the reference implementation and
+that the real slim shady is in opt/dispatch.hpp.
+
+
+
+&gt;<i> +/// Generic evaluator for vector-vector dot-product.
+</I>&gt;<i> +template &lt;typename T,
+</I>&gt;<i> +	  typename Block0,
+</I>&gt;<i> +	  typename Block1&gt;
+</I>&gt;<i> +struct Evaluator&lt;Op_prod_vv_dot, Generic_tag,
+</I>&gt;<i> +                 T(Block0 const&amp;, Block1 const&amp;)&gt;
+</I>&gt;<i> +{
+</I>&gt;<i> +  static bool const ct_valid = true;
+</I>&gt;<i> +  static bool rt_valid(Block0 const&amp;, Block1 const&amp;) { return true; }
+</I>&gt;<i> +
+</I>&gt;<i> +  static T exec(Block0 const&amp; a, Block1 const&amp; b)
+</I>&gt;<i> +  {
+</I>&gt;<i> +    assert(a.size(1, 0) == b.size(1, 0));
+</I>&gt;<i> +
+</I>&gt;<i> +    T r = T();
+</I>&gt;<i> +    for ( index_type i = 0; i &lt; a.size(); ++i )
+</I>&gt;<i> +      r += a.get(i) * b.get(i);
+</I>&gt;<i> +    return r;
+</I>&gt;<i> +  }
+</I>&gt;<i> +};
+</I>&gt;<i> +
+</I>&gt;<i> +template &lt;typename T,
+</I>&gt;<i> +	  typename Block0,
+</I>&gt;<i> +	  typename Block1&gt;
+</I>&gt;<i> +struct Evaluator&lt;Op_prod_vv_dot, Generic_tag,
+</I>&gt;<i> +                 std::complex&lt;T&gt;(Block0 const&amp;, 
+</I>&gt;<i> +                   Unary_expr_block&lt;1, conj_functor, Block1, std::complex&lt;T&gt; &gt; const&amp;)&gt;
+</I>
+[4] Why is this evaluator necessary?  The Unar_expr_block specialization
+isn't used at all: the exec() body is identical to the more generic
+evaluator above.
+
+&gt;<i> +{
+</I>&gt;<i> +  typedef Unary_expr_block&lt;1, conj_functor, Block1, std::complex&lt;T&gt; &gt; block1_type;
+</I>&gt;<i> +
+</I>&gt;<i> +  static bool const ct_valid = true;
+</I>&gt;<i> +  static bool rt_valid(Block0 const&amp;, block1_type const&amp;) { return true; }
+</I>&gt;<i> +
+</I>&gt;<i> +  static std::complex&lt;T&gt; exec(Block0 const&amp; a, block1_type const&amp; b)
+</I>&gt;<i> +  {
+</I>&gt;<i> +    assert(a.size(1, 0) == b.size(1, 0));
+</I>&gt;<i> +
+</I>&gt;<i> +    std::complex&lt;T&gt; r = std::complex&lt;T&gt;();
+</I>&gt;<i> +    for ( index_type i = 0; i &lt; a.size(); ++i )
+</I>&gt;<i> +      r += a.get(i) * b.get(i);
+</I>&gt;<i> +    return r;
+</I>&gt;<i> +  }
+</I>&gt;<i> +};
+</I>
+-- 
+Jules Bergmann
+CodeSourcery
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">jules at codesourcery.com</A>
+(650) 331-3385 x705
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001524.html">[vsipl++] [patch] Use new dispatch for matvec functions
+</A></li>
+	<LI>Next message: <A HREF="001525.html">[vsipl++] [patch] Use new dispatch for matvec functions
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1522">[ date ]</a>
+              <a href="thread.html#1522">[ thread ]</a>
+              <a href="subject.html#1522">[ subject ]</a>
+              <a href="author.html#1522">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">More information about the vsipl++
+mailing list</a><br>
+</body></html>

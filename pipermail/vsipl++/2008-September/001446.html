@@ -1,0 +1,136 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [vsipl++] [patch] scalar-complex multiply-add user-defined kernel
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20%5Bpatch%5D%20scalar-complex%20multiply-add%20user-defined%20kernel&In-Reply-To=%3C48BD5A52.5090702%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001449.html">
+   <LINK REL="Next"  HREF="001450.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[vsipl++] [patch] scalar-complex multiply-add user-defined kernel</H1>
+    <B>Jules Bergmann</B> 
+    <A HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20%5Bpatch%5D%20scalar-complex%20multiply-add%20user-defined%20kernel&In-Reply-To=%3C48BD5A52.5090702%40codesourcery.com%3E"
+       TITLE="[vsipl++] [patch] scalar-complex multiply-add user-defined kernel">jules at codesourcery.com
+       </A><BR>
+    <I>Tue Sep  2 15:22:58 UTC 2008</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001449.html">[vsipl++] [patch] scalar-complex multiply-add user-defined kernel
+</A></li>
+        <LI>Next message: <A HREF="001450.html">[vsipl++] [patch] scalar-complex multiply-add user-defined kernel
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1446">[ date ]</a>
+              <a href="thread.html#1446">[ thread ]</a>
+              <a href="subject.html#1446">[ subject ]</a>
+              <a href="author.html#1446">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Don McCoy wrote:
+&gt;<i> This patch extends the Cell/BE user-defined kernel framework to allow
+</I>&gt;<i> passing of views with different data types down to the kernels.  The
+</I>&gt;<i> scalar-complex multiply add (where A in A * B + C is a scalar and the
+</I>&gt;<i> rest are complex) is used as a test case.
+</I>&gt;<i> 
+</I>&gt;<i> Ok to commit?
+</I>
+Don,
+
+This looks good, please commit, modulo comments below.
+
+			-- Jules
+
+&gt;<i> +#ifndef DEBUG
+</I>&gt;<i>  #define DEBUG 0
+</I>&gt;<i> +#endif
+</I>
+If this define collides with one in another file, we should:
+  - undefine DEBUG at the end of the other file, to prevent
+    the collision,
+  - disambiguate DEBUG
+     DEBUG_ALF_BASE
+     DEBUG_FOO
+
+
+&gt;<i>  // Helper functor, converts void buffer pointer to appropriate type.
+</I>&gt;<i> +//
+</I>&gt;<i> +// The 'off' parameter is a byte offset, while 'size' is in elements.
+</I>&gt;<i> +// This is necessary because the first is calculated from the amount
+</I>&gt;<i> +// data previously allocated, which may or may not have the same data
+</I>&gt;<i> +// type.  Conversely, the second parameter refers to the amount of
+</I>&gt;<i> +// data for the current segment and it is therefore easier to use
+</I>&gt;<i> +// pointer arithmetic since the type is known.
+</I>
+Thanks for documenting this, it has the potential to be confusing.
+
+
+&gt;<i> +
+</I>&gt;<i> +// Converts a size in number of elements (or index value) into an offset 
+</I>&gt;<i> +// based on the type referenced by the pointer.
+</I>&gt;<i> +
+</I>&gt;<i>  template &lt;typename PtrT&gt;
+</I>&gt;<i> +struct Byte_offset
+</I>&gt;<i> +{
+</I>&gt;<i> +  static size_t index(size_t size) { return (size_t)((PtrT)0 + size); }
+</I>
+The following would be more clear:
+
+    template &lt;typename T&gt;
+    struct Byte_offset;
+
+    template &lt;typename T&gt;
+    struct Byte_offset&lt;T*&gt;
+    {
+      static size_t index(size_t size) { return sizeof(T)*size; }
+    };
+
+
+&gt;<i> +};
+</I>&gt;<i> +
+</I>&gt;<i> +template &lt;typename T&gt;
+</I>&gt;<i> +struct Byte_offset&lt;std::pair&lt;T*, T*&gt; &gt;
+</I>&gt;<i> +{
+</I>&gt;<i> +  static size_t index(size_t size) { return (size_t)((T*)0 + size) * 2; }
+</I>
+Likewise,
+
+	return 2*sizeof(T)*size;
+
+-- 
+Jules Bergmann
+CodeSourcery
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">jules at codesourcery.com</A>
+(650) 331-3385 x705
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001449.html">[vsipl++] [patch] scalar-complex multiply-add user-defined kernel
+</A></li>
+	<LI>Next message: <A HREF="001450.html">[vsipl++] [patch] scalar-complex multiply-add user-defined kernel
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1446">[ date ]</a>
+              <a href="thread.html#1446">[ thread ]</a>
+              <a href="subject.html#1446">[ subject ]</a>
+              <a href="author.html#1446">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">More information about the vsipl++
+mailing list</a><br>
+</body></html>

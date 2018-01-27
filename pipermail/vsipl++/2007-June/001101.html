@@ -1,0 +1,947 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [vsipl++] fftw3 split support
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20fftw3%20split%20support&In-Reply-To=%3C4664283F.2080708%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001097.html">
+   <LINK REL="Next"  HREF="001098.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[vsipl++] fftw3 split support</H1>
+    <B>Jules Bergmann</B> 
+    <A HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20fftw3%20split%20support&In-Reply-To=%3C4664283F.2080708%40codesourcery.com%3E"
+       TITLE="[vsipl++] fftw3 split support">jules at codesourcery.com
+       </A><BR>
+    <I>Mon Jun  4 14:57:03 UTC 2007</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001097.html">fftw3 split support
+</A></li>
+        <LI>Next message: <A HREF="001098.html">benchmarks
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1101">[ date ]</a>
+              <a href="thread.html#1101">[ thread ]</a>
+              <a href="subject.html#1101">[ subject ]</a>
+              <a href="author.html#1101">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Assem Salama wrote:
+&gt;<i> Everyone,
+</I>&gt;<i>  This patch supports split ffts using fftw3 backend.
+</I>
+Assem,
+
+Is this the same patch as
+
+<A HREF="http://www.codesourcery.com/archives/vsipl%2B%2B/msg01024.html">http://www.codesourcery.com/archives/vsipl%2B%2B/msg01024.html</A>
+
+?
+
+If so, it looks good, modulo one comment.  See:
+
+<A HREF="http://www.codesourcery.com/archives/vsipl%2B%2B/msg01033.html">http://www.codesourcery.com/archives/vsipl%2B%2B/msg01033.html</A>
+
+				thanks,
+				-- Jules
+
+&gt;<i> 
+</I>&gt;<i> Thanks,
+</I>&gt;<i> Assem
+</I>&gt;<i> 
+</I>&gt;<i> 
+</I>&gt;<i> ------------------------------------------------------------------------
+</I>&gt;<i> 
+</I>&gt;<i> Index: src/vsip/opt/fftw3/fft.cpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> --- src/vsip/opt/fftw3/fft.cpp	(revision 165174)
+</I>&gt;<i> +++ src/vsip/opt/fftw3/fft.cpp	(working copy)
+</I>&gt;<i> @@ -19,6 +19,11 @@
+</I>&gt;<i>  #include &lt;vsip/support.hpp&gt;
+</I>&gt;<i>  #include &lt;fftw3.h&gt;
+</I>&gt;<i>  
+</I>&gt;<i> +// We need to include this create_plan.hpp header file because fft_impl.cpp
+</I>&gt;<i> +// uses this file. We cannot include this file in fft_impl.cpp because
+</I>&gt;<i> +// fft_impl.cpp gets included multiple times here.
+</I>&gt;<i> +#include &lt;vsip/opt/fftw3/create_plan.hpp&gt;
+</I>&gt;<i> +
+</I>&gt;<i>  /***********************************************************************
+</I>&gt;<i>    Declarations
+</I>&gt;<i>  ***********************************************************************/
+</I>&gt;<i> Index: src/vsip/opt/fftw3/fft_impl.cpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> --- src/vsip/opt/fftw3/fft_impl.cpp	(revision 168725)
+</I>&gt;<i> +++ src/vsip/opt/fftw3/fft_impl.cpp	(working copy)
+</I>&gt;<i> @@ -21,8 +21,8 @@
+</I>&gt;<i>  #include &lt;vsip/core/fft/util.hpp&gt;
+</I>&gt;<i>  #include &lt;vsip/opt/fftw3/fft.hpp&gt;
+</I>&gt;<i>  #include &lt;vsip/core/equal.hpp&gt;
+</I>&gt;<i> +#include &lt;vsip/dense.hpp&gt;
+</I>&gt;<i>  #include &lt;fftw3.h&gt;
+</I>&gt;<i> -#include &lt;complex&gt;
+</I>&gt;<i>  
+</I>&gt;<i>  /***********************************************************************
+</I>&gt;<i>    Declarations
+</I>&gt;<i> @@ -40,25 +40,25 @@
+</I>&gt;<i>  {
+</I>&gt;<i>    Fft_base(Domain&lt;D&gt; const&amp; dom, int exp, int flags)
+</I>&gt;<i>      VSIP_THROW((std::bad_alloc))
+</I>&gt;<i> -      : in_buffer_(32, dom.size()),
+</I>&gt;<i> -	out_buffer_(32, dom.size())
+</I>&gt;<i> +      : in_buffer_(dom.size()),
+</I>&gt;<i> +	out_buffer_(dom.size())
+</I>&gt;<i>    {
+</I>&gt;<i>      // For multi-dimensional transforms, these plans assume both
+</I>&gt;<i>      // input and output data is dense, row-major, interleave-complex
+</I>&gt;<i>      // format.
+</I>&gt;<i> -
+</I>&gt;<i> -    for (vsip::dimension_type i = 0; i &lt; D; ++i) size_[i] = dom[i].size();
+</I>&gt;<i> -    plan_in_place_ = FFTW(plan_dft)(D, size_,
+</I>&gt;<i> -      reinterpret_cast&lt;FFTW(complex)*&gt;(in_buffer_.get()),
+</I>&gt;<i> -      reinterpret_cast&lt;FFTW(complex)*&gt;(in_buffer_.get()),
+</I>&gt;<i> -      exp, flags);
+</I>&gt;<i>      
+</I>&gt;<i> +    for(index_type i=0;i&lt;D;i++) size_[i] = dom[i].size();
+</I>&gt;<i> +    plan_in_place_ =
+</I>&gt;<i> +      Create_plan&lt;vsip::impl::dense_complex_type&gt;
+</I>&gt;<i> +        ::create&lt;FFTW(plan), FFTW(iodim)&gt;
+</I>&gt;<i> +        (in_buffer_.ptr(), in_buffer_.ptr(), exp, flags, dom);
+</I>&gt;<i> +    
+</I>&gt;<i>      if (!plan_in_place_) VSIP_IMPL_THROW(std::bad_alloc());
+</I>&gt;<i>  
+</I>&gt;<i> -    plan_by_reference_ = FFTW(plan_dft)(D, size_,
+</I>&gt;<i> -      reinterpret_cast&lt;FFTW(complex)*&gt;(in_buffer_.get()),
+</I>&gt;<i> -      reinterpret_cast&lt;FFTW(complex)*&gt;(out_buffer_.get()),
+</I>&gt;<i> -      exp, FFTW_PRESERVE_INPUT | flags);    
+</I>&gt;<i> +    plan_by_reference_ = Create_plan&lt;vsip::impl::dense_complex_type&gt;
+</I>&gt;<i> +      ::create&lt;FFTW(plan), FFTW(iodim)&gt;
+</I>&gt;<i> +      (in_buffer_.ptr(), out_buffer_.ptr(), exp, flags, dom);
+</I>&gt;<i> +
+</I>&gt;<i>      if (!plan_by_reference_)
+</I>&gt;<i>      {
+</I>&gt;<i>        FFTW(destroy_plan)(plan_in_place_);
+</I>&gt;<i> @@ -71,8 +71,8 @@
+</I>&gt;<i>      if (plan_by_reference_) FFTW(destroy_plan)(plan_by_reference_);
+</I>&gt;<i>    }
+</I>&gt;<i>  
+</I>&gt;<i> -  aligned_array&lt;std::complex&lt;SCALAR_TYPE&gt; &gt; in_buffer_;
+</I>&gt;<i> -  aligned_array&lt;std::complex&lt;SCALAR_TYPE&gt; &gt; out_buffer_;
+</I>&gt;<i> +  Cmplx_buffer&lt;dense_complex_type, SCALAR_TYPE&gt; in_buffer_;
+</I>&gt;<i> +  Cmplx_buffer&lt;dense_complex_type, SCALAR_TYPE&gt; out_buffer_;
+</I>&gt;<i>    FFTW(plan) plan_in_place_;
+</I>&gt;<i>    FFTW(plan) plan_by_reference_;
+</I>&gt;<i>    int size_[D];
+</I>&gt;<i> @@ -84,17 +84,15 @@
+</I>&gt;<i>    Fft_base(Domain&lt;D&gt; const&amp; dom, int A, int flags)
+</I>&gt;<i>      VSIP_THROW((std::bad_alloc))
+</I>&gt;<i>      : in_buffer_(32, dom.size()),
+</I>&gt;<i> -      out_buffer_(32, dom.size())
+</I>&gt;<i> +      out_buffer_(dom.size())
+</I>&gt;<i>    { 
+</I>&gt;<i>      for (vsip::dimension_type i = 0; i &lt; D; ++i) size_[i] = dom[i].size();  
+</I>&gt;<i>      // FFTW3 assumes A == D - 1.
+</I>&gt;<i>      // See also query_layout().
+</I>&gt;<i>      if (A != D - 1) std::swap(size_[A], size_[D - 1]);
+</I>&gt;<i> -    plan_by_reference_ = FFTW(plan_dft_r2c)(
+</I>&gt;<i> -      D, size_,
+</I>&gt;<i> -      in_buffer_.get(), reinterpret_cast&lt;FFTW(complex)*&gt;(out_buffer_.get()),
+</I>&gt;<i> -      FFTW_PRESERVE_INPUT | flags);
+</I>&gt;<i> -    
+</I>&gt;<i> +    plan_by_reference_ = Create_plan&lt;dense_complex_type&gt;::
+</I>&gt;<i> +      create&lt;FFTW(plan), FFTW(iodim)&gt;
+</I>&gt;<i> +      (in_buffer_.get(), out_buffer_.ptr(), A, flags, dom);
+</I>&gt;<i>      if (!plan_by_reference_) VSIP_IMPL_THROW(std::bad_alloc());
+</I>&gt;<i>    }
+</I>&gt;<i>    ~Fft_base() VSIP_NOTHROW
+</I>&gt;<i> @@ -103,7 +101,7 @@
+</I>&gt;<i>    }
+</I>&gt;<i>  
+</I>&gt;<i>    aligned_array&lt;SCALAR_TYPE&gt; in_buffer_;
+</I>&gt;<i> -  aligned_array&lt;std::complex&lt;SCALAR_TYPE&gt; &gt; out_buffer_;
+</I>&gt;<i> +  Cmplx_buffer&lt;dense_complex_type, SCALAR_TYPE&gt; out_buffer_;
+</I>&gt;<i>    FFTW(plan) plan_by_reference_;
+</I>&gt;<i>    int size_[D];
+</I>&gt;<i>  };
+</I>&gt;<i> @@ -113,17 +111,16 @@
+</I>&gt;<i>  {
+</I>&gt;<i>    Fft_base(Domain&lt;D&gt; const&amp; dom, int A, int flags)
+</I>&gt;<i>      VSIP_THROW((std::bad_alloc))
+</I>&gt;<i> -    : in_buffer_(32, dom.size()),
+</I>&gt;<i> +    : in_buffer_(dom.size()),
+</I>&gt;<i>        out_buffer_(32, dom.size())
+</I>&gt;<i>    {
+</I>&gt;<i>      for (vsip::dimension_type i = 0; i &lt; D; ++i) size_[i] = dom[i].size();
+</I>&gt;<i>      // FFTW3 assumes A == D - 1.
+</I>&gt;<i>      // See also query_layout().
+</I>&gt;<i>      if (A != D - 1) std::swap(size_[A], size_[D - 1]);
+</I>&gt;<i> -    plan_by_reference_ = FFTW(plan_dft_c2r)(
+</I>&gt;<i> -      D, size_,
+</I>&gt;<i> -      reinterpret_cast&lt;FFTW(complex)*&gt;(in_buffer_.get()), out_buffer_.get(),
+</I>&gt;<i> -      flags);
+</I>&gt;<i> +    plan_by_reference_ = Create_plan&lt;dense_complex_type&gt;::
+</I>&gt;<i> +      create&lt;FFTW(plan), FFTW(iodim)&gt;
+</I>&gt;<i> +      (in_buffer_.ptr(), out_buffer_.get(), A, flags, dom);
+</I>&gt;<i>  
+</I>&gt;<i>      if (!plan_by_reference_) VSIP_IMPL_THROW(std::bad_alloc());
+</I>&gt;<i>    }
+</I>&gt;<i> @@ -132,8 +129,8 @@
+</I>&gt;<i>      if (plan_by_reference_) FFTW(destroy_plan)(plan_by_reference_);
+</I>&gt;<i>    }
+</I>&gt;<i>  
+</I>&gt;<i> -  aligned_array&lt;std::complex&lt;SCALAR_TYPE&gt; &gt; in_buffer_;
+</I>&gt;<i> -  aligned_array&lt;SCALAR_TYPE&gt; out_buffer_;
+</I>&gt;<i> +  Cmplx_buffer&lt;dense_complex_type, SCALAR_TYPE&gt; in_buffer_;
+</I>&gt;<i> +  aligned_array&lt;SCALAR_TYPE&gt;              out_buffer_;
+</I>&gt;<i>    FFTW(plan) plan_by_reference_;
+</I>&gt;<i>    int size_[D];
+</I>&gt;<i>  };
+</I>&gt;<i> @@ -156,6 +153,23 @@
+</I>&gt;<i>      : Fft_base&lt;1, ctype, ctype&gt;(dom, E, convert_NoT(number))
+</I>&gt;<i>    {}
+</I>&gt;<i>    virtual char const* name() { return &quot;fft-fftw3-1D-complex&quot;; }
+</I>&gt;<i> +  virtual void query_layout(Rt_layout&lt;1&gt; &amp;rtl_inout)
+</I>&gt;<i> +  {
+</I>&gt;<i> +    // By default use unit_stride, tuple&lt;0, 1, 2&gt;
+</I>&gt;<i> +    rtl_inout.pack = stride_unit_dense;
+</I>&gt;<i> +    rtl_inout.order = tuple&lt;0, 1, 2&gt;();
+</I>&gt;<i> +    // make default based on library
+</I>&gt;<i> +    rtl_inout.complex = Create_plan&lt;dense_complex_type&gt;::format;
+</I>&gt;<i> +  }
+</I>&gt;<i> +  virtual void query_layout(Rt_layout&lt;1&gt; &amp;rtl_in, Rt_layout&lt;1&gt; &amp;rtl_out)
+</I>&gt;<i> +  {
+</I>&gt;<i> +    // By default use unit_stride, tuple&lt;0, 1, 2&gt;
+</I>&gt;<i> +    rtl_in.pack = rtl_out.pack = stride_unit_dense;
+</I>&gt;<i> +    rtl_in.order = rtl_out.order = tuple&lt;0, 1, 2&gt;();
+</I>&gt;<i> +    // make default based on library
+</I>&gt;<i> +    rtl_in.complex = rtl_out.complex = Create_plan&lt;dense_complex_type&gt;::format;
+</I>&gt;<i> +  }
+</I>&gt;<i> +
+</I>&gt;<i>    virtual void in_place(ctype *inout, stride_type s, length_type l)
+</I>&gt;<i>    {
+</I>&gt;<i>      assert(s == 1 &amp;&amp; static_cast&lt;int&gt;(l) == this-&gt;size_[0]);
+</I>&gt;<i> @@ -163,8 +177,12 @@
+</I>&gt;<i>  		      reinterpret_cast&lt;FFTW(complex)*&gt;(inout),
+</I>&gt;<i>  		      reinterpret_cast&lt;FFTW(complex)*&gt;(inout));
+</I>&gt;<i>    }
+</I>&gt;<i> -  virtual void in_place(ztype, stride_type, length_type)
+</I>&gt;<i> +  virtual void in_place(ztype inout, stride_type s, length_type l)
+</I>&gt;<i>    {
+</I>&gt;<i> +    assert(s == 1 &amp;&amp; static_cast&lt;int&gt;(l) == this-&gt;size_[0]);
+</I>&gt;<i> +    FFTW(execute_split_dft)(plan_in_place_,
+</I>&gt;<i> +		      inout.first, inout.second,
+</I>&gt;<i> +		      inout.first, inout.second);
+</I>&gt;<i>    }
+</I>&gt;<i>    virtual void by_reference(ctype *in, stride_type in_stride,
+</I>&gt;<i>  			    ctype *out, stride_type out_stride,
+</I>&gt;<i> @@ -173,13 +191,18 @@
+</I>&gt;<i>      assert(in_stride == 1 &amp;&amp; out_stride == 1 &amp;&amp;
+</I>&gt;<i>  	   static_cast&lt;int&gt;(length) == this-&gt;size_[0]);
+</I>&gt;<i>      FFTW(execute_dft)(plan_by_reference_,
+</I>&gt;<i> -		      reinterpret_cast&lt;FFTW(complex)*&gt;(in), 
+</I>&gt;<i> +		      reinterpret_cast&lt;FFTW(complex)*&gt;(in),
+</I>&gt;<i>  		      reinterpret_cast&lt;FFTW(complex)*&gt;(out));
+</I>&gt;<i>    }
+</I>&gt;<i> -  virtual void by_reference(ztype, stride_type,
+</I>&gt;<i> -			    ztype, stride_type,
+</I>&gt;<i> -			    length_type)
+</I>&gt;<i> +  virtual void by_reference(ztype in, stride_type in_stride,
+</I>&gt;<i> +			    ztype out, stride_type out_stride,
+</I>&gt;<i> +			    length_type length)
+</I>&gt;<i>    {
+</I>&gt;<i> +    assert(in_stride == 1 &amp;&amp; out_stride == 1 &amp;&amp;
+</I>&gt;<i> +	   static_cast&lt;int&gt;(length) == this-&gt;size_[0]);
+</I>&gt;<i> +    FFTW(execute_split_dft)(plan_by_reference_,
+</I>&gt;<i> +		      in.first,  in.second,
+</I>&gt;<i> +		      out.first, out.second);
+</I>&gt;<i>    }
+</I>&gt;<i>  };
+</I>&gt;<i>  
+</I>&gt;<i> @@ -206,11 +229,29 @@
+</I>&gt;<i>      FFTW(execute_dft_r2c)(plan_by_reference_, 
+</I>&gt;<i>  			  in, reinterpret_cast&lt;FFTW(complex)*&gt;(out));
+</I>&gt;<i>    }
+</I>&gt;<i> -  virtual void by_reference(rtype *, stride_type,
+</I>&gt;<i> -			    ztype, stride_type,
+</I>&gt;<i> -			    length_type)
+</I>&gt;<i> +  virtual void by_reference(rtype *in, stride_type is,
+</I>&gt;<i> +			    ztype out, stride_type os,
+</I>&gt;<i> +			    length_type length)
+</I>&gt;<i>    {
+</I>&gt;<i> +    FFTW(execute_split_dft_r2c)(plan_by_reference_, 
+</I>&gt;<i> +			  in, out.first, out.second);
+</I>&gt;<i>    }
+</I>&gt;<i> +  virtual void query_layout(Rt_layout&lt;1&gt; &amp;rtl_inout)
+</I>&gt;<i> +  {
+</I>&gt;<i> +    // By default use unit_stride, tuple&lt;0, 1, 2&gt;
+</I>&gt;<i> +    rtl_inout.pack = stride_unit_dense;
+</I>&gt;<i> +    rtl_inout.order = tuple&lt;0, 1, 2&gt;();
+</I>&gt;<i> +    // make default based on library
+</I>&gt;<i> +    rtl_inout.complex = Create_plan&lt;dense_complex_type&gt;::format;
+</I>&gt;<i> +  }
+</I>&gt;<i> +  virtual void query_layout(Rt_layout&lt;1&gt; &amp;rtl_in, Rt_layout&lt;1&gt; &amp;rtl_out)
+</I>&gt;<i> +  {
+</I>&gt;<i> +    // By default use unit_stride, tuple&lt;0, 1, 2&gt;
+</I>&gt;<i> +    rtl_in.pack = rtl_out.pack = stride_unit_dense;
+</I>&gt;<i> +    rtl_in.order = rtl_out.order = tuple&lt;0, 1, 2&gt;();
+</I>&gt;<i> +    // make default based on library
+</I>&gt;<i> +    rtl_in.complex = rtl_out.complex = Create_plan&lt;dense_complex_type&gt;::format;
+</I>&gt;<i> +  }
+</I>&gt;<i>  
+</I>&gt;<i>  };
+</I>&gt;<i>  
+</I>&gt;<i> @@ -241,11 +282,29 @@
+</I>&gt;<i>      FFTW(execute_dft_c2r)(plan_by_reference_,
+</I>&gt;<i>  			  reinterpret_cast&lt;FFTW(complex)*&gt;(in), out);
+</I>&gt;<i>    }
+</I>&gt;<i> -  virtual void by_reference(ztype, stride_type,
+</I>&gt;<i> -			    rtype *, stride_type,
+</I>&gt;<i> -			    length_type)
+</I>&gt;<i> +  virtual void by_reference(ztype in, stride_type is,
+</I>&gt;<i> +			    rtype *out, stride_type os,
+</I>&gt;<i> +			    length_type length)
+</I>&gt;<i>    {
+</I>&gt;<i> +    FFTW(execute_split_dft_c2r)(plan_by_reference_,
+</I>&gt;<i> +			  in.first, in.second, out);
+</I>&gt;<i>    }
+</I>&gt;<i> +  virtual void query_layout(Rt_layout&lt;1&gt; &amp;rtl_inout)
+</I>&gt;<i> +  {
+</I>&gt;<i> +    // By default use unit_stride, tuple&lt;0, 1, 2&gt;
+</I>&gt;<i> +    rtl_inout.pack = stride_unit_dense;
+</I>&gt;<i> +    rtl_inout.order = tuple&lt;0, 1, 2&gt;();
+</I>&gt;<i> +    // make default based on library
+</I>&gt;<i> +    rtl_inout.complex = Create_plan&lt;dense_complex_type&gt;::format;
+</I>&gt;<i> +  }
+</I>&gt;<i> +  virtual void query_layout(Rt_layout&lt;1&gt; &amp;rtl_in, Rt_layout&lt;1&gt; &amp;rtl_out)
+</I>&gt;<i> +  {
+</I>&gt;<i> +    // By default use unit_stride, tuple&lt;0, 1, 2&gt;, cmplx_inter_fmt
+</I>&gt;<i> +    rtl_in.pack = rtl_out.pack = stride_unit_dense;
+</I>&gt;<i> +    rtl_in.order = rtl_out.order = tuple&lt;0, 1, 2&gt;();
+</I>&gt;<i> +    // make default based on library
+</I>&gt;<i> +    rtl_in.complex = rtl_out.complex = Create_plan&lt;dense_complex_type&gt;::format;
+</I>&gt;<i> +  }
+</I>&gt;<i>  
+</I>&gt;<i>  };
+</I>&gt;<i>  
+</I>&gt;<i> @@ -270,8 +329,8 @@
+</I>&gt;<i>    virtual void query_layout(Rt_layout&lt;2&gt; &amp;rtl_in, Rt_layout&lt;2&gt; &amp;rtl_out)
+</I>&gt;<i>    {
+</I>&gt;<i>      rtl_in.pack = stride_unit_dense;
+</I>&gt;<i> -    rtl_in.complex = cmplx_inter_fmt;
+</I>&gt;<i>      rtl_in.order = row2_type();
+</I>&gt;<i> +    rtl_in.complex = Create_plan&lt;dense_complex_type&gt;::format;
+</I>&gt;<i>      rtl_out = rtl_in;
+</I>&gt;<i>    }
+</I>&gt;<i>    virtual void in_place(ctype *inout,
+</I>&gt;<i> @@ -288,10 +347,13 @@
+</I>&gt;<i>  		      reinterpret_cast&lt;FFTW(complex)*&gt;(inout));
+</I>&gt;<i>    }
+</I>&gt;<i>    /// complex (split) in-place
+</I>&gt;<i> -  virtual void in_place(ztype,
+</I>&gt;<i> +  virtual void in_place(ztype inout,
+</I>&gt;<i>  			stride_type, stride_type,
+</I>&gt;<i>  			length_type, length_type)
+</I>&gt;<i>    {
+</I>&gt;<i> +    FFTW(execute_split_dft)(plan_in_place_,
+</I>&gt;<i> +		      inout.first, inout.second,
+</I>&gt;<i> +		      inout.first, inout.second);
+</I>&gt;<i>    }
+</I>&gt;<i>    virtual void by_reference(ctype *in,
+</I>&gt;<i>  			    stride_type in_r_stride,
+</I>&gt;<i> @@ -311,12 +373,21 @@
+</I>&gt;<i>  		      reinterpret_cast&lt;FFTW(complex)*&gt;(in), 
+</I>&gt;<i>  		      reinterpret_cast&lt;FFTW(complex)*&gt;(out));
+</I>&gt;<i>    }
+</I>&gt;<i> -  virtual void by_reference(ztype,
+</I>&gt;<i> -			    stride_type, stride_type,
+</I>&gt;<i> -			    ztype,
+</I>&gt;<i> -			    stride_type, stride_type,
+</I>&gt;<i> -			    length_type, length_type)
+</I>&gt;<i> +  virtual void by_reference(ztype in,
+</I>&gt;<i> +			    stride_type in_r_stride, stride_type in_c_stride,
+</I>&gt;<i> +			    ztype out,
+</I>&gt;<i> +			    stride_type out_r_stride, stride_type out_c_stride,
+</I>&gt;<i> +			    length_type, length_type cols)
+</I>&gt;<i>    {
+</I>&gt;<i> +    // Check that data is dense row-major.
+</I>&gt;<i> +    assert(in_r_stride == static_cast&lt;stride_type&gt;(cols));
+</I>&gt;<i> +    assert(in_c_stride == 1);
+</I>&gt;<i> +    assert(out_r_stride == static_cast&lt;stride_type&gt;(cols));
+</I>&gt;<i> +    assert(out_c_stride == 1);
+</I>&gt;<i> +
+</I>&gt;<i> +    FFTW(execute_split_dft)(plan_by_reference_,
+</I>&gt;<i> +                            in.first, in.second,
+</I>&gt;<i> +                            out.first, out.second);
+</I>&gt;<i>    }
+</I>&gt;<i>  };
+</I>&gt;<i>  
+</I>&gt;<i> @@ -344,7 +415,7 @@
+</I>&gt;<i>      // FFTW3 assumes A is the last dimension.
+</I>&gt;<i>      if (A == 0) rtl_in.order = tuple&lt;1, 0, 2&gt;();
+</I>&gt;<i>      else rtl_in.order = tuple&lt;0, 1, 2&gt;();
+</I>&gt;<i> -    rtl_in.complex = cmplx_inter_fmt;
+</I>&gt;<i> +    rtl_in.complex = Create_plan&lt;dense_complex_type&gt;::format;
+</I>&gt;<i>      rtl_out = rtl_in;
+</I>&gt;<i>    }
+</I>&gt;<i>    virtual bool requires_copy(Rt_layout&lt;2&gt; &amp;) { return true;}
+</I>&gt;<i> @@ -358,12 +429,14 @@
+</I>&gt;<i>      FFTW(execute_dft_r2c)(plan_by_reference_,
+</I>&gt;<i>  			  in, reinterpret_cast&lt;FFTW(complex)*&gt;(out));
+</I>&gt;<i>    }
+</I>&gt;<i> -  virtual void by_reference(rtype *,
+</I>&gt;<i> +  virtual void by_reference(rtype *in,
+</I>&gt;<i>  			    stride_type, stride_type,
+</I>&gt;<i> -			    ztype,
+</I>&gt;<i> +			    ztype out,
+</I>&gt;<i>  			    stride_type, stride_type,
+</I>&gt;<i>  			    length_type, length_type)
+</I>&gt;<i>    {
+</I>&gt;<i> +    FFTW(execute_split_dft_r2c)(plan_by_reference_,
+</I>&gt;<i> +			  in, out.first, out.second);
+</I>&gt;<i>    }
+</I>&gt;<i>  
+</I>&gt;<i>  };
+</I>&gt;<i> @@ -392,7 +465,7 @@
+</I>&gt;<i>      // FFTW3 assumes A is the last dimension.
+</I>&gt;<i>      if (A == 0) rtl_in.order = tuple&lt;1, 0, 2&gt;();
+</I>&gt;<i>      else rtl_in.order = tuple&lt;0, 1, 2&gt;();
+</I>&gt;<i> -    rtl_in.complex = cmplx_inter_fmt;
+</I>&gt;<i> +    rtl_in.complex = Create_plan&lt;dense_complex_type&gt;::format;
+</I>&gt;<i>      rtl_out = rtl_in;
+</I>&gt;<i>    }
+</I>&gt;<i>    virtual bool requires_copy(Rt_layout&lt;2&gt; &amp;) { return true;}
+</I>&gt;<i> @@ -406,12 +479,14 @@
+</I>&gt;<i>      FFTW(execute_dft_c2r)(plan_by_reference_, 
+</I>&gt;<i>  			  reinterpret_cast&lt;FFTW(complex)*&gt;(in), out);
+</I>&gt;<i>    }
+</I>&gt;<i> -  virtual void by_reference(ztype,
+</I>&gt;<i> +  virtual void by_reference(ztype in,
+</I>&gt;<i>  			    stride_type, stride_type,
+</I>&gt;<i> -			    rtype *,
+</I>&gt;<i> +			    rtype *out,
+</I>&gt;<i>  			    stride_type, stride_type,
+</I>&gt;<i>  			    length_type, length_type)
+</I>&gt;<i>    {
+</I>&gt;<i> +    FFTW(execute_split_dft_c2r)(plan_by_reference_, 
+</I>&gt;<i> +			  in.first, in.second, out);
+</I>&gt;<i>    }
+</I>&gt;<i>  
+</I>&gt;<i>  };
+</I>&gt;<i> @@ -437,8 +512,8 @@
+</I>&gt;<i>    virtual void query_layout(Rt_layout&lt;3&gt; &amp;rtl_in, Rt_layout&lt;3&gt; &amp;rtl_out)
+</I>&gt;<i>    {
+</I>&gt;<i>      rtl_in.pack = stride_unit_dense;
+</I>&gt;<i> -    rtl_in.complex = cmplx_inter_fmt;
+</I>&gt;<i>      rtl_in.order = row3_type();
+</I>&gt;<i> +    rtl_in.complex = Create_plan&lt;dense_complex_type&gt;::format;
+</I>&gt;<i>      rtl_out = rtl_in;
+</I>&gt;<i>    }
+</I>&gt;<i>    virtual void in_place(ctype *inout,
+</I>&gt;<i> @@ -462,14 +537,26 @@
+</I>&gt;<i>  		      reinterpret_cast&lt;FFTW(complex)*&gt;(inout),
+</I>&gt;<i>  		      reinterpret_cast&lt;FFTW(complex)*&gt;(inout));
+</I>&gt;<i>    }
+</I>&gt;<i> -  virtual void in_place(ztype,
+</I>&gt;<i> -			stride_type,
+</I>&gt;<i> -			stride_type,
+</I>&gt;<i> -			stride_type,
+</I>&gt;<i> -			length_type,
+</I>&gt;<i> -			length_type,
+</I>&gt;<i> -			length_type)
+</I>&gt;<i> +  virtual void in_place(ztype inout,
+</I>&gt;<i> +			stride_type x_stride,
+</I>&gt;<i> +			stride_type y_stride,
+</I>&gt;<i> +			stride_type z_stride,
+</I>&gt;<i> +			length_type x_length,
+</I>&gt;<i> +			length_type y_length,
+</I>&gt;<i> +			length_type z_length)
+</I>&gt;<i>    {
+</I>&gt;<i> +    assert(static_cast&lt;int&gt;(x_length) == this-&gt;size_[0]);
+</I>&gt;<i> +    assert(static_cast&lt;int&gt;(y_length) == this-&gt;size_[1]);
+</I>&gt;<i> +    assert(static_cast&lt;int&gt;(z_length) == this-&gt;size_[2]);
+</I>&gt;<i> +
+</I>&gt;<i> +    // Check that data is dense row-major.
+</I>&gt;<i> +    assert(x_stride == static_cast&lt;stride_type&gt;(y_length*z_length));
+</I>&gt;<i> +    assert(y_stride == static_cast&lt;stride_type&gt;(z_length));
+</I>&gt;<i> +    assert(z_stride == 1);
+</I>&gt;<i> +
+</I>&gt;<i> +    FFTW(execute_split_dft)(plan_in_place_,
+</I>&gt;<i> +		      inout.first, inout.second,
+</I>&gt;<i> +		      inout.first, inout.second);
+</I>&gt;<i>    }
+</I>&gt;<i>    virtual void by_reference(ctype *in,
+</I>&gt;<i>  			    stride_type in_x_stride,
+</I>&gt;<i> @@ -499,18 +586,33 @@
+</I>&gt;<i>  		      reinterpret_cast&lt;FFTW(complex)*&gt;(in), 
+</I>&gt;<i>  		      reinterpret_cast&lt;FFTW(complex)*&gt;(out));
+</I>&gt;<i>    }
+</I>&gt;<i> -  virtual void by_reference(ztype,
+</I>&gt;<i> -			    stride_type,
+</I>&gt;<i> -			    stride_type,
+</I>&gt;<i> -			    stride_type,
+</I>&gt;<i> -			    ztype,
+</I>&gt;<i> -			    stride_type,
+</I>&gt;<i> -			    stride_type,
+</I>&gt;<i> -			    stride_type,
+</I>&gt;<i> -			    length_type,
+</I>&gt;<i> -			    length_type,
+</I>&gt;<i> -			    length_type)
+</I>&gt;<i> +  virtual void by_reference(ztype in,
+</I>&gt;<i> +			    stride_type in_x_stride,
+</I>&gt;<i> +			    stride_type in_y_stride,
+</I>&gt;<i> +			    stride_type in_z_stride,
+</I>&gt;<i> +			    ztype out,
+</I>&gt;<i> +			    stride_type out_x_stride,
+</I>&gt;<i> +			    stride_type out_y_stride,
+</I>&gt;<i> +			    stride_type out_z_stride,
+</I>&gt;<i> +			    length_type x_length,
+</I>&gt;<i> +			    length_type y_length,
+</I>&gt;<i> +			    length_type z_length)
+</I>&gt;<i>    {
+</I>&gt;<i> +    assert(static_cast&lt;int&gt;(x_length) == this-&gt;size_[0]);
+</I>&gt;<i> +    assert(static_cast&lt;int&gt;(y_length) == this-&gt;size_[1]);
+</I>&gt;<i> +    assert(static_cast&lt;int&gt;(z_length) == this-&gt;size_[2]);
+</I>&gt;<i> +
+</I>&gt;<i> +    // Check that data is dense row-major.
+</I>&gt;<i> +    assert(in_x_stride == static_cast&lt;stride_type&gt;(y_length*z_length));
+</I>&gt;<i> +    assert(in_y_stride == static_cast&lt;stride_type&gt;(z_length));
+</I>&gt;<i> +    assert(in_z_stride == 1);
+</I>&gt;<i> +    assert(out_x_stride == static_cast&lt;stride_type&gt;(y_length*z_length));
+</I>&gt;<i> +    assert(out_y_stride == static_cast&lt;stride_type&gt;(z_length));
+</I>&gt;<i> +    assert(out_z_stride == 1);
+</I>&gt;<i> +
+</I>&gt;<i> +    FFTW(execute_split_dft)(plan_by_reference_,
+</I>&gt;<i> +                      in.first, in.second,
+</I>&gt;<i> +                      out.first, out.second);
+</I>&gt;<i>    }
+</I>&gt;<i>  };
+</I>&gt;<i>  
+</I>&gt;<i> @@ -542,7 +644,7 @@
+</I>&gt;<i>        case 1: rtl_in.order = tuple&lt;0, 2, 1&gt;(); break;
+</I>&gt;<i>        default: rtl_in.order = tuple&lt;0, 1, 2&gt;(); break;
+</I>&gt;<i>      }
+</I>&gt;<i> -    rtl_in.complex = cmplx_inter_fmt;
+</I>&gt;<i> +    rtl_in.complex = Create_plan&lt;dense_complex_type&gt;::format;
+</I>&gt;<i>      rtl_out = rtl_in;
+</I>&gt;<i>    }
+</I>&gt;<i>    virtual bool requires_copy(Rt_layout&lt;3&gt; &amp;) { return true;}
+</I>&gt;<i> @@ -562,11 +664,11 @@
+</I>&gt;<i>      FFTW(execute_dft_r2c)(plan_by_reference_,
+</I>&gt;<i>  			  in, reinterpret_cast&lt;FFTW(complex)*&gt;(out));
+</I>&gt;<i>    }
+</I>&gt;<i> -  virtual void by_reference(rtype *,
+</I>&gt;<i> +  virtual void by_reference(rtype *in,
+</I>&gt;<i>  			    stride_type,
+</I>&gt;<i>  			    stride_type,
+</I>&gt;<i>  			    stride_type,
+</I>&gt;<i> -			    ztype,
+</I>&gt;<i> +			    ztype out,
+</I>&gt;<i>  			    stride_type,
+</I>&gt;<i>  			    stride_type,
+</I>&gt;<i>  			    stride_type,
+</I>&gt;<i> @@ -574,6 +676,8 @@
+</I>&gt;<i>  			    length_type,
+</I>&gt;<i>  			    length_type)
+</I>&gt;<i>    {
+</I>&gt;<i> +    FFTW(execute_split_dft_r2c)(plan_by_reference_,
+</I>&gt;<i> +			  in, out.first, out.second);
+</I>&gt;<i>    }
+</I>&gt;<i>  
+</I>&gt;<i>  };
+</I>&gt;<i> @@ -606,7 +710,7 @@
+</I>&gt;<i>        case 1: rtl_in.order = tuple&lt;0, 2, 1&gt;(); break;
+</I>&gt;<i>        default: rtl_in.order = tuple&lt;0, 1, 2&gt;(); break;
+</I>&gt;<i>      }
+</I>&gt;<i> -    rtl_in.complex = cmplx_inter_fmt;
+</I>&gt;<i> +    rtl_in.complex = Create_plan&lt;dense_complex_type&gt;::format;
+</I>&gt;<i>      rtl_out = rtl_in;
+</I>&gt;<i>    }
+</I>&gt;<i>    virtual bool requires_copy(Rt_layout&lt;3&gt; &amp;) { return true;}
+</I>&gt;<i> @@ -626,11 +730,11 @@
+</I>&gt;<i>      FFTW(execute_dft_c2r)(plan_by_reference_,
+</I>&gt;<i>  			  reinterpret_cast&lt;FFTW(complex)*&gt;(in), out);
+</I>&gt;<i>    }
+</I>&gt;<i> -  virtual void by_reference(ztype,
+</I>&gt;<i> +  virtual void by_reference(ztype in,
+</I>&gt;<i>  			    stride_type,
+</I>&gt;<i>  			    stride_type,
+</I>&gt;<i>  			    stride_type,
+</I>&gt;<i> -			    rtype *,
+</I>&gt;<i> +			    rtype *out,
+</I>&gt;<i>  			    stride_type,
+</I>&gt;<i>  			    stride_type,
+</I>&gt;<i>  			    stride_type,
+</I>&gt;<i> @@ -638,6 +742,8 @@
+</I>&gt;<i>  			    length_type,
+</I>&gt;<i>  			    length_type)
+</I>&gt;<i>    {
+</I>&gt;<i> +    FFTW(execute_split_dft_c2r)(plan_by_reference_,
+</I>&gt;<i> +			  in.first, in.second, out);
+</I>&gt;<i>    }
+</I>&gt;<i>  
+</I>&gt;<i>  };
+</I>&gt;<i> Index: src/vsip/opt/fftw3/create_plan.hpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> --- src/vsip/opt/fftw3/create_plan.hpp	(revision 0)
+</I>&gt;<i> +++ src/vsip/opt/fftw3/create_plan.hpp	(revision 0)
+</I>&gt;<i> @@ -0,0 +1,224 @@
+</I>&gt;<i> +/* Copyright (c) 2007 by CodeSourcery.  All rights reserved.
+</I>&gt;<i> +
+</I>&gt;<i> +   This file is available for license from CodeSourcery, Inc. under the terms
+</I>&gt;<i> +   of a commercial license and under the GPL.  It is not part of the VSIPL++
+</I>&gt;<i> +   reference implementation and is not available under the BSD license.
+</I>&gt;<i> +*/
+</I>&gt;<i> +/** @file    vsip/opt/fftw3/create_plan.hpp
+</I>&gt;<i> +    @author  Assem Salama
+</I>&gt;<i> +    @date    2007-04-13
+</I>&gt;<i> +    @brief   VSIPL++ Library: File that has create_plan struct
+</I>&gt;<i> +*/
+</I>&gt;<i> +#ifndef VSIP_OPT_FFTW3_CREATE_PLAN_HPP
+</I>&gt;<i> +#define VSIP_OPT_FFTW3_CREATE_PLAN_HPP
+</I>&gt;<i> +
+</I>&gt;<i> +#include &lt;vsip/dense.hpp&gt;
+</I>&gt;<i> +
+</I>&gt;<i> +#include &lt;vsip/opt/fftw3/fftw_support.hpp&gt;
+</I>&gt;<i> +
+</I>&gt;<i> +namespace vsip
+</I>&gt;<i> +{
+</I>&gt;<i> +namespace impl
+</I>&gt;<i> +{
+</I>&gt;<i> +namespace fftw3
+</I>&gt;<i> +{
+</I>&gt;<i> +
+</I>&gt;<i> +// This is a helper struct to create temporary buffers used durring plan
+</I>&gt;<i> +// creation.
+</I>&gt;<i> +template &lt;typename complex_type, typename T&gt;
+</I>&gt;<i> +struct Cmplx_buffer;
+</I>&gt;<i> +
+</I>&gt;<i> +// intereaved complex
+</I>&gt;<i> +template &lt;typename T&gt;
+</I>&gt;<i> +struct Cmplx_buffer&lt;Cmplx_inter_fmt, T&gt;
+</I>&gt;<i> +{
+</I>&gt;<i> +  std::complex&lt;T&gt; *ptr() { return buffer_.get(); }
+</I>&gt;<i> +
+</I>&gt;<i> +  Cmplx_buffer(length_type size) : buffer_(32, size)
+</I>&gt;<i> +  {}
+</I>&gt;<i> +  aligned_array&lt;std::complex&lt;T&gt; &gt; buffer_;
+</I>&gt;<i> +};
+</I>&gt;<i> +
+</I>&gt;<i> +// split complex
+</I>&gt;<i> +template &lt;typename T&gt;
+</I>&gt;<i> +struct Cmplx_buffer&lt;Cmplx_split_fmt, T&gt;
+</I>&gt;<i> +{
+</I>&gt;<i> +  Cmplx_buffer(length_type size) :
+</I>&gt;<i> +    buffer_r_(32, size),
+</I>&gt;<i> +    buffer_i_(32, size)
+</I>&gt;<i> +  {}
+</I>&gt;<i> +
+</I>&gt;<i> +  std::pair&lt;T*,T*&gt; ptr()
+</I>&gt;<i> +  { return std::pair&lt;T*, T*&gt;(buffer_r_.get(), buffer_i_.get()); }
+</I>&gt;<i> +
+</I>&gt;<i> +  aligned_array&lt;T&gt;  buffer_r_;
+</I>&gt;<i> +  aligned_array&lt;T&gt;  buffer_i_;
+</I>&gt;<i> +};
+</I>&gt;<i> +
+</I>&gt;<i> +// Convert form axis to tuple
+</I>&gt;<i> +template &lt;dimension_type Dim&gt;
+</I>&gt;<i> +Rt_tuple tuple_from_axis(int A);
+</I>&gt;<i> +
+</I>&gt;<i> +template &lt;&gt;
+</I>&gt;<i> +Rt_tuple tuple_from_axis&lt;1&gt;(int A) { return Rt_tuple(0,1,2); }
+</I>&gt;<i> +template &lt;&gt;
+</I>&gt;<i> +Rt_tuple tuple_from_axis&lt;2&gt;(int A) 
+</I>&gt;<i> +{
+</I>&gt;<i> +  switch (A) {
+</I>&gt;<i> +    case 0:  return Rt_tuple(1,0,2);
+</I>&gt;<i> +    default: return Rt_tuple(0,1,2);
+</I>&gt;<i> +  };
+</I>&gt;<i> +}
+</I>&gt;<i> +
+</I>&gt;<i> +template &lt;&gt;
+</I>&gt;<i> +Rt_tuple tuple_from_axis&lt;3&gt;(int A) 
+</I>&gt;<i> +{
+</I>&gt;<i> +  switch (A) {
+</I>&gt;<i> +    case 0:  return Rt_tuple(2,1,0);
+</I>&gt;<i> +    case 1:  return Rt_tuple(0,2,1);
+</I>&gt;<i> +    default: return Rt_tuple(0,1,2);
+</I>&gt;<i> +  };
+</I>&gt;<i> +}
+</I>&gt;<i> +
+</I>&gt;<i> +// This is a helper strcut to create plans
+</I>&gt;<i> +template&lt;typename complex_type&gt;
+</I>&gt;<i> +struct Create_plan;
+</I>&gt;<i> +
+</I>&gt;<i> +// interleaved
+</I>&gt;<i> +template&lt;&gt;
+</I>&gt;<i> +struct Create_plan&lt;vsip::impl::Cmplx_inter_fmt&gt;
+</I>&gt;<i> +{
+</I>&gt;<i> +
+</I>&gt;<i> +  // create function for complex -&gt; complex
+</I>&gt;<i> +  template &lt;typename PlanT, typename IodimT,
+</I>&gt;<i> +            typename T, dimension_type Dim&gt;
+</I>&gt;<i> +  static PlanT
+</I>&gt;<i> +  create(std::complex&lt;T&gt;* ptr1, std::complex&lt;T&gt;* ptr2,
+</I>&gt;<i> +         int exp, int flags, Domain&lt;Dim&gt; const&amp; size)
+</I>&gt;<i> +  {
+</I>&gt;<i> +    int sz[Dim],i;
+</I>&gt;<i> +    for(i=0;i&lt;Dim;i++) sz[i] = size[i].size();
+</I>&gt;<i> +    return create_fftw_plan(Dim, sz, ptr1,ptr2,exp,flags);
+</I>&gt;<i> +  }
+</I>&gt;<i> +
+</I>&gt;<i> +  // create function for real -&gt; complex
+</I>&gt;<i> +  template &lt;typename PlanT, typename IodimT,
+</I>&gt;<i> +            typename T, dimension_type Dim&gt;
+</I>&gt;<i> +  static PlanT
+</I>&gt;<i> +  create(T* ptr1, std::complex&lt;T&gt;* ptr2,
+</I>&gt;<i> +         int A, int flags, Domain&lt;Dim&gt; const&amp; size)
+</I>&gt;<i> +  {
+</I>&gt;<i> +    int sz[Dim],i;
+</I>&gt;<i> +    for(i=0;i&lt;Dim;i++) sz[i] = size[i].size();
+</I>&gt;<i> +    if(A != Dim-1) std::swap(sz[A], sz[Dim-1]);
+</I>&gt;<i> +    return create_fftw_plan(Dim,sz,ptr1,ptr2,flags);
+</I>&gt;<i> +  }
+</I>&gt;<i> +
+</I>&gt;<i> +  // create function for complex -&gt; real
+</I>&gt;<i> +  template &lt;typename PlanT, typename IodimT,
+</I>&gt;<i> +            typename T, dimension_type Dim&gt;
+</I>&gt;<i> +  static PlanT
+</I>&gt;<i> +  create(std::complex&lt;T&gt;* ptr1, T* ptr2,
+</I>&gt;<i> +         int A, int flags, Domain&lt;Dim&gt; const&amp; size)
+</I>&gt;<i> +  {
+</I>&gt;<i> +    int sz[Dim],i;
+</I>&gt;<i> +    for(i=0;i&lt;Dim;i++) sz[i] = size[i].size();
+</I>&gt;<i> +    if(A != Dim-1) std::swap(sz[A], sz[Dim-1]);
+</I>&gt;<i> +    return create_fftw_plan(Dim,sz,ptr1,ptr2,flags);
+</I>&gt;<i> +  }
+</I>&gt;<i> +
+</I>&gt;<i> +  static rt_complex_type const format = cmplx_inter_fmt;  
+</I>&gt;<i> +
+</I>&gt;<i> +};
+</I>&gt;<i> +
+</I>&gt;<i> +// split
+</I>&gt;<i> +template&lt;&gt;
+</I>&gt;<i> +struct Create_plan&lt;vsip::impl::Cmplx_split_fmt&gt;
+</I>&gt;<i> +{
+</I>&gt;<i> +
+</I>&gt;<i> +  // create for complex -&gt; complex
+</I>&gt;<i> +  template &lt;typename PlanT, typename IodimT,
+</I>&gt;<i> +            typename T, dimension_type Dim&gt;
+</I>&gt;<i> +  static PlanT
+</I>&gt;<i> +  create(std::pair&lt;T*,T*&gt; ptr1, std::pair&lt;T*,T*&gt; ptr2,
+</I>&gt;<i> +         int exp, int flags, Domain&lt;Dim&gt; const&amp; size)
+</I>&gt;<i> +  {
+</I>&gt;<i> +    IodimT iodims[Dim];
+</I>&gt;<i> +    int i;
+</I>&gt;<i> +    Applied_layout&lt;Layout&lt;Dim, typename Row_major&lt;Dim&gt;::type,
+</I>&gt;<i> +                   Stride_unit_dense, Cmplx_split_fmt&gt; &gt;
+</I>&gt;<i> +    app_layout(size);
+</I>&gt;<i> +
+</I>&gt;<i> +    for(i=0;i&lt;Dim;i++) 
+</I>&gt;<i> +    { 
+</I>&gt;<i> +      iodims[i].n = app_layout.size(i);
+</I>&gt;<i> +      iodims[i].is = iodims[i].os = app_layout.stride(i);
+</I>&gt;<i> +    }
+</I>&gt;<i> +
+</I>&gt;<i> +    return create_fftw_plan(Dim, iodims, ptr1,ptr2, flags);
+</I>&gt;<i> +
+</I>&gt;<i> +  }
+</I>&gt;<i> +
+</I>&gt;<i> +  // create for real -&gt; complex
+</I>&gt;<i> +  template &lt;typename PlanT, typename IodimT,
+</I>&gt;<i> +            typename T, dimension_type Dim&gt;
+</I>&gt;<i> +  static PlanT
+</I>&gt;<i> +  create(T *ptr1, std::pair&lt;T*, T*&gt; ptr2, 
+</I>&gt;<i> +         int A, int flags, Domain&lt;Dim&gt; const&amp; size)
+</I>&gt;<i> +  {
+</I>&gt;<i> +    IodimT iodims[Dim];
+</I>&gt;<i> +    int i;
+</I>&gt;<i> +    Applied_layout&lt;Rt_layout&lt;Dim&gt; &gt;
+</I>&gt;<i> +       app_layout(Rt_layout&lt;Dim&gt;(stride_unit_align,
+</I>&gt;<i> +                                 tuple_from_axis&lt;Dim&gt;(A),
+</I>&gt;<i> +                                 cmplx_split_fmt,
+</I>&gt;<i> +                                 0),
+</I>&gt;<i> +              size, sizeof(T));
+</I>&gt;<i> +
+</I>&gt;<i> +
+</I>&gt;<i> +    for(i=0;i&lt;Dim;i++) 
+</I>&gt;<i> +    { 
+</I>&gt;<i> +      iodims[i].n = app_layout.size(i);
+</I>&gt;<i> +      iodims[i].is = iodims[i].os = app_layout.stride(i); 
+</I>&gt;<i> +    }
+</I>&gt;<i> +
+</I>&gt;<i> +    return create_fftw_plan(Dim, iodims, ptr1,ptr2, flags);
+</I>&gt;<i> +  }
+</I>&gt;<i> +
+</I>&gt;<i> +  // create for complex -&gt; real
+</I>&gt;<i> +  template &lt;typename PlanT, typename IodimT,
+</I>&gt;<i> +            typename T, dimension_type Dim&gt;
+</I>&gt;<i> +  static PlanT
+</I>&gt;<i> +  create(std::pair&lt;T*,T*&gt; ptr1, T* ptr2,
+</I>&gt;<i> +         int A, int flags, Domain&lt;Dim&gt; const&amp; size)
+</I>&gt;<i> +  {
+</I>&gt;<i> +    IodimT iodims[Dim];
+</I>&gt;<i> +    int i;
+</I>&gt;<i> +    Applied_layout&lt;Rt_layout&lt;Dim&gt; &gt;
+</I>&gt;<i> +       app_layout(Rt_layout&lt;Dim&gt;(stride_unit_align,
+</I>&gt;<i> +                                 tuple_from_axis&lt;Dim&gt;(A),
+</I>&gt;<i> +                                 cmplx_split_fmt,
+</I>&gt;<i> +                                 0),
+</I>&gt;<i> +              size, sizeof(T));
+</I>&gt;<i> +
+</I>&gt;<i> +
+</I>&gt;<i> +
+</I>&gt;<i> +
+</I>&gt;<i> +    for(i=0;i&lt;Dim;i++) 
+</I>&gt;<i> +    { 
+</I>&gt;<i> +      iodims[i].n = app_layout.size(i);
+</I>&gt;<i> +      iodims[i].is = iodims[i].os = app_layout.stride(i);
+</I>&gt;<i> +    }
+</I>&gt;<i> +
+</I>&gt;<i> +    return create_fftw_plan(Dim, iodims, ptr1,ptr2, flags);
+</I>&gt;<i> +  }
+</I>&gt;<i> +
+</I>&gt;<i> +  static rt_complex_type const format = cmplx_split_fmt;  
+</I>&gt;<i> +};
+</I>&gt;<i> +
+</I>&gt;<i> +
+</I>&gt;<i> +} // namespace vsip::impl::fftw3
+</I>&gt;<i> +} // namespace vsip::impl
+</I>&gt;<i> +} // namespace vsip
+</I>&gt;<i> +
+</I>&gt;<i> +#endif // VSIP_OPT_FFTW3_CREATE_PLAN_HPP
+</I>&gt;<i> Index: src/vsip/opt/fftw3/fftw_support.hpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> --- src/vsip/opt/fftw3/fftw_support.hpp	(revision 0)
+</I>&gt;<i> +++ src/vsip/opt/fftw3/fftw_support.hpp	(revision 0)
+</I>&gt;<i> @@ -0,0 +1,92 @@
+</I>&gt;<i> +/* Copyright (c) 2007 by CodeSourcery.  All rights reserved.
+</I>&gt;<i> +
+</I>&gt;<i> +   This file is available for license from CodeSourcery, Inc. under the terms
+</I>&gt;<i> +   of a commercial license and under the GPL.  It is not part of the VSIPL++
+</I>&gt;<i> +   reference implementation and is not available under the BSD license.
+</I>&gt;<i> +*/
+</I>&gt;<i> +/** @file    vsip/opt/fftw3/fftw_support.hpp
+</I>&gt;<i> +    @author  Assem Salama
+</I>&gt;<i> +    @date    2007-04-25
+</I>&gt;<i> +    @brief   VSIPL++ Library: File that has overloaded create functions for
+</I>&gt;<i> +                              fftw
+</I>&gt;<i> +
+</I>&gt;<i> +*/
+</I>&gt;<i> +#ifndef VSIP_OPT_FFTW3_FFTW_SUPPORT_HPP
+</I>&gt;<i> +#define VSIP_OPT_FFTW3_FFTW_SUPPORT_HPP
+</I>&gt;<i> +
+</I>&gt;<i> +namespace vsip
+</I>&gt;<i> +{
+</I>&gt;<i> +namespace impl
+</I>&gt;<i> +{
+</I>&gt;<i> +namespace fftw3
+</I>&gt;<i> +{
+</I>&gt;<i> +
+</I>&gt;<i> +#define DCL_FFTW_PLAN_FUNC_C2C(T, fT) \
+</I>&gt;<i> +fT##_plan create_fftw_plan(int dim, int *sz, \
+</I>&gt;<i> +                      std::complex&lt;T&gt;* ptr1, std::complex&lt;T&gt;* ptr2,\
+</I>&gt;<i> +                      int exp, int flags) \
+</I>&gt;<i> +{ return fT##_plan_dft(dim,sz,reinterpret_cast&lt;fT##_complex*&gt;(ptr1), \
+</I>&gt;<i> +                     reinterpret_cast&lt;fT##_complex*&gt;(ptr2), exp, flags); \
+</I>&gt;<i> +} \
+</I>&gt;<i> +\
+</I>&gt;<i> +fT##_plan create_fftw_plan(int dim, fT##_iodim *iodim, \
+</I>&gt;<i> +                      std::pair&lt;T*,T*&gt; ptr1, std::pair&lt;T*,T*&gt; ptr2,\
+</I>&gt;<i> +                      int flags) \
+</I>&gt;<i> +{ return fT##_plan_guru_split_dft(dim,iodim,0,NULL, \
+</I>&gt;<i> +                            ptr1.first,ptr1.second,ptr2.first,ptr2.second, \
+</I>&gt;<i> +                            flags); \
+</I>&gt;<i> +}
+</I>&gt;<i> +
+</I>&gt;<i> +#define DCL_FFTW_PLAN_FUNC_R2C(T, fT) \
+</I>&gt;<i> +fT##_plan create_fftw_plan(int dim, int *sz, \
+</I>&gt;<i> +                      T* ptr1, std::complex&lt;T&gt;* ptr2,\
+</I>&gt;<i> +                      int flags) \
+</I>&gt;<i> +{ return fT##_plan_dft_r2c(dim,sz,ptr1, \
+</I>&gt;<i> +                     reinterpret_cast&lt;fT##_complex*&gt;(ptr2), flags); \
+</I>&gt;<i> +} \
+</I>&gt;<i> +\
+</I>&gt;<i> +fT##_plan create_fftw_plan(int dim, fT##_iodim *iodim, \
+</I>&gt;<i> +                      T* ptr1, std::pair&lt;T*,T*&gt; ptr2,\
+</I>&gt;<i> +                      int flags) \
+</I>&gt;<i> +{ return fT##_plan_guru_split_dft_r2c(dim,iodim,0,NULL, \
+</I>&gt;<i> +                            ptr1,ptr2.first,ptr2.second, \
+</I>&gt;<i> +                            flags); \
+</I>&gt;<i> +}
+</I>&gt;<i> +
+</I>&gt;<i> +#define DCL_FFTW_PLAN_FUNC_C2R(T, fT) \
+</I>&gt;<i> +fT##_plan create_fftw_plan(int dim, int *sz, \
+</I>&gt;<i> +                      std::complex&lt;T&gt;* ptr1, T* ptr2,\
+</I>&gt;<i> +                      int flags) \
+</I>&gt;<i> +{ return fT##_plan_dft_c2r(dim,sz,reinterpret_cast&lt;fT##_complex*&gt;(ptr1), \
+</I>&gt;<i> +                     ptr2, flags); \
+</I>&gt;<i> +} \
+</I>&gt;<i> +\
+</I>&gt;<i> +fT##_plan create_fftw_plan(int dim, fT##_iodim *iodim, \
+</I>&gt;<i> +                      std::pair&lt;T*,T*&gt; ptr1, T* ptr2,\
+</I>&gt;<i> +                      int flags) \
+</I>&gt;<i> +{ return fT##_plan_guru_split_dft_c2r(dim,iodim,0,NULL, \
+</I>&gt;<i> +                            ptr1.first,ptr1.second,ptr2, \
+</I>&gt;<i> +                            flags); \
+</I>&gt;<i> +}
+</I>&gt;<i> +
+</I>&gt;<i> +#define DCL_FFTW_PLANS(T, fT) \
+</I>&gt;<i> +  DCL_FFTW_PLAN_FUNC_C2C(T, fT) \
+</I>&gt;<i> +  DCL_FFTW_PLAN_FUNC_R2C(T, fT) \
+</I>&gt;<i> +  DCL_FFTW_PLAN_FUNC_C2R(T, fT)
+</I>&gt;<i> +
+</I>&gt;<i> +
+</I>&gt;<i> +#if VSIP_IMPL_PROVIDE_FFT_FLOAT
+</I>&gt;<i> +  DCL_FFTW_PLANS(float, fftwf)
+</I>&gt;<i> +#endif
+</I>&gt;<i> +#if VSIP_IMPL_PROVIDE_FFT_DOUBLE
+</I>&gt;<i> +  DCL_FFTW_PLANS(double, fftw)
+</I>&gt;<i> +#endif
+</I>&gt;<i> +#if VSIP_IMPL_PROVIDE_FFT_LONG_DOUBLE
+</I>&gt;<i> +  DCL_FFTW_PLANS(long double, fftwl)
+</I>&gt;<i> +#endif
+</I>&gt;<i> +
+</I>&gt;<i> +} // namespace vsip::impl::fftw3
+</I>&gt;<i> +} // namespace vsip::impl
+</I>&gt;<i> +} // namespace vsip
+</I>&gt;<i> +
+</I>&gt;<i> +#endif
+</I>
+
+-- 
+Jules Bergmann
+CodeSourcery
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">jules at codesourcery.com</A>
+(650) 331-3385 x705
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001097.html">fftw3 split support
+</A></li>
+	<LI>Next message: <A HREF="001098.html">benchmarks
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1101">[ date ]</a>
+              <a href="thread.html#1101">[ thread ]</a>
+              <a href="subject.html#1101">[ subject ]</a>
+              <a href="author.html#1101">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">More information about the vsipl++
+mailing list</a><br>
+</body></html>

@@ -1,0 +1,155 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [patch] Forcing a copy for run-time external data access.
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bpatch%5D%20Forcing%20a%20copy%20for%20run-time%20external%20data%20access.&In-Reply-To=%3C445E3EC2.4030506%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000404.html">
+   <LINK REL="Next"  HREF="000411.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[patch] Forcing a copy for run-time external data access.</H1>
+    <B>Jules Bergmann</B> 
+    <A HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bpatch%5D%20Forcing%20a%20copy%20for%20run-time%20external%20data%20access.&In-Reply-To=%3C445E3EC2.4030506%40codesourcery.com%3E"
+       TITLE="[patch] Forcing a copy for run-time external data access.">jules at codesourcery.com
+       </A><BR>
+    <I>Sun May  7 18:38:58 UTC 2006</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000404.html">[patch] Run-time external data access
+</A></li>
+        <LI>Next message: <A HREF="000411.html">[vsipl++] [patch] Forcing a copy for run-time external data access.
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#405">[ date ]</a>
+              <a href="thread.html#405">[ thread ]</a>
+              <a href="subject.html#405">[ subject ]</a>
+              <a href="author.html#405">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>This patch adds support for a SYNC_IN_NOPRESERVE flag with Rt_ext_data. 
+  It requires the block to be synchronized with the external data when 
+the Rt_ext_data is created, and it requires that changes made to the 
+external data are not reflected in the original block.  In short, it 
+forces data to be copied, even if the block already has the requested 
+layout.
+
+The intention is to support FFT backends like SAL that need to 
+reorganize data in-place for packing before performing real-to-complex 
+FFTs.  The backend would communicate that it requires the input data to 
+be copied so that it can pack as necessary.
+
+Applying this to the earlier example:
+
+     operator()(
+       const_Vector&lt;T, Block0&gt; in,
+       Vector&lt;T, Block1&gt; out)
+     {
+
+       // First, determine layout of blocks:
+       Rt_layout&lt;1&gt; rtl_in  = block_layout(in.block());
+       Rt_layout&lt;1&gt; rtl_out = block_layout(out.block());
+
+       // Second, queury the backend about what layout
+       // it can support.
+       // Backend will modify rtl_in and rtl_out.
+       //
+       // For example, it might:
+       //  - set strides to unit-stride if it only supports
+       //    unit-stride,
+       //  - set complex formats to match,
+       //  - set dimension-ordering ,
+       //  - etc.
+       backend_-&gt;query_layout(rtl_in, rtl_out);
+
+       // Determine if backend needs to modify the input data
+       // (for example, if performing a real-to-complex FFT requires
+       // a special packing format).
+       //
+       // If backend does need to modify it, we'll use SYNC_IN_NOPRESEVE
+       // which effectively forces a copy.
+       sync_action_type in_sync = backend_-&gt;requires_copy(rtl_in)
+                                ? SYNC_IN_NOPRESERVE
+                                : SYNC_IN;
+
+       // Thrid, create run-time Ext_data objects
+       Rt_ext_data&lt;Block0, 1&gt; ext_in (in.block(),  rtl_in,  in_sync);
+       Rt_ext_data&lt;Block1, 1&gt; ext_out(out.block(), rtl_out, SYNC_OUT);
+
+       // Fourth, call functions in backend.
+       //
+       // Some knowledge may get encoded here.  In particular,
+       // because split- and interleaved- complex have
+       // different types, we need to call the appropriate
+       // backend function.  The backends could do this dispatch
+       // too.
+
+       // backends don't have functions with mixed split/interleaved
+       // arguments.
+       assert(rtl_in.complex == rtl_out.complex);
+       if (rtl_in.complex == cmplx_inter_fmt)
+       {
+         backend_-&gt;doit(rtl_in.data().as_inter(),
+                        rtl_in.stride(0),
+                        rtl_out.data().as_inter(),
+                        rtl_out.stride(0),
+                        out.size());
+       }
+       else // (rtl_in.complex == cmplx_split_fmt)
+       {
+         backend_-&gt;doit(rtl_in.data().as_split(),
+                        rtl_in.stride(0),
+                        rtl_out.data().as_split(),
+                        rtl_out.stride(0),
+                        out.size());
+       }
+     }
+
+Stefan, this is a bit different than adding the 'force_copy' field to 
+the Rt_layout that I was suggesting before.  However, it seems cleaner 
+in that the 'force_copy' is not really a property of the layout.  Do you 
+think this will work OK?
+
+
+				-- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">jules at codesourcery.com</A>
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: rtex3.diff
+URL: &lt;<A HREF="http://sourcerytools.com/pipermail/vsipl++/attachments/20060507/c91bb30f/attachment.ksh">http://sourcerytools.com/pipermail/vsipl++/attachments/20060507/c91bb30f/attachment.ksh</A>&gt;
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000404.html">[patch] Run-time external data access
+</A></li>
+	<LI>Next message: <A HREF="000411.html">[vsipl++] [patch] Forcing a copy for run-time external data access.
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#405">[ date ]</a>
+              <a href="thread.html#405">[ thread ]</a>
+              <a href="subject.html#405">[ subject ]</a>
+              <a href="author.html#405">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">More information about the vsipl++
+mailing list</a><br>
+</body></html>

@@ -1,0 +1,313 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [vsipl++] [patch] Scalable SAR benchmark
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20%5Bpatch%5D%20Scalable%20SAR%20benchmark&In-Reply-To=%3C454613DD.50602%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000767.html">
+   <LINK REL="Next"  HREF="000770.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[vsipl++] [patch] Scalable SAR benchmark</H1>
+    <B>Stefan Seefeld</B> 
+    <A HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20%5Bpatch%5D%20Scalable%20SAR%20benchmark&In-Reply-To=%3C454613DD.50602%40codesourcery.com%3E"
+       TITLE="[vsipl++] [patch] Scalable SAR benchmark">stefan at codesourcery.com
+       </A><BR>
+    <I>Mon Oct 30 15:01:49 UTC 2006</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000767.html">[patch] Scalable SAR benchmark
+</A></li>
+        <LI>Next message: <A HREF="000770.html">[vsipl++] [patch] Scalable SAR benchmark
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#768">[ date ]</a>
+              <a href="thread.html#768">[ thread ]</a>
+              <a href="subject.html#768">[ subject ]</a>
+              <a href="author.html#768">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Don,
+
+This looks good. I like the heavily commented / documented code.
+That helps a lot in understanding what the code is doing !
+
+I have some high-level / stylistic comments:
+
+Don McCoy wrote:
+
+&gt;<i> Index: apps/ssar/load_save.hpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> --- apps/ssar/load_save.hpp	(revision 0)
+</I>&gt;<i> +++ apps/ssar/load_save.hpp	(revision 0)
+</I>&gt;<i> @@ -0,0 +1,114 @@
+</I>&gt;<i> +/* Copyright (c) 2006 by CodeSourcery.  All rights reserved. */
+</I>&gt;<i> +
+</I>&gt;<i> +/** @file    load_save.hpp
+</I>&gt;<i> +    @author  Don McCoy
+</I>&gt;<i> +    @date    2006-10-26
+</I>&gt;<i> +    @brief   Extensions to allow type double to be used as the view
+</I>&gt;<i> +             data type while using float as the storage type on disk.
+</I>
+I think it would be best to follow the same idiom we agreed on for view I/O
+(and which we now use for our matlab reader / writer), e.g.
+
+input_stream &gt;&gt; Decoder&lt;Vector&lt;double&gt;, float&gt;(view);
+
+This would help us promote this idiom, and make documentation easier.
+
+
+
+&gt;<i> +*/
+</I>&gt;<i> +
+</I>&gt;<i> +#ifndef LOAD_SAVE_HPP
+</I>&gt;<i> +#define LOAD_SAVE_HPP
+</I>&gt;<i> +
+</I>&gt;<i> +#include &lt;vsip_csl/load_view.hpp&gt;
+</I>&gt;<i> +#include &lt;vsip_csl/save_view.hpp&gt;
+</I>&gt;<i> +
+</I>&gt;<i> +using namespace vsip_csl;
+</I>&gt;<i> +
+</I>&gt;<i> +template &lt;typename Block&gt;
+</I>&gt;<i> +void
+</I>&gt;<i> +save_view(
+</I>&gt;<i> +  char* filename,
+</I>
+This should be 'char const *'.
+
+
+&gt;<i> +  vsip::const_Matrix&lt;complex&lt;double&gt;, Block&gt; view)
+</I>&gt;<i> +{
+</I>&gt;<i> +  vsip::Matrix&lt;complex&lt;float&gt; &gt; sp_view(view.size(0), view.size(1));
+</I>&gt;<i> +
+</I>&gt;<i> +  for (index_type i = 0; i &lt; view.size(0); ++i)
+</I>&gt;<i> +    for (index_type j = 0; j &lt; view.size(1); ++j)
+</I>&gt;<i> +      sp_view.put(i, j, static_cast&lt;complex&lt;float&gt; &gt;(view.get(i, j)));
+</I>&gt;<i> +  
+</I>&gt;<i> +  Save_view&lt;2, complex&lt;float&gt; &gt;::save(filename, sp_view);
+</I>
+Where is the Save_view template defined ? I couldn't find it anywhere.
+(I'm wondering whether this could be generalized to do the type cast
+during the streaming, to avoid the above extra copy.)
+
+&gt;<i> +vsip::Matrix&lt;complex&lt;double&gt; &gt;
+</I>&gt;<i> +load_view(
+</I>&gt;<i> +  char* filename,
+</I>&gt;<i> +  vsip::Domain&lt;2&gt; const&amp; dom)
+</I>&gt;<i> +{
+</I>&gt;<i> +  vsip::Matrix&lt;complex&lt;float&gt; &gt; sp_view(dom[0].size(), dom[1].size());
+</I>&gt;<i> +  sp_view = Load_view&lt;2, complex&lt;float&gt; &gt;(filename, dom).view();
+</I>&gt;<i> +
+</I>&gt;<i> +  vsip::Matrix&lt;complex&lt;double&gt; &gt; view(dom[0].size(), dom[1].size());
+</I>&gt;<i> +
+</I>&gt;<i> +  for (index_type i = 0; i &lt; dom[0].size(); ++i)
+</I>&gt;<i> +    for (index_type j = 0; j &lt; dom[1].size(); ++j)
+</I>&gt;<i> +      view.put(i, j, static_cast&lt;complex&lt;double&gt; &gt;(sp_view.get(i, j)));
+</I>
+Same comment here. There must be a way to load the view without this extra
+copy. I believe the matlab formatter allows that, too, IIRC.
+
+
+&gt;<i> Index: apps/ssar/diffview.cpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> --- apps/ssar/diffview.cpp	(revision 0)
+</I>&gt;<i> +++ apps/ssar/diffview.cpp	(revision 0)
+</I>&gt;<i> @@ -0,0 +1,110 @@
+</I>&gt;<i> +/* Copyright (c) 2006 by CodeSourcery.  All rights reserved. */
+</I>&gt;<i> +
+</I>&gt;<i> +/** @file    diffview.cpp
+</I>&gt;<i> +    @author  Don McCoy
+</I>&gt;<i> +    @date    2006-10-29
+</I>&gt;<i> +    @brief   Utility to compare VSIPL++ views to determine equality
+</I>&gt;<i> +*/
+</I>&gt;<i> +
+</I>&gt;<i> +#include &lt;iostream&gt;
+</I>&gt;<i> +#include &lt;stdlib.h&gt;
+</I>&gt;<i> +
+</I>&gt;<i> +#include &lt;vsip/initfin.hpp&gt;
+</I>&gt;<i> +#include &lt;vsip/math.hpp&gt;
+</I>&gt;<i> +
+</I>&gt;<i> +#include &lt;vsip_csl/load_view.hpp&gt;
+</I>&gt;<i> +#include &lt;vsip_csl/save_view.hpp&gt;
+</I>&gt;<i> +#include &lt;vsip_csl/error_db.hpp&gt;
+</I>&gt;<i> +
+</I>&gt;<i> +
+</I>&gt;<i> +using namespace vsip;
+</I>&gt;<i> +using namespace vsip_csl;
+</I>&gt;<i> +using namespace std;
+</I>&gt;<i> +
+</I>&gt;<i> +
+</I>&gt;<i> +typedef enum 
+</I>&gt;<i> +{
+</I>&gt;<i> +  COMPLEX_VIEW = 0,
+</I>&gt;<i> +  REAL_VIEW,
+</I>&gt;<i> +  INTEGER_VIEW
+</I>&gt;<i> +} data_format_type;
+</I>
+What's the reason this is a typedef, as opposed to
+
+enum data_format_type {...};
+
+? (This looks like C-style programming :-) )
+
+
+
+&gt;<i> +
+</I>&gt;<i> +static void compare(data_format_type format, 
+</I>&gt;<i> +  char* infile, char* ref, length_type rows, length_type cols);
+</I>
+Shouldn't these be 'char const *' (infile, ref) ?
+
+
+Replace this use of 'static' with an unnamed namespace to get the
+same effect. Though I'm not sure what the desired effect is, since
+this is the main source file anyway...
+
+
+&gt;<i> Index: apps/ssar/kernel1.hpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> --- apps/ssar/kernel1.hpp	(revision 0)
+</I>&gt;<i> +++ apps/ssar/kernel1.hpp	(revision 0)
+</I>&gt;<i> @@ -0,0 +1,537 @@
+</I>&gt;<i> +/* Copyright (c) 2006 by CodeSourcery.  All rights reserved. */
+</I>&gt;<i> +
+</I>&gt;<i> +/** @file    kernel.hpp
+</I>&gt;<i> +    @author  Don McCoy
+</I>&gt;<i> +    @date    2006-10-26
+</I>&gt;<i> +    @brief   VSIPL++ implementation of SSCA #3: Kernel 1, Image Formation
+</I>&gt;<i> +*/
+</I>&gt;<i> +
+</I>&gt;<i> +#include &lt;vsip/impl/profile.hpp&gt;
+</I>&gt;<i> +
+</I>&gt;<i> +#include &quot;load_save.hpp&quot;
+</I>&gt;<i> +
+</I>&gt;<i> +#if 0
+</I>&gt;<i> +#define VERBOSE
+</I>&gt;<i> +#define SAVE_VIEW(a, b)    save_view(a, b)
+</I>&gt;<i> +#else
+</I>&gt;<i> +#define SAVE_VIEW(a, b)
+</I>&gt;<i> +#endif
+</I>&gt;<i> +
+</I>&gt;<i> +// Files required to be in the data directory:
+</I>&gt;<i> +#define SAR_DIMENSIONS                          &quot;dims.txt&quot;
+</I>&gt;<i> +#define RAW_SAR_DATA                            &quot;sar.view&quot;
+</I>&gt;<i> +#define FAST_TIME_FILTER                        &quot;ftfilt.view&quot;
+</I>&gt;<i> +#define SLOW_TIME_WAVENUMBER                    &quot;k.view&quot;
+</I>&gt;<i> +#define SLOW_TIME_COMPRESSED_APERTURE_POSITION  &quot;uc.view&quot;
+</I>&gt;<i> +#define SLOW_TIME_APERTURE_POSITION             &quot;u.view&quot;
+</I>&gt;<i> +#define SLOW_TIME_SPATIAL_FREQUENCY             &quot;ku.view&quot;
+</I>
+Can these become
+
+char const *SAR_DIMENSIONS = &quot;dims.txt&quot;;
+
+etc., instead ? (Let's not use macros more than necessary !)
+
+&gt;<i> Index: apps/ssar/viewtoraw.cpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> --- apps/ssar/viewtoraw.cpp	(revision 0)
+</I>&gt;<i> +++ apps/ssar/viewtoraw.cpp	(revision 0)
+</I>&gt;<i> @@ -0,0 +1,121 @@
+</I>&gt;<i> +/* Copyright (c) 2006 by CodeSourcery.  All rights reserved. */
+</I>&gt;<i> +
+</I>&gt;<i> +/** @file    viewtoraw.cpp
+</I>&gt;<i> +    @author  Don McCoy
+</I>&gt;<i> +    @date    2006-10-28
+</I>&gt;<i> +    @brief   Utility to convert VSIPL++ views to raw greyscale
+</I>&gt;<i> +*/
+</I>&gt;<i> +
+</I>&gt;<i> +#include &lt;iostream&gt;
+</I>&gt;<i> +#include &lt;stdlib.h&gt;
+</I>&gt;<i> +
+</I>&gt;<i> +#include &lt;vsip/initfin.hpp&gt;
+</I>&gt;<i> +#include &lt;vsip/math.hpp&gt;
+</I>&gt;<i> +
+</I>&gt;<i> +#include &lt;vsip_csl/load_view.hpp&gt;
+</I>&gt;<i> +#include &lt;vsip_csl/save_view.hpp&gt;
+</I>&gt;<i> +
+</I>&gt;<i> +
+</I>&gt;<i> +using namespace vsip;
+</I>&gt;<i> +using namespace vsip_csl;
+</I>&gt;<i> +using namespace std;
+</I>&gt;<i> +
+</I>&gt;<i> +
+</I>&gt;<i> +typedef enum 
+</I>&gt;<i> +{
+</I>&gt;<i> +  COMPLEX_MAG = 0,
+</I>&gt;<i> +  COMPLEX_REAL,
+</I>&gt;<i> +  COMPLEX_IMAG,
+</I>&gt;<i> +  SCALAR_FLOAT,
+</I>&gt;<i> +  SCALAR_INTEGER
+</I>&gt;<i> +} data_format_type;
+</I>
+Same comment as above.
+
+&gt;<i> +
+</I>&gt;<i> +static void convert_to_greyscale(data_format_type format, 
+</I>&gt;<i> +  char* infile, char* outfile, length_type rows, length_type cols);
+</I>
+Same comment(s) as above.
+
+&gt;<i> Index: apps/ssar/ssar.cpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> --- apps/ssar/ssar.cpp	(revision 0)
+</I>&gt;<i> +++ apps/ssar/ssar.cpp	(revision 0)
+</I>&gt;<i> @@ -0,0 +1,93 @@
+</I>&gt;<i> +/* Copyright (c) 2006 by CodeSourcery.  All rights reserved. */
+</I>&gt;<i> +
+</I>&gt;<i> +/** @file    ssar.cpp
+</I>&gt;<i> +    @author  Don McCoy
+</I>&gt;<i> +    @date    2006-10-26
+</I>&gt;<i> +    @brief   VSIPL++ implementation of HPCS Challenge Benchmarks 
+</I>&gt;<i> +               Scalable Synthetic Compact Applications - 
+</I>&gt;<i> +             SSCA #3: Sensor Processing and Knowledge Formation
+</I>&gt;<i> +*/
+</I>&gt;<i> +
+</I>&gt;<i> +#include &lt;iostream&gt;
+</I>&gt;<i> +#include &lt;fstream&gt;
+</I>&gt;<i> +#include &lt;errno.h&gt;
+</I>
+This should be &lt;cerrno&gt;.
+
+
+Thanks,
+		Stefan
+
+
+-- 
+Stefan Seefeld
+CodeSourcery
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">stefan at codesourcery.com</A>
+(650) 331-3385 x718
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000767.html">[patch] Scalable SAR benchmark
+</A></li>
+	<LI>Next message: <A HREF="000770.html">[vsipl++] [patch] Scalable SAR benchmark
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#768">[ date ]</a>
+              <a href="thread.html#768">[ thread ]</a>
+              <a href="subject.html#768">[ subject ]</a>
+              <a href="author.html#768">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">More information about the vsipl++
+mailing list</a><br>
+</body></html>

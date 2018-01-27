@@ -1,0 +1,132 @@
+Index: make.inc.in
+===================================================================
+RCS file: /home/cvs/Repository/clapack/make.inc.in,v
+retrieving revision 1.1
+diff -u -r1.1 make.inc.in
+--- make.inc.in	21 Mar 2006 13:38:28 -0000	1.1
++++ make.inc.in	21 Mar 2006 17:31:33 -0000
+@@ -8,9 +8,10 @@
+ #
+ #  The machine (platform) identifier to append to the library names
+ #
+-# leave PLAT empty for now
++# Assem: we are now using configure to make this makefile. PLAT is used
++# as a postfix for the library names. We want the library names to be the same
++# regardless of platform, so, we will leave it empty.
+ PLAT =
+-#PLAT = _LINUX
+ #  
+ #  Modify the CC and CFLAGS definitions to refer to the
+ #  compiler and desired compiler options for your machine.  NOOPT
+@@ -18,9 +19,7 @@
+ #  selected.  Define LOADER and LOADOPTS to refer to the loader and
+ #  desired load options for your machine.
+ #
+-#CC        = gcc
+-#CFLAGS    = -funroll-all-loops -O3
+-#LOADER    = gcc
++# configure will now substitute correct values for these variables
+ CC        = @CC@
+ CFLAGS    = @CFLAGS@
+ LOADER    = $(CC)
+@@ -32,9 +31,8 @@
+ #  The archiver and the flag(s) to use when building archive (library)
+ #  If you system has no ranlib, set RANLIB = echo.
+ #
+-#ARCH     = ar
+-#ARCHFLAGS= cr
+-#RANLIB   = ranlib
++#
++# configure will now fill these in...
+ ARCH     = @AR@
+ ARCHFLAGS= @ARFLAGS@
+ RANLIB   = @RANLIB@
+Index: SRC/f2c.h
+===================================================================
+RCS file: /home/cvs/Repository/clapack/SRC/f2c.h,v
+retrieving revision 1.2
+diff -u -r1.2 f2c.h
+--- SRC/f2c.h	21 Mar 2006 13:23:25 -0000	1.2
++++ SRC/f2c.h	21 Mar 2006 17:31:33 -0000
+@@ -8,7 +8,9 @@
+ #define F2C_INCLUDE
+ 
+ // Assem: we don't want integer to be 64 bits!!
+-//typedef long int integer;
++// integer was originally defined as long int, this causes some problems
++// on 64bit machines because a long int is 64 bits. The FORTRAN 'integer' was
++// originally 32 bits
+ typedef int integer;
+ typedef unsigned long uinteger;
+ typedef char *address;
+Index: GNUmakefile.inc.in
+===================================================================
+RCS file: /home/cvs/Repository/vpp/vendor/GNUmakefile.inc.in,v
+retrieving revision 1.10
+diff -u -r1.10 GNUmakefile.inc.in
+--- GNUmakefile.inc.in	9 Jan 2006 23:54:07 -0000	1.10
++++ GNUmakefile.inc.in	21 Mar 2006 17:57:48 -0000
+@@ -18,6 +18,7 @@
+ USE_BUILTIN_FFTW_DOUBLE := @USE_BUILTIN_FFTW_DOUBLE@
+ USE_BUILTIN_FFTW_LONG_DOUBLE := @USE_BUILTIN_FFTW_LONG_DOUBLE@
+ 
++vendor_REF_CLAPACK= vendor/clapack/lapack.a
+ vendor_REF_LAPACK = vendor/lapack/lapack.a
+ vendor_PRE_LAPACK = vendor/atlas/lib/libprelapack.a
+ vendor_USE_LAPACK = vendor/atlas/lib/liblapack.a
+@@ -48,20 +49,27 @@
+ 	@echo "Building ATLAS (see atlas.build.log)"
+ 	@$(MAKE) -C vendor/atlas build > atlas.build.log 2>&1
+ 
++$(vendor_REF_CLAPACK):
++	@echo "Building CLAPACK (see clapack.build.log)"
++	@$(MAKE) -C vendor/clapack lapacklib > clapack.build.log 2>&1
++
++
+ $(vendor_REF_LAPACK):
+ 	@echo "Building LAPACK (see lapack.build.log)"
+ 	@$(MAKE) -C vendor/lapack/SRC all > lapack.build.log 2>&1
+ 
+-$(vendor_USE_LAPACK): $(vendor_PRE_LAPACK) $(vendor_REF_LAPACK)
++$(vendor_USE_LAPACK): $(vendor_PRE_LAPACK) $(vendor_REF_CLAPACK)
+ 	mkdir -p vendor/atlas/lib/tmp
+ 	pushd vendor/atlas/lib/tmp; ar x ../../../../$(vendor_PRE_LAPACK); popd
+-	cp $(vendor_REF_LAPACK) $(vendor_USE_LAPACK)
++	cp $(vendor_REF_CLAPACK) $(vendor_USE_LAPACK)
+ 	pushd vendor/atlas/lib/tmp; ar r ../../../../$(vendor_USE_LAPACK); popd
+ 	rm -rf vendor/atlas/lib/tmp
+ 
+ clean::
+ 	@echo "Cleaning ATLAS (see atlas.clean.log)"
+ 	@$(MAKE) -C vendor/atlas clean > atlas.clean.log 2>&1
++	@echo "Cleaning CLAPACK (see clapack.clean.log)"
++	@$(MAKE) -C vendor/clapack/SRC clean > clapack.clean.log 2>&1
+ 
+ install:: $(vendor_LIBS)
+ 	@echo "Installing ATLAS (see atlas.install.log)"
+Index: ChangeLog
+===================================================================
+RCS file: /home/cvs/Repository/vpp/ChangeLog,v
+retrieving revision 1.411
+diff -u -r1.411 ChangeLog
+--- ChangeLog	16 Mar 2006 03:27:10 -0000	1.411
++++ ChangeLog	21 Mar 2006 18:15:15 -0000
+@@ -1,3 +1,18 @@
++2006-03-21  Assem Salama <assem@codesourcery.com>
++	* vendor: added CLAPACK library. CLAPACK now sits in clapack
++	* CVSROOT/modules: added a line to automatically checkout CLAPACK when
++		vpp is checked out
++	* vendor/GNUmakefile.inc: to make CLAPACK instead of LAPACK. Also added
++		a command for clean to also clean out CLAPACK when make clean
++		is invoked
++	* vendor/clapack/SRC/GNUmakefile.in: added this file to allow configure
++		to make this directory. This file orginally was Makefile.
++	* vendor/clapack/make.inc.in: added this file to have configure
++		atuomatically fill compile variables
++	* vendor/clapack/SRC/f2c.h: modified typedef of integer. integer used to
++		be defined as 64 bits. Original FORTRAN code had integer defined
++		for 32 bits.
++
+ 2006-03-15  Stefan Seefeld  <stefan@codesourcery.com>
+ 
+ 	* tests/*: Move various tests into subdirectories.

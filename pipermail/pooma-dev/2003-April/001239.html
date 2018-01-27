@@ -1,0 +1,125 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [pooma-dev] Remote access of distributed multipatched arrays
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bpooma-dev%5D%20Remote%20access%20of%20distributed%20multipatched%20arrays&In-Reply-To=%3CPine.LNX.4.44.0304062027080.988-100000%40goofy%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001238.html">
+   <LINK REL="Next"  HREF="001240.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[pooma-dev] Remote access of distributed multipatched arrays</H1>
+    <B>Richard Guenther</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bpooma-dev%5D%20Remote%20access%20of%20distributed%20multipatched%20arrays&In-Reply-To=%3CPine.LNX.4.44.0304062027080.988-100000%40goofy%3E"
+       TITLE="[pooma-dev] Remote access of distributed multipatched arrays">rguenth at tat.physik.uni-tuebingen.de
+       </A><BR>
+    <I>Sun Apr  6 18:31:58 UTC 2003</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001238.html">Remote access of distributed multipatched arrays
+</A></li>
+        <LI>Next message: <A HREF="001240.html">[PATCH] Fix Engine&lt;.., MultiPatch&lt;..&gt; &gt;::makeOwnCopy()
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1239">[ date ]</a>
+              <a href="thread.html#1239">[ thread ]</a>
+              <a href="subject.html#1239">[ subject ]</a>
+              <a href="author.html#1239">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>On Sun, 6 Apr 2003, Arno Candel wrote:
+
+&gt;<i> Hi everybody,
+</I>&gt;<i>
+</I>&gt;<i> I encountered a problem doing local if-statements using multiple values
+</I>&gt;<i> of several distributed multipatched brick arrays to calculate the value
+</I>&gt;<i> of one such array.
+</I>&gt;<i>
+</I>&gt;<i> Below I have included a simple test program which shows the relevant
+</I>&gt;<i> problem. Three 3D distributed multipatched brick arrays are created and
+</I>&gt;<i> allocated on different domains and thus on different patches. Two arrays
+</I>&gt;<i> are now used to calculate the values of the other array, using local
+</I>&gt;<i> if-statements. Both a &quot;stupid serial&quot; and a &quot;parallel&quot; version of the
+</I>&gt;<i> calculation part are implemented. The use of data-parallel expression or
+</I>&gt;<i> stencils was not possible, in my view.
+</I>
+This is not the case.
+
+&gt;<i>     // &quot;stupid serial&quot; version
+</I>&gt;<i>     Pooma::blockAndEvaluate();
+</I>&gt;<i>     time=clock.value();
+</I>&gt;<i>     for (int i=ADom[0].first();i&lt;=ADom[0].last();i++)
+</I>&gt;<i>     for (int j=ADom[1].first();j&lt;=ADom[1].last();j++)
+</I>&gt;<i>     for (int k=ADom[2].first();k&lt;=ADom[2].last();k++) {
+</I>&gt;<i>         Loc&lt;3&gt; x(i,j,k);
+</I>&gt;<i>         if ( (B(x+ez)&lt;0.5) &amp;&amp; (C(x-ex)&gt;0.3) ) {
+</I>&gt;<i>             A(x)=B(x-ez-ex)+C(x+ez);
+</I>&gt;<i>         }
+</I>&gt;<i>     }
+</I>&gt;<i>     Pooma::blockAndEvaluate();
+</I>&gt;<i>     pout &lt;&lt; A &lt;&lt; &quot;\nstupid serial version took &quot; &lt;&lt; clock.value()-time
+</I>&gt;<i> &lt;&lt; &quot; secs&quot; &lt;&lt; std::endl;
+</I>
+Just use
+
+  A(Adom) = where(B(Adom+ez)&lt;0.5 &amp;&amp; C(Adom-ex)&gt;0.3, B(Adom-ez-ex) +
+C(Adom+ez));
+
+here - also notice that setting external guards to zero will not work, as
+you need at least as much external guards as internal ones (usually).
+
+&gt;<i>
+</I>&gt;<i>     // &quot;parallel&quot; version, iterate only over local patches of A
+</I>&gt;<i>     Pooma::blockAndEvaluate();
+</I>&gt;<i>     time=clock.value();
+</I>&gt;<i>     for (GridLayout&lt;3&gt;::const_iterator it = Alayout.beginLocal(); it !=
+</I>&gt;<i> Alayout.endLocal(); it++) {
+</I>&gt;<i>         for (int i=it-&gt;domain()[0].first();i&lt;=it-&gt;domain()[0].last();i++)
+</I>&gt;<i>         for (int j=it-&gt;domain()[1].first();j&lt;=it-&gt;domain()[1].last();j++)
+</I>&gt;<i>         for (int k=it-&gt;domain()[2].first();k&lt;=it-&gt;domain()[2].last();k++) {
+</I>&gt;<i>             Loc&lt;3&gt; x(i,j,k);
+</I>&gt;<i>             if ( (B(x+ez)&lt;0.5) &amp;&amp; (C(x-ex)&gt;0.3) ) {
+</I>&gt;<i>                 A(x)=B(x-ez-ex)+C(x+ez);
+</I>&gt;<i>                 // problem: local patches of A might not contain needed
+</I>&gt;<i> values of B and C and remote access is forbidden!
+</I>&gt;<i>                 // Will crash in parallel execution!
+</I>
+remote access is not forbidden. But due to the guard layer setup (see
+above) you may experience crashes. Otherwise this should work fine.
+
+Hope this helps.
+
+Richard.
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001238.html">Remote access of distributed multipatched arrays
+</A></li>
+	<LI>Next message: <A HREF="001240.html">[PATCH] Fix Engine&lt;.., MultiPatch&lt;..&gt; &gt;::makeOwnCopy()
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1239">[ date ]</a>
+              <a href="thread.html#1239">[ thread ]</a>
+              <a href="subject.html#1239">[ subject ]</a>
+              <a href="author.html#1239">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

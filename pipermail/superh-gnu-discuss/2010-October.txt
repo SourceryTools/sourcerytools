@@ -1,0 +1,333 @@
+From Phil.Edworthy at renesas.com  Fri Oct  1 10:14:52 2010
+From: Phil.Edworthy at renesas.com (Phil Edworthy)
+Date: Fri, 1 Oct 2010 11:14:52 +0100
+Subject: [superh-gnu-discuss] Problems with gdbserver
+References: <AB12B32E73474741A2C5361C433A44DE0229DFBB@rte-ben-exch.RTE.ADWIN.RENESAS.COM> <20100930164614.GA32427@linux-sh.org> 
+Message-ID: <AB12B32E73474741A2C5361C433A44DE0229E290@rte-ben-exch.RTE.ADWIN.RENESAS.COM>
+
+
+
+> -----Original Message-----
+> From: Phil Edworthy
+> Sent: 01 October 2010 08:20
+> To: 'Paul Mundt'
+> Cc: superh-gnu-discuss at codesourcery.com
+> Subject: RE: [superh-gnu-discuss] Problems with gdbserver
+> 
+> Hi Paul,
+> 
+> > -----Original Message-----
+> > From: Paul Mundt [mailto:lethal at linux-sh.org]
+> > Sent: 30 September 2010 17:46
+> > To: Phil Edworthy
+> > Cc: superh-gnu-discuss at codesourcery.com
+> > Subject: Re: [superh-gnu-discuss] Problems with gdbserver
+> >
+> > On Thu, Sep 30, 2010 at 04:35:55PM +0100, Phil Edworthy wrote:
+> > > Unable to handle kernel NULL pointer dereference at virtual address
+> > 00000084
+> > > pc = 88004260
+> > > *pde = 8f197000
+> > > Oops: 0001 [#18]
+> > > last sysfs file: /sys/class/vc/vcs3/dev
+> > > Modules linked in:
+> > >
+> > > Pid : 607, Comm:                gdbserver
+> > > CPU : 0                 Tainted: G      D      (2.6.35 #1)
+> > >
+> > > PC  : 88004260 SP  : 8f1e1f88 SR  : 40008100 TEA : 296608c0
+> > > R0  : 00000000 R1  : 00000000 R2  : 00000000 R3  : fffffffc
+> > > R4  : 8f0676c0 R5  : 00000006 R6  : 00000084 R7  : 00000000
+> > > R8  : 8f0676c0 R9  : 00000006 R10 : 00000000 R11 : 000000e0
+> > > R12 : 00000000 R13 : 00000004 R14 : 7bf21a40
+> > > MACH: 00000004 MACL: 5c405562 GBR : 296f5470 PR  : 8801dabc
+> > >
+> > > Call trace:
+> > >  [<8801dabc>] 0x8801dabc
+> > >  [<8800725a>] 0x8800725a
+> > >  [<8801da20>] 0x8801da20
+> > >
+> > Can you attach your System.map for this kernel? What does addr2line
+> > report for the PC?
+> 
+> Only after I sent this was it pointed out to me that the null ptr is being
+> picked up in the kernel.
+> 
+> System.map attached.
+> 
+> $ sh-linux-gnu-addr2line -f -e vmlinux 88004260
+> arch_ptrace
+> ??:0
+> 
+> The call trace corresponds to:
+> 0x8801dabc  sys_ptrace    ??:0
+> 0x8800725a  syscall_call  probe.c:0
+> 0x8801da20  sys_ptrace    ??:0
+
+I traced it back a bit further in arch/sh/kernel/ptrace_32.c: arch_ptrace.
+When sent a PTRACE_POKEUSR request for user space, child->thread.xstate is
+null.
+
+BTW, this also happens on a stock 2.6.35 kernel
+
+Thanks
+Phil
+
+From Phil.Edworthy at renesas.com  Fri Oct  1 07:19:58 2010
+From: Phil.Edworthy at renesas.com (Phil Edworthy)
+Date: Fri, 1 Oct 2010 08:19:58 +0100
+Subject: [superh-gnu-discuss] Problems with gdbserver
+In-Reply-To: <20100930164614.GA32427@linux-sh.org>
+References: <AB12B32E73474741A2C5361C433A44DE0229DFBB@rte-ben-exch.RTE.ADWIN.RENESAS.COM> <20100930164614.GA32427@linux-sh.org>
+Message-ID: <AB12B32E73474741A2C5361C433A44DE0229E0B6@rte-ben-exch.RTE.ADWIN.RENESAS.COM>
+
+Hi Paul,
+
+> -----Original Message-----
+> From: Paul Mundt [mailto:lethal at linux-sh.org]
+> Sent: 30 September 2010 17:46
+> To: Phil Edworthy
+> Cc: superh-gnu-discuss at codesourcery.com
+> Subject: Re: [superh-gnu-discuss] Problems with gdbserver
+> 
+> On Thu, Sep 30, 2010 at 04:35:55PM +0100, Phil Edworthy wrote:
+> > Unable to handle kernel NULL pointer dereference at virtual address
+> 00000084
+> > pc = 88004260
+> > *pde = 8f197000
+> > Oops: 0001 [#18]
+> > last sysfs file: /sys/class/vc/vcs3/dev
+> > Modules linked in:
+> >
+> > Pid : 607, Comm:                gdbserver
+> > CPU : 0                 Tainted: G      D      (2.6.35 #1)
+> >
+> > PC  : 88004260 SP  : 8f1e1f88 SR  : 40008100 TEA : 296608c0
+> > R0  : 00000000 R1  : 00000000 R2  : 00000000 R3  : fffffffc
+> > R4  : 8f0676c0 R5  : 00000006 R6  : 00000084 R7  : 00000000
+> > R8  : 8f0676c0 R9  : 00000006 R10 : 00000000 R11 : 000000e0
+> > R12 : 00000000 R13 : 00000004 R14 : 7bf21a40
+> > MACH: 00000004 MACL: 5c405562 GBR : 296f5470 PR  : 8801dabc
+> >
+> > Call trace:
+> >  [<8801dabc>] 0x8801dabc
+> >  [<8800725a>] 0x8800725a
+> >  [<8801da20>] 0x8801da20
+> >
+> Can you attach your System.map for this kernel? What does addr2line
+> report for the PC?
+
+Only after I sent this was it pointed out to me that the null ptr is being
+picked up in the kernel.
+
+System.map attached.
+
+$ sh-linux-gnu-addr2line -f -e vmlinux 88004260
+arch_ptrace
+??:0
+
+The call trace corresponds to:
+0x8801dabc  sys_ptrace    ??:0
+0x8800725a  syscall_call  probe.c:0
+0x8801da20  sys_ptrace    ??:0
+
+Thanks
+Phil
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: System.map
+Type: application/octet-stream
+Size: 905876 bytes
+Desc: System.map
+URL: <http://sourcerytools.com/pipermail/superh-gnu-discuss/attachments/20101001/5219d62c/attachment.obj>
+
+From koba at lineo.co.jp  Mon Oct 18 13:03:10 2010
+From: koba at lineo.co.jp (Akira Kobayashi)
+Date: Mon, 18 Oct 2010 22:03:10 +0900
+Subject: optimization problem with 4.4-200
+Message-ID: <87A28DEA76A84ECFA0B58EA81C4EA002@peacock>
+
+Dear sir,
+
+I'd like to report you that the problem of optimization was found with the 
+following toolchain.
+Toolchain : Sourcery G++ Lite 4.4-200 for SuperH GNU/Linux
+
+When compiling the attached code with optimization option 
+(-O1, -O2, -O3, -Os), the result was different from the result of no 
+optimization (-O0).
+Will this problem be fixed in the next release?
+
+Result:
+- optimization option = -O0
+
+    ~ # ./test
+    MAC=00:00:87:6B:B0:5C
+
+- optimization option = -O1, -O2, -O3 or -Os
+
+    ~ # ./test
+    MAC=00:00:00:00:00:00
+
+Your kind attention to the above would be highly appreciated.
+
+Best Regards,
+Akira Kobayashi
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: test.c
+Type: application/octet-stream
+Size: 690 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/superh-gnu-discuss/attachments/20101018/8251f638/attachment.obj>
+
+From ams at codesourcery.com  Mon Oct 18 13:55:29 2010
+From: ams at codesourcery.com (Andrew Stubbs)
+Date: Mon, 18 Oct 2010 14:55:29 +0100
+Subject: [superh-gnu-discuss] optimization problem with 4.4-200
+In-Reply-To: <87A28DEA76A84ECFA0B58EA81C4EA002@peacock>
+References: <87A28DEA76A84ECFA0B58EA81C4EA002@peacock>
+Message-ID: <4CBC51D1.2050307@codesourcery.com>
+
+On 18/10/10 14:03, Akira Kobayashi wrote:
+> When compiling the attached code with optimization option (-O1, -O2, 
+> -O3, -Os), the result was different from the result of no optimization 
+> (-O0).
+> Will this problem be fixed in the next release?
+
+I can't reproduce this problem with either 4.4-200, or the upcoming new
+version. I have compiled your test case for Little Endian SH-4A, at all
+optimization levels, and without any other options.
+
+Are you sure there's not something else happening here?
+
+In any case, the new Lite edition compiler (to be released in a few
+weeks) will be based on GCC 4.5 - a major update, so I would be
+surprised if it suffered from exactly the same problems.
+
+Thank you for reporting the problem.
+
+Andrew Stubbs
+CodeSourcery
+
+
+From koba at lineo.co.jp  Tue Oct 19 06:42:08 2010
+From: koba at lineo.co.jp (Akira Kobayashi)
+Date: Tue, 19 Oct 2010 15:42:08 +0900
+Subject: [superh-gnu-discuss] optimization problem with 4.4-200
+References: <87A28DEA76A84ECFA0B58EA81C4EA002@peacock> <4CBC51D1.2050307@codesourcery.com>
+Message-ID: <27001FB865844DF1A1EC055217DCFC37@peacock>
+
+Hello Andrew-san,
+
+Thank you very much for your reply.
+I reconfirmed this problem after I received your reply.
+The board I used was SH4 core. We reconfirmed the problem with the board.
+However, as you said, the problem was not reproduced with the SH4A core 
+board.
+Thank you for correcting my mistake.
+
+Best Regards,
+Akira
+
+----- Original Message ----- 
+From: "Andrew Stubbs" <ams at codesourcery.com>
+To: "Akira Kobayashi" <koba at lineo.co.jp>
+Cc: <superh-gnu-discuss at codesourcery.com>
+Sent: Monday, October 18, 2010 10:55 PM
+Subject: Re: [superh-gnu-discuss] optimization problem with 4.4-200
+
+
+> On 18/10/10 14:03, Akira Kobayashi wrote:
+>> When compiling the attached code with optimization option (-O1, -O2,
+>> -O3, -Os), the result was different from the result of no optimization
+>> (-O0).
+>> Will this problem be fixed in the next release?
+>
+> I can't reproduce this problem with either 4.4-200, or the upcoming new
+> version. I have compiled your test case for Little Endian SH-4A, at all
+> optimization levels, and without any other options.
+>
+> Are you sure there's not something else happening here?
+>
+> In any case, the new Lite edition compiler (to be released in a few
+> weeks) will be based on GCC 4.5 - a major update, so I would be
+> surprised if it suffered from exactly the same problems.
+>
+> Thank you for reporting the problem.
+>
+> Andrew Stubbs
+> CodeSourcery 
+
+
+
+From ams at codesourcery.com  Tue Oct 19 08:50:08 2010
+From: ams at codesourcery.com (Andrew Stubbs)
+Date: Tue, 19 Oct 2010 09:50:08 +0100
+Subject: [superh-gnu-discuss] optimization problem with 4.4-200
+In-Reply-To: <27001FB865844DF1A1EC055217DCFC37@peacock>
+References: <87A28DEA76A84ECFA0B58EA81C4EA002@peacock> <4CBC51D1.2050307@codesourcery.com> <27001FB865844DF1A1EC055217DCFC37@peacock>
+Message-ID: <4CBD5BC0.9080700@codesourcery.com>
+
+Akira-san,
+
+The Lite toolchains are configured for SH-4A only. We do not recommend
+that you use them for SH-4.
+
+However, you should find that the compiler "-m4" option to switch to
+SH-4 mode is still available. Hopefully this will solve the problem you
+are having.
+
+Note that we do not provide SH-4 "-m4" configured libraries or C runtime
+files, so the compiler will fall back to using the SH-4A versions of
+those. However, you've already been using those at -O0 with success, so
+simple programs should work, at least.
+
+Hope that helps
+
+Andrew
+
+On 19/10/10 07:42, Akira Kobayashi wrote:
+> Hello Andrew-san,
+> 
+> Thank you very much for your reply.
+> I reconfirmed this problem after I received your reply.
+> The board I used was SH4 core. We reconfirmed the problem with the board.
+> However, as you said, the problem was not reproduced with the SH4A core 
+> board.
+> Thank you for correcting my mistake.
+> 
+> Best Regards,
+> Akira
+> 
+> ----- Original Message ----- From: "Andrew Stubbs" <ams at codesourcery.com>
+> To: "Akira Kobayashi" <koba at lineo.co.jp>
+> Cc: <superh-gnu-discuss at codesourcery.com>
+> Sent: Monday, October 18, 2010 10:55 PM
+> Subject: Re: [superh-gnu-discuss] optimization problem with 4.4-200
+> 
+> 
+>> On 18/10/10 14:03, Akira Kobayashi wrote:
+>>> When compiling the attached code with optimization option (-O1, -O2,
+>>> -O3, -Os), the result was different from the result of no optimization
+>>> (-O0).
+>>> Will this problem be fixed in the next release?
+>>
+>> I can't reproduce this problem with either 4.4-200, or the upcoming new
+>> version. I have compiled your test case for Little Endian SH-4A, at all
+>> optimization levels, and without any other options.
+>>
+>> Are you sure there's not something else happening here?
+>>
+>> In any case, the new Lite edition compiler (to be released in a few
+>> weeks) will be based on GCC 4.5 - a major update, so I would be
+>> surprised if it suffered from exactly the same problems.
+>>
+>> Thank you for reporting the problem.
+>>
+>> Andrew Stubbs
+>> CodeSourcery 
+> 
+
+
+

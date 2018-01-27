@@ -1,0 +1,408 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [pooma-dev] examples/Particles/PIC2d/PIC2d.cpp works
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bpooma-dev%5D%20examples/Particles/PIC2d/PIC2d.cpp%20works&In-Reply-To=%3C40EEA5F6.1070301%40mail.ru%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001613.html">
+   <LINK REL="Next"  HREF="001617.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[pooma-dev] examples/Particles/PIC2d/PIC2d.cpp works</H1>
+    <B>Roman Krylov</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bpooma-dev%5D%20examples/Particles/PIC2d/PIC2d.cpp%20works&In-Reply-To=%3C40EEA5F6.1070301%40mail.ru%3E"
+       TITLE="[pooma-dev] examples/Particles/PIC2d/PIC2d.cpp works">rkrylov at mail.ru
+       </A><BR>
+    <I>Fri Jul  9 14:04:38 UTC 2004</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001613.html">[pooma-dev] examples/Particles/PIC2d/PIC2d.cpp works
+</A></li>
+        <LI>Next message: <A HREF="001617.html">[pooma-dev] Re:Re: [pooma-dev] examples/Particles/PIC2d/PIC2d.cpp works
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1616">[ date ]</a>
+              <a href="thread.html#1616">[ thread ]</a>
+              <a href="subject.html#1616">[ subject ]</a>
+              <a href="author.html#1616">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Perhaps some changes were unnecessary, I was experiencing.
+Here they are:
+----------
+Index: examples/Particles/PIC2d/PIC2d.cpp
+===================================================================
+RCS file: /home/pooma/Repository/r2/examples/Particles/PIC2d/PIC2d.cpp,v
+retrieving revision 1.19
+diff -u -r1.19 PIC2d.cpp
+--- examples/Particles/PIC2d/PIC2d.cpp    21 Sep 2001 20:27:21 -0000    1.19
++++ examples/Particles/PIC2d/PIC2d.cpp    9 Jul 2004 13:55:04 -0000
+@@ -33,16 +33,23 @@
+ // static electric field using nearest-grid-point interpolation.
+ //-----------------------------------------------------------------------------
+ 
++#include &quot;Field/FieldCentering.h&quot;
++#include &quot;Field/DiffOps/Grad.h&quot;
++#include &quot;Field/DiffOps/Grad.UR.h&quot;
++#include &quot;Particles/InterpolatorNGP.h&quot;
++#include &quot;Particles/Interpolation.h&quot;
+ #include &quot;Pooma/Particles.h&quot;
+ #include &quot;Pooma/DynamicArrays.h&quot;
+ #include &quot;Pooma/Fields.h&quot;
+ #include &quot;Utilities/Inform.h&quot;
++#include &quot;Pooma/Indices.h&quot;
++
+ #include &lt;iostream&gt;
+ #include &lt;stdlib.h&gt;
+ #include &lt;math.h&gt;
+ 
+ // Traits class for Particles object
+-template &lt;class EngineTag, class Centering, class MeshType, class FL,
++template &lt;class EngineTag, class MeshType, class FL,
+           class InterpolatorTag&gt;
+ struct PTraits
+ {
+@@ -50,7 +57,7 @@
+   typedef EngineTag AttributeEngineTag_t;
+ 
+   // The type of particle layout to use
+-  typedef SpatialLayout&lt;DiscreteGeometry&lt;Centering,MeshType&gt;,FL&gt;
++  typedef SpatialLayout&lt;MeshType,FL&gt;
+     ParticleLayout_t;
+ 
+   // The type of interpolator to use
+@@ -87,6 +94,7 @@
+   DynamicArray&lt;PointType_t,AttributeEngineTag_t&gt; R;
+   DynamicArray&lt;PointType_t,AttributeEngineTag_t&gt; V;
+   DynamicArray&lt;PointType_t,AttributeEngineTag_t&gt; E;
++  DynamicArray&lt;PointType_t,AttributeEngineTag_t&gt; phi;                  
+      // for testing purposes of course
+   DynamicArray&lt;double,     AttributeEngineTag_t&gt; qm;
+ };
+ 
+@@ -102,24 +110,25 @@
+ #endif
+ 
+ // Mesh type
+-typedef UniformRectilinearMesh&lt;PDim,Cartesian&lt;PDim&gt;,double&gt; Mesh_t;
++typedef UniformRectilinearMesh&lt;PDim,/*,Cartesian&lt;PDim&gt;,*/double&gt; Mesh_t;
+ 
+ // Centering of Field elements on mesh
+-typedef Cell Centering_t;
++//typedef CanonicalCentering::CellType Centering_t;
++//static const int Centering_t = CanonicalCentering&lt;PDim&gt;::CellType;
+ 
+ // Geometry type for Fields
+-typedef DiscreteGeometry&lt;Centering_t,Mesh_t&gt; Geometry_t;
++//typedef DiscreteGeometry&lt;Centering_t,Mesh_t&gt; Geometry_t;
+ 
+ // Field types
+ #if POOMA_CHEETAH
+-typedef Field&lt; Geometry_t, double,
++typedef Field&lt; Mesh_t, double,
+                MultiPatch&lt; UniformTag, Remote&lt;Brick&gt; &gt; &gt; DField_t;
+-typedef Field&lt; Geometry_t, Vector&lt;PDim,double&gt;,
++typedef Field&lt; Mesh_t, Vector&lt;PDim,double&gt;,
+                MultiPatch&lt; UniformTag, Remote&lt;Brick&gt; &gt; &gt; VecField_t;
+ #else
+-typedef Field&lt; Geometry_t, double,
++typedef Field&lt; Mesh_t, double,
+                MultiPatch&lt;UniformTag,Brick&gt; &gt; DField_t;
+-typedef Field&lt; Geometry_t, Vector&lt;PDim,double&gt;,
++typedef Field&lt; Mesh_t, Vector&lt;PDim,double&gt;,
+                MultiPatch&lt;UniformTag,Brick&gt; &gt; VecField_t;
+ #endif
+ 
+@@ -131,7 +140,7 @@
+ typedef NGP InterpolatorTag_t;
+ 
+ // Particle traits class
+-typedef PTraits&lt;AttrEngineTag_t,Centering_t,Mesh_t,FLayout_t,
++typedef PTraits&lt;AttrEngineTag_t,Mesh_t,FLayout_t,
+                 InterpolatorTag_t&gt; PTraits_t;
+ 
+ // Type of particle layout
+@@ -153,7 +162,7 @@
+ const double pi = acos(-1.0);
+ 
+ // Maximum value for particle q/m ratio
+-const double qmmax = 1.0;
++const double qmmax = 10;//1.0;
+ 
+ // Timestep
+ const double dt = 1.0;
+@@ -169,35 +178,61 @@
+   out &lt;&lt; &quot;-------------------------&quot; &lt;&lt; std::endl;
+ 
+   // Create mesh and geometry objects for cell-centered fields.
++    Loc&lt;PDim&gt; blocks(4,4);
++    UniformGridPartition&lt;2&gt; partition(
++        Loc&lt;2&gt;(1, 1),
++        GuardLayers&lt;2&gt;(1),  // internal
++        GuardLayers&lt;2&gt;(0)
++                    ); // external 
+   Interval&lt;PDim&gt; meshDomain(nx+1,ny+1);
+-  Mesh_t mesh(meshDomain);
+-  Geometry_t geometry(mesh);
++  FLayout_t flayout(meshDomain,partition,DistributedTag());
++  Mesh_t mesh(flayout, Vector&lt;2&gt;(0.0), Vector&lt;2&gt;(1.0, 1.0));//(meshDomain);
++  Centering&lt;2&gt; cell =
++    canonicalCentering&lt;2&gt;(CellType, Continuous, AllDim);
++  /*Geometry_t geometry(mesh);*/
+ 
+   // Create a second geometry object that includes a guard layer.
+-  GuardLayers&lt;PDim&gt; gl(1);
+-  Geometry_t geometryGL(mesh,gl);
++//  GuardLayers&lt;PDim&gt; gl(1);
++//  FLayout_t flayoutGL(meshDomain,partition,DistributedTag());
++  /*Geometry_t geometryGL(mesh,gl);*/
+ 
+   // Create field layout objects for our electrostatic potential
+   // and our electric field.  Decomposition is 4 x 4.
+-  Loc&lt;PDim&gt; blocks(4,4);
+-  FLayout_t flayout(geometry.physicalDomain(),blocks,DistributedTag());
+-  FLayout_t 
+flayoutGL(geometryGL.physicalDomain(),blocks,gl,DistributedTag());
++//  Loc&lt;PDim&gt; blocks(4,4);
++//  FLayout_t flayout(mesh.physicalDomain(),blocks,DistributedTag());
++//  FLayout_t 
+flayoutGL(geometryGL.physicalDomain(),blocks,gl,DistributedTag());
+ 
+   // Create and initialize electrostatic potential and electric field.
+-  DField_t phi(geometryGL,flayoutGL);
+-  VecField_t EFD(geometry,flayout);
++  DField_t phi(cell,flayout,mesh);
++  VecField_t EFD(cell,flayout,mesh);
+ 
+   // potential phi = phi0 * sin(2*pi*x/Lx) * cos(4*pi*y/Ly)
+   // Note that phi is a periodic Field
+   // Electric field EFD = -grad(phi);
+-  Pooma::addAllPeriodicFaceBC(phi, 0.0);
++//  Pooma::addAllPeriodicFaceBC(phi, 0.0);
++  phi.addRelation(new Relation0&lt;DField_t,PeriodicFaceBC&lt;PDim&gt; 
+ &gt;(phi,PeriodicFaceBC&lt;PDim&gt;(0)));
++  phi.addRelation(new Relation0&lt;DField_t,PeriodicFaceBC&lt;PDim&gt; 
+ &gt;(phi,PeriodicFaceBC&lt;PDim&gt;(1)));
++  phi.addRelation(new Relation0&lt;DField_t,PeriodicFaceBC&lt;PDim&gt; 
+ &gt;(phi,PeriodicFaceBC&lt;PDim&gt;(2)));
++  phi.addRelation(new Relation0&lt;DField_t,PeriodicFaceBC&lt;PDim&gt; 
+ &gt;(phi,PeriodicFaceBC&lt;PDim&gt;(3)));
+   double phi0 = 0.01 * static_cast&lt;double&gt;(nx);
+-  phi = phi0 * sin(2.0*pi*phi.x().comp(0)/nx)
+-             * cos(4.0*pi*phi.x().comp(1)/ny);
+-  EFD = -grad&lt;Centering_t&gt;(phi);
++  phi = phi0 * sin(2.0*pi*iota(1,nx).comp(0)/nx)
++             * cos(4.0*pi*iota(1,ny).comp(1)/ny);
++//    phi = 100;
++  EFD = -gradVertToCell(phi);
++
++  PrintArray pa;
++  out &lt;&lt; &quot;potential: &quot; &lt;&lt; std::endl;
++  pa.setDataWidth(10);
++  pa.setScientific(true);
++  pa.print(out.stream(),phi);
+ 
++  out &lt;&lt; &quot;electric field(to test does grad(phi) work): &quot; &lt;&lt; std::endl;
++  pa.setDataWidth(10);
++  pa.setScientific(true);
++  pa.print(out.stream(),EFD);
++ 
+   // Create a particle layout object for our use
+-  PLayout_t layout(geometry,flayout);
++  PLayout_t layout(mesh,flayout);
+ 
+   // Create a Particles object and set periodic boundary conditions
+   Particles_t P(layout);
+@@ -233,7 +268,6 @@
+   out &lt;&lt; &quot;---------------------&quot; &lt;&lt; std::endl;
+ 
+   // Display the initial particle positions, velocities and qm values.
+-  PrintArray pa;
+   pa.setCarReturn(5);
+   out &lt;&lt; &quot;Initial particle data:&quot; &lt;&lt; std::endl;
+   out &lt;&lt; &quot;Particle positions: &quot; &lt;&lt; std::endl;
+@@ -244,6 +278,11 @@
+   pa.setDataWidth(10);
+   pa.setScientific(true);
+   pa.print(out.stream(),P.V);
++  out &lt;&lt; &quot;Field: &quot; &lt;&lt; std::endl;
++  pa.setDataWidth(10);
++  pa.setScientific(true);
++  pa.print(out.stream(),P.V);
++
+   out &lt;&lt; &quot;Particle charge-to-mass ratios: &quot; &lt;&lt; std::endl;
+   pa.print(out.stream(),P.qm);
+ 
+@@ -266,6 +305,7 @@
+     out &lt;&lt; &quot;Advance particle velocities ...&quot; &lt;&lt; std::endl;
+     P.V = P.V + dt * P.qm * P.E;
+   }
++//    gather( P.phi, phi, P.R, Particles_t::InterpolatorTag_t() );//joke :0
+ 
+   // Display the final particle positions, velocities and qm values.
+   out &lt;&lt; &quot;PIC2d timestep loop complete!&quot; &lt;&lt; std::endl;
+@@ -281,6 +321,11 @@
+   pa.print(out.stream(),P.V);
+   out &lt;&lt; &quot;Particle charge-to-mass ratios: &quot; &lt;&lt; std::endl;
+   pa.print(out.stream(),P.qm);
++
++  out &lt;&lt; &quot;Field: &quot; &lt;&lt; std::endl;
++  pa.setDataWidth(10);
++  pa.setScientific(true);
++  pa.print(out.stream(),phi);
+ 
+   // Shut down POOMA and exit
+   out &lt;&lt; &quot;End PIC2d example code.&quot; &lt;&lt; std::endl;
+Index: src/Particles/Interpolation.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/Particles/Interpolation.h,v
+retrieving revision 1.7
+diff -u -r1.7 Interpolation.h
+--- src/Particles/Interpolation.h    26 Oct 2003 12:27:36 -0000    1.7
++++ src/Particles/Interpolation.h    9 Jul 2004 13:55:10 -0000
+@@ -50,7 +50,7 @@
+ //-----------------------------------------------------------------------------
+ // Includes:
+ //-----------------------------------------------------------------------------
+-
++#include &quot;Evaluator/PatchFunction.h&quot;
+ //-----------------------------------------------------------------------------
+ // Forward Declarations:
+ //-----------------------------------------------------------------------------
+Index: src/Particles/InterpolatorNGP.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/Particles/InterpolatorNGP.h,v
+retrieving revision 1.13
+diff -u -r1.13 InterpolatorNGP.h
+--- src/Particles/InterpolatorNGP.h    26 Oct 2003 12:27:36 -0000    1.13
++++ src/Particles/InterpolatorNGP.h    9 Jul 2004 13:55:12 -0000
+@@ -160,7 +160,7 @@
+ 
+       // Create a PatchFunction using this functor
+       PatchFunction&lt; NGPGather&lt;FC,Dim&gt;,
+-                     PatchParticle2&lt;true,false&gt; &gt; patchfun(intfun);
++        PatchParticle2&lt;true,false&gt; &gt; patchfun(intfun);
+      
+       // Apply the PatchFunction to the attribute using the
+       // particle position attribute
+@@ -444,14 +444,16 @@
+ 
+       Size_t i;
+       Loc&lt;Dim&gt; indx;
+-      typedef typename Field_t::Geometry_t Geometry_t;
+-      const Geometry_t&amp; geom = field_m.geometry();
++        typedef typename Field_t::Mesh_t Mesh_t;
++//      typedef typename Field_t::Mesh_t Geometry_t;
++//      const Geometry_t&amp; geom = field_m.geometry();
++    const Mesh_t&amp; mesh = field_m.mesh();
+       for (i=0; i&lt;n; ++i)
+         {
+           // Convert the particle position to an index into the Field's
+           // domain using the Geometry.
+          
+-          indx = geom.pointIndex(pos(i));
++          indx = mesh.cellContaining(pos(i));
+          
+           // check we are on the right patch
+          
+----------
+Richard Guenther wrote:
+
+&gt;<i>On Thu, 8 Jul 2004, Roman Krylov wrote:
+</I>&gt;<i>
+</I>&gt;<i>  
+</I>&gt;<i>
+</I>&gt;&gt;<i>It's about examples/Particles/PIC2d.
+</I>&gt;&gt;<i>I made it compilable and runnable, though I have no experience in CVS,
+</I>&gt;&gt;<i>and even in RCS so I can't express it that way.
+</I>&gt;&gt;<i>    
+</I>&gt;&gt;<i>
+</I>&gt;<i>
+</I>&gt;<i>You can get differences compared to the CVS version by issuing
+</I>&gt;<i>
+</I>&gt;<i>  
+</I>&gt;<i>
+</I>&gt;&gt;<i>cvs diff -u Interpolation.cpp
+</I>&gt;&gt;<i>    
+</I>&gt;&gt;<i>
+</I>&gt;<i>
+</I>&gt;<i>f.i., or just
+</I>&gt;<i>
+</I>&gt;<i>  
+</I>&gt;<i>
+</I>&gt;&gt;<i>cvs diff -u
+</I>&gt;&gt;<i>    
+</I>&gt;&gt;<i>
+</I>&gt;<i>
+</I>&gt;<i>for all directories beyond the current one.
+</I>&gt;<i>
+</I>&gt;<i>  
+</I>&gt;<i>
+</I>&gt;&gt;<i>I had modified
+</I>&gt;&gt;<i>    examples/Particles/PIC2d/PIC2d.cpp,
+</I>&gt;&gt;<i>    src/Particles/Interpolation.cpp,
+</I>&gt;&gt;<i>    src/Particles/InterpolatorNGP.h,
+</I>&gt;&gt;<i>created 2D spec. of grad(vert2cell only) in src/Field/DiffOps/Grad.h and
+</I>&gt;&gt;<i>Grad.UR.h
+</I>&gt;&gt;<i>In PIC2d.cpp I had to change '&lt;some field&gt;.x().comp(0)' to
+</I>&gt;&gt;<i>'iota(1,nx).comp(0)' for example to make it work and some other subtleties.
+</I>&gt;&gt;<i>Does anybody working on it this time? Perhaps I'm wasting my time if
+</I>&gt;&gt;<i>it's all done already?
+</I>&gt;&gt;<i>    
+</I>&gt;&gt;<i>
+</I>&gt;<i>
+</I>&gt;<i>I don't know of anyone working with Particles stuff, and I personally are
+</I>&gt;<i>not very interested in Particles.
+</I>&gt;<i>
+</I>&gt;<i>But surely it is useful to get Particle - Field interaction back to
+</I>&gt;<i>working.
+</I>&gt;<i>
+</I>&gt;<i>Richard.
+</I>&gt;<i>
+</I>&gt;<i>  
+</I>&gt;<i>
+</I>&gt;&gt;<i>Roman.
+</I>&gt;&gt;<i>
+</I>&gt;&gt;<i>    
+</I>&gt;&gt;<i>
+</I>&gt;<i>
+</I>&gt;<i>--
+</I>&gt;<i>Richard Guenther &lt;richard dot guenther at uni-tuebingen dot de&gt;
+</I>&gt;<i>WWW: <A HREF="http://www.tat.physik.uni-tuebingen.de/~rguenth/">http://www.tat.physik.uni-tuebingen.de/~rguenth/</A>
+</I>&gt;<i>
+</I>&gt;<i>
+</I>&gt;<i>  
+</I>&gt;<i>
+</I>
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001613.html">[pooma-dev] examples/Particles/PIC2d/PIC2d.cpp works
+</A></li>
+	<LI>Next message: <A HREF="001617.html">[pooma-dev] Re:Re: [pooma-dev] examples/Particles/PIC2d/PIC2d.cpp works
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1616">[ date ]</a>
+              <a href="thread.html#1616">[ thread ]</a>
+              <a href="subject.html#1616">[ subject ]</a>
+              <a href="author.html#1616">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

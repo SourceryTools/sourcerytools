@@ -1,0 +1,362 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [PATCH] Fir&lt;&gt; IPP cleanup 
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20Fir%3C%3E%20IPP%20cleanup%20&In-Reply-To=%3C20051026000527.GF13447%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000100.html">
+   <LINK REL="Next"  HREF="000103.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[PATCH] Fir&lt;&gt; IPP cleanup </H1>
+    <B>Nathan (Jasper) Myers</B> 
+    <A HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20Fir%3C%3E%20IPP%20cleanup%20&In-Reply-To=%3C20051026000527.GF13447%40codesourcery.com%3E"
+       TITLE="[PATCH] Fir&lt;&gt; IPP cleanup ">ncm at codesourcery.com
+       </A><BR>
+    <I>Wed Oct 26 00:05:27 UTC 2005</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000100.html">[PATCH] IPP, other minor changes
+</A></li>
+        <LI>Next message: <A HREF="000103.html">[vsipl++] [PATCH] Fir&lt;&gt; IPP cleanup
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#101">[ date ]</a>
+              <a href="thread.html#101">[ thread ]</a>
+              <a href="subject.html#101">[ subject ]</a>
+              <a href="author.html#101">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>I have checked in the patch below.
+
+Fir&lt;&gt; now uses IPP for types and modes it supports, and native C++
+code otherwise.  Before, if IPP was turned on it would only support
+types IPP supports -- e.g., not long double, or int.   It also 
+avoids exposing user code to Intel-header definitions.
+
+Nathan Myers
+ncm
+
+Index: ChangeLog
+===================================================================
+RCS file: /home/cvs/Repository/vpp/ChangeLog,v
+retrieving revision 1.296
+diff -u -p -r1.296 ChangeLog
+--- ChangeLog	24 Oct 2005 13:25:30 -0000	1.296
++++ ChangeLog	25 Oct 2005 23:50:18 -0000
+@@ -1,3 +1,10 @@
++2005-10-25  Nathan Myers  &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">ncm at codesourcery.com</A>&gt;
++
++	* src/vsip/impl/ipp.cpp, src/vsip/impl/signal-fir.hpp:
++	  Use native C++ FIR code for all types and modes not supported 
++	  by IPP FIR.  Confine Intel ipp*.h includes to ipp.cpp where
++	  users' code will not be exposed to them.
++
+ 2005-10-24  Nathan Myers  &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">ncm at codesourcery.com</A>&gt;
+ 
+ 	* configure.ac: fix help for &quot;--enable-profile-timer&quot;.
+Index: src/vsip/impl/ipp.cpp
+===================================================================
+RCS file: /home/cvs/Repository/vpp/src/vsip/impl/ipp.cpp,v
+retrieving revision 1.5
+diff -u -p -r1.5 ipp.cpp
+--- src/vsip/impl/ipp.cpp	21 Sep 2005 09:38:59 -0000	1.5
++++ src/vsip/impl/ipp.cpp	25 Oct 2005 23:50:18 -0000
+@@ -10,7 +10,13 @@
+   Included Files
+ ***********************************************************************/
+ 
+-#include &quot;ipp.hpp&quot;
++#include &lt;vsip/impl/acconfig.hpp&gt;
++
++#if defined(VSIP_IMPL_HAVE_IPP)
++
++#include &lt;vsip/math.hpp&gt;
++#include &lt;vsip/signal.hpp&gt;
++#include &lt;vsip/impl/ipp.hpp&gt;
+ #include &lt;ipps.h&gt;
+ 
+ /***********************************************************************
+@@ -192,7 +198,74 @@ void conv(double* coeff, length_type coe
+   ippsConv_64f(coeff, coeff_size, in, in_size, out);
+ }
+ 
++//
++// FIR support
++//
++
++template
++&lt;
++  typename T, typename IppT,
++  IppStatus (&amp;ippFirF)(IppT const*,IppT*,int,IppT const*,int,IppT*,int*),
++  IppStatus (&amp;ippFirDecF)(
++    IppT const*,IppT*,int,IppT const*,int,int,int,int,int,IppT*)
++&gt;
++struct Ipp_fir_base
++{
++  typedef Ipp_fir_base  base_type;
++
++  inline static void
++  run(
++    T const* xin, T* xout, vsip::length_type outsize,
++    T const* xkernel, vsip::length_type ksize,  
++    T* xstate, vsip::length_type* xstate_ix, vsip::length_type dec)
++  {
++    IppT const* const  in = reinterpret_cast&lt;IppT const*&gt;(xin);
++    IppT* const  out = reinterpret_cast&lt;IppT*&gt;(xout);
++    IppT const* const  kernel = reinterpret_cast&lt;IppT const*&gt;(xkernel);
++    IppT* const  state = reinterpret_cast&lt;IppT*&gt;(xstate);
++    int state_ix = *xstate_ix;
++    IppStatus stat = (dec == 1) ?
++      ippFirF(in, out, outsize, kernel, ksize, state, &amp;state_ix) :
++      ippFirDecF(in, out, outsize, kernel, ksize, 1, 0, dec, 0, state);
++    assert(stat == ippStsNoErr);
++    *xstate_ix = state_ix;
++  }
++};
++
++template &lt;typename T&gt; struct Ipp_fir;
++
++template&lt;&gt; struct Ipp_fir&lt;float&gt; : Ipp_fir_base&lt;
++  float,Ipp32f,ippsFIR_Direct_32f,ippsFIRMR_Direct_32f&gt; { };
++
++template&lt;&gt; struct Ipp_fir&lt;double&gt; : Ipp_fir_base&lt;
++  double,Ipp64f,ippsFIR_Direct_64f,ippsFIRMR_Direct_64f&gt; {};
++
++template&lt;&gt; struct Ipp_fir&lt;std::complex&lt;float&gt; &gt; : Ipp_fir_base&lt;
++  std::complex&lt;float&gt;,Ipp32fc,ippsFIR_Direct_32fc,ippsFIRMR_Direct_32fc&gt; {};
++
++template&lt;&gt; struct Ipp_fir&lt;std::complex&lt;double&gt; &gt; : Ipp_fir_base&lt;
++  std::complex&lt;double&gt;,Ipp64fc,ippsFIR_Direct_64fc,ippsFIRMR_Direct_64fc&gt; {};
++
++template &lt;typename T&gt;
++void
++Ipp_fir_driver&lt;T&gt;::run_fir(
++      T const* xin, T* xout, vsip::length_type outsize,
++      T const* xkernel, vsip::length_type ksize,  
++      T* xstate, vsip::length_type* xstate_ix, vsip::length_type dec)
++{
++  Ipp_fir&lt;T&gt;::run(
++    xin, xout, outsize, xkernel, ksize, xstate, xstate_ix, dec);   
++}
++
++// instantiate the specialized IPP FIR drivers here, along with what they use.
++
++template struct Ipp_fir_driver&lt;float&gt;;
++template struct Ipp_fir_driver&lt;double&gt;;
++template struct Ipp_fir_driver&lt;std::complex&lt;float&gt; &gt;;
++template struct Ipp_fir_driver&lt;std::complex&lt;double&gt; &gt;;
++
+ } // namespace vsip::impl::ipp
+ } // namespace vsip::impl
+ } // namespace vsip
+ 
++#endif /* VSIP_IMPL_HAVE_IPP */
+Index: src/vsip/impl/signal-fir.hpp
+===================================================================
+RCS file: /home/cvs/Repository/vpp/src/vsip/impl/signal-fir.hpp,v
+retrieving revision 1.4
+diff -u -p -r1.4 signal-fir.hpp
+--- src/vsip/impl/signal-fir.hpp	24 Oct 2005 13:25:30 -0000	1.4
++++ src/vsip/impl/signal-fir.hpp	25 Oct 2005 23:50:18 -0000
+@@ -19,13 +19,6 @@
+ #include &lt;vsip/impl/global_map.hpp&gt;
+ #include &lt;vsip/impl/profile.hpp&gt;
+ 
+-#if VSIP_IMPL_HAVE_IPP
+-#include &lt;vsip/impl/ipp.hpp&gt;
+-#include &lt;ipps.h&gt;
+-#endif
+-
+-#include &lt;new&gt;
+-
+ namespace vsip
+ {
+ 
+@@ -48,49 +41,54 @@ struct Fir_aligned
+     block_type;
+ };
+ 
+-#if VSIP_IMPL_HAVE_IPP
+-
+-template
+-&lt;
+-  typename T, typename IppT,
+-  IppStatus (&amp;ippFirF)(IppT const*,IppT*,int,IppT const*,int,IppT*,int*),
+-  IppStatus (&amp;ippFirDecF)(
+-    IppT const*,IppT*,int,IppT const*,int,int,int,int,int,IppT*)
+-&gt;
+-struct Ipp_fir_driver_base
++template &lt;typename T&gt;
++struct Fir_driver
+ {
++  static const bool  reverse_kernel = true;
++  static const bool  use_native = true;
++  static const bool  mismatch_ok = true;
++
++  // code that calls this should be elided by the optimizer.
+   static void
+   run_fir(
+-    T const* xin, T* xout, vsip::length_type outsize,
+-    T const* xkernel, vsip::length_type ksize,  
+-    T* xstate, vsip::length_type* xstate_ix, vsip::length_type dec)
+-  {
+-    IppT const* const  in = reinterpret_cast&lt;IppT const*&gt;(xin);
+-    IppT* const  out = reinterpret_cast&lt;IppT*&gt;(xout);
+-    IppT const* const  kernel = reinterpret_cast&lt;IppT const*&gt;(xkernel);
+-    IppT* const  state = reinterpret_cast&lt;IppT*&gt;(xstate);
+-    int state_ix = *xstate_ix;
+-    IppStatus stat = (dec == 1) ?
+-      ippFirF(in, out, outsize, kernel, ksize, state, &amp;state_ix) :
+-      ippFirDecF(in, out, outsize, kernel, ksize, 1, 0, dec, 0, state);
+-    assert(stat == ippStsNoErr);
+-    *xstate_ix = state_ix;
+-  }
++      T const* xin, T* xout, vsip::length_type outsize,
++      T const* xkernel, vsip::length_type ksize,  
++      T* xstate, vsip::length_type* xstate_ix, vsip::length_type dec)
++    { assert(false); }
+ };
+ 
+-template&lt;typename T&gt; struct Ipp_fir_driver;
++#if VSIP_IMPL_HAVE_IPP
+ 
+-template &lt; &gt; struct Ipp_fir_driver&lt;float&gt; : Ipp_fir_driver_base&lt;
+-  float,Ipp32f,ippsFIR_Direct_32f,ippsFIRMR_Direct_32f&gt; { };
++namespace ipp
++{
++
++template &lt;typename T&gt;
++struct Ipp_fir_driver
++{
++  static const bool  reverse_kernel = false;
++  static const bool  use_native = false;
++  static const bool  mismatch_ok = false;
++
++  // same API as in Fir_driver, but implemented in src/vsip/impl/ipp.cpp
++  static void
++  run_fir(
++      T const* xin, T* xout, vsip::length_type outsize,
++      T const* xkernel, vsip::length_type ksize,  
++      T* xstate, vsip::length_type* xstate_ix, vsip::length_type dec);
++};
+ 
+-template&lt;&gt; struct Ipp_fir_driver&lt;double&gt; : Ipp_fir_driver_base&lt;
+-  double,Ipp64f,ippsFIR_Direct_64f,ippsFIRMR_Direct_64f&gt; {};
++} // namespace vsip::impl::ipp
+ 
+-template&lt;&gt; struct Ipp_fir_driver&lt;std::complex&lt;float&gt; &gt; : Ipp_fir_driver_base&lt;
+-  std::complex&lt;float&gt;,Ipp32fc,ippsFIR_Direct_32fc,ippsFIRMR_Direct_32fc&gt; {};
++// use IPP specialization for certain T:
+ 
+-template&lt;&gt; struct Ipp_fir_driver&lt;std::complex&lt;double&gt; &gt; : Ipp_fir_driver_base&lt;
+-  std::complex&lt;double&gt;,Ipp64fc,ippsFIR_Direct_64fc,ippsFIRMR_Direct_64fc&gt; {};
++template&lt;&gt; struct Fir_driver&lt;float&gt;
++  : ipp::Ipp_fir_driver&lt;float&gt; {};
++template&lt;&gt; struct Fir_driver&lt;double&gt;
++  : ipp::Ipp_fir_driver&lt;double&gt; {};
++template&lt;&gt; struct Fir_driver&lt;std::complex&lt;float&gt; &gt;
++  : ipp::Ipp_fir_driver&lt;std::complex&lt;float&gt; &gt; {};
++template&lt;&gt; struct Fir_driver&lt;std::complex&lt;double&gt; &gt;
++  : ipp::Ipp_fir_driver&lt;std::complex&lt;double&gt; &gt; {};
+ 
+ #endif // VSIP_IMPL_HAVE_IPP
+ 
+@@ -147,18 +145,10 @@ public:
+     // must be after asserts because of division
+     this-&gt;output_size_ = (input_size + decimation - 1) / decimation;
+ 
+-#if VSIP_IMPL_HAVE_IPP
+     // use IPP only if decimation is a factor of input size.
+-    if (this-&gt;output_size_ * decimation == this-&gt;input_size_)
+-    {
+-      // IPP doesn't want it reversed.
+-      this-&gt;kernel_(vsip::Domain&lt;1&gt;(kernel.size())) = kernel;
+-      if (symV != vsip::nonsym)
+-	this-&gt;kernel_(vsip::Domain&lt;1&gt;(
+-	   this-&gt;kernel_.size() - 1, -1, kernel.size())) = kernel;
+-    }
+-    else
+-#endif
++    if (impl::Fir_driver&lt;T&gt;::reverse_kernel || 
++        (!impl::Fir_driver&lt;T&gt;::mismatch_ok &amp;&amp; 
++          this-&gt;output_size_ * decimation != this-&gt;input_size_))
+     {
+       // mirror the kernel
+       unsigned const ksz = kernel.size();
+@@ -167,6 +157,14 @@ public:
+       if (symV != vsip::nonsym)
+ 	this-&gt;kernel_(vsip::Domain&lt;1&gt;(ksz)) = kernel;
+     }
++    else
++    {
++      // e.g. IPP doesn't want it reversed.
++      this-&gt;kernel_(vsip::Domain&lt;1&gt;(kernel.size())) = kernel;
++      if (symV != vsip::nonsym)
++	this-&gt;kernel_(vsip::Domain&lt;1&gt;(
++	   this-&gt;kernel_.size() - 1, -1, kernel.size())) = kernel;
++    }
+   }
+ 
+   // FIXME: spec says this should be nothrow, but it has to allocate
+@@ -240,7 +238,9 @@ public:
+ #if VSIP_IMPL_HAVE_IPP
+     
+     // use IPP only if decimation is a factor of input size.
+-    if (this-&gt;input_size_ == this-&gt;output_size_ * dec)
++    if (!impl::Fir_driver&lt;T&gt;::use_native &amp;&amp;
++        (impl::Fir_driver&lt;T&gt;::mismatch_ok ||
++          this-&gt;input_size_ == this-&gt;output_size_ * dec))
+     {
+       typedef impl::Layout&lt;1,vsip::tuple&lt;0,1,2&gt;,
+ 	  impl::Stride_unit,impl::Cmplx_inter_fmt&gt;  layout_type;
+@@ -254,7 +254,7 @@ public:
+       impl::Ext_data&lt;block_type,layout_type&gt;  raw_state(this-&gt;state_.block());
+       oix = (this-&gt;input_size_ - skip + dec - 1) / dec;
+       
+-      impl::Ipp_fir_driver&lt;T&gt;::run_fir(raw_in.data(), raw_out.data(), oix,
++      impl::Fir_driver&lt;T&gt;::run_fir(raw_in.data(), raw_out.data(), oix,
+ 	raw_kernel.data(), m + 1, raw_state.data(), &amp;this-&gt;state_saved_, dec);
+ 
+       if (useOldState != state_save)
+@@ -304,7 +304,7 @@ public:
+ 
+   void reset()  VSIP_NOTHROW
+     { this-&gt;state_saved_ = this-&gt;skip_ = 0;
+-      this-&gt;state_ = T(0.0); }
++      this-&gt;state_ = T(0); }
+ 
+ public:
+ 
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000100.html">[PATCH] IPP, other minor changes
+</A></li>
+	<LI>Next message: <A HREF="000103.html">[vsipl++] [PATCH] Fir&lt;&gt; IPP cleanup
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#101">[ date ]</a>
+              <a href="thread.html#101">[ thread ]</a>
+              <a href="subject.html#101">[ subject ]</a>
+              <a href="author.html#101">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">More information about the vsipl++
+mailing list</a><br>
+</body></html>

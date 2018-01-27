@@ -1,0 +1,129 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> pthread_cancel and EH: let's try this again
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:c%2B%2B-pthreads%40codesourcery.com?Subject=Re%3A%20pthread_cancel%20and%20EH%3A%20let%27s%20try%20this%20again&In-Reply-To=%3C42E7A0CD.C81B2856%40web.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000517.html">
+   <LINK REL="Next"  HREF="000465.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>pthread_cancel and EH: let's try this again</H1>
+    <B>Alexander Terekhov</B> 
+    <A HREF="mailto:c%2B%2B-pthreads%40codesourcery.com?Subject=Re%3A%20pthread_cancel%20and%20EH%3A%20let%27s%20try%20this%20again&In-Reply-To=%3C42E7A0CD.C81B2856%40web.de%3E"
+       TITLE="pthread_cancel and EH: let's try this again">terekhov at web.de
+       </A><BR>
+    <I>Wed Jul 27 14:57:17 UTC 2005</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000517.html">[c++-pthreads]  Re: pthread_cancel and EH: let's try this again
+</A></li>
+        <LI>Next message: <A HREF="000465.html">pthread_cancel and EH: let's try this again
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#512">[ date ]</a>
+              <a href="thread.html#512">[ thread ]</a>
+              <a href="subject.html#512">[ subject ]</a>
+              <a href="author.html#512">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>
+Peter Dimov wrote:
+[...]
+&gt;<i> Before that, an implementation that used a separate &quot;cleanup mode&quot; flag
+</I>&gt;<i> (which has the advantage of not interfering with the client's cancelstate
+</I>&gt;<i> calls) was conforming. 
+</I>
+Nope. Because
+
+<A HREF="http://www.opengroup.org/onlinepubs/009695399/functions/xsh_chap02_09.html#tag_02_09_05_01">http://www.opengroup.org/onlinepubs/009695399/functions/xsh_chap02_09.html#tag_02_09_05_01</A>
+
+says nothing about &quot;separate cleanup mode flag&quot; and hence per XSH 2.9.5,
+
+<A HREF="http://opengroup.org/austin/mailarchives/austin-review-l/msg01450.html">http://opengroup.org/austin/mailarchives/austin-review-l/msg01450.html</A>
+
+can be written as 
+
+     ....
+     int state;
+     pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &amp;state);
+     if (PTHREAD_CANCEL_ENABLE == state) {
+       pthread_setcancelstate(state, &amp;state);
+       pthread_cancel(pthread_self());
+       pthread_testcancel();
+       errno = ECANCELED;
+       perror(&quot;NON-CONFORMING IMPLEMENTATION&quot;);
+       abort();
+     }
+     ....
+
+that's apart from
+
+     ....
+     int state;
+     pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &amp;state);
+     if (PTHREAD_CANCEL_ENABLE == state) {
+       pthread_setcancelstate(state, &amp;state); // Uh...
+       //pthread_cancel(pthread_self());
+       //pthread_testcancel();
+       pthread_exit(PTHREAD_CANCELED);
+     }
+     ....
+
+Of course, the &quot;real&quot; fix would be introduction of int 
+pthread_expectedcancel() incapsulating 
+expected_exception&lt;thread_cancel_request&gt;() query and cancel state check.
+
+     ....
+     if (pthread_expectedcancel()) {
+       pthread_cancel(pthread_self());
+       pthread_testcancel();
+       errno = ECANCELED;
+       perror(&quot;IMPLEMNATION BUG&quot;);
+       abort();
+     }
+     ....
+
+     ....
+     if (pthread_expectedcancel()) {
+       pthread_exit(PTHREAD_CANCELED);
+     }
+     ....
+
+but without (2-phase) EH machinery, POSIX just can't do that.
+
+regards,
+alexander.
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000517.html">[c++-pthreads]  Re: pthread_cancel and EH: let's try this again
+</A></li>
+	<LI>Next message: <A HREF="000465.html">pthread_cancel and EH: let's try this again
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#512">[ date ]</a>
+              <a href="thread.html#512">[ thread ]</a>
+              <a href="subject.html#512">[ subject ]</a>
+              <a href="author.html#512">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/c++-pthreads">More information about the c++-pthreads
+mailing list</a><br>
+</body></html>

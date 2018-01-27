@@ -1,0 +1,65 @@
+Index: GNUmakefile.in
+===================================================================
+RCS file: /home/cvs/Repository/vpp/GNUmakefile.in,v
+retrieving revision 1.36
+diff -u -r1.36 GNUmakefile.in
+--- GNUmakefile.in	4 Jan 2006 19:10:03 -0000	1.36
++++ GNUmakefile.in	5 Jan 2006 05:11:57 -0000
+@@ -168,9 +168,10 @@
+ vpath %.hpp $(srcdir)
+ vpath %.xml $(srcdir)
+ 
+-# All object files.
+-objects := $(patsubst $(srcdir)/%.cpp, %.$(OBJEXT), $(cxx_sources))
+-deps    := $(patsubst $(srcdir)/%.cpp, %.d, $(cxx_sources))
++# The following two variables must be evaluated lazily since at this point
++# $(cxx_sources) is not completely defined.
++objects  = $(patsubst $(srcdir)/%.cpp, %.$(OBJEXT), $(cxx_sources))
++deps     = $(patsubst $(srcdir)/%.cpp, %.d, $(cxx_sources))
+ 
+ hdr	:= $(patsubst $(srcdir)/src/%, %, \
+              $(wildcard $(srcdir)/src/vsip/*.hpp))
+Index: tests/GNUmakefile.inc.in
+===================================================================
+RCS file: /home/cvs/Repository/vpp/tests/GNUmakefile.inc.in,v
+retrieving revision 1.6
+diff -u -r1.6 GNUmakefile.inc.in
+--- tests/GNUmakefile.inc.in	23 Dec 2005 20:03:55 -0000	1.6
++++ tests/GNUmakefile.inc.in	5 Jan 2006 05:11:57 -0000
+@@ -12,12 +12,11 @@
+ # Variables
+ ########################################################################
+ 
+-pkgconfig:= PKG_CONFIG_PATH=$(libdir)/pkgconfig \
+-              pkg-config vsipl++$(suffix) \
+-              --define-variable=prefix=$(prefix)
++tests_pkgconfig := PKG_CONFIG_PATH=$(libdir)/pkgconfig \
++                     pkg-config vsipl++$(suffix) \
++                       --define-variable=prefix=$(prefix)
+ 
+-
+-tests_qmtest_extensions = \
++tests_qmtest_extensions := \
+ 	tests/QMTest/vpp_database.py \
+ 	tests/QMTest/classes.qmc
+ 
+@@ -28,13 +27,13 @@
+ check::	libs $(tests_qmtest_extensions)
+ 	cd tests && qmtest run
+ 
+-check-installed::
++check-installed:: $(tests_qmtest_extensions)
+ 	cat tests/context-installed.pre | \
+-          sed -e "s|@CXX_@|`$(pkgconfig) --variable=cxx`|" | \
+-          sed -e "s|@CPPFLAGS_@|`$(pkgconfig) --variable=cppflags`|" | \
+-          sed -e "s|@CXXFLAGS_@|`$(pkgconfig) --variable=cxxflags`|" | \
+-          sed -e "s|@LIBS_@|`$(pkgconfig) --libs`|" > tests/context-installed
+-	cd tests && qmtest run -C context-installed
++          sed -e "s|@CXX_@|`$(tests_pkgconfig) --variable=cxx`|" | \
++          sed -e "s|@CPPFLAGS_@|`$(tests_pkgconfig) --variable=cppflags`|" | \
++          sed -e "s|@CXXFLAGS_@|`$(tests_pkgconfig) --variable=cxxflags`|" | \
++          sed -e "s|@LIBS_@|`$(tests_pkgconfig) --libs`|" > tests/context-installed
++	cd tests && qmtest run -C context-installed -o results$(suffix).qmr
+ 
+ tests/QMTest/%: $(srcdir)/tests/QMTest/%
+ 	cp $< $@

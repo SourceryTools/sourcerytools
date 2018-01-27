@@ -1,0 +1,120 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [vsipl++] vsip::Vector and mlock
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20vsip%3A%3AVector%20and%20mlock&In-Reply-To=%3C49130A94.2070900%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001512.html">
+   <LINK REL="Next"  HREF="001514.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[vsipl++] vsip::Vector and mlock</H1>
+    <B>Jules Bergmann</B> 
+    <A HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20vsip%3A%3AVector%20and%20mlock&In-Reply-To=%3C49130A94.2070900%40codesourcery.com%3E"
+       TITLE="[vsipl++] vsip::Vector and mlock">jules at codesourcery.com
+       </A><BR>
+    <I>Thu Nov  6 15:17:40 UTC 2008</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001512.html">[vsipl++] vsip::Vector and mlock
+</A></li>
+        <LI>Next message: <A HREF="001514.html">[patch] Use new dispatch for matvec functions
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1513">[ date ]</a>
+              <a href="thread.html#1513">[ thread ]</a>
+              <a href="subject.html#1513">[ subject ]</a>
+              <a href="author.html#1513">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Stefan Seefeld wrote:
+&gt;<i> Gaetano Mendola wrote:
+</I>&gt;<i> 
+</I>&gt;&gt;<i> I need to do the same with vsip::vector&lt;T&gt; becouse I'm
+</I>&gt;&gt;<i> replacing in my application that std::vector with a
+</I>&gt;&gt;<i> vsip::Vector (I need to perform an FFT on it), is it
+</I>&gt;&gt;<i> safe do:
+</I>&gt;&gt;<i>
+</I>&gt;&gt;<i> vsip::Vector&lt;T&gt; myVector;
+</I>&gt;&gt;<i> ...
+</I>&gt;&gt;<i> mlock(&amp;myVector(0), sizeof(t)*myVector.size());
+</I>&gt;<i> 
+</I>&gt;<i> While Sourcery VSIPL++ provides direct data access, this is quite a bit 
+</I>&gt;<i> more involved than the above, as VSIPL++ views encapsulate memory 
+</I>&gt;<i> management quite differently compared to std::vector&lt;&gt;.
+</I>
+Sourcery VSIPL++ also has a feature called user-specified storage that 
+binds a VSIPL++ view to memory allocated outside the library.  This 
+would allow you to allocate the memory in any way you choose (including 
+locking it down).  Here's an example of what this might look like:
+
+allocate your data outside of VSIPL++:
+
+	T* myPtr = new T[size];
+	mlock(myPtr, sizeof(T)*size);
+
+then create a VSIPL++ view/block that refers to it:
+
+	Dense&lt;T&gt; block(size, myPtr);
+	Vector&lt;T&gt; view(block);
+
+before you use view/block in VSIPL++, you need to admit the data into 
+the library:
+
+	block.admit();
+
+at this point, you can use 'view' like any other VSIPL++ view, 
+performing FFTs on it, etc.
+
+	fft(view);
+
+Finally, when you're done, you need to release the data:
+
+	block.release();
+
+Also, different VSIPL++ backends have requirements on data layout, 
+primarily for alignment.  To be safest, you'll want to make sure the 
+data you allocate has SIMD or cache line alignment, typically 32 B on x86.
+
+				-- Jules
+
+
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">jules at codesourcery.com</A>
+(650) 331-3385 x705
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001512.html">[vsipl++] vsip::Vector and mlock
+</A></li>
+	<LI>Next message: <A HREF="001514.html">[patch] Use new dispatch for matvec functions
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1513">[ date ]</a>
+              <a href="thread.html#1513">[ thread ]</a>
+              <a href="subject.html#1513">[ subject ]</a>
+              <a href="author.html#1513">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">More information about the vsipl++
+mailing list</a><br>
+</body></html>

@@ -1,0 +1,162 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [vsipl++] [patch] CBE Fftm support
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20%5Bpatch%5D%20CBE%20Fftm%20support&In-Reply-To=%3C45D45BAB.9000609%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000895.html">
+   <LINK REL="Next"  HREF="000897.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[vsipl++] [patch] CBE Fftm support</H1>
+    <B>Stefan Seefeld</B> 
+    <A HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20%5Bpatch%5D%20CBE%20Fftm%20support&In-Reply-To=%3C45D45BAB.9000609%40codesourcery.com%3E"
+       TITLE="[vsipl++] [patch] CBE Fftm support">stefan at codesourcery.com
+       </A><BR>
+    <I>Thu Feb 15 13:10:03 UTC 2007</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000895.html">[patch] CBE Fftm support
+</A></li>
+        <LI>Next message: <A HREF="000897.html">[vsipl++] [patch] CBE Fftm support
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#896">[ date ]</a>
+              <a href="thread.html#896">[ thread ]</a>
+              <a href="subject.html#896">[ subject ]</a>
+              <a href="author.html#896">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Don McCoy wrote:
+
+&gt;<i> Index: src/vsip/core/fft.hpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> --- src/vsip/core/fft.hpp	(revision 163256)
+</I>&gt;<i> +++ src/vsip/core/fft.hpp	(working copy)
+</I>&gt;<i> @@ -449,10 +449,11 @@
+</I>&gt;<i>  class Fftm : public impl::fftm_facade&lt;I, O, impl::fft::LibraryTagList,
+</I>&gt;<i>  				      1 - A, D, R, N, H&gt; 
+</I>&gt;<i>  {
+</I>&gt;<i> -  // The S template parameter in 2D Fft is '0' for column-first
+</I>&gt;<i> -  // and '1' for row-first transformation. As Fftm's Axis parameter
+</I>&gt;<i> -  // does the inverse, we use '1 - A' here to be able to share the same
+</I>&gt;<i> -  // logic underneath.
+</I>&gt;<i> +  // Fftm and 2D Fft share some of the same underlying logic.  
+</I>&gt;<i> +  // Unfortunately, the latter uses S where '0' stands for column-first 
+</I>&gt;<i> +  // and '1' for row-first transformations.  Fftm uses A where '0' means 
+</I>&gt;<i> +  // by-row and '1' means by-column.  As a result, here we use '1 - A'
+</I>&gt;<i> +  // in order to be consistent in the base class.
+</I>
+What about:
+
+Fftm and 2D Fft share some underlying logic.
+The 'Special dimension' (S) template parameter in 2D Fft uses '0' to
+represent column-first and '1' for a row-first transformation, while
+the Fftm 'Axis' (A) parameter uses '0' to represent row-wise, and
+'1' for column-wise transformation.
+Thus, by using '1 - A' here we can share the implementation, too.
+
+
+
+&gt;<i> Index: src/vsip/opt/cbe/ppu/fft.cpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> --- src/vsip/opt/cbe/ppu/fft.cpp	(revision 163256)
+</I>&gt;<i> +++ src/vsip/opt/cbe/ppu/fft.cpp	(working copy)
+</I>
+&gt;<i>  // 1D complex -&gt; complex FFT
+</I>&gt;<i>  
+</I>&gt;<i>  template &lt;typename T, int A, int E&gt;
+</I>&gt;<i>  class Fft_impl&lt;1, std::complex&lt;T&gt;, std::complex&lt;T&gt;, A, E&gt;
+</I>&gt;<i> -  : public fft::backend&lt;1, std::complex&lt;T&gt;, std::complex&lt;T&gt;, A, E&gt;
+</I>&gt;<i> -
+</I>&gt;<i> +    : public fft::backend&lt;1, std::complex&lt;T&gt;, std::complex&lt;T&gt;, A, E&gt;,
+</I>&gt;<i> +      private Fft_base&lt;T&gt;
+</I>&gt;<i>  {
+</I>&gt;<i>    typedef T rtype;
+</I>&gt;<i>    typedef std::complex&lt;rtype&gt; ctype;
+</I>&gt;<i>    typedef std::pair&lt;rtype*, rtype*&gt; ztype;
+</I>&gt;<i>  
+</I>&gt;<i>  public:
+</I>&gt;<i> -  Fft_impl(Domain&lt;1&gt; const &amp;dom, rtype scale) VSIP_THROW((std::bad_alloc))
+</I>&gt;<i> +  Fft_impl(Domain&lt;1&gt; const &amp;dom, rtype scale)
+</I>&gt;<i>        : scale_(scale),
+</I>&gt;<i>          W_(alloc_align&lt;ctype&gt;(VSIP_IMPL_ALLOC_ALIGNMENT, dom.size()/4))
+</I>&gt;<i>    {
+</I>&gt;<i> -    compute_twiddle_factors(W_, dom.size());
+</I>&gt;<i> +    this-&gt;compute_twiddle_factors(W_, dom.size());
+</I>
+Since you have now put the definition of 'compute_twiddle_factors' into a
+base class, why don't you store W_ there, too, and then call this function
+from the base class constructor ?
+
+Thus...
+
+&gt;<i>    }
+</I>&gt;<i>    virtual ~Fft_impl()
+</I>&gt;<i>    {
+</I>&gt;<i> @@ -106,7 +164,7 @@
+</I>&gt;<i>    virtual void in_place(ctype *inout, stride_type stride, length_type length)
+</I>&gt;<i>    {
+</I>&gt;<i>      assert(stride == 1);
+</I>&gt;<i> -    fft_8K&lt;T&gt;(inout, inout, W_, length, this-&gt;scale_, E);
+</I>&gt;<i> +    this-&gt;fft_8K(inout, inout, W_, length, this-&gt;scale_, E);
+</I>
+...this would become:
+
+this-&gt;fft_8k(inout, inout, this-&gt;scale_, E);
+
+
+&gt;<i>    }
+</I>&gt;<i>    virtual void in_place(ztype, stride_type, length_type)
+</I>&gt;<i>    {
+</I>&gt;<i> @@ -117,7 +175,7 @@
+</I>&gt;<i>    {
+</I>&gt;<i>      assert(in_stride == 1);
+</I>&gt;<i>      assert(out_stride == 1);
+</I>&gt;<i> -    fft_8K&lt;T&gt;(out, in, W_, length, this-&gt;scale_, E);
+</I>&gt;<i> +    this-&gt;fft_8K(out, in, W_, length, this-&gt;scale_, E);
+</I>
+Could you exchange 'in' and 'out' here for consistency ? I think everywhere else
+we pass the input first.
+
+
+Thanks,
+		Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">stefan at codesourcery.com</A>
+(650) 331-3385 x718
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000895.html">[patch] CBE Fftm support
+</A></li>
+	<LI>Next message: <A HREF="000897.html">[vsipl++] [patch] CBE Fftm support
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#896">[ date ]</a>
+              <a href="thread.html#896">[ thread ]</a>
+              <a href="subject.html#896">[ subject ]</a>
+              <a href="author.html#896">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">More information about the vsipl++
+mailing list</a><br>
+</body></html>

@@ -1,0 +1,149 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [vsipl++] patch: enable/disable fftwf, fftw, and fftwl individually
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20patch%3A%20enable/disable%20fftwf%2C%20fftw%2C%20and%20fftwl%20individually&In-Reply-To=%3C48405F4C.8040305%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001337.html">
+   <LINK REL="Next"  HREF="001341.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[vsipl++] patch: enable/disable fftwf, fftw, and fftwl individually</H1>
+    <B>Jules Bergmann</B> 
+    <A HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20patch%3A%20enable/disable%20fftwf%2C%20fftw%2C%20and%20fftwl%20individually&In-Reply-To=%3C48405F4C.8040305%40codesourcery.com%3E"
+       TITLE="[vsipl++] patch: enable/disable fftwf, fftw, and fftwl individually">jules at codesourcery.com
+       </A><BR>
+    <I>Fri May 30 20:10:52 UTC 2008</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001337.html">patch: enable/disable fftwf, fftw, and fftwl individually
+</A></li>
+        <LI>Next message: <A HREF="001341.html">[vsipl++] patch: enable/disable fftwf, fftw, and fftwl individually
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1339">[ date ]</a>
+              <a href="thread.html#1339">[ thread ]</a>
+              <a href="subject.html#1339">[ subject ]</a>
+              <a href="author.html#1339">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Stefan Seefeld wrote:
+&gt;<i> The attached patch probes at configure-time for those three libraries, 
+</I>&gt;<i> defines VSIP_IMPL_FFTW3_HAVE_{FLOAT, DOUBLE, LONG_DOUBLE} appropriately, 
+</I>&gt;<i> and then only enables and defines bindings for the available types.
+</I>&gt;<i> 
+</I>&gt;<i> OK to check in ?
+</I>
+Stefan,
+
+The provide_fft_{float,double,long_double} variables advertise to the
+program what FFT types are supported.  They are global across all the
+different backends.
+
+provide_fft_{float,double,long_double} are initially set to 0.  If a
+backend is enabled that provides a certain FFT (say SAL provides float
+FFT, or IPP provides double), then the appropriate variable is set to
+1.  This gets used to set the VSIP_IMPL_PROVIDE_FFT_{TYPE} macros in
+configure.ac.
+
+If the FFTW3 BE clears these flags back to 0 as part of its 
+configuration logic, any 1's set by FFT BEs earlier in the list will be 
+overwritten.
+
+An easy way to resolve this is to use a new set of variables specific
+to FFTW3.  &quot;fftw3_has_{type}&quot; for example.
+
+				-- Jules
+
+
+
+&gt;<i> Index: m4/fft.m4
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> --- m4/fft.m4	(revision 209798)
+</I>&gt;<i> +++ m4/fft.m4	(working copy)
+</I>&gt;<i> @@ -184,7 +184,6 @@
+</I>&gt;<i>         LIBS=$keep_LIBS])
+</I>&gt;<i>    fi
+</I>&gt;<i>  fi
+</I>&gt;<i> -
+</I>&gt;<i>  if test &quot;$enable_builtin_fft&quot; != &quot;no&quot;; then
+</I>&gt;<i>  
+</I>&gt;<i>    AC_MSG_NOTICE([Using built-in FFTW3 support.])
+</I>&gt;<i> @@ -206,15 +205,19 @@
+</I>&gt;<i>        AC_MSG_RESULT([not a supported type.])
+</I>&gt;<i>        AC_MSG_NOTICE([Disabling FFT support (--disable-fft-long-double).])
+</I>&gt;<i>        enable_fft_long_double=no 
+</I>&gt;<i> +      provide_fft_long_double=0
+</I>
+This may hide a '1' set by another BE.
+
+&gt;<i>      elif test $ac_cv_sizeof_long_double = $ac_cv_sizeof_double; then
+</I>&gt;<i>        AC_MSG_RESULT([same size as double.])
+</I>&gt;<i>        AC_MSG_NOTICE([Disabling FFT support (--disable-fft-long-double).])
+</I>&gt;<i>        enable_fft_long_double=no 
+</I>&gt;<i> +      provide_fft_long_double=0
+</I>
+Likewise.
+
+&gt;<i>      else
+</I>&gt;<i>        AC_MSG_RESULT([supported.])
+</I>&gt;<i> +      provide_fft_long_double=1
+</I>&gt;<i>      fi
+</I>&gt;<i> +    provide_fft_float=1
+</I>&gt;<i> +    provide_fft_double=1
+</I>
+The idea is that provide_fft_{type} is initialized to 0, then set to
+1 when BE support is discovered.  Setting to 1 first, then clearing if
+FFTW3 doesn't support the type won't play nicely with other backends.
+
+
+
+
+
+&gt;<i> Index: src/vsip/opt/fftw3/fft.hpp
+</I>
+These changes look good.
+
+&gt;<i> Index: src/vsip/opt/fftw3/fft.cpp
+</I>
+Likewise.
+
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">jules at codesourcery.com</A>
+(650) 331-3385 x705
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001337.html">patch: enable/disable fftwf, fftw, and fftwl individually
+</A></li>
+	<LI>Next message: <A HREF="001341.html">[vsipl++] patch: enable/disable fftwf, fftw, and fftwl individually
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1339">[ date ]</a>
+              <a href="thread.html#1339">[ thread ]</a>
+              <a href="subject.html#1339">[ subject ]</a>
+              <a href="author.html#1339">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">More information about the vsipl++
+mailing list</a><br>
+</body></html>

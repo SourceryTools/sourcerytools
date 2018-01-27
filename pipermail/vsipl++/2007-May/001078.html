@@ -1,0 +1,492 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [vsipl++] SIMD Loop fusion support for unaligned vectors
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20SIMD%20Loop%20fusion%20support%20for%20unaligned%20vectors&In-Reply-To=%3C4651BB8B.2080707%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001077.html">
+   <LINK REL="Next"  HREF="001079.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[vsipl++] SIMD Loop fusion support for unaligned vectors</H1>
+    <B>Jules Bergmann</B> 
+    <A HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20SIMD%20Loop%20fusion%20support%20for%20unaligned%20vectors&In-Reply-To=%3C4651BB8B.2080707%40codesourcery.com%3E"
+       TITLE="[vsipl++] SIMD Loop fusion support for unaligned vectors">jules at codesourcery.com
+       </A><BR>
+    <I>Mon May 21 15:32:27 UTC 2007</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001077.html">SIMD Loop fusion support for unaligned vectors
+</A></li>
+        <LI>Next message: <A HREF="001079.html">[patch] Misc bits; prep for updating svn:externals
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1078">[ date ]</a>
+              <a href="thread.html#1078">[ thread ]</a>
+              <a href="subject.html#1078">[ subject ]</a>
+              <a href="author.html#1078">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Assem Salama wrote:
+ &gt; Everyone,
+ &gt;  This patch adds support for unaligned vectors using loop fusion.
+
+
+Assem,
+
+This looks promising.  I have a couple of design comments below.  Can 
+you address those and then send out an updated patch?
+
+Let me know if you have any questions.
+
+				-- Jules
+
+
+ &gt;
+ &gt; Index: src/vsip/opt/simd/simd.hpp
+ &gt; ===================================================================
+ &gt; --- src/vsip/opt/simd/simd.hpp	(revision 171547)
+ &gt; +++ src/vsip/opt/simd/simd.hpp	(working copy)
+ &gt; @@ -143,6 +143,10 @@
+ &gt;    static simd_type load_unaligned(value_type const* addr)
+ &gt;    { return *addr; }
+
+[1] I see what you are trying to do with this variant of load_unaligned,
+however, there are a couple of problems with the design:
+
+  - First the name 'load_unaligned'.
+
+    It implies that a load is being done.
+
+    In faux-SIMD and SSE/SSE2 cases this is true (although in those
+    cases it is confusing what x0 and x1 are for since they aren't
+    used.
+
+    In the AltiVec case, no load is being done (but x0 and x1 are
+    being used).
+
+    From below, it looks like the new 'load_unaligned' is intended to
+    be used for AltiVec (where no load is being done).  The faux-SIMD
+    and SSE/SSE2 versions are provided to avoid complation error.
+
+    The function should give a good a indication of what it is to be
+    used for.  Instead I would call it something like &quot;shift_unaligned&quot;
+    or &quot;extract_unaligned&quot;.
+
+  - Second, if the function can't easily be defined for SSE/SSE2, instead
+    of giving it different behavior (doing a load instead of a
+    permute), it would be better to either leave it undefined, or
+    have it assert(0).
+
+  - Finally, the permutation vector (sh) can be reused.
+
+
+Given this, it would expose more efficiency to have two functions:
+
+    	static simd_itype unaligned_permutation(value_type const* addr)
+	{
+	  return vec_lvsl(0, (value_type*)addr);
+	}
+
+	static simd_type permute(simd_type x0, simd_type x1,
+				 simd_itype sh)
+         {
+           return vec_perm(x0, x1, sh);
+         }
+
+Does SSE/SSE2 have an equivalent permute?
+
+If so, let's use it.
+
+If not, let's either:
+
+  - have permute and unaligned_permute assert(0), and define a static
+    bool in the simd traits as to the presence of permute
+
+    	static bool const has_permute = true/false;
+
+    By defining the functions to assert 0, the 'has_permute' check
+    can either be performed at run-time or compile-time.
+
+  - fake it with a union.
+
+
+ &gt;
+ &gt; +  static simd_type load_unaligned(simd_type x0, simd_type x1,
+ &gt; +                                  value_type const* addr)
+ &gt; +  { return *addr; }
+ &gt; +
+ &gt;    static simd_type load_scalar(value_type value)
+ &gt;    { return value; }
+ &gt;
+
+ &gt; @@ -262,6 +266,13 @@
+ &gt;      return vec_perm(x0, x1, sh);
+ &gt;    }
+ &gt;
+ &gt; +  static simd_type load_unaligned(simd_type x0, simd_type x1,
+ &gt; +                                  value_type const* addr)
+ &gt; +  {
+ &gt; +    __vector unsigned char sh = vec_lvsl(0, (value_type*)addr);
+ &gt; +    return vec_perm(x0, x1, sh);
+ &gt; +  }
+ &gt; +
+ &gt;    static simd_type load_scalar(value_type value)
+ &gt;    {
+ &gt;      union
+
+ &gt; @@ -646,6 +676,9 @@
+ &gt;    static simd_type load_unaligned(value_type* addr)
+ &gt;    { return _mm_loadu_si128((simd_type*)addr); }
+ &gt;
+ &gt; +  static simd_type load_unaligned(simd_type x0, simd_type x1, 
+value_type* addr)
+ &gt; +  { return _mm_loadu_si128((simd_type*)addr); }
+ &gt; +
+ &gt;    static simd_type load_scalar(value_type value)
+ &gt;    { return _mm_set_epi8(0, 0, 0, 0, 0, 0, 0, 0,
+ &gt;  			0, 0, 0, 0, 0, 0, 0, value); }
+
+ &gt; Index: src/vsip/opt/simd/expr_evaluator.hpp
+ &gt; ===================================================================
+ &gt; --- src/vsip/opt/simd/expr_evaluator.hpp	(revision 171353)
+ &gt; +++ src/vsip/opt/simd/expr_evaluator.hpp	(working copy)
+ &gt; @@ -43,11 +43,11 @@
+ &gt;  namespace simd
+ &gt;  {
+ &gt;
+ &gt; -template &lt;typename BlockT&gt;
+ &gt; +template &lt;typename BlockT, bool A&gt;
+
+[2] what is A?  Aligned?  Document, or pick a more descriptive name
+(or both :)
+
+You use &quot;IsAligned&quot; in expr_iterator.hpp.  That would be good here too.
+
+ &gt;  struct Proxy_factory
+ &gt;  {
+ &gt;    typedef Direct_access_traits&lt;typename BlockT::value_type&gt; 
+access_traits;
+ &gt; -  typedef Proxy&lt;access_traits&gt; proxy_type;
+ &gt; +  typedef Proxy&lt;access_traits, A&gt; proxy_type;
+ &gt;    typedef typename Adjust_layout_dim&lt;
+ &gt;                       1, typename 
+Block_layout&lt;BlockT&gt;::layout_type&gt;::type
+ &gt;  		layout_type;
+ &gt; @@ -62,7 +62,15 @@
+ &gt;      return dda.stride(0) == 1 &amp;&amp;
+ &gt;        Simd_traits&lt;typename 
+BlockT::value_type&gt;::alignment_of(dda.data()) == 0;
+ &gt;    }
+ &gt; -  static proxy_type
+ &gt; +  static bool
+ &gt; +  is_aligned(BlockT const&amp; b)
+ &gt; +  {
+ &gt; +    Ext_data&lt;BlockT, layout_type&gt; dda(b, SYNC_IN);
+ &gt; +    return
+ &gt; +      Simd_traits&lt;typename 
+BlockT::value_type&gt;::alignment_of(dda.data()) == 0;
+ &gt; +  }
+
+[3] I don't see how this works.  Since rt_valid still checks alignment,
+rt_valid will be false for unaligned data.  There is no to tell whether
+rt_valid is false because data is unaligned, or because it doesn't have
+unit stride.
+
+Rather than add an 'is_aligned()' method to each proxy, you should
+modify 'rt_valid' to account for IsAligned.  When IsAligned (aka A) is
+true, it should check alignment and stride.  When IsAlined is false,
+it should only check stride:
+
+   static bool
+   rt_valid(BlockT const &amp;b)
+   {
+     Ext_data&lt;BlockT, layout_type&gt; dda(b, SYNC_IN);
+     return dda.stride(0) == 1 &amp;&amp;
+       (!IsAligned ||
+        Simd_traits&lt;typename 
+BlockT::value_type&gt;::alignment_of(dda.data()) == 0);
+   }
+
+
+
+ &gt; @@ -221,20 +262,17 @@
+ &gt;      return (dda.stride(0) == 1 &amp;&amp;
+ &gt;  	    simd::Simd_traits&lt;typename LB::value_type&gt;::
+ &gt;  	      alignment_of(dda.data()) == 0 &amp;&amp;
+ &gt; -	    simd::Proxy_factory&lt;RB&gt;::rt_valid(rhs));
+ &gt; +	    simd::Proxy_factory&lt;RB, true&gt;::rt_valid(rhs));
+
+[4] Again, I don't see how this works for unaligned data.  rt_valid
+will be false if any data is unaligned, preventing this evaluator from
+being used.
+
+The is_aligned check below will always be true, because exec() will
+only be called when rt_valid is true, i.e. when the data is aligned.
+
+With the rt_valid change suggested above, you could have two
+evaluators: Simd_loop_fusion and Simd_loop_fusion_unaligned.  They
+could share a common base class that takes alignment as a template
+parameter.
+
+(You could have a single evaluator, but that requires either checking
+the Proxy's rt_valid a third time (bad), or keeping state between the
+evaluator's rt_valid and exec (difficult, since no evaluator object is
+created.  Using two evaluators captures that state in the
+conditional).
+
+ &gt;    }
+ &gt;
+ &gt;    static void exec(LB&amp; lhs, RB const&amp; rhs)
+ &gt;    {
+ &gt;      typedef typename simd::LValue_access_traits&lt;typename 
+LB::value_type&gt; WAT;
+ &gt; -    typedef typename simd::Proxy_factory&lt;RB&gt;::access_traits EAT;
+ &gt;      length_type const vec_size =
+ &gt;        simd::Simd_traits&lt;typename LB::value_type&gt;::vec_size;
+ &gt;      Ext_data&lt;LB, layout_type&gt; dda(lhs, SYNC_OUT);
+ &gt;      length_type const size = dda.size(0);
+ &gt;      length_type n = size;
+ &gt; -    simd::Proxy&lt;WAT&gt; lp(dda.data());
+ &gt; -    simd::Proxy&lt;EAT&gt; rp(simd::Proxy_factory&lt;RB&gt;::create(rhs));
+ &gt;  #if 0
+ &gt;      // simple iterator-based loop. It has the most concise syntax,
+ &gt;      // but generates suboptimal code with gcc 3.4
+ &gt; @@ -271,12 +309,35 @@
+ &gt;      // loop using proxy interface. This generates the best code
+ &gt;      // with gcc 3.4 (with gcc 4.1 the difference to the first case
+ &gt;      // above is negligible).
+ &gt; -    while (n &gt;= vec_size)
+ &gt; -    {
+ &gt; -      lp.store(rp.load());
+ &gt; -      n -= vec_size;
+ &gt; -      lp.increment();
+ &gt; -      rp.increment();
+ &gt; +
+ &gt; +    // If any of the blocks are unaligned, we treat all of the blocks as
+ &gt; +    // unaligned
+ &gt; +    if(simd::Proxy_factory&lt;RB, true&gt;::is_aligned(rhs)) {
+ &gt; +      typedef typename simd::Proxy_factory&lt;RB, true&gt;::access_traits EAT;
+ &gt; +
+ &gt; +      simd::Proxy&lt;WAT,true&gt; lp(dda.data());
+ &gt; +      simd::Proxy&lt;EAT,true&gt; 
+rp(simd::Proxy_factory&lt;RB,true&gt;::create(rhs));
+ &gt; +
+ &gt; +      while (n &gt;= vec_size)
+ &gt; +      {
+ &gt; +        lp.store(rp.load());
+ &gt; +        n -= vec_size;
+ &gt; +        lp.increment();
+ &gt; +        rp.increment();
+ &gt; +      }
+ &gt; +    } else {
+
+[5] Coding standards: put braces on separate lines for consistency
+
+ &gt; +      typedef typename simd::Proxy_factory&lt;RB, false&gt;::access_traits 
+EAT;
+ &gt; +
+ &gt; +      simd::Proxy&lt;WAT,false&gt; lp(dda.data());
+ &gt; +      simd::Proxy&lt;EAT,false&gt; 
+rp(simd::Proxy_factory&lt;RB,false&gt;::create(rhs));
+ &gt; +
+ &gt; +      while (n &gt;= vec_size)
+ &gt; +      {
+ &gt; +        lp.store(rp.load());
+ &gt; +        n -= vec_size;
+ &gt; +        lp.increment();
+ &gt; +        rp.increment();
+ &gt; +      }
+ &gt;      }
+ &gt;  #endif
+ &gt;      // Process the remainder, using simple loop fusion.
+ &gt; Index: src/vsip/opt/simd/expr_iterator.hpp
+ &gt; ===================================================================
+
+ &gt; +template &lt;typename T&gt;
+ &gt; +class Proxy&lt;Direct_access_traits&lt;T&gt;,false &gt;
+ &gt; +{
+ &gt; +public:
+ &gt; +  typedef T value_type;
+ &gt; +  typedef Simd_traits&lt;value_type&gt;                     simd;
+ &gt; +  typedef typename simd::simd_type                    simd_type;
+ &gt; +
+ &gt; +  Proxy(value_type const *ptr) : ptr_unaligned_(ptr)
+ &gt; +  {
+ &gt; +    ptr_aligned_    = (simd_type*)((intptr_t)ptr &amp; 
+~(simd::alignment-1));
+ &gt; +
+ &gt; +    // We do not need x0 and x1 if we are using sse because sse has
+ &gt; +    // a uload intruction.
+ &gt; +#if !defined(__SSE__) and !defined(_SSE2__)
+ &gt; +    x0_             = simd::load((value_type*)ptr_aligned_);
+ &gt; +    x1_             = 
+simd::load((value_type*)(ptr_aligned_+simd::vec_size));
+ &gt; +#endif
+
+[6] Don't mix the pre-processor and traits like this!
+
+The simd traits class abstracts the interface to the SIMD ISA.  Using
+the preprocessor on top of the simd traits creates redundancy that
+makes the code more difficult to maintain and understand.
+
+ &gt; +  }
+ &gt; +
+ &gt; +  simd_type load() const
+ &gt; +  {
+ &gt; +    return simd::load_unaligned(x0_, x1_, ptr_unaligned_);
+ &gt; +  }
+ &gt; +
+ &gt; +  void set_x0(simd_type x0) { x0_ = x0; }
+
+[7] what is set_x0 for?
+
+ &gt; +
+ &gt; +  void increment(length_type n = 1)
+ &gt; +  {
+ &gt; +    ptr_unaligned_ += n * Simd_traits&lt;value_type&gt;::vec_size;
+ &gt; +    ptr_aligned_   += n;
+ &gt; +
+ &gt; +    // We do not need x0 and x1 if we are using sse because sse has
+ &gt; +    // a uload intruction.
+ &gt; +#if !defined(__SSE__) and !defined(_SSE2__)
+ &gt; +    // update x0
+ &gt; +    x0_ = (n == 1)? x1_:simd::load((value_type*)ptr_aligned_);
+ &gt; +
+ &gt; +    // update x1
+ &gt; +    x1_ = simd::load((value_type*)(ptr_aligned_+simd::vec_size));
+ &gt; +#endif
+ &gt; +  }
+ &gt; +
+ &gt; +private:
+ &gt; +  simd_type  x0_;
+ &gt; +  simd_type  x1_;
+ &gt; +
+ &gt; +  simd_type  const *ptr_aligned_;
+ &gt; +  value_type const *ptr_unaligned_;
+ &gt; +};
+
+[8] You're using the preprocessor because some SIMD ISAs support
+permute (AltiVec), and some don't (SSE).  Instead, let's add a static
+const 'has_premute') that indicates the presence of permute, as
+suggested above in [1].
+
+Then you can make the use of permute conditional.
+
+Becuase using permute requires storage for x0 and x1, the best
+time to make the decision is at compile-time with a template
+parameter:
+
+	template &lt;typename T&gt;
+	class Proxy&lt;Direct_access_traits&lt;T&gt;, false&gt;
+	  : public Proxy_direct_access_helper&lt;T, Simt_traits&lt;T&gt;::has_permute&gt;
+	{
+	   ...
+	};
+
+Then you can specialize Proxy_direct_access_helper to use permute
+if it is available
+
+	template &lt;typename T,
+		  bool     HasPermute&gt;
+	struct Proxy_direct_access_helper;
+
+	template &lt;typename T&gt;
+	struct Proxy_direct_access_helper&lt;T, true&gt;
+	{
+	  Proxy(value_type const *ptr)
+	    : ptr_unaligned_(ptr)
+	      ptr_aligned_  ((simd_type*)((intptr_t)ptr &amp; ~(simd::alignment-1))),
+	      x1_ 
+(simd::load((value_type*)(ptr_aligned_+simd::vec_size))),
+	      perm_         (simd::unaligned_permuation((value_type*)(ptr)))
+	  {}
+
+	  simd_type load() const
+	  {
+	    // update x0
+	    x0_ = (n == 1)? x1_:simd::load((value_type*)ptr_aligned_);
+	
+	    // update x1
+	    x1_ = simd::load((value_type*)(ptr_aligned_+simd::vec_size));
+
+	    return simd::permute(x0_, x1_, perm_);
+	  }
+
+	  void increment(length_type n = 1)
+	  {
+	    ptr_unaligned_ += n * Simd_traits&lt;value_type&gt;::vec_size;
+	    ptr_aligned_   += n;
+	
+	  }
+
+	private:
+	  simd_type  x0_;
+	  simd_type  x1_;
+	  simd_type  perm_;
+
+	  simd_type  const *ptr_aligned_;
+	  value_type const *ptr_unaligned_;
+	};
+
+
+ &gt; @@ -522,7 +578,7 @@
+ &gt;    B b_;
+ &gt;    C c_;
+ &gt;  };
+ &gt; -
+ &gt; +/*
+ &gt;  template &lt;typename T&gt;
+ &gt;  struct Iterator
+ &gt;  {
+ &gt; @@ -548,7 +604,7 @@
+ &gt;    r += n;
+ &gt;    return r;
+ &gt;  }
+ &gt; -
+ &gt; +*/
+
+[9] Why is Iterator being commented out?
+
+ &gt;  } // namespace vsip::impl::simd
+ &gt;  } // namespace vsip::impl
+ &gt;  } // namespace vsip
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">jules at codesourcery.com</A>
+(650) 331-3385 x705
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001077.html">SIMD Loop fusion support for unaligned vectors
+</A></li>
+	<LI>Next message: <A HREF="001079.html">[patch] Misc bits; prep for updating svn:externals
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1078">[ date ]</a>
+              <a href="thread.html#1078">[ thread ]</a>
+              <a href="subject.html#1078">[ subject ]</a>
+              <a href="author.html#1078">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">More information about the vsipl++
+mailing list</a><br>
+</body></html>

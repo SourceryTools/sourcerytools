@@ -1,0 +1,177 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [vsipl++] [patch] Use new dispatch for matvec functions
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20%5Bpatch%5D%20Use%20new%20dispatch%20for%20matvec%20functions&In-Reply-To=%3C4922C4BD.40503%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001521.html">
+   <LINK REL="Next"  HREF="001523.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[vsipl++] [patch] Use new dispatch for matvec functions</H1>
+    <B>Stefan Seefeld</B> 
+    <A HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20%5Bpatch%5D%20Use%20new%20dispatch%20for%20matvec%20functions&In-Reply-To=%3C4922C4BD.40503%40codesourcery.com%3E"
+       TITLE="[vsipl++] [patch] Use new dispatch for matvec functions">stefan at codesourcery.com
+       </A><BR>
+    <I>Tue Nov 18 13:35:57 UTC 2008</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001521.html">[vsipl++] [patch] Use new dispatch for matvec functions
+</A></li>
+        <LI>Next message: <A HREF="001523.html">[vsipl++] [patch] Use new dispatch for matvec functions
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1520">[ date ]</a>
+              <a href="thread.html#1520">[ thread ]</a>
+              <a href="subject.html#1520">[ subject ]</a>
+              <a href="author.html#1520">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Don McCoy wrote:
+&gt;<i> This patch has been expanded to include SAL and CML matvec functions and 
+</I>&gt;<i> it completely replaces previous versions.  It also incorporates the 
+</I>&gt;<i> feedback received from Stefan.  BLAS modifications will be posted in a 
+</I>&gt;<i> later patch.
+</I>&gt;<i> 
+</I>&gt;<i> Ok to commit?
+</I>
+Don, this looks good. I have a couple of minor issues, and one 
+high-level question (to the group):
+
+It is noteworthy that the C-VSIPL backends set ct_valid to false if the 
+block types don't allow direct data access (i.e. Ext_data_cost &gt; 0), yet 
+for the reference implementation we call them explicitly, since the 
+Ext_data handles the layout adjustments. Could you please add comments 
+to point that out ?
+
+&gt;<i> Index: src/vsip/core/dispatch.hpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> --- src/vsip/core/dispatch.hpp	(revision 0)
+</I>&gt;<i> +++ src/vsip/core/dispatch.hpp	(revision 0)
+</I>&gt;<i> @@ -0,0 +1,71 @@
+</I>&gt;<i> +/* Copyright (c) 2008 by CodeSourcery.  All rights reserved. */
+</I>&gt;<i> +
+</I>&gt;<i> +/** @file    vsip/core/dispatch.hpp
+</I>&gt;<i> +    @author  Stefan Seefeld
+</I>&gt;<i> +    @date    2006-11-03
+</I>&gt;<i> +    @brief   VSIPL++ Library: Dispatcher harness.
+</I>&gt;<i> +*/
+</I>&gt;<i> +
+</I>&gt;<i> +#ifndef VSIP_CORE_DISPATCH_HPP
+</I>&gt;<i> +#define VSIP_CORE_DISPATCH_HPP
+</I>&gt;<i> +
+</I>&gt;<i> +
+</I>&gt;<i> +/***********************************************************************
+</I>&gt;<i> +  Declarations
+</I>&gt;<i> +***********************************************************************/
+</I>&gt;<i> +
+</I>&gt;<i> +namespace vsip
+</I>&gt;<i> +{
+</I>&gt;<i> +namespace impl
+</I>&gt;<i> +{
+</I>&gt;<i> +
+</I>&gt;<i> +// Operation Tags.
+</I>&gt;<i> +//
+</I>&gt;<i> +// Each operation (dot-product, matrix-matrix product, etc) has a 
+</I>&gt;<i> +// unique operation tag.
+</I>&gt;<i> +
+</I>&gt;<i> +struct Op_prod_vv_dot;    // vector-vector dot-product
+</I>&gt;<i> +struct Op_prod_vv_outer;  // vector-vector outer-product
+</I>&gt;<i> +struct Op_prod_mm;        // matrix-matrix product
+</I>&gt;<i> +struct Op_prod_mm_conj;   // matrix-matrix conjugate product
+</I>&gt;<i> +struct Op_prod_mv;        // matrix-vector product
+</I>&gt;<i> +struct Op_prod_vm;        // vector-matrix product
+</I>&gt;<i> +struct Op_prod_gemp;      // generalized matrix-matrix product
+</I>&gt;<i> +
+</I>&gt;<i> +
+</I>&gt;<i> +namespace dispatcher
+</I>&gt;<i> +{
+</I>
+I don't think these operation tags belong into this file, but I'm not 
+sure where to put them instead. We (sort of) maintain a back-end 
+repository in the vsip/core/impl_tags.hpp file. May be we could add 
+operation tags there, too ?
+Also, as all these tags are always and exclusively used in conjunction 
+with the dispatcher, I'd suggest we put them into the dispatcher 
+namespace, too, in an effort to clean up the vsip::impl namespace.
+And, as the above tags are now (with your two patches) only used with 
+the new dispatcher, this seems to be the right moment to do this.
+
+
+&gt;<i> Index: src/vsip/core/matvec.hpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> --- src/vsip/core/matvec.hpp	(revision 225932)
+</I>&gt;<i> +++ src/vsip/core/matvec.hpp	(working copy)
+</I>&gt;<i> @@ -19,8 +19,11 @@
+</I>&gt;<i>  #include &lt;vsip/matrix.hpp&gt;
+</I>&gt;<i>  #include &lt;vsip/core/promote.hpp&gt;
+</I>&gt;<i>  #include &lt;vsip/core/fns_elementwise.hpp&gt;
+</I>&gt;<i> +#include &lt;vsip/core/general_evaluator.hpp&gt;
+</I>&gt;<i> +#include &lt;vsip/core/dispatch.hpp&gt;
+</I>&gt;<i> +#include &lt;vsip/core/impl_tags.hpp&gt;
+</I>&gt;<i>  #ifndef VSIP_IMPL_REF_IMPL
+</I>&gt;<i> -# include &lt;vsip/opt/general_dispatch.hpp&gt;
+</I>&gt;<i> +# include &lt;vsip/opt/dispatch.hpp&gt;
+</I>&gt;<i>  # ifdef VSIP_IMPL_CBE_SDK
+</I>&gt;<i>  #  include &lt;vsip/opt/cbe/cml/matvec.hpp&gt;
+</I>&gt;<i>  # endif
+</I>
+I believe the general_evaluator.hpp file is obsolete (for the matvec 
+operations) now, and thus shouldn't be included any longer.
+
+&gt;<i> -// Dot product dispatch.  This is intentionally not named 'dot' to avoid
+</I>&gt;<i> -// conflicting with vsip::dot, which shares the same signature, forcing
+</I>&gt;<i> -// the user to resolve the call themselves.
+</I>&gt;<i> -
+</I>&gt;<i> +/// Dot product dispatch.  This is intentionally not named 'dot' to avoid
+</I>&gt;<i> +/// conflicting with vsip::dot, which shares the same signature, forcing
+</I>&gt;<i> +/// the user to resolve the call themselves.
+</I>&gt;<i>  template &lt;typename T0, typename T1, typename Block0, typename Block1&gt;
+</I>&gt;<i>  typename Promotion&lt;T0, T1&gt;::type
+</I>&gt;<i>  impl_dot(
+</I>
+Is this comment really meant to be put into the manual ? While I 
+appreciate the comment as a hint for people working on the code, I don't 
+think it belongs into documentation, and so should remain a simple '//' 
+comment.
+
+Thanks,
+		Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">stefan at codesourcery.com</A>
+(650) 331-3385 x718
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001521.html">[vsipl++] [patch] Use new dispatch for matvec functions
+</A></li>
+	<LI>Next message: <A HREF="001523.html">[vsipl++] [patch] Use new dispatch for matvec functions
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1520">[ date ]</a>
+              <a href="thread.html#1520">[ thread ]</a>
+              <a href="subject.html#1520">[ subject ]</a>
+              <a href="author.html#1520">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">More information about the vsipl++
+mailing list</a><br>
+</body></html>

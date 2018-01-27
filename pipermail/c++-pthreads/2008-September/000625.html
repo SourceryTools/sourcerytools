@@ -1,0 +1,171 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [c++-pthreads] question about using of malloc / free in pthreads
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:c%2B%2B-pthreads%40codesourcery.com?Subject=Re%3A%20%5Bc%2B%2B-pthreads%5D%20question%20about%20using%20of%20malloc%20/%20free%20in%20pthreads&In-Reply-To=%3Cf534609f0809041026x2a10ed85ta02ce8ab89bb703c%40mail.gmail.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000624.html">
+   
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[c++-pthreads] question about using of malloc / free in pthreads</H1>
+    <B>kostya.kurilov</B> 
+    <A HREF="mailto:c%2B%2B-pthreads%40codesourcery.com?Subject=Re%3A%20%5Bc%2B%2B-pthreads%5D%20question%20about%20using%20of%20malloc%20/%20free%20in%20pthreads&In-Reply-To=%3Cf534609f0809041026x2a10ed85ta02ce8ab89bb703c%40mail.gmail.com%3E"
+       TITLE="[c++-pthreads] question about using of malloc / free in pthreads">krizka at gmail.com
+       </A><BR>
+    <I>Thu Sep  4 17:26:30 UTC 2008</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000624.html">[c++-pthreads] question about using of malloc / free  in pthreads 
+</A></li>
+        
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#625">[ date ]</a>
+              <a href="thread.html#625">[ thread ]</a>
+              <a href="subject.html#625">[ subject ]</a>
+              <a href="author.html#625">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>In spite of many errors and glitches in this code, the main problem
+there is synchronization. You don't even check existance of the
+element in queue, so you have to check it before get pointer by
+calling queue.front() in consumer, the condition variables would be
+the one of the best thing you can use here.
+
+PS. Sorry for english and.. I think it's offtopic for this mailing list :)
+
+On Thu, Sep 4, 2008 at 5:38 PM, Victor &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/c++-pthreads">vlyamtsev at mzeal.com</A>&gt; wrote:
+&gt;<i> Hello,
+</I>&gt;<i> I am working on some code where I have to pass data from couple of
+</I>&gt;<i> &quot;producer&quot; threads to consumer.
+</I>&gt;<i> I use &quot;shared queue&quot; approach, e.g. STL queue protected by mutex for passing
+</I>&gt;<i> my &quot;messages&quot; between threads.
+</I>&gt;<i>
+</I>&gt;<i> struct Block {
+</I>&gt;<i> char* msg;
+</I>&gt;<i> int size;
+</I>&gt;<i> };
+</I>&gt;<i> std::queue&lt;block&gt; fifo;
+</I>&gt;<i> pthread_mutex_t *lock;
+</I>&gt;<i>
+</I>&gt;<i> //producer thread
+</I>&gt;<i>
+</I>&gt;<i> void *producer (void *_p)
+</I>&gt;<i> {
+</I>&gt;<i> while(true)
+</I>&gt;<i> {
+</I>&gt;<i>   Block* buff = malloc(sizeof(Block));
+</I>&gt;<i>   char* msg = malloc(128);
+</I>&gt;<i>   strncpy(msg, &quot;my msg&quot;);
+</I>&gt;<i>   buff-&gt;msg = msg;
+</I>&gt;<i>   buff-&gt;size = 128;
+</I>&gt;<i>   // get mutex lock
+</I>&gt;<i> if (pthread_mutex_lock(lock) == 0)
+</I>&gt;<i>    fifo.push(buff);
+</I>&gt;<i> pthread_mutex_unlock(lock)
+</I>&gt;<i> sleep(10);
+</I>&gt;<i>  } //end of while
+</I>&gt;<i> } //end of producer
+</I>&gt;<i>
+</I>&gt;<i> //consumer thread
+</I>&gt;<i>
+</I>&gt;<i> void *consumer (void *_p)
+</I>&gt;<i> {
+</I>&gt;<i>
+</I>&gt;<i> while(true)
+</I>&gt;<i> {
+</I>&gt;<i>  if (pthread_mutex_lock(lock) == 0)
+</I>&gt;<i>  {
+</I>&gt;<i>   Block *buff = fifo.front();
+</I>&gt;<i> //do something here with message
+</I>&gt;<i>   printf(&quot;%s&quot;, buff-&gt;msg);
+</I>&gt;<i> ...
+</I>&gt;<i> //remove ptr from  queue
+</I>&gt;<i>   fifo.pop();
+</I>&gt;<i> //free msg memory
+</I>&gt;<i>  free(buff-&gt;msg);
+</I>&gt;<i>  free(buff);
+</I>&gt;<i>  pthread_mutex_unlock(lock)
+</I>&gt;<i> } //end of if
+</I>&gt;<i>  } //end of while
+</I>&gt;<i> } //end of consumer
+</I>&gt;<i>
+</I>&gt;<i> int main() {
+</I>&gt;<i>
+</I>&gt;<i>    lock = (pthread_mutex_t *) malloc (sizeof (pthread_mutex_t));
+</I>&gt;<i>    pthread_mutex_init (lock, NULL);
+</I>&gt;<i>
+</I>&gt;<i>
+</I>&gt;<i>     pthread_attr_t attr;
+</I>&gt;<i>     pthread_attr_init(&amp;attr);
+</I>&gt;<i>     pthread_attr_setdetachstate(&amp;attr, PTHREAD_CREATE_JOINABLE);
+</I>&gt;<i>
+</I>&gt;<i>     pthread_create (&amp;con, &amp;attr, consumer, NULL);
+</I>&gt;<i>     pthread_create (&amp;pro, &amp;attr, producer, NULL);
+</I>&gt;<i>
+</I>&gt;<i>     // cleanup here
+</I>&gt;<i>     printf(&quot;End of program\n&quot;);
+</I>&gt;<i> }
+</I>&gt;<i>
+</I>&gt;<i> Program runs for while, but eventually it &quot;segfaults&quot;, when trying to free
+</I>&gt;<i> used &quot;message&quot; memory in consumer.
+</I>&gt;<i> I wonder if I am missing some race condition associated with &quot;alloc /free
+</I>&gt;<i> cycle&quot; here...
+</I>&gt;<i> Does memory allocation also has to be synchronized? E.g. should I create
+</I>&gt;<i> separate mutex for memory allocation:
+</I>&gt;<i>  pthread_mutex_t* mem_guard;
+</I>&gt;<i> //instead of malloc in &quot;producer&quot; call:
+</I>&gt;<i> if (pthread_mutex_lock(mem_guard) == 0) {
+</I>&gt;<i>   Block* buff = malloc(sizeof(Block));
+</I>&gt;<i>   char* msg = malloc(128);
+</I>&gt;<i>   pthread_mutex_unlock(mem_guard)
+</I>&gt;<i> }
+</I>&gt;<i>
+</I>&gt;<i> //instead of free in &quot;consumer&quot; call:
+</I>&gt;<i> if (pthread_mutex_lock(mem_guard) == 0) {
+</I>&gt;<i>    //free msg memory
+</I>&gt;<i>   free(buff-&gt;msg);
+</I>&gt;<i>   free(buff);
+</I>&gt;<i>   pthread_mutex_unlock(mem_guard)
+</I>&gt;<i> }
+</I>&gt;<i>
+</I>&gt;<i> Are there better approaches for IPC between pthreads?
+</I>&gt;<i> Thank you for your advise...
+</I>&gt;<i>
+</I>&gt;<i> -V
+</I>
+
+
+-- 
+Best regards, kostya.kurilov
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000624.html">[c++-pthreads] question about using of malloc / free  in pthreads 
+</A></li>
+	
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#625">[ date ]</a>
+              <a href="thread.html#625">[ thread ]</a>
+              <a href="subject.html#625">[ subject ]</a>
+              <a href="author.html#625">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/c++-pthreads">More information about the c++-pthreads
+mailing list</a><br>
+</body></html>

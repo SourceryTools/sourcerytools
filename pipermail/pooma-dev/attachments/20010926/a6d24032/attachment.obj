@@ -1,0 +1,168 @@
+Index: benchmarks/Doof2dField/Doof2dField.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/benchmarks/Doof2dField/Doof2dField.h,v
+retrieving revision 1.16
+diff -c -p -r1.16 Doof2dField.h
+*** benchmarks/Doof2dField/Doof2dField.h	2000/07/04 05:06:32	1.16
+--- benchmarks/Doof2dField/Doof2dField.h	2001/09/26 00:27:32
+*************** public:
+*** 66,74 ****
+    
+    // Typedefs for the Field-related classes:
+  
+!   typedef UniformRectilinearMesh<2>          Mesh_t;
+!   typedef DiscreteGeometry<Cell, Mesh_t>     Geometry_t;
+!   typedef Field<Geometry_t,double,EngineTag> Field_t;
+  
+    // Initialize function gets the size and adjusts the arrays.
+      
+--- 66,73 ----
+    
+    // Typedefs for the Field-related classes:
+  
+!   typedef UniformRectilinearMesh<2>       Mesh_t;
+!   typedef Field<Mesh_t,double,EngineTag>  Field_t;
+  
+    // Initialize function gets the size and adjusts the arrays.
+      
+*************** public:
+*** 85,100 ****
+      
+      Interval<1> cells(n_m);
+  
+!     Mesh_t mesh(vertDomain);
+!     
+!     Geometry_t geom(mesh, GuardLayers<2>(1));
+  
+      // Initialize the fields.
+!     
+!     a_m.initialize(geom);
+!     b_m.initialize(geom);
+  
+!     a_m.addBoundaryConditions(AllZeroFaceBC());
+  
+      // Set up domains.
+      
+--- 84,101 ----
+      
+      Interval<1> cells(n_m);
+  
+!     DomainLayout<2> layout(vertDomain, GuardLayers<2>(1));
+! 
+!     Mesh_t mesh(layout, Vector<2>(0.0), Vector<2>(1.0, 1.0));
+! 
+!     Centering<2> vert = canonicalCentering<2>(VertexType, Continuous, AllDim);
+  
+      // Initialize the fields.
+! 
+!     a_m.initialize(vert, layout, mesh);
+!     b_m.initialize(vert, layout, mesh);
+  
+!     Pooma::addAllConstantFaceBC(a_m, 0.0);
+  
+      // Set up domains.
+      
+*************** public:
+*** 155,163 ****
+  
+    typedef UniformGridLayout<2>               Layout_t;
+    typedef UniformRectilinearMesh<2>          Mesh_t;
+-   typedef DiscreteGeometry<Cell, Mesh_t>     Geometry_t;
+    typedef MultiPatch<UniformTag,EngineTag>   MPTag_t;
+!   typedef Field<Geometry_t,double,MPTag_t>   Field_t;
+  
+    // Constructor allows us to specify the number of patches in each direction
+    // and the number of guard cells.
+--- 156,163 ----
+  
+    typedef UniformGridLayout<2>               Layout_t;
+    typedef UniformRectilinearMesh<2>          Mesh_t;
+    typedef MultiPatch<UniformTag,EngineTag>   MPTag_t;
+!   typedef Field<Mesh_t,double,MPTag_t>       Field_t;
+  
+    // Constructor allows us to specify the number of patches in each direction
+    // and the number of guard cells.
+*************** public:
+*** 202,221 ****
+      typedef GuardLayers<2> Guards_t;
+      UniformGridPartition<2> partition(blocks, Guards_t(ng_m), Guards_t(1));
+    
+-     Mesh_t mesh(vertDomain);
+-     
+-     Geometry_t geom(mesh, Guards_t(1));
+- 
+      // Create the layout.
+      
+      layout_m = new UniformGridLayout<2>(cellDomain, partition, ReplicatedTag());
+-     
+-     // Create the arrays.
+      
+!     a_m.initialize(geom, *layout_m);
+!     b_m.initialize(geom, *layout_m);
+  
+!     a_m.addBoundaryConditions(AllZeroFaceBC());
+  
+      // Set up domains.
+      
+--- 202,221 ----
+      typedef GuardLayers<2> Guards_t;
+      UniformGridPartition<2> partition(blocks, Guards_t(ng_m), Guards_t(1));
+    
+      // Create the layout.
+      
+      layout_m = new UniformGridLayout<2>(cellDomain, partition, ReplicatedTag());
+      
+!     Mesh_t mesh(*layout_m, Vector<2>(0.0), Vector<2>(1.0, 1.0));
+! 
+!     Centering<2> vert = canonicalCentering<2>(VertexType, Continuous, AllDim);
+! 
+!     // Initialize the fields.
+! 
+!     a_m.initialize(vert, *layout_m, mesh);
+!     b_m.initialize(vert, *layout_m, mesh);
+  
+!     Pooma::addAllConstantFaceBC(a_m, 0.0);
+  
+      // Set up domains.
+      
+Index: src/Field/Field.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/Field/Field.h,v
+retrieving revision 1.73
+diff -c -p -r1.73 Field.h
+*** src/Field/Field.h	2001/09/21 20:16:26	1.73
+--- src/Field/Field.h	2001/09/26 00:27:33
+*************** public:
+*** 1179,1185 ****
+--- 1179,1209 ----
+    {
+      fieldEngine_m = model.fieldEngine();
+    }
++ 
++   // Initializers that are equivalent to the constructors.
+    
++   template<class Layout2>
++   void
++   initialize(const Centering_t &centering, const Layout2 &layout,
++              const Mesh_t &mesh)
++   {
++     fieldEngine_m = FieldEngine_t(centering, layout, mesh);
++   } 
++ 
++   template<class Layout2>
++   void
++   initialize(int materials, const Centering_t &centering,
++              const Layout2 &layout, const Mesh_t &mesh)
++   {
++     fieldEngine_m = FieldEngine_t(centering, layout, mesh, materials);
++   } 
++ 
++   void
++   initialize(const Centering_t &centering, const Layout_t &layout)
++   {
++     fieldEngine_m = FieldEngine_t(centering, layout, Mesh_t(layout));
++   } 
++ 
+    //---------------------------------------------------------------------------
+    // Internal POOMA constructors. These ctors are used internally by POOMA.
+    // They are not really meant to be called by users.

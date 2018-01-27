@@ -1,0 +1,170 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [vsipl++] vsipl++ porting
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20vsipl%2B%2B%20porting&In-Reply-To=%3C4444E6BF.1070001%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000371.html">
+   <LINK REL="Next"  HREF="000373.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[vsipl++] vsipl++ porting</H1>
+    <B>Jules Bergmann</B> 
+    <A HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20vsipl%2B%2B%20porting&In-Reply-To=%3C4444E6BF.1070001%40codesourcery.com%3E"
+       TITLE="[vsipl++] vsipl++ porting">jules at codesourcery.com
+       </A><BR>
+    <I>Tue Apr 18 13:16:47 UTC 2006</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000371.html">vsipl++ porting
+</A></li>
+        <LI>Next message: <A HREF="000373.html">Matrix mirroring
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#372">[ date ]</a>
+              <a href="thread.html#372">[ thread ]</a>
+              <a href="subject.html#372">[ subject ]</a>
+              <a href="author.html#372">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>
+
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">syedmoin at dsl.net.pk</A> wrote:
+&gt;<i> Dear Sir,
+</I>&gt;<i>         am porting VSIPL++ to High Performance DSP i.e Analog Devices 
+</I>&gt;<i> TigerSharc TS201S.The FFT routine is provided by Analog Devices and i 
+</I>&gt;<i> have incorporated it as function ,calls are similar to FFTW. I am 
+</I>&gt;<i> confused wether to incorporate Matrix handling in native assembly or use 
+</I>&gt;<i> vsipl++ matrix classes
+</I>
+Syed,
+
+That is very exciting!
+
+Unfortunately, the FFT dispatch is one of the more complex parts of the 
+library, so it is difficult to suggest exactly how to insert your Matrix 
+FFT routines.  In general, I would recommend something like the following:
+
+For Matrix FFTM (multiple 1-D FFT along either rows or columns of a matrix):
+
+   - Determine if layout of input and output matrices is supported by
+     the Sharc Matrix FFT routine (in particular element strides and
+     row/column strides).  If supported, use the Matrix FFT routine.
+
+   - If the layout is not supported, you can do one of two things:
+
+      - Ask VSIPL++ to reorganize the data into a temporary buffer
+        with the right layout
+
+      - Check if the layout allows Sharc Vector FFT routines to
+        be used.
+
+We're currently updating the FFT dispatch mechanism to make it easier to 
+plug new FFT back-ends in (such as the Sharc FFT routine).  We are also 
+writing documentation on how to call external libraries from VSIPL++, 
+which you may find useful.  I will update you on these as they are ready.
+
+&gt;<i> 
+</I>&gt;<i> Anohter thing is TigerSharc has instruction level parallilsm and can 
+</I>&gt;<i> execute 4 instructions simultaneously how can i incorporate this thing
+</I>&gt;<i>
+</I>
+Are these SIMD type instructions that perform the same operation on 
+multiple data values?
+
+If so, the easiest way to incorporate them right now is to map specific 
+VSIPL++ operations (such as '+') to an external routine that uses the 
+SIMD instructions to add two vectors together.
+
+The 1.0 release of the library does this for the IPP library (vsipl++ 
+element-wise operations such as '+', '-', '*', etc get mapped into 
+corresponding IPP functions).
+
+Our most recent snapshot release of the library provides some generic 
+SIMD functionality.  Using a traits class to describe the SIMD 
+instructions (src/vsip/impl/simd/simd.hpp), it provides generic 
+implementations of vector element-wise multiply 
+(src/vsip/impl/simd/vmul.hpp).  Extending the traits to describe the 
+SHARC's SIMD instructions would let VSIPL++ take advantage of those 
+instructions.
+
+<A HREF="http://www.codesourcery.com/public/vsiplplusplus/sourceryvsipl++-20060403.tar.bz2">http://www.codesourcery.com/public/vsiplplusplus/sourceryvsipl++-20060403.tar.bz2</A>
+
+Finally, in September 2006, we will release a version of the library 
+that generates SIMD instructions for general loop fusion.  As that 
+becomes available, we can work with you on how to best support the SHARC 
+instructions.
+
+
+If you don't mind, I have a few questions for you to help us serve you 
+better:
+
+  - Can you describe the systems that you are targeting?
+      - Hardware: processor, memory, I/O
+      - Parallelism: Do you have multiple processors?
+      - Software: What compiler do you use?  What computation libraries
+        do you use?  How do you communicate between multiple
+        processors?  What RTOS do you use?
+
+  - Do you use fixed-point or floating-point (or both)?
+
+  - What types of applications are you developing?
+     - signal processing?  image processing?
+     - Is your system real-time?
+
+  - How do you develop applications?
+     - Do you primarily develop on the target hardware, or
+     - Do you develop algorithms on the desktop and then
+       port them?
+     - Would you be interested in a Windows version of VISPL++?
+
+				thanks,
+				-- Jules
+
+&gt;<i> 
+</I>&gt;<i> Regards
+</I>&gt;<i> Syed Moinuddin
+</I>&gt;<i> 
+</I>&gt;<i> 
+</I>&gt;<i> ----------------------------------------------------------------
+</I>&gt;<i> This message was sent using IMP, the Internet Messaging Program.
+</I>&gt;<i> 
+</I>
+
+-- 
+Jules Bergmann
+CodeSourcery
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">jules at codesourcery.com</A>
+(650) 331-3385 x705
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000371.html">vsipl++ porting
+</A></li>
+	<LI>Next message: <A HREF="000373.html">Matrix mirroring
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#372">[ date ]</a>
+              <a href="thread.html#372">[ thread ]</a>
+              <a href="subject.html#372">[ subject ]</a>
+              <a href="author.html#372">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">More information about the vsipl++
+mailing list</a><br>
+</body></html>

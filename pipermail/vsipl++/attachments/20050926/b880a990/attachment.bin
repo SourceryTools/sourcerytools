@@ -1,0 +1,105 @@
+Index: src/vsip/impl/fns_elementwise.hpp
+===================================================================
+RCS file: /home/cvs/Repository/vpp/src/vsip/impl/fns_elementwise.hpp,v
+retrieving revision 1.11
+diff -u -r1.11 fns_elementwise.hpp
+--- src/vsip/impl/fns_elementwise.hpp	16 Sep 2005 18:27:23 -0000	1.11
++++ src/vsip/impl/fns_elementwise.hpp	26 Sep 2005 12:58:59 -0000
+@@ -368,6 +368,33 @@
+ VSIP_IMPL_BINARY_OP(&, band)
+ VSIP_IMPL_BINARY_OP(||, lor)
+ VSIP_IMPL_BINARY_OP(|, bor)
++VSIP_IMPL_BINARY_OP(^, bxor)
++
++template <template <typename, typename> class V1,
++	  typename B1,
++	  template <typename, typename> class V2,
++	  typename B2,
++          bool P = Is_view_type<V1<bool, B1> >::value || 
++                   Is_view_type<V2<bool, B2> >::value>
++struct Dispatch_op_lxor
++  : As_type<Binary_func_view<lxor_functor,
++			     V1<bool, B1>,
++			     V2<bool, B2> > >::type {};
++template <template <typename, typename> class V1,
++	  typename B1,
++	  template <typename, typename> class V2,
++	  typename B2>
++struct Dispatch_op_lxor<V1, B1, V2, B2, false> {};
++
++template <template <typename, typename> class V1,
++	  typename B1,
++	  template <typename, typename> class V2,
++	  typename B2>
++typename Dispatch_op_lxor<V1, B1, V2, B2>::result_type
++operator ^(V1<bool, B1> v, V2<bool, B2> w) 
++{
++  return Dispatch_op_lxor<V1, B1, V2, B2>::apply(v, w);
++}
+ 
+ } // namespace vsip::impl
+ 
+Index: tests/view_operators.cpp
+===================================================================
+RCS file: /home/cvs/Repository/vpp/tests/view_operators.cpp,v
+retrieving revision 1.6
+diff -u -r1.6 view_operators.cpp
+--- tests/view_operators.cpp	15 Sep 2005 19:07:57 -0000	1.6
++++ tests/view_operators.cpp	26 Sep 2005 12:58:59 -0000
+@@ -225,12 +225,15 @@
+ 
+   BINARY_OP_VV_TEST(v1, v2, |)
+   BINARY_OP_VV_TEST(v1, v2, &)
++  BINARY_OP_VV_TEST(v1, v2, ^)
+ 
+   BINARY_OP_VS_TEST(v1, 7, |)
+   BINARY_OP_VS_TEST(v1, 7, &)
++  BINARY_OP_VS_TEST(v1, 7, ^)
+ 
+   BINARY_OP_SV_TEST(3, v1, |)
+   BINARY_OP_SV_TEST(3, v1, &)
++  BINARY_OP_SV_TEST(3, v1, ^)
+ }
+ 
+ #undef BINARY_OP_VV_TEST
+@@ -238,6 +241,31 @@
+ #undef BINARY_OP_SV_TEST
+ 
+ void
++binary_lxor_test()
++{
++  Vector<bool, Dense<1, bool> > v1(3, true);
++  Vector<bool, Dense<1, bool> > v2(3, false);
++
++  {
++    Vector<bool, Dense<1, bool> > result = v1 ^ v2;
++    for (length_type i = 0; i != result.length(); ++i)
++      assert(equal(result.get(i), bool(v1.get(i) ^ v2.get(i))));
++  }
++  {
++    bool const s = false;
++    Vector<bool, Dense<1, bool> > result = v1 ^ s;
++    for (length_type i = 0; i != result.length(); ++i)
++      assert(equal(result.get(i), bool(v1.get(i) ^ s)));
++  }
++  {
++    bool const s = true;
++    Vector<bool, Dense<1, bool> > result = s ^ v1;
++    for (length_type i = 0; i != result.length(); ++i)
++      assert(equal(result.get(i), bool(s ^ v1.get(i))));
++  }
++}
++
++void
+ subblock_test()
+ {
+   typedef Component_block<Dense<1, std::complex<float> >, Real_extractor> Real_block;
+@@ -297,6 +325,8 @@
+   mult_test();
+   div_test();
+   comparison_test();
++  binary_op_test();
++  binary_lxor_test();
+ 
+   subblock_test();
+ }

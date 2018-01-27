@@ -1,0 +1,186 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> Profiling POOMA: How to?
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20Profiling%20POOMA%3A%20How%20to%3F&In-Reply-To=%3Cflwv435x76.fsf%40jambon.cmla.ens-cachan.fr%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000633.html">
+   <LINK REL="Next"  HREF="000635.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>Profiling POOMA: How to?</H1>
+    <B>Gabriel Dos Reis</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20Profiling%20POOMA%3A%20How%20to%3F&In-Reply-To=%3Cflwv435x76.fsf%40jambon.cmla.ens-cachan.fr%3E"
+       TITLE="Profiling POOMA: How to?">gdr at codesourcery.com
+       </A><BR>
+    <I>Fri Aug 17 00:47:41 UTC 2001</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000633.html">[mainline Patch] pretty.pl: Fix Spelling Mistake
+</A></li>
+        <LI>Next message: <A HREF="000635.html">Mesh functors - please review [newfield_revision]
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#634">[ date ]</a>
+              <a href="thread.html#634">[ thread ]</a>
+              <a href="subject.html#634">[ subject ]</a>
+              <a href="author.html#634">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>
+		     Profiling POOMA (with gprof)
+		       compiled with KCC or GCC
+
+   This is a short note to let you get started with profiling POOMA
+compiled with KCC or GCC using gprof as a profiler.  That proceeds in
+three steps: 
+
+    (i) Setting architecture dependent compiler options
+   (ii) Compiling the POOMA library, benchmarks and running them
+  (iii) Producing profiling information.
+
+Note that both the library and the program being tested have to be
+compiled with profiling on, or else you won't have profiling
+information about the parts not compiled with profiling on.  Normally
+setting correctly options in the configuration file once should be
+OK. 
+
+I) Setting architecture dependent compiler options
+
+  To specify profiling options, you need to modify the architecture
+configuration file to be used to build POOMA. 
+
+If you're using KCC then you have to modify config/arch/&lt;plateform&gt;KCC.conf
+so as to set both KCC specific options and the back-end C compiler
+options to include the appropriate profiling option -- when using
+gprof, that option is usually '-pg'. On my machine (a Linux box) I
+have the following  
+
+   ### debug or optimized build settings for C++ applications
+
+   $cppdbg_app  = &quot;+K0 -g -pg&quot;;
+   $cppopt_app  = &quot;+K3 -O -DNOPAssert -DNOCTAssert -pg&quot;;
+   $cppopt_app .= &quot; --inline_keyword_space_time=10000&quot;;
+
+   # ....
+
+   ### debug or optimized build settings for C applications
+
+   $cdbg_app = &quot;-g -pg&quot;;
+   $copt_app = &quot;-O3 -pg -funroll-loops -fstrict-aliasing&quot;;
+
+According to KCC documentation, the following plateforms understand
+'-pg': 
+
+	  Linux on Intel x86
+	  Solaris/SPARC
+	  Compaq Tru64 Unix
+	  HP-UX
+
+If you're using a profiling tool other than gprof you can instruct KCC
+about that profiler with the following syntax
+
+      --backend &lt;profiler-options&gt;
+
+If you're using GCC, then naturally the profiler option for gprof is
+spelled '-pg' when using both g++ and gcc :-)  
+
+[ At this point I suspect it would be much flexible to specify the
+  target specific profiling option at configure level instead of
+  modifying config/arch/&lt;suite&gt;.conf ]
+
+
+
+II) Compiling the POOMA library, benchmarks and running them
+
+   These steps are as usual, e.g.
+
+  ./configure --arch LINUXKCC --suite LINUXKCC --opt
+	      # [ configure blah blah ]
+  export POMMASUITE=LINUXKCC &amp;&amp; make -j 3
+	      # [ make blah blah ]
+  cd benchmarks/SimpleArray &amp;&amp; make -j 3
+	      # [ make blah blah ]
+  cd LINUXKCC &amp;&amp; ./atest --run-impls 2
+              # [ benchmark blah blah ]
+
+
+Note that when you run the benchmark (or the program you're
+profiling), it will produce, as a side effect, a file named 'gmon.out'
+in your *working directory* (well actually the last directory the
+running program was working in).  That file will be created if and
+only if the program terminates normally, i.e. if it aborts then you
+won't have any profiling information.  The file 'gmon.out' contains
+the information needed by gprof in the next step.
+
+III) Producing profiling information.
+
+  To produce the actual profiling information, you have to invoke
+gprof and the program being profiled as its argument.  Since gprof
+writes directly on the standard output, you might want to use a
+redirection :
+
+   gprof atest &gt; atest-pooma.prof
+
+
+The profile output has essentially three parts
+
+    1) Flat profile
+    2) Call graph (most inteersting when trying to improve efficiency)
+    3) The index of the functions.
+
+The output of gprof is pretty much well documented and self-contained.
+You might want to read the man page for specific options.  If your
+system is a Linux box, I would recommand 
+
+     info gprog
+
+as the info page is much more documented than the man page.
+
+
+A caveat
+========
+
+   Since KCC does unexpected transformations with your C++ program when
+heavily optimizing, trying to profile on basic-block basis won't work.
+However you can profile on line-by-line basis or basic-block basis
+with g++ since that compiler does not any unexpected rewriting.
+
+
+I hope this will be useful. If you have further questions, please
+don't hesitate to ask, I'll try to answer them (within my competence). 
+
+-- Gaby
+CodeSourcery, LLC                       <A HREF="http://www.codesourcery.com">http://www.codesourcery.com</A>
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000633.html">[mainline Patch] pretty.pl: Fix Spelling Mistake
+</A></li>
+	<LI>Next message: <A HREF="000635.html">Mesh functors - please review [newfield_revision]
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#634">[ date ]</a>
+              <a href="thread.html#634">[ thread ]</a>
+              <a href="subject.html#634">[ subject ]</a>
+              <a href="author.html#634">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

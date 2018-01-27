@@ -1,0 +1,147 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [pooma-dev] timers and performance measurement under Linux
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bpooma-dev%5D%20timers%20and%20performance%20measurement%20under%20Linux&In-Reply-To=%3CF871BB04B0EA224A821A5274C31DF3152C78%40proxim-sf001.santafe.proximation.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000611.html">
+   <LINK REL="Next"  HREF="000610.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[pooma-dev] timers and performance measurement under Linux</H1>
+    <B>James Crotinger</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bpooma-dev%5D%20timers%20and%20performance%20measurement%20under%20Linux&In-Reply-To=%3CF871BB04B0EA224A821A5274C31DF3152C78%40proxim-sf001.santafe.proximation.com%3E"
+       TITLE="[pooma-dev] timers and performance measurement under Linux">JimC at proximation.com
+       </A><BR>
+    <I>Mon Aug  6 16:45:50 UTC 2001</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000611.html">[pooma-dev] timers and performance measurement under Linux
+</A></li>
+        <LI>Next message: <A HREF="000610.html">[newfield_revision] patch: FieldShiftEngine
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#609">[ date ]</a>
+              <a href="thread.html#609">[ thread ]</a>
+              <a href="subject.html#609">[ subject ]</a>
+              <a href="author.html#609">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>It looks to me like Benchmark is assuming wall-clock time - the MOps
+calculation is:
+ 
+  opCount / time_per_iteration / 1.0e6
+ 
+where time_per_iteration is basically the average over the iterations of
+ 
+  (stop - start - overhead)
+ 
+where stop and start are measured with Clock::value(). If Clock::value() is
+returning total CPU time and we're running multi-threaded, then this isn't
+giving us what we want. If anything, the CPU time will go up with the number
+of threads. Of course, I don't know how clock() works with threads - if it
+is really returning the total CPU time for the process or what. If it were
+returning the CPU time for the calling thread, then the calculation is just
+plain wrong. If it is returning the total CPU time then the calculation
+needs to divide by the number of worker threads, or something like that -
+really it is also just plain wrong. The bottom line is that to measure
+parallel speedup we really want wall-clock time and so it seems that the
+place to be careful is if you're falling back on the default of clock() or
+using the SGI high-speed timers (I need to check the docs on these and see
+just what they really measure).
+ 
+At any rate, Stephen looked over my changes to use gettimeofday under Linux
+and said they look good, so I've committed my changes to
+src/Utilities/Clock.h along with correpsonding changes to the configure
+files.
+ 
+BTW, the Linux header files contain definitions of timespec and
+clock_gettime, but I couldn't figure out how to access them. Does anyone
+know? These give even higher resolution, or at least potentially do. But if
+I just include &lt;sys/time.h&gt; and &lt;time.h&gt;, the compiler tells me timespec has
+not been defined. The headers check a macro __need_timespec and I tried
+defining this, but it didn't seem to have any effect. I ran into the same
+problem earlier when I tried to use nanosleep - it is in the header files,
+but it seems disabled by some configuration options. 
+ 
+    Jim
+ 
+
+-----Original Message-----
+From: James Crotinger [mailto:<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">JimC at proximation.com</A>]
+Sent: Sunday, August 05, 2001 9:37 PM
+To: '<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">pooma-dev at pooma.codesourcery.com</A>'
+Subject: [pooma-dev] timers and performance measurement under Linux
+
+
+
+How important is it that the timer used by the benchmark class measure CPU
+time? I'm not sure how we've even been using this class for parallel codes -
+in fact, I was thinking that back when we were just testing with threads, we
+were measuring wall-clock time. But the default implementation of
+Utilities/Clock.h uses the &quot;clock()&quot; call, which is supposed to measure
+&quot;elapsed processor time&quot;, though I'm not completely sure what that means for
+a multithreaded program on a multi-processor. On the SGI we were using the
+high-performance timers, which I believe access the CPUs hardware
+performance registers, so I would think that that was CPU time as well.
+Anyway, the problem is that clock() only has 10 ms granularity under Linux
+and that's really crappy if you're trying to measure scaling with problem
+size. I've written a version that uses gettimeofday, which has a granularity
+of something like 15 microseconds under Linux (may depend on processor
+speed?), but this is definitely not a measure of CPU time. For serial
+programs this just means that you need to test on an unloaded machine to
+have the results make sense. For parallel programs, this means that you need
+to interpret the results differently. Anyway, I'm using this and it seems
+generally useful, so I'd like to check it in, but was wondering if the
+clock-time versus CPU-time measurement was a problem for anyone. I suppose
+we could put an accessor on Clock that would allow the user to find out what
+type of time was being presented, and Benchmark could examine this and
+calculate appropriately, if necessary.
+
+As a side comment, I'm using KCC on one of our 1 GHz PIII Linux boxes.
+ABCTest (which is doing a simple non-stencil calculation, so this is as fast
+as it gets) is only getting 45 MFlops for the C version, which is the
+fastest. This seems pretty pathetic. What have other Linux users seen on
+what types of boxes? Also, what is available on Linux for profiling? Is
+prof/gprof it? Does KAI sell anything commercial? Does the PIII have any
+hardware performance monitoring and is there access to it? Does VTune (under
+Windows) inline sufficiently well to do performance testing there (allegedly
+good profiling tools, so it might be OK for the serial stuff, but I don't
+know if it is capable of &quot;inlining everything&quot;). 
+
+  Jim 
+
+-------------- next part --------------
+An HTML attachment was scrubbed...
+URL: &lt;<A HREF="http://sourcerytools.com/pipermail/pooma-dev/attachments/20010806/f376cf83/attachment.html">http://sourcerytools.com/pipermail/pooma-dev/attachments/20010806/f376cf83/attachment.html</A>&gt;
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000611.html">[pooma-dev] timers and performance measurement under Linux
+</A></li>
+	<LI>Next message: <A HREF="000610.html">[newfield_revision] patch: FieldShiftEngine
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#609">[ date ]</a>
+              <a href="thread.html#609">[ thread ]</a>
+              <a href="subject.html#609">[ subject ]</a>
+              <a href="author.html#609">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

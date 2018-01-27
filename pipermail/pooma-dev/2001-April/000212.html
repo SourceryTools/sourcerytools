@@ -1,0 +1,99 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> reference loop with updaters
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20reference%20loop%20with%20updaters&In-Reply-To=%3C3AD3993D.D1477259%40cacr.caltech.edu%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000211.html">
+   <LINK REL="Next"  HREF="000213.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>reference loop with updaters</H1>
+    <B>Julian Cummings</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20reference%20loop%20with%20updaters&In-Reply-To=%3C3AD3993D.D1477259%40cacr.caltech.edu%3E"
+       TITLE="reference loop with updaters">cummings at cacr.caltech.edu
+       </A><BR>
+    <I>Tue Apr 10 23:37:33 UTC 2001</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000211.html">Hydrodynamics Kernel
+</A></li>
+        <LI>Next message: <A HREF="000213.html">[pooma-dev] reference loop with updaters
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#212">[ date ]</a>
+              <a href="thread.html#212">[ thread ]</a>
+              <a href="subject.html#212">[ subject ]</a>
+              <a href="author.html#212">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Hi All,
+
+I got a little sidetracked today when I noticed that a few
+of the NewField test codes (BasicTest1 and FieldTour1)
+dump core at the end, during object cleanup.  This happens
+because the Pool class detects that not all the pooled memory
+has been freed.  After a fair bit of detective work, I have
+determined that this is due to a reference-counting loop
+between Fields and Updaters.
+
+When you add an Updater to a Field, the Updater stores a
+copy of the Field in UpdaterRetargetBase.  The Updater is
+added to an UpdaterList stored in the FieldEngineBase
+base class of the FieldEngine inside the Field.  Thus, there
+is a circular loop in the reference counting.  When the Field
+is destroyed at the end of the program, it calls the destructor
+for its FieldEngineBase.  The FieldEngineBaseData referred
+to by the FieldEngineBase does not get destroyed, however,
+because there are outstanding references to it which correspond
+to the copies of the Field in each Updater.
+
+I think this is a fairly significant problem that should be fixed.
+I'm not sure what the proper solution is though.  Calling
+removeUpdaters() in the Field destructor causes an infinite
+recursion.  Perhaps this recursion could be broken by making
+the FieldEngine the subject of an Updater, rather than the Field.
+Would that work?  I'm going crazy just thinking about it...
+
+-- Julian C.
+
+
+--
+Dr. Julian C. Cummings                       E-mail: <A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">cummings at cacr.caltech.edu</A>
+California Institute of Technology           Phone:  626-395-2543
+1200 E. California Blvd., Mail Code 158-79   Fax:    626-584-5917
+Pasadena, CA 91125
+
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000211.html">Hydrodynamics Kernel
+</A></li>
+	<LI>Next message: <A HREF="000213.html">[pooma-dev] reference loop with updaters
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#212">[ date ]</a>
+              <a href="thread.html#212">[ thread ]</a>
+              <a href="subject.html#212">[ subject ]</a>
+              <a href="author.html#212">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

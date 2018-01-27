@@ -1,0 +1,522 @@
+Index: GNUmakefile.in
+===================================================================
+RCS file: /home/cvs/Repository/vpp/GNUmakefile.in,v
+retrieving revision 1.35
+diff -u -r1.35 GNUmakefile.in
+--- GNUmakefile.in	29 Dec 2005 02:51:40 -0000	1.35
++++ GNUmakefile.in	4 Jan 2006 04:06:31 -0000
+@@ -27,6 +27,7 @@
+ # Variables in this section can be set by the user on the command line.
+ 
+ srcdir := @srcdir@
++host:=@host@
+ 
+ # Test this variable with "ifdef" to determine whether or not to 
+ # perform actions needed by maintainers.
+@@ -38,6 +39,7 @@
+ PACKAGE_VERSION := @PACKAGE_VERSION@
+ INSTALL := @INSTALL@
+ INSTALL_DATA := @INSTALL_DATA@
++distname:= $(PACKAGE_TARNAME)-$(PACKAGE_VERSION)
+ 
+ # Order matters for the various directory variables, as autoconf makes some
+ # of the variables depend on the values of others.
+@@ -108,13 +110,13 @@
+ # Documentation is only built in maintainer mode.  Many ordinary users
+ # do not have these tools, and some versions do not work very well.
+ # So, our source distributions contain pre-built versions of the
+-# documentation; the build prcoess will copy the pre-built versions if
++# documentation; the build process will copy the pre-built versions if
+ # these tools are not available.
+ ifdef maintainer_mode
+ # The Doxygen command.
+ DOXYGEN := @DOXYGEN@ 
+ # The Synopsis command.
+-SYNOPSIS := python synopsis.py
++SYNOPSIS := @SYNOPSIS@
+ # The command used to turn DocBook into TeX.
+ JADE := 
+ # The command used to turn TeX output by Jade into PDF.
+@@ -157,6 +159,25 @@
+ 	examples
+ 
+ ########################################################################
++# Variables
++########################################################################
++
++# Variables in this section should not be modified.
++
++vpath %.cpp $(srcdir)
++vpath %.hpp $(srcdir)
++vpath %.xml $(srcdir)
++
++# All object files.
++objects := $(patsubst $(srcdir)/%.cpp, %.$(OBJEXT), $(cxx_sources))
++deps    := $(patsubst $(srcdir)/%.cpp, %.d, $(cxx_sources))
++
++hdr	:= $(patsubst $(srcdir)/src/%, %, \
++             $(wildcard $(srcdir)/src/vsip/*.hpp))
++hdr	+= $(patsubst $(srcdir)/src/%, %, \
++             $(wildcard $(srcdir)/src/vsip/impl/*.hpp))
++
++########################################################################
+ # Included Files
+ ########################################################################
+ 
+@@ -179,27 +200,6 @@
+ -include $(patsubst %, %/GNUmakefile.inc, $(subdirs))
+ 
+ ########################################################################
+-# Internal Variables
+-########################################################################
+-
+-# Variables in this section should not be modified.
+-
+-vpath %.cpp $(srcdir)
+-vpath %.hpp $(srcdir)
+-vpath %.xml $(srcdir)
+-
+-# All object files.
+-objects := $(patsubst $(srcdir)/%.cpp, %.$(OBJEXT), $(cxx_sources))
+-deps    := $(patsubst $(srcdir)/%.cpp, %.d, $(cxx_sources))
+-
+-hdr	:= $(patsubst $(srcdir)/src/%, %, $(wildcard $(srcdir)/src/vsip/*.hpp))
+-hdr	+= $(patsubst $(srcdir)/src/%, %, $(wildcard $(srcdir)/src/vsip/impl/*.hpp))
+-
+-syn	:= $(patsubst %.hpp, src/%.syn, \
+-             $(filter-out %fft-core.hpp %signal-conv-ipp.hpp %signal-conv-sal.hpp, \
+-             $(hdr)))
+-
+-########################################################################
+ # Functions
+ ########################################################################
+ 
+@@ -215,8 +215,9 @@
+ # known.
+ define install_pc
+ cat vsipl++.pc | sed -e "s|@suffix@|$(suffix)|g" > vsipl++-installed.pc; \
+-  $(INSTALL) -d $(libdir)/pkgconfig; \
+-  $(INSTALL_DATA) vsipl++-installed.pc $(libdir)/pkgconfig/vsipl++$(suffix).pc
++  $(INSTALL) -d $(DESTDIR)$(libdir)/pkgconfig; \
++  $(INSTALL_DATA) vsipl++-installed.pc \
++    $(DESTDIR)$(libdir)/pkgconfig/vsipl++$(suffix).pc
+ endef
+ 
+ ########################################################################
+@@ -240,23 +241,6 @@
+ 		      $(call dir_var,$(dir $<),CXXFLAGS) $< \
+ 		      | sed "s|$(*F)\\.o[ :]*|$*\\.d $*\\.$(OBJEXT) : |g" > $@'
+ 
+-%.syn: %.hpp
+-	$(SYNOPSIS) parse --output=$@ $<
+-
+-vsip.syn: $(syn)
+-	$(SYNOPSIS) link --output=$@ $^
+-
+-vsip.xref: vsip.syn
+-	$(SYNOPSIS) xref --output=$@ $<
+-
+-vsipdoc: vsip.xref
+-
+-vsipdoc: vsip.syn
+-	$(SYNOPSIS) html --output=$@ $<
+-
+-vsipsxr: vsip.syn
+-	$(SYNOPSIS) sxr --output=$@ $<
+-
+ ########################################################################
+ # Standard Targets
+ ########################################################################
+@@ -298,10 +282,13 @@
+ $(foreach f,$(pdf_manuals),$(eval $(call install_pdf_template,$(f))))
+ 
+ .PHONY: install-html
+-install-html: $(foreach f,$(html_manuals),install-html-$(notdir $(f))) 
++install-html:: $(foreach f,$(html_manuals),install-html-$(notdir $(f))) 
+ 
+ $(foreach f,$(html_manuals),$(eval $(call install_html_template,$(f))))
+ 
++.PHONY: dist
++dist::
++
+ # Include automatically generated dependency files.
+ ifeq (,$(filter $(MAKECMDGOALS), depend doc clean))
+ include $(deps)
+@@ -336,10 +323,34 @@
+ clean::
+ 	rm -f $(objects)
+ 	rm -f $(deps)
+-	rm -rf $(syn) vsip.syn vsip.xref links xref
+ 
+ depend:: $(deps)
+ 
++dist:: sdist
++
++sdist: $(distname).tar.bz2
++bdist: $(distname)-$(host).tar.bz2
++
++$(distname).tar.bz2:
++	-rm -rf $(distname)
++	cp -pr $(srcdir) $(distname)
++	-chmod -R a+r $(distname)
++	tar cjhf $@ --owner=0 --group=0\
++          --exclude CVS \
++          --exclude .cvsignore \
++          --exclude autom4te.cache \
++          --exclude '*~' \
++          --exclude '.#*' \
++          $(distname)
++	-rm -rf $(distname)
++
++$(distname)-$(host).tar.bz2:
++ifndef DESTDIR
++	@echo "Please set DESTDIR while building binary packages."
++else
++	tar cjhf $@  --owner=0 --group=0 -C $(DESTDIR) $(prefix)
++endif
++
+ # Always remake dependencies when asked to.
+ ifneq (,$(findstring depend, $(MAKECMDGOALS)))
+ $(deps): %.d:	.FORCE
+Index: configure.ac
+===================================================================
+RCS file: /home/cvs/Repository/vpp/configure.ac,v
+retrieving revision 1.67
+diff -u -r1.67 configure.ac
+--- configure.ac	29 Dec 2005 02:51:40 -0000	1.67
++++ configure.ac	4 Jan 2006 04:06:32 -0000
+@@ -1331,6 +1331,7 @@
+ # Documentation
+ #
+ AC_CHECK_PROGS(DOXYGEN, doxygen)
++AC_CHECK_PROGS(SYNOPSIS, synopsis)
+ AC_CHECK_PROGS(XSLTPROC, xsltproc)
+ AC_CHECK_PROGS(XEP, xep)
+ 
+Index: vsipl++.pc.in
+===================================================================
+RCS file: /home/cvs/Repository/vpp/vsipl++.pc.in,v
+retrieving revision 1.6
+diff -u -r1.6 vsipl++.pc.in
+--- vsipl++.pc.in	22 Dec 2005 16:31:40 -0000	1.6
++++ vsipl++.pc.in	4 Jan 2006 04:06:32 -0000
+@@ -9,6 +9,6 @@
+ 
+ Name: Sourcery VSIPL++
+ Description: CodeSourcery VSIPL++ library
+-Version: @VERSION@
++Version: @PACKAGE_VERSION@
+ Libs: ${ldflags} -L${libdir} -lvsip@suffix@ @LIBS@
+ Cflags: ${cppflags}
+Index: doc/Doxyfile.in
+===================================================================
+RCS file: /home/cvs/Repository/vpp/doc/Doxyfile.in,v
+retrieving revision 1.1
+diff -u -r1.1 Doxyfile.in
+--- doc/Doxyfile.in	14 Oct 2005 16:00:47 -0000	1.1
++++ doc/Doxyfile.in	4 Jan 2006 04:06:33 -0000
+@@ -30,7 +30,7 @@
+ # If a relative path is entered, it will be relative to the location 
+ # where doxygen was started. If left blank the current directory will be used.
+ 
+-OUTPUT_DIRECTORY       = doc
++OUTPUT_DIRECTORY       = doc/reference
+ 
+ # If the CREATE_SUBDIRS tag is set to YES, then doxygen will create 
+ # 4096 sub-directories (in 2 levels) under the output directory of each output 
+@@ -606,7 +606,7 @@
+ # If a relative path is entered the value of OUTPUT_DIRECTORY will be 
+ # put in front of it. If left blank `html' will be used as the default path.
+ 
+-HTML_OUTPUT            = html
++HTML_OUTPUT            = reference
+ 
+ # The HTML_FILE_EXTENSION tag can be used to specify the file extension for 
+ # each generated HTML page (for example: .htm,.php,.asp). If it is left blank 
+Index: doc/GNUmakefile.inc.in
+===================================================================
+RCS file: /home/cvs/Repository/vpp/doc/GNUmakefile.inc.in,v
+retrieving revision 1.12
+diff -u -r1.12 GNUmakefile.inc.in
+--- doc/GNUmakefile.inc.in	29 Dec 2005 02:51:40 -0000	1.12
++++ doc/GNUmakefile.inc.in	4 Jan 2006 04:06:33 -0000
+@@ -12,41 +12,102 @@
+ # Variables
+ ########################################################################
+ 
+-doc_pdf_manuals := \
+-	doc/quickstart/quickstart.pdf \
+-	doc/tutorial/tutorial.pdf
+-doc_html_manuals := $(doc_pdf_manuals:%.pdf=%.html)
+-doc_manuals := $(doc_pdf_manuals) $(doc_html_manuals)
+-
+-pdf_manuals += $(doc_pdf_manuals)
+-html_manuals += $(doc_html_manuals)
+-
+-tutorial_images := \
+-	$(wildcard $(srcdir)/doc/tutorial/images/*.png) \
+-	$(wildcard $(srcdir)/doc/tutorial/images/callouts/*.png) \
++doc_syn := $(patsubst %.hpp, src/%.syn, \
++	     $(filter-out %fft-core.hpp \
++                          %signal-conv-ipp.hpp \
++                          %signal-conv-sal.hpp, \
++               $(hdr)))
++
++pdf_manuals += doc/quickstart/quickstart.pdf doc/tutorial/tutorial.pdf
++# The following variable is used by the 'install_html_template' rules.
++# The 'install-html' target is thus dependent on these directories.
++html_manuals += doc/quickstart/quickstart doc/tutorial/tutorial
++doc_manuals := $(pdf_manuals) $(html_manuals)
++
++doc_tutorial_svg := $(wildcard $(srcdir)/doc/tutorial/images/*.svg)
++doc_tutorial_png := $(wildcard $(srcdir)/doc/tutorial/images/*.png)
++doc_tutorial_png += $(wildcard $(srcdir)/doc/tutorial/images/callouts/*.png)
+ 
+ ########################################################################
+ # Rules
+ ########################################################################
+ 
++# The reference can't be put into the html_manuals variable as its
++# installation rule is different.
++html:: doc/reference/reference
++
++# If synopsis was found, generate reference with that.
++# Alternatively, use doxygen if found.
++# If neither is available, but the reference is already
++# present in the source directory, copy it from there.
++
++ifdef SYNOPSIS
++doc/reference/reference: vsip.syn vsip.xref
++	rm -rf $@
++	python synopsis.py html --output=$@ $<
++else
+ ifdef DOXYGEN
+-doc:: doc/html/index.html
++doc/reference/reference:
++	$(DOXYGEN) doc/Doxyfile
++else
++doc/reference/reference:
++	if test -d $(srcdir)/$@; then \
++          mkdir -p doc/reference; \
++          cp -r $(srcdir)/$@ $@; \
++        fi
++endif
+ endif
+ 
+-$(doc_manuals): \
+-	doc/csl-docbook/fragments/opl.xml \
+-	doc/csl-docbook/fragments/gpl.xml
++$(doc_manuals): $(patsubst %, doc/csl-docbook/fragments/%, opl.xml gpl.xml)
+ 
+-doc/html/index.html:
+-	$(DOXYGEN) doc/Doxyfile
++doc/quickstart/quickstart: doc/quickstart/quickstart.html
++
++doc/tutorial/tutorial: doc/tutorial/tutorial.html
+ 
+-doc/tutorial/tutorial.html: \
+-        $(patsubst $(srcdir)/doc/tutorial/%,doc/tutorial/tutorial.html/%,$(tutorial_images))
++doc/tutorial/tutorial: \
++        $(patsubst $(srcdir)/doc/tutorial/%, doc/tutorial/tutorial/%, \
++          $(doc_tutorial_png))
++
++doc/tutorial/tutorial.pdf: \
++        $(patsubst $(srcdir)/doc/tutorial/%, doc/tutorial/%, \
++          $(doc_tutorial_svg))
++
++doc/tutorial/images/%.svg: $(srcdir)/doc/tutorial/images/%.svg
++	mkdir -p $(@D)
++	cp $< $@
+ 
+-doc/tutorial/tutorial.html/images/%.png: $(srcdir)/doc/tutorial/images/%.png
++doc/tutorial/tutorial/images/%.png: $(srcdir)/doc/tutorial/images/%.png
+ 	mkdir -p $(@D)
+ 	cp $< $@
++	touch doc/tutorial/tutorial
++
++# Call this target explicitely to copy documentation back into the 
++# source directory.
++ifneq '$(srcdir)' '.'
++doc2src:
++	for f in quickstart tutorial; do \
++	  if test -d doc/$$f/$$f; then \
++            mkdir -p $(srcdir)/doc/$$f; \
++            rm -rf $(srcdir)/doc/$$f/$$f; \
++            cp -r doc/$$f/$$f $(srcdir)/doc/$$f; \
++            cp doc/$$f/$$f.html $(srcdir)/doc/$$f; \
++          fi; \
++        done
++	rm -rf $(srcdir)/doc/reference
++	mkdir -p $(srcdir)/doc/reference
++	cp -r doc/reference/reference $(srcdir)/doc/reference
++endif
+ 
+ clean::
+-	rm -rf $(doc_manuals)
+-	rm -rf doc/html
++	rm -rf $(doc_syn) vsip.syn vsip.xref links xref
++	rm -rf $(doc_manuals) doc/reference/reference
++
++%.syn: %.hpp
++	python synopsis.py parse --output=$@ $<
++
++vsip.syn: $(doc_syn)
++	python synopsis.py link --output=$@ $^
++
++vsip.xref: vsip.syn
++	python synopsis.py xref --output=$@ $<
++
+Index: doc/csl-docbook/GNUmakefile.inc
+===================================================================
+RCS file: /home/cvs/Repository/csl-docbook/GNUmakefile.inc,v
+retrieving revision 1.7
+diff -u -r1.7 GNUmakefile.inc
+--- doc/csl-docbook/GNUmakefile.inc	31 Dec 2005 22:46:35 -0000	1.7
++++ doc/csl-docbook/GNUmakefile.inc	4 Jan 2006 04:06:33 -0000
+@@ -84,7 +84,7 @@
+ define install_pdf_template
+ .PHONY: install-pdf-$(notdir $(1))
+ install-pdf-$(notdir $(1)): $(1) install-pdfdir
+-	if test -r $(1); then $(INSTALL_DATA) $(1) $(pdfdir); fi
++	if test -r $(1); then $(INSTALL_DATA) $(1) $(DESTDIR)$(pdfdir); fi
+ endef
+ 
+ # Install an HTML manual. 
+@@ -92,20 +92,20 @@
+ .PHONY: install-html-$(notdir $(1))
+ install-html-$(notdir $(1)): $(1) install-htmldir
+ 	if test -r $(1); then \
+-		$(INSTALL) -d $(htmldir)/$(notdir $(1)); \
+-		$(INSTALL_DATA) $(1).html $(htmldir)/; \
+-		$(INSTALL_DATA) $(1)/*.html $(htmldir)/$(notdir $(1)); \
+-		$(INSTALL_DATA) $(1)/*.css $(htmldir)/$(notdir $(1)); \
++		$(INSTALL) -d $(DESTDIR)$(htmldir)/$(notdir $(1)); \
++		$(INSTALL_DATA) $(1).html $(DESTDIR)$(htmldir)/; \
++		$(INSTALL_DATA) $(1)/*.html $(DESTDIR)$(htmldir)/$(notdir $(1)); \
++		$(INSTALL_DATA) $(1)/*.css $(DESTDIR)$(htmldir)/$(notdir $(1)); \
+ 	fi
+ 	if test -d $(1)/images; then \
+-		$(INSTALL) -d $(htmldir)/$(notdir $(1))/images; \
++		$(INSTALL) -d $(DESTDIR)$(htmldir)/$(notdir $(1))/images; \
+ 		$(INSTALL_DATA) $(1)/images/*.png \
+-			$(htmldir)/$(notdir $(1))/images; \
++			$(DESTDIR)$(htmldir)/$(notdir $(1))/images; \
+ 	fi
+ 	if test -d $(1)/images/callouts; then \
+-		$(INSTALL) -d $(htmldir)/$(notdir $(1))/images/callouts; \
++		$(INSTALL) -d $(DESTDIR)$(htmldir)/$(notdir $(1))/images/callouts; \
+ 		$(INSTALL_DATA) $(1)/images/callouts/*.png \
+-			$(htmldir)/$(notdir $(1))/images/callouts; \
++			$(DESTDIR)$(htmldir)/$(notdir $(1))/images/callouts; \
+ 	fi
+ endef
+ 
+@@ -177,10 +177,10 @@
+ 
+ ifndef docbook_html
+ %.html:
+-	if test -r $(srcdir)/$@; then \
+-		rm -rf $@; \
+-		mkdir -p $@; \
+-		cp -r $(srcdir)/$@ $@; \
++	if test -r $(srcdir)/$*; then \
++		rm -rf $*; \
++		mkdir -p $(dir $*); \
++		cp -r $(srcdir)/$* $(dir $*); \
+ 	fi
+ endif
+ 
+@@ -190,8 +190,8 @@
+ 
+ .PHONY: install-pdfdir
+ install-pdfdir:
+-	$(INSTALL) -d $(pdfdir)
++	$(INSTALL) -d $(DESTDIR)$(pdfdir)
+ 
+ .PHONY: install-htmldir
+ install-htmldir:
+-	$(INSTALL) -d $(htmldir)
++	$(INSTALL) -d $(DESTDIR)$(htmldir)
+Index: examples/GNUmakefile.inc.in
+===================================================================
+RCS file: /home/cvs/Repository/vpp/examples/GNUmakefile.inc.in,v
+retrieving revision 1.6
+diff -u -r1.6 GNUmakefile.inc.in
+--- examples/GNUmakefile.inc.in	29 Dec 2005 02:51:40 -0000	1.6
++++ examples/GNUmakefile.inc.in	4 Jan 2006 04:06:33 -0000
+@@ -30,5 +30,5 @@
+ 	$(CXX) $(LDFLAGS) -o $@ $< -Lsrc/vsip -lvsip $(LIBS)
+ 
+ install::
+-	$(INSTALL) -d $(pkgdatadir)
+-	$(INSTALL_DATA) $(examples_cxx_sources) $(pkgdatadir)
++	$(INSTALL) -d $(DESTDIR)$(pkgdatadir)
++	$(INSTALL_DATA) $(examples_cxx_sources) $(DESTDIR)$(pkgdatadir)
+Index: src/vsip/GNUmakefile.inc.in
+===================================================================
+RCS file: /home/cvs/Repository/vpp/src/vsip/GNUmakefile.inc.in,v
+retrieving revision 1.12
+diff -u -r1.12 GNUmakefile.inc.in
+--- src/vsip/GNUmakefile.inc.in	29 Dec 2005 02:51:40 -0000	1.12
++++ src/vsip/GNUmakefile.inc.in	4 Jan 2006 04:06:33 -0000
+@@ -43,10 +43,11 @@
+ # must be copied explicitly.  By copying it last, we override any
+ # stale copy in the $srcdir.
+ install:: src/vsip/libvsip.a
+-	$(INSTALL) -d $(libdir)
+-	$(INSTALL_DATA) src/vsip/libvsip.a $(libdir)/libvsip$(suffix).a
+-	$(INSTALL) -d $(includedir)/vsip/impl
+-	$(INSTALL_DATA) src/vsip/impl/acconfig.hpp $(includedir)/vsip/impl
++	$(INSTALL) -d $(DESTDIR)$(libdir)
++	$(INSTALL_DATA) src/vsip/libvsip.a $(DESTDIR)$(libdir)/libvsip$(suffix).a
++	$(INSTALL) -d $(DESTDIR)$(includedir)/vsip/impl
++	$(INSTALL_DATA) src/vsip/impl/acconfig.hpp $(DESTDIR)$(includedir)/vsip/impl
+ 	for header in $(hdr); do \
+-          $(INSTALL_DATA) $(srcdir)/src/$$header $(includedir)/`dirname $$header`; \
++          $(INSTALL_DATA) $(srcdir)/src/$$header \
++            $(DESTDIR)$(includedir)/`dirname $$header`; \
+ 	done
+Index: vendor/GNUmakefile.inc.in
+===================================================================
+RCS file: /home/cvs/Repository/vpp/vendor/GNUmakefile.inc.in,v
+retrieving revision 1.7
+diff -u -r1.7 GNUmakefile.inc.in
+--- vendor/GNUmakefile.inc.in	29 Dec 2005 02:51:40 -0000	1.7
++++ vendor/GNUmakefile.inc.in	4 Jan 2006 04:06:33 -0000
+@@ -66,13 +66,13 @@
+ install::
+ 	@echo "Installing ATLAS (see atlas.install.log)"
+ 	# @$(MAKE) -C vendor/atlas installinstall > atlas.install.log 2>&1
+-	$(INSTALL) -d $(libdir)/atlas
+-	$(INSTALL_DATA) vendor/atlas/lib/libatlas.a   $(libdir)
+-	$(INSTALL_DATA) vendor/atlas/lib/libcblas.a   $(libdir)
+-	$(INSTALL_DATA) vendor/atlas/lib/libf77blas.a $(libdir)
+-	$(INSTALL_DATA) vendor/atlas/lib/liblapack.a  $(libdir)
+-	$(INSTALL) -d $(includedir)/atlas
+-	$(INSTALL_DATA) $(srcdir)/vendor/atlas/include/cblas.h $(includedir)
++	$(INSTALL) -d $(DESTDIR)$(libdir)/atlas
++	$(INSTALL_DATA) vendor/atlas/lib/libatlas.a   $(DESTDIR)$(libdir)
++	$(INSTALL_DATA) vendor/atlas/lib/libcblas.a   $(DESTDIR)$(libdir)
++	$(INSTALL_DATA) vendor/atlas/lib/libf77blas.a $(DESTDIR)$(libdir)
++	$(INSTALL_DATA) vendor/atlas/lib/liblapack.a  $(DESTDIR)$(libdir)
++	$(INSTALL) -d $(DESTDIR)$(includedir)/atlas
++	$(INSTALL_DATA) $(srcdir)/vendor/atlas/include/cblas.h $(DESTDIR)$(includedir)
+ endif
+ 
+ ifdef USE_BUILTIN_FFTW
+@@ -118,10 +118,10 @@
+         # note: configure script constructs vendor/fftw/ symlinks used here.
+ install::
+ 	@echo "Installing FFTW"
+-	$(INSTALL) -d $(libdir)
++	$(INSTALL) -d $(DESTDIR)$(libdir)
+ 	@for lib in $(vendor_FFTW_LIBS); do \
+-	  echo "$(INSTALL_DATA) $$lib  $(libdir)"; \
+-	  $(INSTALL_DATA) $$lib  $(libdir); done
+-	$(INSTALL) -d $(includedir)
+-	$(INSTALL_DATA) $(srcdir)/vendor/fftw/api/fftw3.h $(includedir)
++	  echo "$(INSTALL_DATA) $$lib  $(DESTDIR)$(libdir)"; \
++	  $(INSTALL_DATA) $$lib  $(DESTDIR)$(libdir); done
++	$(INSTALL) -d $(DESTDIR)$(includedir)
++	$(INSTALL_DATA) $(srcdir)/vendor/fftw/api/fftw3.h $(DESTDIR)$(includedir)
+ endif

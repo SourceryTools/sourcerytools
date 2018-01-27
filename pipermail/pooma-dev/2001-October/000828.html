@@ -1,0 +1,202 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> Patch to NewField/Field.h (3/3)
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20Patch%20to%20NewField/Field.h%20%283/3%29&In-Reply-To=%3C200110162226.f9GMQeX02802%40saltydog.lanl.gov%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000832.html">
+   <LINK REL="Next"  HREF="000829.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>Patch to NewField/Field.h (3/3)</H1>
+    <B>Dave Nystrom</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20Patch%20to%20NewField/Field.h%20%283/3%29&In-Reply-To=%3C200110162226.f9GMQeX02802%40saltydog.lanl.gov%3E"
+       TITLE="Patch to NewField/Field.h (3/3)">wdn at lanl.gov
+       </A><BR>
+    <I>Tue Oct 16 22:26:40 UTC 2001</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000832.html">[pooma-dev] Patch to NewField/PrintField.h
+</A></li>
+        <LI>Next message: <A HREF="000829.html">Patch to NewField/Field.h (2/3)
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#828">[ date ]</a>
+              <a href="thread.html#828">[ thread ]</a>
+              <a href="subject.html#828">[ subject ]</a>
+              <a href="author.html#828">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>}
+
+
+//-----------------------------------------------------------------------------
+// Functions for getting the number of materials for Arrays and Fields.
+//
+// This is complicated because of the recursive nature of sub-field storage.
+// We assume that multi-material fields are constructed by replicating
+// a centering. This means that
+//   (1) multi-material fields must have sub-fields; if not, there is one
+//       material
+//   (2) if there is one sub-field at the top level, there is one material
+//   (3) if there are multiple sub-fields and those have sub-fields themselves,
+//       we assume they represent materials
+//   (4) if there are multiple sub-fields and they do not have sub-fields,
+//       they represent materials if the data is replicated
+//-----------------------------------------------------------------------------
+
+template&lt;int Dim, class T, class EngineTag&gt;
+inline int numMaterials(const Array&lt;Dim, T, EngineTag&gt; &amp;a)
+{
+  return 1;
+}
+
+template&lt;class GeometryTag, class T, class EngineTag&gt;
+int numMaterials(const Field&lt;GeometryTag, T, EngineTag&gt; &amp;f)
+{
+  int n0 = f.numSubFields();
+  if (n0 &lt; 2)
+    {
+      return 1;
+    }
+  else
+    {
+      int n1 = f[0].numSubFields();
+      if (n1 &gt; 0)
+	{
+	  return n1;
+	}
+      else if (f[0].fieldEngine().offsets() == f[1].fieldEngine().offsets())
+	{
+	  return n0;
+	}
+      else
+	{
+	  return 1;
+	}
+    }
+}
+
+
+//-----------------------------------------------------------------------------
+// Functions for getting the number of centering points for Arrays and Fields.
+// We assume that multi-material fields are constructed by replicating
+// a centering. The analysis goes much like numMaterials above.
+//-----------------------------------------------------------------------------
+
+template&lt;int Dim, class T, class EngineTag&gt;
+inline int centeringSize(const Array&lt;Dim, T, EngineTag&gt; &amp;a)
+{
+  return 1;
+}
+
+template&lt;class GeometryTag, class T, class EngineTag&gt;
+int centeringSize(const Field&lt;GeometryTag, T, EngineTag&gt; &amp;f)
+{
+  int n0 = f.numSubFields();
+  if (n0 == 0)
+    {
+      return 1;
+    }
+  else
+    {
+      int n1 = f[0].numSubFields();
+      if (n1 == 0)
+	{
+	  if (n0 == 1 || f[0].fieldEngine().offsets() == f[1].fieldEngine().offsets())
+	    {
+	      return 1;
+	    }
+	  else
+	    {
+	      return n0;
+	    }
+	}
+      else
+	{
+	  return n1;
+	}
+    }
+}
+
+
+//-----------------------------------------------------------------------------
+// Functions for taking subfield views of Arrays and Fields.
+//-----------------------------------------------------------------------------
+
+template&lt;int Dim, class T, class EngineTag&gt;
+inline Array&lt;Dim, T, EngineTag&gt; &amp;subField(Array&lt;Dim, T, EngineTag&gt; &amp;a, int, int)
+{
+  return a;
+}
+
+template&lt;class GeometryTag, class T, class EngineTag&gt;
+typename SubFieldView&lt;Field&lt;GeometryTag, T, EngineTag&gt; &gt;::Type_t
+subField(const Field&lt;GeometryTag, T, EngineTag&gt; &amp;f, int m, int c)
+{
+  int n0 = f.numSubFields();
+  if (n0 == 0)
+    {
+      PAssert(m == 0);
+      PAssert(c == 0);
+      return f;
+    }
+  else
+    {
+      if (m == 0)
+	{
+	  PAssert(c &lt; n0);
+	  return f[c];
+	}
+      else if (c == 0)
+	{
+	  PAssert(m &lt; n0);
+	  return f[m];
+	}
+      else
+	{
+	  return subField(f[m], 0, c);
+	}
+    }
+}
+
+#endif // POOMA_NEWFIELD_FIELD_H
+
+// ACL:rcsinfo
+// ----------------------------------------------------------------------
+// $RCSfile: Field.h,v $   $Author: haney $
+// $Revision: 1.16.2.1 $   $Date: 2001/09/21 19:42:25 $
+// ----------------------------------------------------------------------
+// ACL:rcsinfo
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000832.html">[pooma-dev] Patch to NewField/PrintField.h
+</A></li>
+	<LI>Next message: <A HREF="000829.html">Patch to NewField/Field.h (2/3)
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#828">[ date ]</a>
+              <a href="thread.html#828">[ thread ]</a>
+              <a href="subject.html#828">[ subject ]</a>
+              <a href="author.html#828">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

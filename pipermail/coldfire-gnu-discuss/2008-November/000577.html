@@ -1,0 +1,162 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> Bug in 2008Q3 release
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:coldfire-gnu-discuss%40codesourcery.com?Subject=Re%3A%20Bug%20in%202008Q3%20release&In-Reply-To=%3C490D9DAB.10895.904A761%40meloun.miracle.cz%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   
+   <LINK REL="Next"  HREF="000575.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>Bug in 2008Q3 release</H1>
+    <B>Meloun Michal</B> 
+    <A HREF="mailto:coldfire-gnu-discuss%40codesourcery.com?Subject=Re%3A%20Bug%20in%202008Q3%20release&In-Reply-To=%3C490D9DAB.10895.904A761%40meloun.miracle.cz%3E"
+       TITLE="Bug in 2008Q3 release">meloun at miracle.cz
+       </A><BR>
+    <I>Sun Nov  2 12:31:38 UTC 2008</I>
+    <P><UL>
+        
+        <LI>Next message: <A HREF="000575.html">Bug in 2008Q3 release
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#577">[ date ]</a>
+              <a href="thread.html#577">[ thread ]</a>
+              <a href="subject.html#577">[ subject ]</a>
+              <a href="author.html#577">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Hello everybody!
+Unfortunately, I have problem with 2008Q3 release.
+GCC miscompile this small test case.
+
+//-----------------------------------------------------------------
+//m68k-elf-gcc -mcpu=5470 -save-temps -da -c test.c -o test.o
+int Test2(char*);
+
+static void Test3(void)
+{
+  char tmp2[2] = &quot;0&quot;;
+}
+
+void Test4(void)
+{
+  Test2(&quot;0&quot;);
+}
+//------------------------------------------------------------------
+The file is compiled to:
+#NO_APP
+	.file	&quot;test.c&quot;
+	.section	.rodata
+.LC0:
+	.string	&quot;0&quot;
+	
+	.text
+	.align	2
+	.type	Test3, @function
+Test3:
+	link.w %fp,#-4
+	lea .LC0,%a0    ; &lt;&lt;-- !!!! Note: a0 contain ptr to &quot;0&quot; here
+	move.w (%a0),-2(%fp)
+	unlk %fp
+	rts
+	.size	Test3, .-Test3
+	
+	.align	2
+	.globl	Test4
+	.type	Test4, @function
+Test4:
+	link.w %fp,#0
+	move.l %a0,-(%sp)  ; &lt;&lt;-- !!!! a0 is used uninitialized here
+	jsr Test2
+	addq.l #4,%sp
+	unlk %fp
+	rts
+	.size	Test4, .-Test4
+	.ident	&quot;GCC: (GNU) 4.3.2&quot;
+
+
+And relevant part of RTL:
+(please note missing reference to string constatnt &quot;0&quot; in first insn.
+
+;; Function Test4 (Test4)
+
+
+;; Generating RTL for tree basic block 2
+
+;; Test2 (&amp;&quot;0&quot;[0])
+(insn 5 4 6 test.c:11 (set (mem/f/i:SI (pre_dec:SI (reg/f:SI 15 %sp)) [0 S4 A16])
+        (reg:SI 8 %a0)) -1 (nil))     &lt;&lt;-- !!!! Why a0 ???? 
+
+(call_insn 6 5 7 test.c:11 (set (reg:SI 0 %d0)
+        (call (mem:QI (symbol_ref:SI (&quot;Test2&quot;) [flags 0x41] &lt;function_decl 0x7fdcf260 Test2&gt;) [0 S1 A8])
+            (const_int 4 [0x4]))) -1 (nil)
+    (nil))
+
+(insn 7 6 0 test.c:11 (set (reg/f:SI 15 %sp)
+        (plus:SI (reg/f:SI 15 %sp)
+            (const_int 4 [0x4]))) -1 (nil))
+
+
+
+But, if i change one of strings &quot;0&quot; to something else, then 
+first insn have reference to string and code is compiled OK.
+RTL:
+;; Test2 (&amp;&quot;1&quot;[0])
+(insn 5 4 6 test.c:11 (set (mem/f/i:SI (pre_dec:SI (reg/f:SI 15 %sp)) [0 S4 A16])
+        (symbol_ref/f:SI (&quot;*.LC1&quot;) [flags 0x2] &lt;string_cst 0x7fde1a60&gt;)) -1 (nil))
+
+code:
+Test4:
+	link.w %fp,#0
+	pea .LC1
+	jsr Test2
+	addq.l #4,%sp
+	unlk %fp
+	rts
+
+For me, its looks like compiler forget reinitialize (clear)
+registers content (assignment) between functions and uses a0 
+assigned in function Test3. Unfortunately, I m not gcc expert 
+and this problem is out of my knowledge. 
+Can anybody help me, please?
+ 
+Btw, vanilla gcc 4.3.2 have exactly same problem (and some other - 
+in long long expansions).
+
+Many thanks
+
+ Michal Meloun
+ 
+ 
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	
+	<LI>Next message: <A HREF="000575.html">Bug in 2008Q3 release
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#577">[ date ]</a>
+              <a href="thread.html#577">[ thread ]</a>
+              <a href="subject.html#577">[ subject ]</a>
+              <a href="author.html#577">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/coldfire-gnu-discuss">More information about the coldfire-gnu-discuss
+mailing list</a><br>
+</body></html>

@@ -1,0 +1,130 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> Restating the Jason model
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:c%2B%2B-pthreads%40codesourcery.com?Subject=Re%3A%20Restating%20the%20Jason%20model&In-Reply-To=%3Cxypr7y4oq98.fsf_-_%40miranda.boston.redhat.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000222.html">
+   <LINK REL="Next"  HREF="000241.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>Restating the Jason model</H1>
+    <B>Jason Merrill</B> 
+    <A HREF="mailto:c%2B%2B-pthreads%40codesourcery.com?Subject=Re%3A%20Restating%20the%20Jason%20model&In-Reply-To=%3Cxypr7y4oq98.fsf_-_%40miranda.boston.redhat.com%3E"
+       TITLE="Restating the Jason model">jason at redhat.com
+       </A><BR>
+    <I>Mon Jan 12 20:39:46 UTC 2004</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000222.html">[c++-pthreads] Re: thread-safety definition
+</A></li>
+        <LI>Next message: <A HREF="000241.html">[c++-pthreads] Restating the Jason model
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#240">[ date ]</a>
+              <a href="thread.html#240">[ thread ]</a>
+              <a href="subject.html#240">[ subject ]</a>
+              <a href="author.html#240">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>I think this is an appropriate time to restate my proposal.  I think
+there's a fair amount of consensus around these three points:
+
+ * Cancellation is a normal exception.
+ * If a cancellation exception is destroyed, the cancellation request
+   is re-entered, and acted on again at the next cancellation point.
+ * Cancellation is disabled during unwinding.
+
+But there are still some open questions:
+
+ * Which of the POSIX cancellation points are cancellation points in C++?
+
+None of the mandatory cancellation points are mentioned in the C++
+standard, so I don't see any reason to prevent them from throwing
+cancellation in C++ code.
+
+POSIX also says that the C standard I/O functions may be cancellation
+points, while the C++ standard says that they don't throw.  This
+contradiction can be resolved either by allowing them to throw cancellation
+or declaring that they are not cancellation points when called from C++
+code; if we choose the latter, an implementation could just change them to
+never be cancellation points, since that is allowed by POSIX.
+
+Dave Butenhof mentioned that on Tru64 printf is not a cancellation point,
+to avoid having to deal with cleaning up internal state.  But what about
+scanf, which can block?  One of the convenient things about pthread
+cancellation is that it wakes up a blocked thread.  Does this not happen on
+Tru64 if the thread is using stdio functions?
+
+My preference is still to amend the C++ standard to allow stdio functions
+to throw cancellation.
+
+ * Which bits of the C++ library are cancellation points?
+
+I would think pretty much all I/O code, and nothing else.
+
+Closely related to this is the question of what happens if a cancellation
+exception is thrown under a formatted I/O function; currently it would be
+caught and discarded, so it would only escape on a flush or the like.  I
+think it should escape from formatted I/O as well.  This could be
+implemented by explicitly rethrowing cancel, by limiting the set of
+exceptions trapped, or by calling pthread_testcancel after the try/catch
+block.
+
+If formatted I/O functions continue to trap cancellation exceptions, they
+would not be cancellation points; a cancellation point in the C++ binding
+would be a function which can throw a cancellation exception.
+
+ * Should cancellation also be disabled in destructors run during normal
+   execution?  In catch blocks?
+
+IMO, no and no.
+
+ * How can C++ code interact with a cancellation exception?
+
+I think everyone agrees that it should be possible to catch a cancel by
+name.  We still need to specify that name and any additional operations the
+cancel object might support.
+
+ * What about pthread_exit?
+
+I'm happy with the g++ status quo whereby destroying a pthread_exit
+exception calls terminate.  Unlike cancellation, the position of a call to
+pthread_exit is deterministic, so the user is responsible for making sure
+that it can propagate.
+
+Anything else?
+
+Jason
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000222.html">[c++-pthreads] Re: thread-safety definition
+</A></li>
+	<LI>Next message: <A HREF="000241.html">[c++-pthreads] Restating the Jason model
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#240">[ date ]</a>
+              <a href="thread.html#240">[ thread ]</a>
+              <a href="subject.html#240">[ subject ]</a>
+              <a href="author.html#240">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/c++-pthreads">More information about the c++-pthreads
+mailing list</a><br>
+</body></html>

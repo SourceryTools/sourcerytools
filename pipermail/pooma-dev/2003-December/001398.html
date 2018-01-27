@@ -1,0 +1,215 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [PATCH] Fix and test (unused) CollectFromContexts
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20Fix%20and%20test%20%28unused%29%20CollectFromContexts&In-Reply-To=%3CPine.LNX.4.53.0312081327310.2020%40bellatrix.tat.physik.uni-tuebingen.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001394.html">
+   <LINK REL="Next"  HREF="001402.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[PATCH] Fix and test (unused) CollectFromContexts</H1>
+    <B>Richard Guenther</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20Fix%20and%20test%20%28unused%29%20CollectFromContexts&In-Reply-To=%3CPine.LNX.4.53.0312081327310.2020%40bellatrix.tat.physik.uni-tuebingen.de%3E"
+       TITLE="[PATCH] Fix and test (unused) CollectFromContexts">rguenth at tat.physik.uni-tuebingen.de
+       </A><BR>
+    <I>Mon Dec  8 12:31:12 UTC 2003</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001394.html">[PATCH] Obvious stuff
+</A></li>
+        <LI>Next message: <A HREF="001402.html">[PATCH] Fix and test (unused) CollectFromContexts
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1398">[ date ]</a>
+              <a href="thread.html#1398">[ thread ]</a>
+              <a href="subject.html#1398">[ subject ]</a>
+              <a href="author.html#1398">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Hi!
+
+This patch fixes bugs in CollectFromContexts and adds a testcase for it.
+It's currently unused, but see the next patch.
+
+Ok?
+
+Richard.
+
+
+2003Dec08  Richard Guenther &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">richard.guenther at uni-tuebingen.de</A>&gt;
+
+	* src/Tulip/CollectFromContexts.h: pack/unpack CollectionValue
+	correctly, cleanup object, if valid.
+	* src/Tulip/tests/CollectFromContextsTest.cpp: new.
+	* src/Tulip/tests/makefile: add CollectFromContextsTest.
+
+===== CollectFromContexts.h 1.3 vs edited =====
+--- 1.3/r2/src/Tulip/CollectFromContexts.h	Wed Dec  3 12:30:45 2003
++++ edited/CollectFromContexts.h	Mon Dec  8 13:21:43 2003
+@@ -34,7 +34,7 @@
+ /** @file
+  * @ingroup Tulip
+  * @brief
+- * Undocumented.
++ * CollectFromContext encapsulates functionality like MPI_Gather.
+  */
+
+ #ifndef POOMA_MESSAGING_COLLECTFROMCONTEXTS_H
+@@ -136,7 +136,7 @@
+   static inline int pack(const CollectionValue&lt;T&gt; &amp;v, char *buffer)
+   {
+     int nBytes = Serialize&lt;CHEETAH, bool&gt;::pack(v.valid(), buffer);
+-    nBytes += Serialize&lt;CHEETAH, int&gt;::pack(v.context(), buffer);
++    nBytes += Serialize&lt;CHEETAH, int&gt;::pack(v.context(), buffer + nBytes);
+
+     if (v.valid())
+       {
+@@ -154,7 +154,7 @@
+
+     int nBytes = Serialize&lt;CHEETAH, bool&gt;::unpack(pvalid, buffer);
+
+-    nBytes += Serialize&lt;CHEETAH, int&gt;::unpack(pcon, buffer);
++    nBytes += Serialize&lt;CHEETAH, int&gt;::unpack(pcon, buffer + nBytes);
+
+     if (*pvalid)
+       {
+@@ -163,6 +163,9 @@
+
+     vp = new CollectionValue&lt;T&gt;(*pvalid, *pval, *pcon);
+
++    if (*pvalid)
++      Serialize&lt;CHEETAH, T&gt;::cleanup(pval);
++
+     return nBytes;
+   }
+
+--- /dev/null	Fri Mar 14 14:07:09 2003
++++ tests/CollectFromContextsTest.cpp	Mon Dec  8 12:50:01 2003
+@@ -0,0 +1,82 @@
++// -*- C++ -*-
++// ACL:license
++// ----------------------------------------------------------------------
++// This software and ancillary information (herein called &quot;SOFTWARE&quot;)
++// called POOMA (Parallel Object-Oriented Methods and Applications) is
++// made available under the terms described here.  The SOFTWARE has been
++// approved for release with associated LA-CC Number LA-CC-98-65.
++//
++// Unless otherwise indicated, this SOFTWARE has been authored by an
++// employee or employees of the University of California, operator of the
++// Los Alamos National Laboratory under Contract No. W-7405-ENG-36 with
++// the U.S. Department of Energy.  The U.S. Government has rights to use,
++// reproduce, and distribute this SOFTWARE. The public may copy, distribute,
++// prepare derivative works and publicly display this SOFTWARE without
++// charge, provided that this Notice and any statement of authorship are
++// reproduced on all copies.  Neither the Government nor the University
++// makes any warranty, express or implied, or assumes any liability or
++// responsibility for the use of this SOFTWARE.
++//
++// If SOFTWARE is modified to produce derivative works, such modified
++// SOFTWARE should be clearly marked, so as not to confuse it with the
++// version available from LANL.
++//
++// For more information about POOMA, send e-mail to <A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">pooma at acl.lanl.gov</A>,
++// or visit the POOMA web page at <A HREF="http://www.acl.lanl.gov/pooma/.">http://www.acl.lanl.gov/pooma/.</A>
++// ----------------------------------------------------------------------
++// ACL:license
++
++//-----------------------------------------------------------------------------
++// Test of PatchSizeSyncer
++//-----------------------------------------------------------------------------
++
++// Include files
++
++#include &quot;Tulip/Messaging.h&quot;
++#include &quot;Tulip/CollectFromContexts.h&quot;
++#include &quot;Pooma/Pooma.h&quot;
++#include &quot;Utilities/Tester.h&quot;
++
++
++int main(int argc, char *argv[])
++{
++  Pooma::initialize(argc, argv);
++  Pooma::Tester tester(argc, argv);
++
++  const int numContexts = Pooma::contexts();
++  const int myContext   = Pooma::context();
++
++  tester.out() &lt;&lt; &quot;Running with &quot; &lt;&lt; numContexts &lt;&lt; &quot; contexts.&quot; &lt;&lt; std::endl;
++
++  CollectFromContexts&lt;int&gt; ranks(2*(Pooma::context()+1));
++  if (Pooma::context() == 0) {
++    bool check = true;
++    for (int i=0; i&lt;Pooma::contexts(); ++i)
++      if (ranks[i] != 2*(i+1)) {
++	tester.out() &lt;&lt; &quot;[&quot; &lt;&lt; i &lt;&lt; &quot;] should be &quot;
++		     &lt;&lt; 2*(i+1) &lt;&lt; &quot;, but is &quot; &lt;&lt; ranks[i] &lt;&lt; &quot;\n&quot;;
++        check = false;
++      }
++    tester.check(&quot;Collecting ranks&quot;, check);
++  }
++
++  CollectFromContexts&lt;int&gt; ranks2(Pooma::context()+1, 0,
++			          Pooma::context() &gt; 0
++				  &amp;&amp; Pooma::context() &lt; Pooma::contexts()-1);
++  if (Pooma::context() == 0) {
++    bool check = true;
++    for (int i=1; i&lt;Pooma::contexts()-1; ++i)
++      if (ranks2[i] != i+1) {
++	tester.out() &lt;&lt; &quot;[&quot; &lt;&lt; i &lt;&lt; &quot;] should be &quot;
++		     &lt;&lt; (i+1) &lt;&lt; &quot;, but is &quot; &lt;&lt; ranks[i] &lt;&lt; &quot;\n&quot;;
++        check = false;
++      }
++    tester.check(&quot;Collecting ranks, but not first and last&quot;, check);
++  }
++
++  int ret = tester.results(&quot;CollectFromContextsTest&quot;);
++  Pooma::finalize();
++
++  return ret;
++}
++
+===== tests/makefile 1.3 vs edited =====
+--- 1.3/r2/src/Tulip/tests/makefile	Wed Jan  8 10:27:36 2003
++++ edited/tests/makefile	Fri Dec  5 16:03:32 2003
+@@ -36,7 +36,7 @@
+
+ TESTS = ReduceOverContextsTest GridMessageTest \
+ 	GridBroadcastTest PatchSizeSyncerTest \
+-	VectorBroadcastTest
++	VectorBroadcastTest CollectFromContextsTest
+
+ default:: build
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001394.html">[PATCH] Obvious stuff
+</A></li>
+	<LI>Next message: <A HREF="001402.html">[PATCH] Fix and test (unused) CollectFromContexts
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1398">[ date ]</a>
+              <a href="thread.html#1398">[ thread ]</a>
+              <a href="subject.html#1398">[ subject ]</a>
+              <a href="author.html#1398">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

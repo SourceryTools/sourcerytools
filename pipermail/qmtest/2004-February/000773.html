@@ -1,0 +1,358 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [qmtest] TET result stream
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:qmtest%40codesourcery.com?Subject=Re%3A%20%5Bqmtest%5D%20TET%20result%20stream&In-Reply-To=%3C20040220092247.GB32725%40njs.ddts.net%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000770.html">
+   <LINK REL="Next"  HREF="000774.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[qmtest] TET result stream</H1>
+    <B>Nathaniel Smith</B> 
+    <A HREF="mailto:qmtest%40codesourcery.com?Subject=Re%3A%20%5Bqmtest%5D%20TET%20result%20stream&In-Reply-To=%3C20040220092247.GB32725%40njs.ddts.net%3E"
+       TITLE="[qmtest] TET result stream">njs at pobox.com
+       </A><BR>
+    <I>Fri Feb 20 09:22:47 UTC 2004</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000770.html">[qmtest] TET result stream
+</A></li>
+        <LI>Next message: <A HREF="000774.html">[qmtest] TET result stream
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#773">[ date ]</a>
+              <a href="thread.html#773">[ thread ]</a>
+              <a href="subject.html#773">[ subject ]</a>
+              <a href="author.html#773">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>On Thu, Feb 19, 2004 at 12:01:44PM -0800, Mark Mitchell wrote:
+&gt;<i> Nathaniel Smith wrote:
+</I>&gt;<i> &gt;                        &quot;%i %s 00:00:00&quot;
+</I>&gt;<i> 
+</I>&gt;<i> As I mentioned on IRC, I'd like to see us use a valid time here.  I 
+</I>&gt;<i> suggest extending QMTest to collect start/stop time for tests; I can see 
+</I>&gt;<i> that being useful to other people as well.
+</I>
+Hmm, okay.  The thought had occurred to me, but I figured you wouldn't
+like the size increase in results files -- a bit over 40 bytes per
+result -- based on some conversations we had a while ago when I was
+hacking on the pickle format.  This adds more functionality, of
+course...
+
+Patch attached for review.
+
+Question: current patch assumes that dejagnu subtests all start and
+end simultaneously with their containing test.  I know this is true
+for the compiler tests, where subtests are basically different ways
+of scanning compiler output, but if it's not true in general than I'd
+rather lie obviously then lie subtly... (i.e., switch back to using
+00:00:00 for purpose start/end times, so it's obvious that the times
+can't be trusted).
+
+&gt;<i> &gt;        # I don't know what completion status means; it is zero in all of 
+</I>&gt;<i> &gt;        the
+</I>&gt;<i> &gt;        # documented examples.
+</I>&gt;<i> 
+</I>&gt;<i> Let's not have the first person singular appear in comments.  One always 
+</I>&gt;<i> wonders &quot;who was I?&quot; later.
+</I>
+Gah, someday, I (Nathaniel Smith &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">njs at pobox.com</A>&gt;) will remember this
+rule.
+
+-- Nathaniel
+
+-- 
+&quot;But in Middle-earth, the distinct accusative case disappeared from
+the speech of the Noldor (such things happen when you are busy
+fighting Orcs, Balrogs, and Dragons).&quot;
+-------------- next part --------------
+? results.qmr
+? qm/external/__init__.pyc
+? tests/regress/QMTest/regression_database.pyc
+? tests/regress/QMTest/selftest.pyc
+? tests/regress/tuple1/QMTest/tuple_test.pyc
+? tests/results_files/QMTest/results_file_database.pyc
+? tests/results_files/QMTest/results_file_test.pyc
+Index: ChangeLog
+===================================================================
+RCS file: /home/qm/Repository/qm/ChangeLog,v
+retrieving revision 1.607
+diff -u -r1.607 ChangeLog
+--- ChangeLog	20 Feb 2004 07:51:31 -0000	1.607
++++ ChangeLog	20 Feb 2004 09:22:19 -0000
+@@ -1,3 +1,20 @@
++2004-02-20  Nathaniel Smith  &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">njs at codesourcery.com</A>&gt;
++
++	* qm/common.py (format_time_iso): Make argument default to
++	current time.
++	* qm/test/execution_engine.py (ExecutionEngine.Run): Don't pass
++	explicit argument to 'format_time_iso'.
++	(ExecutionEngine._WriteInitialAnnotations): Likewise.
++	
++	* qm/test/target.py (qm.common): Import.
++	(Target.RunTest): Record start and end times.
++
++	* qm/test/classes/tet_stream.py (TETStream._ExtractTime): New
++	function.
++	(TETStream._WriteTCStart): Use it.
++	(TETStream._WriteDejaGNUResult): Likewise.
++	(TETStream._WriteTestResult): Likewise.
++
+ 2004-02-19  Nathaniel Smith  &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">njs at codesourcery.com</A>&gt;
+ 
+ 	* qm/common.py (parse_time_iso): New function.
+Index: qm/common.py
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/common.py,v
+retrieving revision 1.85
+diff -u -r1.85 common.py
+--- qm/common.py	20 Feb 2004 07:48:56 -0000	1.85
++++ qm/common.py	20 Feb 2004 09:22:19 -0000
+@@ -556,7 +556,7 @@
+            &quot;%(hour)02d:%(minute)02d %(time_zone)s&quot; % locals()
+ 
+ 
+-def format_time_iso(time_secs):
++def format_time_iso(time_secs=None):
+     &quot;&quot;&quot;Generate a ISO8601-compliant formatted date and time.
+ 
+     The output is in the format &quot;YYYY-MM-DDThh:mm:ss+TZ&quot;, where TZ is
+@@ -565,10 +565,13 @@
+     sorting behaviour.
+ 
+     'time_secs' -- The time to be formatted, as returned by
+-    e.g. 'time.time()'.
++    e.g. 'time.time()'.  If 'None' (the default), uses the current
++    time.
+ 
+     returns -- The formatted time as a string.&quot;&quot;&quot;
+ 
++    if time_secs is None:
++        time_secs = time.time()
+     return time.strftime(&quot;%Y-%m-%dT%H:%M:%SZ&quot;, time.gmtime(time_secs))
+ 
+ 
+Index: qm/test/execution_engine.py
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/test/execution_engine.py,v
+retrieving revision 1.26
+diff -u -r1.26 execution_engine.py
+--- qm/test/execution_engine.py	12 Feb 2004 06:19:08 -0000	1.26
++++ qm/test/execution_engine.py	20 Feb 2004 09:22:20 -0000
+@@ -294,7 +294,7 @@
+             
+             # Let all of the result streams know that the test run is
+             # complete.
+-            end_time_str = qm.common.format_time_iso(time.time())
++            end_time_str = qm.common.format_time_iso()
+             for rs in self.__result_streams:
+                 rs.WriteAnnotation(&quot;qmtest.run.end_time&quot;, end_time_str)
+                 rs.Summarize()
+@@ -814,7 +814,7 @@
+     def _WriteInitialAnnotations(self):
+ 
+         # Calculate annotations.
+-        start_time_str = qm.common.format_time_iso(time.time())
++        start_time_str = qm.common.format_time_iso()
+ 
+         try:
+             username = qm.common.get_username()
+Index: qm/test/result.py
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/test/result.py,v
+retrieving revision 1.24
+diff -u -r1.24 result.py
+--- qm/test/result.py	12 Feb 2004 07:44:49 -0000	1.24
++++ qm/test/result.py	20 Feb 2004 09:22:20 -0000
+@@ -106,6 +106,8 @@
+     RESOURCE = &quot;qmtest.resource&quot;
+     TARGET = &quot;qmtest.target&quot;
+     TRACEBACK = &quot;qmtest.traceback&quot;
++    START_TIME = &quot;qmtest.start_time&quot;
++    END_TIME = &quot;qmtest.end_time&quot;
+     
+     # Other class variables.
+ 
+Index: qm/test/target.py
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/test/target.py,v
+retrieving revision 1.23
+diff -u -r1.23 target.py
+--- qm/test/target.py	13 Nov 2003 04:24:43 -0000	1.23
++++ qm/test/target.py	20 Feb 2004 09:22:20 -0000
+@@ -18,6 +18,7 @@
+ ########################################################################
+ 
+ import qm
++import qm.common
+ import qm.extension
+ import qm.platform
+ from   qm.test.context import *
+@@ -211,8 +212,14 @@
+             self.__SetUpResources(descriptor, context)
+             # Make the ID of the test available.
+             context[context.ID_CONTEXT_PROPERTY] = descriptor.GetId()
++            # Note the start time.
++            result[Result.START_TIME] = qm.common.format_time_iso()
+             # Run the test.
+-            descriptor.Run(context, result)
++            try:
++                descriptor.Run(context, result)
++            finally:
++                # Note the end time.
++                result[Result.END_TIME] = qm.common.format_time_iso()
+         except KeyboardInterrupt:
+             result.NoteException(cause = &quot;Interrupted by user.&quot;)
+             # We received a KeyboardInterrupt, indicating that the
+Index: qm/test/classes/tet_stream.py
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/test/classes/tet_stream.py,v
+retrieving revision 1.1
+diff -u -r1.1 tet_stream.py
+--- qm/test/classes/tet_stream.py	20 Feb 2004 07:48:57 -0000	1.1
++++ qm/test/classes/tet_stream.py	20 Feb 2004 09:22:20 -0000
+@@ -93,6 +93,15 @@
+                 time.strftime(&quot;%Y%m%d&quot;, t))
+ 
+ 
++    def _ExtractTime(self, result, key):
++        &quot;&quot;&quot;Extracts the start time from a result.&quot;&quot;&quot;
++
++        if result.has_key(key):
++            return self._TETFormatTime(result[key])[0]
++        else:
++            return &quot;00:00:00&quot;
++
++
+     def WriteAnnotation(self, key, value):
+ 
+         if key == &quot;qmtest.run.start_time&quot;:
+@@ -164,10 +173,10 @@
+ 
+         # Test case start
+         # 10 | activity_number testcase_path time | invocable_components
+-        self._WriteLine(10,
+-                        &quot;%i %s 00:00:00&quot;
+-                        % (self._tcc_number, result.GetId()),
+-                        &quot;&quot;)
++        started = self._ExtractTime(result, Result.START_TIME)
++        data = &quot;%i %s %s&quot; % (self._tcc_number, result.GetId(), started)
++        self._WriteLine(10, data, &quot;&quot;)
++
+ 
+     def _WriteResultAnnotations(self, result, seq_start=1):
+         &quot;&quot;&quot;Writes out annotations for a 'result' in TET format.
+@@ -216,6 +225,9 @@
+ 
+         self._WriteResultAnnotations(result)
+                 
++        start_time = self._ExtractTime(result, Result.START_TIME)
++        end_time = self._ExtractTime(result, Result.END_TIME)
++
+         purpose = 1
+         for k in keys:
+             r = result[k]
+@@ -223,8 +235,8 @@
+             # Test purpose start
+             # 200 | activity_number test_purpose_number time | text
+             self._WriteLine(200,
+-                            &quot;%i %i 00:00:00&quot;
+-                            % (self._tcc_number, purpose),
++                            &quot;%i %i %s&quot;
++                            % (self._tcc_number, purpose, start_time),
+                             &quot;&quot;)
+             outcome_num, outcome_name \
+                          = { DejaGNUTest.PASS: self.PASS,
+@@ -239,10 +251,12 @@
+                            }[outcome]
+             # Test purpose result
+             # 220 | activity_number tp_number result time | result-name
+-            self._WriteLine(220,
+-                            &quot;%i %i %i 00:00:00&quot;
+-                            % (self._tcc_number, purpose, outcome_num),
+-                            outcome_name)
++            data = &quot;%i %i %i %s&quot; % (self._tcc_number,
++                                    purpose,
++                                    outcome_num,
++                                    end_time)
++            self._WriteLine(220, data, outcome_name)
++            
+             if outcome == DejaGNUTest.WARNING:
+                 # Test case information
+                 # 520 | activity_num tp_num context block sequence | text
+@@ -267,7 +281,7 @@
+         # &quot;completion status&quot; appears undocumented; it is zero in all of
+         # the documented examples.
+         self._WriteLine(80,
+-                        &quot;%i 0 00:00:00&quot; % self._tcc_number,
++                        &quot;%i 0 %s&quot; % (self._tcc_number, end_time),
+                         &quot;&quot;)
+ 
+             
+@@ -277,7 +291,9 @@
+         self._WriteTCStart(result)
+         # Test purpose start
+         # 200 | activity_number test_purpose_number time | text
+-        self._WriteLine(200, &quot;%i 0 00:00:00&quot; % self._tcc_number, &quot;&quot;)
++        start_time = self._ExtractTime(result, Result.START_TIME)
++        data = &quot;%i 0 %s&quot; % (self._tcc_number, start_time)
++        self._WriteLine(200, data, &quot;&quot;)
+ 
+         outcome_num, outcome_name = { Result.FAIL: self.FAIL,
+                                       Result.PASS: self.PASS,
+@@ -286,10 +302,9 @@
+                                     }[result.GetOutcome()]
+         # Test purpose result
+         # 220 | activity_number tp_number result time | result-name
+-        self._WriteLine(220,
+-                        &quot;%i 0 %i 00:00:00&quot;
+-                        % (self._tcc_number, outcome_num),
+-                        outcome_name)
++        end_time = self._ExtractTime(result, Result.END_TIME)
++        data = &quot;%i 0 %i %s&quot; % (self._tcc_number, outcome_num, end_time)
++        self._WriteLine(220, data, outcome_name)
+ 
+         if result.GetOutcome() == Result.ERROR:
+             # Test case controller message
+@@ -307,7 +322,7 @@
+         # &quot;completion status&quot; appears undocumented; it is zero in all of
+         # the documented examples.
+         self._WriteLine(80,
+-                        &quot;%i 0 00:00:00&quot; % self._tcc_number,
++                        &quot;%i 0 %s&quot; % (self._tcc_number, end_time),
+                         &quot;&quot;)
+ 
+ 
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000770.html">[qmtest] TET result stream
+</A></li>
+	<LI>Next message: <A HREF="000774.html">[qmtest] TET result stream
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#773">[ date ]</a>
+              <a href="thread.html#773">[ thread ]</a>
+              <a href="subject.html#773">[ subject ]</a>
+              <a href="author.html#773">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">More information about the qmtest
+mailing list</a><br>
+</body></html>

@@ -1,0 +1,839 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> Patch: Get NewField to work with messaging.
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20Patch%3A%20Get%20NewField%20to%20work%20with%20messaging.&In-Reply-To=%3C3AD38278.EE0CF993%40proximation.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000209.html">
+   <LINK REL="Next"  HREF="000215.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>Patch: Get NewField to work with messaging.</H1>
+    <B>Stephen A. Smith</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20Patch%3A%20Get%20NewField%20to%20work%20with%20messaging.&In-Reply-To=%3C3AD38278.EE0CF993%40proximation.com%3E"
+       TITLE="Patch: Get NewField to work with messaging.">sasmith at proximation.com
+       </A><BR>
+    <I>Tue Apr 10 22:00:24 UTC 2001</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000209.html">Mailing list archives
+</A></li>
+        <LI>Next message: <A HREF="000215.html">Patch: Get NewField to work with messaging.
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#210">[ date ]</a>
+              <a href="thread.html#210">[ thread ]</a>
+              <a href="subject.html#210">[ subject ]</a>
+              <a href="author.html#210">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>I'll be checking the following changes in later today to get the
+new field class working with messaging.  The changes were
+reviewed by Scott H.  They were tested using Cheetah with
+shared-memory transport on a dual-processor linux box,
+compiled with egcs-2.95.2.
+(configure with --arch LINUXEGCS --messaging --bounds)
+(run with -shmem -np 2)
+
+src/NewField/tests:
+  *ExpressionTest.cpp
+  *FieldTour1.cpp
+  *ScalarCode.cpp
+  *VectorTest.cpp
+  *WhereTest.cpp
+  -changes to use Remote engines and distributed
+   layouts when compiled with Cheetah.  (Also, added
+  ExpressionTest to the default targets and commented
+  out tests corresponding to unimplemented functionality.)
+
+Field changes:
+  *NewField/Field.h
+  *FieldEngine.Lagrangian.h
+  *FieldEngine.NoGeometry.h
+  *FieldEngine.UR.h
+  *FieldEngineBase.h
+  *Engine/ViewEngine.h
+  *Evaluator/MultiArgEvaluator.h
+  *PETE/Functors.h
+  -code to enable remote view for the new field classes:
+    1) added a leaf functor for taking the view of the field and
+       a set of constructors in the field engines.
+    2) added leaf functor for views of MultiArgs (used by
+       ScalarCode with remote fields).
+    3) two bug fixes in previously unused code (in ViewEngine
+      and in MultiArgEvaluator)
+    4) the change in PETE just makes some of the leaf functor
+      code cleaner.
+
+    Stephen
+
+-------------- next part --------------
+Index: ExpressionTest.cpp
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/NewField/tests/ExpressionTest.cpp,v
+retrieving revision 1.1
+diff -r1.1 ExpressionTest.cpp
+59a60,69
+&gt;<i> #if POOMA_CHEETAH
+</I>&gt;<i>   typedef DistributedTag LayoutTag_t;
+</I>&gt;<i>   typedef Remote&lt;Brick&gt; BrickTag_t;
+</I>&gt;<i>   typedef Remote&lt;CompressibleBrick&gt; CompBrickTag_t;
+</I>&gt;<i> #else
+</I>&gt;<i>   typedef ReplicatedTag LayoutTag_t;
+</I>&gt;<i>   typedef Brick BrickTag_t;
+</I>&gt;<i>   typedef CompressibleBrick CompBrickTag_t;
+</I>&gt;<i> #endif
+</I>&gt;<i> 
+</I>107c117
+&lt;   UserFunction&lt;Norm&gt; norm;
+---
+&gt;<i>   //  UserFunction&lt;Norm&gt; norm;
+</I>109c119
+&lt;   return (sum(norm(a)) &lt; epsilon);
+---
+&gt;<i>   return (sum(abs(a)) &lt; epsilon);
+</I>369,409d378
+&lt; template&lt;class A1,class A2,class A3,class A4, class AInit&gt;
+&lt; void test7(Pooma::Tester&amp; tester, int test,
+&lt; 	   const A1 &amp;a1, const A2 &amp;a2, const A3 &amp;a3, const A4 &amp;a4,
+&lt; 	   const AInit &amp;initial, const Interval&lt;1&gt; &amp;I)
+&lt; {
+&lt;   //---------------------------------------------------------------------
+&lt;   // test #7
+&lt;   // Simple indirection test.
+&lt; 
+&lt;   int from = I.first();
+&lt;   int to = I.last();
+&lt;   int i;
+&lt; 
+&lt;   Array&lt;1, int, Brick&gt; b(I);
+&lt; 
+&lt;   for (i = from; i &lt; to; ++i)
+&lt;   {
+&lt;     b(i) = i + 1;
+&lt;   }
+&lt;   b(to) = from;
+&lt; 
+&lt;   a1 = initial;
+&lt;   a2 = initial;
+&lt;   a3 = initial;
+&lt;   a4 = initial;
+&lt; 
+&lt;   Pooma::blockAndEvaluate();
+&lt; 
+&lt;   for (i = from; i &lt;= to; ++i)
+&lt;   {
+&lt;     a2(b(i)) = a1(i);
+&lt;   }
+&lt; 
+&lt;   a4(b) = a3;
+&lt; 
+&lt;   Pooma::blockAndEvaluate();
+&lt; 
+&lt;   tester.check(checkTest(tester, test, a2, a4));
+&lt; }
+&lt; 
+&lt; 
+421c390
+&lt; 			      ReplicatedTag());
+---
+&gt;<i> 			      LayoutTag_t());
+</I>423,424c392,393
+&lt;   std::cout &lt;&lt; layout &lt;&lt; std::endl;
+&lt;   std::cout &lt;&lt; layout.domain() &lt;&lt; std::endl;
+---
+&gt;<i>   tester.out() &lt;&lt; layout &lt;&lt; std::endl;
+</I>&gt;<i>   tester.out() &lt;&lt; layout.domain() &lt;&lt; std::endl;
+</I>431c400
+&lt;     Field&lt;UniformRectilinear&lt;1&gt;, double, MultiPatch&lt;UniformTag, Brick&gt; &gt;
+---
+&gt;<i>     Field&lt;UniformRectilinear&lt;1&gt;, double, MultiPatch&lt;UniformTag, BrickTag_t&gt; &gt;
+</I>440,441c409,410
+&lt;   std::cout &lt;&lt; &quot;physical domain:&quot; &lt;&lt; a1.physicalDomain() &lt;&lt; std::endl;
+&lt;   std::cout &lt;&lt; &quot;interior domain:&quot; &lt;&lt; cellInterior &lt;&lt; std::endl;
+---
+&gt;<i>   tester.out() &lt;&lt; &quot;physical domain:&quot; &lt;&lt; a1.physicalDomain() &lt;&lt; std::endl;
+</I>&gt;<i>   tester.out() &lt;&lt; &quot;interior domain:&quot; &lt;&lt; cellInterior &lt;&lt; std::endl;
+</I>451,453c420,425
+&lt;   test2(tester, 2, a1, a2, a3, a4, initial, cellInterior);
+&lt;   test3(tester, 3, a1, a2, a3, a4, initial, cellInterior);
+&lt;   test4(tester, 4, a1, a2, a3, a4, initial, cellInterior);
+---
+&gt;<i>   // No UserFunction for Field yet.
+</I>&gt;<i>   //  test2(tester, 2, a1, a2, a3, a4, initial, cellInterior);
+</I>&gt;<i> 
+</I>&gt;<i>   // Need to replace the stencil code above with Field Stencil code.
+</I>&gt;<i>   //  test3(tester, 3, a1, a2, a3, a4, initial, cellInterior);
+</I>&gt;<i>   //  test4(tester, 4, a1, a2, a3, a4, initial, cellInterior);
+</I>457c429
+&lt;                                                     CompressibleBrick&gt; &gt;
+---
+&gt;<i>                                                     CompBrickTag_t&gt; &gt;
+</I>474,476c446,449
+&lt;   test2(tester, 2, ca1, ca2, ca3, ca4, cinit, cellInterior);
+&lt;   test3(tester, 3, ca1, ca2, ca3, ca4, cinit, cellInterior);
+&lt;   test4(tester, 4, ca1, ca2, ca3, ca4, cinit, cellInterior);
+---
+&gt;<i>   //  test2(tester, 2, ca1, ca2, ca3, ca4, cinit, cellInterior);
+</I>&gt;<i>   //  test3(tester, 3, ca1, ca2, ca3, ca4, cinit, cellInterior);
+</I>&gt;<i>   //  test4(tester, 4, ca1, ca2, ca3, ca4, cinit, cellInterior);
+</I>&gt;<i> 
+</I>477a451
+&gt;<i>   int ret = tester.results(&quot;ScalarCode&quot;);
+</I>479c453
+&lt;   return 0; 
+---
+&gt;<i>   return ret;
+</I>Index: FieldTour1.cpp
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/NewField/tests/FieldTour1.cpp,v
+retrieving revision 1.3
+diff -r1.3 FieldTour1.cpp
+34a35,42
+&gt;<i> #if POOMA_CHEETAH
+</I>&gt;<i>   typedef DistributedTag LayoutTag_t;
+</I>&gt;<i>   typedef Remote&lt;Brick&gt; BrickTag_t;
+</I>&gt;<i> #else
+</I>&gt;<i>   typedef ReplicatedTag LayoutTag_t;
+</I>&gt;<i>   typedef Brick BrickTag_t;
+</I>&gt;<i> #endif
+</I>&gt;<i> 
+</I>50c58
+&lt;   UniformGridLayout&lt;2&gt; layout(physicalVertexDomain, partition, ReplicatedTag());
+---
+&gt;<i>   UniformGridLayout&lt;2&gt; layout(physicalVertexDomain, partition, LayoutTag_t());
+</I>60c68,69
+&lt;     Field&lt;UniformRectilinear&lt;2&gt;, double, MultiPatch&lt;UniformTag, Brick&gt; &gt; Field_t;
+---
+&gt;<i>     Field&lt;UniformRectilinear&lt;2&gt;, double,
+</I>&gt;<i>     MultiPatch&lt;UniformTag, BrickTag_t&gt; &gt; Field_t;
+</I>135c144,145
+&lt;     Field&lt;Lagrangian&lt;2&gt;, double, MultiPatch&lt;UniformTag, Brick&gt; &gt; 
+---
+&gt;<i>     Field&lt;Lagrangian&lt;2&gt;, double,
+</I>&gt;<i>     MultiPatch&lt;UniformTag, BrickTag_t&gt; &gt; 
+</I>146c156
+&lt;   
+---
+&gt;<i>    
+</I>155,157c165,178
+&lt;   std::cout &lt;&lt; f[0].patchLocal(0) &lt;&lt; std::endl;
+&lt;   std::cout &lt;&lt; f[0].patchLocal(1) &lt;&lt; std::endl;
+&lt;   
+---
+&gt;<i>   int nLocal = f[0].numPatchesLocal();
+</I>&gt;<i>   std::cout &lt;&lt; &quot;context &quot; &lt;&lt; Pooma::context() &lt;&lt; &quot; has &quot;
+</I>&gt;<i> 	    &lt;&lt; nLocal &lt;&lt; &quot; patches&quot; &lt;&lt; std::endl;
+</I>&gt;<i>   if (nLocal &gt; 0)
+</I>&gt;<i>     {
+</I>&gt;<i>       std::cout &lt;&lt; &quot;context &quot; &lt;&lt; Pooma::context()
+</I>&gt;<i> 		&lt;&lt; &quot; local patch 0: &quot; &lt;&lt; f[0].patchLocal(0) &lt;&lt; std::endl;
+</I>&gt;<i>     }
+</I>&gt;<i>   if (nLocal &gt; 1)
+</I>&gt;<i>     {
+</I>&gt;<i>       std::cout &lt;&lt; &quot;context &quot; &lt;&lt; Pooma::context()
+</I>&gt;<i> 		&lt;&lt; &quot; local patch 1: &quot; &lt;&lt; f[0].patchLocal(1) &lt;&lt; std::endl;
+</I>&gt;<i>     }
+</I>&gt;<i> 
+</I>168c189,190
+&lt;     Field&lt;UniformRectilinear&lt;2&gt;, Vector&lt;2&gt;, MultiPatch&lt;UniformTag, Brick&gt; &gt; 
+---
+&gt;<i>     Field&lt;UniformRectilinear&lt;2&gt;, Vector&lt;2&gt;,
+</I>&gt;<i>     MultiPatch&lt;UniformTag, BrickTag_t&gt; &gt; 
+</I>176c198
+&lt;    
+---
+&gt;<i> 
+</I>Index: ScalarCode.cpp
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/NewField/tests/ScalarCode.cpp,v
+retrieving revision 1.5
+diff -r1.5 ScalarCode.cpp
+44a45,52
+&gt;<i> #if POOMA_CHEETAH
+</I>&gt;<i>   typedef DistributedTag LayoutTag_t;
+</I>&gt;<i>   typedef Remote&lt;Brick&gt; BrickTag_t;
+</I>&gt;<i> #else
+</I>&gt;<i>   typedef ReplicatedTag LayoutTag_t;
+</I>&gt;<i>   typedef Brick BrickTag_t;
+</I>&gt;<i> #endif
+</I>&gt;<i> 
+</I>275,281d282
+&lt; // switch the definitions here to test the distributed case.
+&lt; 
+&lt; typedef ReplicatedTag LayoutTag_t;
+&lt; typedef Brick BrickTag_t;
+&lt; //typedef DistributedTag LayoutTag_t;
+&lt; //typedef Remote&lt;Brick&gt; BrickTag_t;
+&lt; 
+447a449
+&gt;<i>   // 2) Lagrangian fields
+</I>Index: VectorTest.cpp
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/NewField/tests/VectorTest.cpp,v
+retrieving revision 1.1
+diff -r1.1 VectorTest.cpp
+59a60,67
+&gt;<i> #if POOMA_CHEETAH
+</I>&gt;<i>   typedef DistributedTag LayoutTag_t;
+</I>&gt;<i>   typedef Remote&lt;Brick&gt; BrickTag_t;
+</I>&gt;<i> #else
+</I>&gt;<i>   typedef ReplicatedTag LayoutTag_t;
+</I>&gt;<i>   typedef Brick BrickTag_t;
+</I>&gt;<i> #endif
+</I>&gt;<i> 
+</I>72,75c80,83
+&lt;   //  Loc&lt;2&gt; blocks(2, 2);
+&lt;   //  UniformGridPartition&lt;2&gt; partition(blocks, GuardLayers&lt;2&gt;(1));   
+&lt;   //  UniformGridLayout&lt;2&gt; layout(physicalVertexDomain, partition,
+&lt;   //			      ReplicatedTag());
+---
+&gt;<i>   Loc&lt;2&gt; blocks(2, 2);
+</I>&gt;<i>   UniformGridPartition&lt;2&gt; partition(blocks, GuardLayers&lt;2&gt;(1));   
+</I>&gt;<i>   UniformGridLayout&lt;2&gt; layout(physicalVertexDomain, partition,
+</I>&gt;<i>   			      LayoutTag_t());
+</I>77a86
+&gt;<i>   tester.out() &lt;&lt; &quot;layout domain: &quot; &lt;&lt; layout.domain() &lt;&lt; std::endl;
+</I>84,85c93,94
+&lt;   typedef Brick EngineTag_t;
+&lt;   //  typedef MultiPatch&lt;UniformTag, Brick&gt; EngineTag_t;
+---
+&gt;<i>   typedef MultiPatch&lt;UniformTag, BrickTag_t&gt; EngineTag_t;
+</I>&gt;<i>   //  typedef BrickTag_t EngineTag_t;
+</I>93,95c102,107
+&lt;   Field_t a(allFace, layoutDom, origin, spacings);
+&lt;   VField_t b(allFace, layoutDom, origin, spacings);
+&lt;   VField_t c(allFace, layoutDom, origin, spacings);
+---
+&gt;<i>   Field_t a(allFace, layout, origin, spacings);
+</I>&gt;<i>   VField_t b(allFace, layout, origin, spacings);
+</I>&gt;<i>   VField_t c(allFace, layout, origin, spacings);
+</I>&gt;<i>   //  Field_t a(allFace, layoutDom, origin, spacings);
+</I>&gt;<i>   //  VField_t b(allFace, layoutDom, origin, spacings);
+</I>&gt;<i>   //  VField_t c(allFace, layoutDom, origin, spacings);
+</I>Index: WhereTest.cpp
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/NewField/tests/WhereTest.cpp,v
+retrieving revision 1.2
+diff -r1.2 WhereTest.cpp
+59a60,67
+&gt;<i> #if POOMA_CHEETAH
+</I>&gt;<i>   typedef DistributedTag LayoutTag_t;
+</I>&gt;<i>   typedef Remote&lt;Brick&gt; BrickTag_t;
+</I>&gt;<i> #else
+</I>&gt;<i>   typedef ReplicatedTag LayoutTag_t;
+</I>&gt;<i>   typedef Brick BrickTag_t;
+</I>&gt;<i> #endif
+</I>&gt;<i> 
+</I>74c82
+&lt; 			      ReplicatedTag());
+---
+&gt;<i> 			      LayoutTag_t());
+</I>85c93
+&lt;     Field&lt;Geometry_t, double, MultiPatch&lt;UniformTag, Brick&gt; &gt;
+---
+&gt;<i>     Field&lt;Geometry_t, double, MultiPatch&lt;UniformTag, BrickTag_t&gt; &gt;
+</I>89c97
+&lt;     Field&lt;Geometry_t, Vector&lt;2&gt;, MultiPatch&lt;UniformTag, Brick&gt; &gt;
+---
+&gt;<i>     Field&lt;Geometry_t, Vector&lt;2&gt;, MultiPatch&lt;UniformTag, BrickTag_t&gt; &gt;
+</I>Index: makefile
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/NewField/tests/makefile,v
+retrieving revision 1.8
+diff -r1.8 makefile
+54a55
+&gt;<i> 	$(ODIR)/ExpressionTest $(TSTOPTS) 1&gt;ExpressionTest.out 2&gt;&amp;1
+</I>59c60
+&lt; 	$(ODIR)/ScalarCode
+---
+&gt;<i> 	$(ODIR)/ScalarCode $(ODIR)/ExpressionTest
+</I>105a107,108
+&gt;<i> .PHONY: WhereTest
+</I>&gt;<i> 
+</I>110a114,115
+&gt;<i> .PHONY: VectorTest
+</I>&gt;<i> 
+</I>114a120,121
+&gt;<i> 
+</I>&gt;<i> .PHONY: CrossBox
+</I>-------------- next part --------------
+Index: Field.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/NewField/Field.h,v
+retrieving revision 1.10
+diff -r1.10 Field.h
+1122a1123,1127
+&gt;<i>   inline int
+</I>&gt;<i>   numPatchesLocal() const
+</I>&gt;<i>   {
+</I>&gt;<i>     return engineFunctor(engine(), EngineNumPatches());
+</I>&gt;<i>   }
+</I>1465a1471,1491
+&gt;<i> template&lt;class GeometryTag, class T, class EngineTag, class Tag&gt;
+</I>&gt;<i> struct LeafFunctor&lt;Field&lt;GeometryTag, T, EngineTag&gt;, EngineView&lt;Tag&gt; &gt;
+</I>&gt;<i> {
+</I>&gt;<i>   typedef Field&lt;GeometryTag, T, EngineTag&gt; Subject_t;
+</I>&gt;<i>   typedef typename Subject_t::Engine_t Engine_t;
+</I>&gt;<i>   typedef typename LeafFunctor&lt;Engine_t, EngineView&lt;Tag&gt; &gt;::Type_t NewEngine_t;
+</I>&gt;<i>   typedef typename NewEngine_t::Tag_t NewEngineTag_t;
+</I>&gt;<i> 
+</I>&gt;<i>   // Don't bother computing NewGeometry tag yet.
+</I>&gt;<i>   // For now all EngineView operations are equivalent to Interval views.
+</I>&gt;<i> 
+</I>&gt;<i>   typedef Field&lt;GeometryTag, T, NewEngineTag_t&gt; Type_t;
+</I>&gt;<i> 
+</I>&gt;<i>   inline static
+</I>&gt;<i>   Type_t apply(const Subject_t &amp;field,
+</I>&gt;<i> 	       const EngineView&lt;Tag&gt; &amp;tag)
+</I>&gt;<i>   {
+</I>&gt;<i>     return Type_t(field, tag);
+</I>&gt;<i>   }
+</I>&gt;<i> };
+</I>&gt;<i> 
+</I>1751c1777,1778
+&lt; assign(const Field&lt;GeometryTag, T, EngineTag&gt; &amp;lhs, const T1 &amp;rhs, const Op &amp;op)
+---
+&gt;<i> assign(const Field&lt;GeometryTag, T, EngineTag&gt; &amp;lhs, const T1 &amp;rhs,
+</I>&gt;<i>        const Op &amp;op)
+</I>Index: FieldEngine/FieldEngine.Lagrangian.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/NewField/FieldEngine/FieldEngine.Lagrangian.h,v
+retrieving revision 1.3
+diff -r1.3 FieldEngine.Lagrangian.h
+183a184,193
+&gt;<i>   // Note there is no change to the vertex positions, because EngineView
+</I>&gt;<i>   // currently is only used to support RemoteView operations which don't
+</I>&gt;<i>   // change the domain.
+</I>&gt;<i>   template&lt;class T2, class ET2, class Tag&gt;  
+</I>&gt;<i>   FieldEngine(const FieldEngine&lt;GeometryTag_t, T2, ET2&gt; &amp;model, 
+</I>&gt;<i>     const EngineView&lt;Tag&gt; &amp;engineView)
+</I>&gt;<i>   : Base_t(model, engineView),
+</I>&gt;<i>     positions_m(forEach(model.vertexPositions(), engineView, TreeCombine()))
+</I>&gt;<i>   { }
+</I>&gt;<i> 
+</I>Index: FieldEngine/FieldEngine.NoGeometry.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/NewField/FieldEngine/FieldEngine.NoGeometry.h,v
+retrieving revision 1.3
+diff -r1.3 FieldEngine.NoGeometry.h
+188a189
+&gt;<i>   // EngineView version used for remote computations.
+</I>189a191,197
+&gt;<i>   template&lt;class G2, class T2, class ET2, class Tag&gt;  
+</I>&gt;<i>   FieldEngine(const FieldEngine&lt;G2, T2, ET2&gt; &amp;model, 
+</I>&gt;<i> 	      const EngineView&lt;Tag&gt; &amp;engineView)
+</I>&gt;<i>     : engine_m(leafFunctor(model.engine(), engineView)),
+</I>&gt;<i>     updaters_m(model.updaters())
+</I>&gt;<i>   { }
+</I>&gt;<i>     
+</I>Index: FieldEngine/FieldEngine.UR.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/NewField/FieldEngine/FieldEngine.UR.h,v
+retrieving revision 1.4
+diff -r1.4 FieldEngine.UR.h
+212a213,222
+&gt;<i>   template&lt;class T2, class ET2, class Tag&gt;  
+</I>&gt;<i>   FieldEngine(const FieldEngine&lt;GeometryTag_t, T2, ET2&gt; &amp;model, 
+</I>&gt;<i> 	      const EngineView&lt;Tag&gt; &amp;engineView)
+</I>&gt;<i>   : Base_t(model, engineView),
+</I>&gt;<i>     origin_m(model.origin()),
+</I>&gt;<i>     spacings_m(model.spacings())
+</I>&gt;<i>   {
+</I>&gt;<i>     // Will need to fix up origin_m if EnginView replaces INode&lt;&gt; view.
+</I>&gt;<i>   }
+</I>&gt;<i> 
+</I>Index: FieldEngine/FieldEngineBase.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/NewField/FieldEngine/FieldEngineBase.h,v
+retrieving revision 1.9
+diff -r1.9 FieldEngineBase.h
+280a281,306
+&gt;<i>   template&lt;int Dim2, class T2, class EngineTag2, class Tag&gt;
+</I>&gt;<i>   void initialize(This_t &amp;s, 
+</I>&gt;<i> 		  const FieldEngineBase&lt;Dim2, T2, EngineTag2&gt; &amp;model,
+</I>&gt;<i> 		  const EngineView&lt;Tag&gt; &amp;ev)
+</I>&gt;<i>   {
+</I>&gt;<i>     typedef typename FieldEngineBase&lt;Dim2, T2, EngineTag2&gt;::Engine_t EngIn_t;
+</I>&gt;<i>     int n = model.numSubFields();
+</I>&gt;<i>     if (n == 0)
+</I>&gt;<i>     {
+</I>&gt;<i>       s.physicalCellDomain_m = model.physicalCellDomain();
+</I>&gt;<i>       s.guards_m = model.guardLayers();
+</I>&gt;<i>       s.initialize(model.offsets(),
+</I>&gt;<i> 		   LeafFunctor&lt;EngIn_t,
+</I>&gt;<i> 		   EngineView&lt;Tag&gt; &gt;::apply(model.engine(), ev),
+</I>&gt;<i> 		   model.updaters());
+</I>&gt;<i>     }
+</I>&gt;<i>     else
+</I>&gt;<i>     {
+</I>&gt;<i>       s.physicalCellDomain_m = model.physicalCellDomain();
+</I>&gt;<i>       s.guards_m = model.guardLayers();
+</I>&gt;<i>       s.addSubFields(n);
+</I>&gt;<i>       for (int i = 0; i &lt; n; i++)
+</I>&gt;<i> 	initialize(s.subFields_m[i], model.subField(i), ev);
+</I>&gt;<i>     }
+</I>&gt;<i>   }
+</I>&gt;<i> 
+</I>
+Index: Engine/ViewEngine.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/Engine/ViewEngine.h,v
+retrieving revision 1.20
+diff -r1.20 ViewEngine.h
+655c655,657
+&lt;   typedef LeafFunctor&lt;E, ExpressionApply&lt;Tag&gt; &gt; LeafFunctor_t;
+---
+&gt;<i>   typedef Engine&lt;D, T, ViewEngine&lt;D2, E&gt; &gt; Subject_t;
+</I>&gt;<i>   typedef typename Subject_t::ViewedEngine_t Engine_t;
+</I>&gt;<i>   typedef LeafFunctor&lt;Engine_t, ExpressionApply&lt;Tag&gt; &gt; LeafFunctor_t;
+</I>659,660c661
+&lt;   Type_t apply(const Engine&lt;D, T, ViewEngine&lt;D2, E&gt; &gt; &amp;engine,
+&lt; 	       const ExpressionApply&lt;Tag&gt; &amp;tag)
+---
+&gt;<i>   Type_t apply(const Subject_t &amp;engine, const ExpressionApply&lt;Tag&gt; &amp;tag)
+</I>Index: Evaluator/MultiArgEvaluator.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/Evaluator/MultiArgEvaluator.h,v
+retrieving revision 1.7
+diff -r1.7 MultiArgEvaluator.h
+377c377
+&lt; 		 function, domain, info, kernel);
+---
+&gt;<i> 		 function, evalDom, info, kernel);
+</I>466a467,757
+&gt;<i> };
+</I>&gt;<i> 
+</I>&gt;<i> 
+</I>&gt;<i> 
+</I>&gt;<i> //----------------------------------------------------------------------------
+</I>&gt;<i> // LeafFunctor Specializations for ExpressionApply and EngineView
+</I>&gt;<i> //
+</I>&gt;<i> 
+</I>&gt;<i> 
+</I>&gt;<i> template&lt;class A1, class Tag&gt;
+</I>&gt;<i> struct LeafFunctor&lt;MultiArg1&lt;A1&gt;, ExpressionApply&lt;Tag&gt; &gt;
+</I>&gt;<i> {
+</I>&gt;<i>   typedef int Type_t;
+</I>&gt;<i> 
+</I>&gt;<i>   inline static
+</I>&gt;<i>   Type_t apply(const MultiArg1&lt;A1&gt; &amp;multiarg,
+</I>&gt;<i> 	       const ExpressionApply&lt;Tag&gt; &amp;tag)
+</I>&gt;<i>   {
+</I>&gt;<i>     leafFunctor(multiarg.a1_m, tag);
+</I>&gt;<i>     return 0;
+</I>&gt;<i>   }
+</I>&gt;<i> };
+</I>&gt;<i> 
+</I>&gt;<i> template&lt;class A1, class Tag&gt;
+</I>&gt;<i> struct LeafFunctor&lt;MultiArg1&lt;A1&gt;, EngineView&lt;Tag&gt; &gt;
+</I>&gt;<i> {
+</I>&gt;<i>   typedef typename LeafFunctor&lt;A1, EngineView&lt;Tag&gt; &gt;::Type_t Type1_t;
+</I>&gt;<i>   typedef MultiArg1&lt;Type1_t&gt; Type_t;
+</I>&gt;<i> 
+</I>&gt;<i>   inline static
+</I>&gt;<i>   Type_t apply(const MultiArg1&lt;A1&gt; &amp;multiarg,
+</I>&gt;<i> 	       const EngineView&lt;Tag&gt; &amp;tag)
+</I>&gt;<i>   {
+</I>&gt;<i>     return Type_t(
+</I>&gt;<i> 		  leafFunctor(multiarg.a1_m, tag)
+</I>&gt;<i> 		  );
+</I>&gt;<i>   }
+</I>&gt;<i> };
+</I>&gt;<i> 
+</I>&gt;<i> template&lt;class A1, class A2, class Tag&gt;
+</I>&gt;<i> struct LeafFunctor&lt;MultiArg2&lt;A1, A2&gt;, ExpressionApply&lt;Tag&gt; &gt;
+</I>&gt;<i> {
+</I>&gt;<i>   typedef int Type_t;
+</I>&gt;<i> 
+</I>&gt;<i>   inline static
+</I>&gt;<i>   Type_t apply(const MultiArg2&lt;A1, A2&gt; &amp;multiarg,
+</I>&gt;<i> 	       const ExpressionApply&lt;Tag&gt; &amp;tag)
+</I>&gt;<i>   {
+</I>&gt;<i>     leafFunctor(multiarg.a1_m, tag);
+</I>&gt;<i>     leafFunctor(multiarg.a2_m, tag);
+</I>&gt;<i>     return 0;
+</I>&gt;<i>   }
+</I>&gt;<i> };
+</I>&gt;<i> 
+</I>&gt;<i> template&lt;class A1, class A2, class Tag&gt;
+</I>&gt;<i> struct LeafFunctor&lt;MultiArg2&lt;A1, A2&gt;, EngineView&lt;Tag&gt; &gt;
+</I>&gt;<i> {
+</I>&gt;<i>   typedef typename LeafFunctor&lt;A1, EngineView&lt;Tag&gt; &gt;::Type_t Type1_t;
+</I>&gt;<i>   typedef typename LeafFunctor&lt;A2, EngineView&lt;Tag&gt; &gt;::Type_t Type2_t;
+</I>&gt;<i>   typedef MultiArg2&lt;Type1_t, Type2_t&gt; Type_t;
+</I>&gt;<i> 
+</I>&gt;<i>   inline static
+</I>&gt;<i>   Type_t apply(const MultiArg2&lt;A1, A2&gt; &amp;multiarg,
+</I>&gt;<i> 	       const EngineView&lt;Tag&gt; &amp;tag)
+</I>&gt;<i>   {
+</I>&gt;<i>     return Type_t(
+</I>&gt;<i> 		  leafFunctor(multiarg.a1_m, tag),
+</I>&gt;<i> 		  leafFunctor(multiarg.a2_m, tag)
+</I>&gt;<i> 		  );
+</I>&gt;<i>   }
+</I>&gt;<i> };
+</I>&gt;<i> 
+</I>&gt;<i> template&lt;class A1, class A2, class A3, class Tag&gt;
+</I>&gt;<i> struct LeafFunctor&lt;MultiArg3&lt;A1, A2, A3&gt;,
+</I>&gt;<i>   ExpressionApply&lt;Tag&gt; &gt;
+</I>&gt;<i> {
+</I>&gt;<i>   typedef int Type_t;
+</I>&gt;<i> 
+</I>&gt;<i>   inline static
+</I>&gt;<i>   Type_t apply(const MultiArg3&lt;A1, A2, A3&gt; &amp;multiarg,
+</I>&gt;<i> 	       const ExpressionApply&lt;Tag&gt; &amp;tag)
+</I>&gt;<i>   {
+</I>&gt;<i>     leafFunctor(multiarg.a1_m, tag);
+</I>&gt;<i>     leafFunctor(multiarg.a2_m, tag);
+</I>&gt;<i>     leafFunctor(multiarg.a3_m, tag);
+</I>&gt;<i>     return 0;
+</I>&gt;<i>   }
+</I>&gt;<i> };
+</I>&gt;<i> 
+</I>&gt;<i> template&lt;class A1, class A2, class A3, class Tag&gt;
+</I>&gt;<i> struct LeafFunctor&lt;MultiArg3&lt;A1, A2, A3&gt;, EngineView&lt;Tag&gt; &gt;
+</I>&gt;<i> {
+</I>&gt;<i>   typedef typename LeafFunctor&lt;A1, EngineView&lt;Tag&gt; &gt;::Type_t Type1_t;
+</I>&gt;<i>   typedef typename LeafFunctor&lt;A2, EngineView&lt;Tag&gt; &gt;::Type_t Type2_t;
+</I>&gt;<i>   typedef typename LeafFunctor&lt;A3, EngineView&lt;Tag&gt; &gt;::Type_t Type3_t;
+</I>&gt;<i>   typedef MultiArg3&lt;Type1_t, Type2_t, Type3_t&gt; Type_t;
+</I>&gt;<i> 
+</I>&gt;<i>   inline static
+</I>&gt;<i>   Type_t apply(const MultiArg3&lt;A1, A2, A3&gt; &amp;multiarg,
+</I>&gt;<i> 	       const EngineView&lt;Tag&gt; &amp;tag)
+</I>&gt;<i>   {
+</I>&gt;<i>     return Type_t(
+</I>&gt;<i> 		  leafFunctor(multiarg.a1_m, tag),
+</I>&gt;<i> 		  leafFunctor(multiarg.a2_m, tag),
+</I>&gt;<i> 		  leafFunctor(multiarg.a3_m, tag)
+</I>&gt;<i> 		  );
+</I>&gt;<i>   }
+</I>&gt;<i> };
+</I>&gt;<i> 
+</I>&gt;<i> template&lt;class A1, class A2, class A3, class A4, class Tag&gt;
+</I>&gt;<i> struct LeafFunctor&lt;MultiArg4&lt;A1, A2, A3, A4&gt;,
+</I>&gt;<i>   ExpressionApply&lt;Tag&gt; &gt;
+</I>&gt;<i> {
+</I>&gt;<i>   typedef int Type_t;
+</I>&gt;<i> 
+</I>&gt;<i>   inline static
+</I>&gt;<i>   Type_t apply(const MultiArg4&lt;A1, A2, A3, A4&gt; &amp;multiarg,
+</I>&gt;<i> 	       const ExpressionApply&lt;Tag&gt; &amp;tag)
+</I>&gt;<i>   {
+</I>&gt;<i>     leafFunctor(multiarg.a1_m, tag);
+</I>&gt;<i>     leafFunctor(multiarg.a2_m, tag);
+</I>&gt;<i>     leafFunctor(multiarg.a3_m, tag);
+</I>&gt;<i>     leafFunctor(multiarg.a4_m, tag);
+</I>&gt;<i>     return 0;
+</I>&gt;<i>   }
+</I>&gt;<i> };
+</I>&gt;<i> 
+</I>&gt;<i> template&lt;class A1, class A2, class A3, class A4, class Tag&gt;
+</I>&gt;<i> struct LeafFunctor&lt;MultiArg4&lt;A1, A2, A3, A4&gt;, EngineView&lt;Tag&gt; &gt;
+</I>&gt;<i> {
+</I>&gt;<i>   typedef typename LeafFunctor&lt;A1, EngineView&lt;Tag&gt; &gt;::Type_t Type1_t;
+</I>&gt;<i>   typedef typename LeafFunctor&lt;A2, EngineView&lt;Tag&gt; &gt;::Type_t Type2_t;
+</I>&gt;<i>   typedef typename LeafFunctor&lt;A3, EngineView&lt;Tag&gt; &gt;::Type_t Type3_t;
+</I>&gt;<i>   typedef typename LeafFunctor&lt;A4, EngineView&lt;Tag&gt; &gt;::Type_t Type4_t;
+</I>&gt;<i>   typedef MultiArg4&lt;Type1_t, Type2_t, Type3_t, Type4_t&gt; Type_t;
+</I>&gt;<i> 
+</I>&gt;<i>   inline static
+</I>&gt;<i>   Type_t apply(const MultiArg4&lt;A1, A2, A3, A4&gt; &amp;multiarg,
+</I>&gt;<i> 	       const EngineView&lt;Tag&gt; &amp;tag)
+</I>&gt;<i>   {
+</I>&gt;<i>     return Type_t(
+</I>&gt;<i> 		  leafFunctor(multiarg.a1_m, tag),
+</I>&gt;<i> 		  leafFunctor(multiarg.a2_m, tag),
+</I>&gt;<i> 		  leafFunctor(multiarg.a3_m, tag),
+</I>&gt;<i> 		  leafFunctor(multiarg.a4_m, tag)
+</I>&gt;<i> 		  );
+</I>&gt;<i>   }
+</I>&gt;<i> };
+</I>&gt;<i> 
+</I>&gt;<i> template&lt;class A1, class A2, class A3, class A4, class A5, class Tag&gt;
+</I>&gt;<i> struct LeafFunctor&lt;MultiArg5&lt;A1, A2, A3, A4, A5&gt;,
+</I>&gt;<i>   ExpressionApply&lt;Tag&gt; &gt;
+</I>&gt;<i> {
+</I>&gt;<i>   typedef int Type_t;
+</I>&gt;<i> 
+</I>&gt;<i>   inline static
+</I>&gt;<i>   Type_t apply(const MultiArg5&lt;A1, A2, A3, A4, A5&gt; &amp;multiarg,
+</I>&gt;<i> 	       const ExpressionApply&lt;Tag&gt; &amp;tag)
+</I>&gt;<i>   {
+</I>&gt;<i>     leafFunctor(multiarg.a1_m, tag);
+</I>&gt;<i>     leafFunctor(multiarg.a2_m, tag);
+</I>&gt;<i>     leafFunctor(multiarg.a3_m, tag);
+</I>&gt;<i>     leafFunctor(multiarg.a4_m, tag);
+</I>&gt;<i>     leafFunctor(multiarg.a5_m, tag);
+</I>&gt;<i>     return 0;
+</I>&gt;<i>   }
+</I>&gt;<i> };
+</I>&gt;<i> 
+</I>&gt;<i> template&lt;class A1, class A2, class A3, class A4, class A5, class Tag&gt;
+</I>&gt;<i> struct LeafFunctor&lt;MultiArg5&lt;A1, A2, A3, A4, A5&gt;, EngineView&lt;Tag&gt; &gt;
+</I>&gt;<i> {
+</I>&gt;<i>   typedef typename LeafFunctor&lt;A1, EngineView&lt;Tag&gt; &gt;::Type_t Type1_t;
+</I>&gt;<i>   typedef typename LeafFunctor&lt;A2, EngineView&lt;Tag&gt; &gt;::Type_t Type2_t;
+</I>&gt;<i>   typedef typename LeafFunctor&lt;A3, EngineView&lt;Tag&gt; &gt;::Type_t Type3_t;
+</I>&gt;<i>   typedef typename LeafFunctor&lt;A4, EngineView&lt;Tag&gt; &gt;::Type_t Type4_t;
+</I>&gt;<i>   typedef typename LeafFunctor&lt;A5, EngineView&lt;Tag&gt; &gt;::Type_t Type5_t;
+</I>&gt;<i>   typedef MultiArg5&lt;Type1_t, Type2_t, Type3_t, Type4_t, Type5_t&gt; Type_t;
+</I>&gt;<i> 
+</I>&gt;<i>   inline static
+</I>&gt;<i>   Type_t apply(const MultiArg5&lt;A1, A2, A3, A4, A5&gt; &amp;multiarg,
+</I>&gt;<i> 	       const EngineView&lt;Tag&gt; &amp;tag)
+</I>&gt;<i>   {
+</I>&gt;<i>     return Type_t(
+</I>&gt;<i> 		  leafFunctor(multiarg.a1_m, tag),
+</I>&gt;<i> 		  leafFunctor(multiarg.a2_m, tag),
+</I>&gt;<i> 		  leafFunctor(multiarg.a3_m, tag),
+</I>&gt;<i> 		  leafFunctor(multiarg.a4_m, tag),
+</I>&gt;<i> 		  leafFunctor(multiarg.a5_m, tag)
+</I>&gt;<i> 		  );
+</I>&gt;<i>   }
+</I>&gt;<i> };
+</I>&gt;<i> 
+</I>&gt;<i> template&lt;class A1, class A2, class A3, class A4, class A5,
+</I>&gt;<i>   class A6, class Tag&gt;
+</I>&gt;<i> struct LeafFunctor&lt;MultiArg6&lt;A1, A2, A3, A4, A5, A6&gt;,
+</I>&gt;<i>   ExpressionApply&lt;Tag&gt; &gt;
+</I>&gt;<i> {
+</I>&gt;<i>   typedef int Type_t;
+</I>&gt;<i> 
+</I>&gt;<i>   inline static
+</I>&gt;<i>   Type_t apply(const MultiArg6&lt;A1, A2, A3, A4, A5, A6&gt; &amp;multiarg,
+</I>&gt;<i> 	       const ExpressionApply&lt;Tag&gt; &amp;tag)
+</I>&gt;<i>   {
+</I>&gt;<i>     leafFunctor(multiarg.a1_m, tag);
+</I>&gt;<i>     leafFunctor(multiarg.a2_m, tag);
+</I>&gt;<i>     leafFunctor(multiarg.a3_m, tag);
+</I>&gt;<i>     leafFunctor(multiarg.a4_m, tag);
+</I>&gt;<i>     leafFunctor(multiarg.a5_m, tag);
+</I>&gt;<i>     leafFunctor(multiarg.a6_m, tag);
+</I>&gt;<i>     return 0;
+</I>&gt;<i>   }
+</I>&gt;<i> };
+</I>&gt;<i> 
+</I>&gt;<i> template&lt;class A1, class A2, class A3, class A4, class A5,
+</I>&gt;<i>   class A6, class Tag&gt;
+</I>&gt;<i> struct LeafFunctor&lt;MultiArg6&lt;A1, A2, A3, A4, A5, A6&gt;, EngineView&lt;Tag&gt; &gt;
+</I>&gt;<i> {
+</I>&gt;<i>   typedef typename LeafFunctor&lt;A1, EngineView&lt;Tag&gt; &gt;::Type_t Type1_t;
+</I>&gt;<i>   typedef typename LeafFunctor&lt;A2, EngineView&lt;Tag&gt; &gt;::Type_t Type2_t;
+</I>&gt;<i>   typedef typename LeafFunctor&lt;A3, EngineView&lt;Tag&gt; &gt;::Type_t Type3_t;
+</I>&gt;<i>   typedef typename LeafFunctor&lt;A4, EngineView&lt;Tag&gt; &gt;::Type_t Type4_t;
+</I>&gt;<i>   typedef typename LeafFunctor&lt;A5, EngineView&lt;Tag&gt; &gt;::Type_t Type5_t;
+</I>&gt;<i>   typedef typename LeafFunctor&lt;A6, EngineView&lt;Tag&gt; &gt;::Type_t Type6_t;
+</I>&gt;<i>   typedef MultiArg6&lt;Type1_t, Type2_t, Type3_t, Type4_t, Type5_t,
+</I>&gt;<i>     Type6_t&gt; Type_t;
+</I>&gt;<i> 
+</I>&gt;<i>   inline static
+</I>&gt;<i>   Type_t apply(const MultiArg6&lt;A1, A2, A3, A4, A5, A6&gt; &amp;multiarg,
+</I>&gt;<i> 	       const EngineView&lt;Tag&gt; &amp;tag)
+</I>&gt;<i>   {
+</I>&gt;<i>     return Type_t(
+</I>&gt;<i> 		  leafFunctor(multiarg.a1_m, tag),
+</I>&gt;<i> 		  leafFunctor(multiarg.a2_m, tag),
+</I>&gt;<i> 		  leafFunctor(multiarg.a3_m, tag),
+</I>&gt;<i> 		  leafFunctor(multiarg.a4_m, tag),
+</I>&gt;<i> 		  leafFunctor(multiarg.a5_m, tag),
+</I>&gt;<i> 		  leafFunctor(multiarg.a6_m, tag)
+</I>&gt;<i> 		  );
+</I>&gt;<i>   }
+</I>&gt;<i> };
+</I>&gt;<i> 
+</I>&gt;<i> template&lt;class A1, class A2, class A3, class A4, class A5,
+</I>&gt;<i>   class A6, class A7, class Tag&gt;
+</I>&gt;<i> struct LeafFunctor&lt;MultiArg7&lt;A1, A2, A3, A4, A5, A6, A7&gt;,
+</I>&gt;<i>   ExpressionApply&lt;Tag&gt; &gt;
+</I>&gt;<i> {
+</I>&gt;<i>   typedef int Type_t;
+</I>&gt;<i> 
+</I>&gt;<i>   inline static
+</I>&gt;<i>   Type_t apply(const MultiArg7&lt;A1, A2, A3, A4, A5, A6, A7&gt; &amp;multiarg,
+</I>&gt;<i> 	       const ExpressionApply&lt;Tag&gt; &amp;tag)
+</I>&gt;<i>   {
+</I>&gt;<i>     leafFunctor(multiarg.a1_m, tag);
+</I>&gt;<i>     leafFunctor(multiarg.a2_m, tag);
+</I>&gt;<i>     leafFunctor(multiarg.a3_m, tag);
+</I>&gt;<i>     leafFunctor(multiarg.a4_m, tag);
+</I>&gt;<i>     leafFunctor(multiarg.a5_m, tag);
+</I>&gt;<i>     leafFunctor(multiarg.a6_m, tag);
+</I>&gt;<i>     leafFunctor(multiarg.a7_m, tag);
+</I>&gt;<i>     return 0;
+</I>&gt;<i>   }
+</I>&gt;<i> };
+</I>&gt;<i> 
+</I>&gt;<i> template&lt;class A1, class A2, class A3, class A4, class A5,
+</I>&gt;<i>   class A6, class A7, class Tag&gt;
+</I>&gt;<i> struct LeafFunctor&lt;MultiArg7&lt;A1, A2, A3, A4, A5, A6, A7&gt;, EngineView&lt;Tag&gt; &gt;
+</I>&gt;<i> {
+</I>&gt;<i>   typedef typename LeafFunctor&lt;A1, EngineView&lt;Tag&gt; &gt;::Type_t Type1_t;
+</I>&gt;<i>   typedef typename LeafFunctor&lt;A2, EngineView&lt;Tag&gt; &gt;::Type_t Type2_t;
+</I>&gt;<i>   typedef typename LeafFunctor&lt;A3, EngineView&lt;Tag&gt; &gt;::Type_t Type3_t;
+</I>&gt;<i>   typedef typename LeafFunctor&lt;A4, EngineView&lt;Tag&gt; &gt;::Type_t Type4_t;
+</I>&gt;<i>   typedef typename LeafFunctor&lt;A5, EngineView&lt;Tag&gt; &gt;::Type_t Type5_t;
+</I>&gt;<i>   typedef typename LeafFunctor&lt;A6, EngineView&lt;Tag&gt; &gt;::Type_t Type6_t;
+</I>&gt;<i>   typedef typename LeafFunctor&lt;A7, EngineView&lt;Tag&gt; &gt;::Type_t Type7_t;
+</I>&gt;<i>   typedef MultiArg7&lt;Type1_t, Type2_t, Type3_t, Type4_t, Type5_t,
+</I>&gt;<i>     Type6_t, Type7_t&gt; Type_t;
+</I>&gt;<i> 
+</I>&gt;<i>   inline static
+</I>&gt;<i>   Type_t apply(const MultiArg7&lt;A1, A2, A3, A4, A5, A6, A7&gt; &amp;multiarg,
+</I>&gt;<i> 	       const EngineView&lt;Tag&gt; &amp;tag)
+</I>&gt;<i>   {
+</I>&gt;<i>     return Type_t(
+</I>&gt;<i> 		  leafFunctor(multiarg.a1_m, tag),
+</I>&gt;<i> 		  leafFunctor(multiarg.a2_m, tag),
+</I>&gt;<i> 		  leafFunctor(multiarg.a3_m, tag),
+</I>&gt;<i> 		  leafFunctor(multiarg.a4_m, tag),
+</I>&gt;<i> 		  leafFunctor(multiarg.a5_m, tag),
+</I>&gt;<i> 		  leafFunctor(multiarg.a6_m, tag),
+</I>&gt;<i> 		  leafFunctor(multiarg.a7_m, tag)
+</I>&gt;<i> 		  );
+</I>&gt;<i>   }
+</I>Index: PETE/Functors.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/PETE/Functors.h,v
+retrieving revision 1.7
+diff -r1.7 Functors.h
+76a77,83
+&gt;<i> template&lt;class LeafType, class LeafTag&gt;
+</I>&gt;<i> inline
+</I>&gt;<i> typename LeafFunctor&lt;LeafType, LeafTag&gt;::Type_t
+</I>&gt;<i> leafFunctor(const LeafType &amp;leaf, const LeafTag &amp;tag)
+</I>&gt;<i> {
+</I>&gt;<i>   return LeafFunctor&lt;LeafType, LeafTag&gt;::apply(leaf, tag);
+</I>&gt;<i> }
+</I></PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000209.html">Mailing list archives
+</A></li>
+	<LI>Next message: <A HREF="000215.html">Patch: Get NewField to work with messaging.
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#210">[ date ]</a>
+              <a href="thread.html#210">[ thread ]</a>
+              <a href="subject.html#210">[ subject ]</a>
+              <a href="author.html#210">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

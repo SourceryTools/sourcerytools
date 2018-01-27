@@ -1,0 +1,177 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [pooma-dev] Problem with Field::makeOwnCopy() and Relations
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bpooma-dev%5D%20Problem%20with%20Field%3A%3AmakeOwnCopy%28%29%20and%20Relations&In-Reply-To=%3CPine.LNX.4.44.0305212135440.626-100000%40goofy%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001270.html">
+   <LINK REL="Next"  HREF="001272.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[pooma-dev] Problem with Field::makeOwnCopy() and Relations</H1>
+    <B>Richard Guenther</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bpooma-dev%5D%20Problem%20with%20Field%3A%3AmakeOwnCopy%28%29%20and%20Relations&In-Reply-To=%3CPine.LNX.4.44.0305212135440.626-100000%40goofy%3E"
+       TITLE="[pooma-dev] Problem with Field::makeOwnCopy() and Relations">rguenth at tat.physik.uni-tuebingen.de
+       </A><BR>
+    <I>Wed May 21 19:41:27 UTC 2003</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001270.html">[pooma-dev] Problem with Field::makeOwnCopy() and Relations
+</A></li>
+        <LI>Next message: <A HREF="001272.html">[pooma-dev] Problem with Field::makeOwnCopy() and Relations
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1271">[ date ]</a>
+              <a href="thread.html#1271">[ thread ]</a>
+              <a href="subject.html#1271">[ subject ]</a>
+              <a href="author.html#1271">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>On Wed, 21 May 2003, John H. Hall wrote:
+
+&gt;<i> Richard:
+</I>&gt;<i> &gt;
+</I>&gt;<i> &gt; Uh, while I dont use dependend Field feature (yet), I cannot see how
+</I>&gt;<i> &gt; the centering can make a difference here.
+</I>&gt;<i> &gt;
+</I>&gt;<i> It been a while since I used POOMA so some of my cobwebs need to be
+</I>&gt;<i> shaken out. In moving from POOMA R1 to later versions of POOMA R2 we
+</I>&gt;<i> removed centering as a template argument, so you are correct, the real
+</I>&gt;<i> issue is that the current instantiation of relations inside POOMA
+</I>&gt;<i> requires fields with the same number of subFields because of the way
+</I>&gt;<i> Scott wrote the loops. So when I referred to centerings, I didn't mean
+</I>&gt;<i> Vert and Cell, I meant Edge and Cell would be incompatible since they
+</I>&gt;<i> have a differing number of subFields.
+</I>
+Ah ok, I see what you are talking about. But these expressions involving
+multiple subfields are error prone and sometimes quite surprising in the
+outcome. Not only because you cannot take views of fields with &gt;1
+subfields and calling field.physicalDomain() is &quot;undefined&quot; for fields
+with &gt;1 subfield.
+
+&gt;<i> &gt; ...
+</I>&gt;<i> &gt; Yes, but program (or better, expression) flow would be very hard to
+</I>&gt;<i> &gt; follow
+</I>&gt;<i> &gt; then. So from a maintainance point of view I doubt this would be
+</I>&gt;<i> &gt; useful.
+</I>&gt;<i> &gt; I see it can be useful for sort of CSE, where you set up a dependent
+</I>&gt;<i> &gt; field
+</I>&gt;<i> &gt; for the expression.
+</I>&gt;<i> &gt;
+</I>&gt;<i> Since we were trying to investigate modern computer science we
+</I>&gt;<i> developed tools allow us to do full round-trip engineering. So the
+</I>&gt;<i> dependencies were actually quite simple to track and we worked in a
+</I>&gt;<i> graphical environment in maintaining them using a customized version of
+</I>&gt;<i> a technology called &quot;Describe&quot; (originally GDPro) from Embarcadero
+</I>&gt;<i> Technologies. We had to introduce and work through a lot of concepts,
+</I>&gt;<i> like &quot;state&quot; to make things work. Also, the way we implemented
+</I>&gt;<i> relations you had to think of them as having views of the things they
+</I>&gt;<i> were dependent upon which always led back to the same data, otherwise
+</I>&gt;<i> you would get divergent unexpected copies of your data floating around.
+</I>&gt;<i> We had some additional structure to support this.
+</I>&gt;<i>
+</I>&gt;<i> One of the major contributors to code fragility is implicit contracts
+</I>&gt;<i> between subroutines which are violated when an unaware subroutine is
+</I>&gt;<i> placed between them that violates the &quot;contract&quot;. Computers were meant
+</I>&gt;<i> to track these things and the use of relations led to a significant
+</I>&gt;<i> reduction in user-supplied code. As with all technologies, there are
+</I>&gt;<i> pathological cases that would eventually result in trouble if not
+</I>&gt;<i> designed around, but, they were fairly straightforward to avoid. Since
+</I>&gt;<i> most of them led to infinite loops, that also made it simpler to figure
+</I>&gt;<i> out when you had fallen into a trap. We also defined a Macro which was
+</I>&gt;<i> placed at the beginning of every method by our automatic code generator
+</I>&gt;<i> that would allow us to conditionally turn on the call chain to allow us
+</I>&gt;<i> to see if we had any cascades or unnecessary loop updates going on as a
+</I>&gt;<i> result of having our dependencies set up incorrectly.
+</I>&gt;<i>
+</I>&gt;<i> A question we never had to ask was &quot;Has this variable been updated?&quot;
+</I>&gt;<i> When you are integrating a large set of physics packages, it becomes
+</I>&gt;<i> important to have these contracts explicitly spelled out or remove them
+</I>&gt;<i> with a scheme such as ours. Avoiding unintended side-effects becomes
+</I>&gt;<i> the name of the game.
+</I>
+Yes, I see. Some highlevel tools to at least view the dependence graph
+would be useful. Should be extractable at runtime and displayable by
+f.i. the dot package ... sounds like a project ;)
+
+&gt;<i> &gt; As you are (were?) a POOMA user, did you have tricks to overcome the
+</I>&gt;<i> &gt; overly simplistic handing of the inner guards and their exchange? I.e.
+</I>&gt;<i> &gt; the fact that only a simple flag is kept for the state of the internal
+</I>&gt;<i> &gt; guards, so you cannot optimize f.i. directional splitted CFD and
+</I>&gt;<i> &gt; instead
+</I>&gt;<i> &gt; do tree times the communication you need to?
+</I>&gt;<i> No, we talked about it a lot. Our hardware was not bandwidth limited,
+</I>&gt;<i> it instead had a large latency, so we bundled all the communications
+</I>&gt;<i> into as few messages as possible, but, we really didn't care what the
+</I>&gt;<i> message size was. We spent much more time thinking about the external
+</I>&gt;<i> guard cell fills and while we came up with some ideas for optimizing
+</I>&gt;<i> these, most of them have never been implemented.
+</I>&gt;<i>
+</I>&gt;<i> Our team did come up with the deferred guard cell update idea which was
+</I>&gt;<i> wonderfully implemented by Scott Haney (that's the flag you are
+</I>&gt;<i> referring to). Before this the guard cells were updated at the end of
+</I>&gt;<i> every assign statement, which was truly problematic for performance.
+</I>&gt;<i> His code in R1 would only require updates if the RHS expression were
+</I>&gt;<i> using guard cells. I believe the R2 version just always requires an
+</I>&gt;<i> update if the field is on the RHS of an expression (stencil or no). A
+</I>&gt;<i> major driver for recognizing the difference between Dependent and
+</I>&gt;<i> Independent Fields was that Dependent Fields would almost never need to
+</I>&gt;<i> communicate to fill their guard cells (only if they stenciled across
+</I>&gt;<i> the Independent Field). We didn't get far enough along to take
+</I>&gt;<i> advantage of that optimization.
+</I>
+Yes. If I have enough time I'll look into these issues, but a one-day
+try had no success sofar.
+
+&gt;<i> &gt;
+</I>&gt;<i> &gt; Btw. - what is/was the application you were using POOMA on? Is it
+</I>&gt;<i> &gt; available somewhere, so people can learn from it?
+</I>&gt;<i> &gt;
+</I>&gt;<i> There were a bunch of CFD codes all developed under a project at Los
+</I>&gt;<i> Alamos National Laboratory known as Blanca. AFAIK none of these codes
+</I>&gt;<i> are available to the public and most of them were export controlled so
+</I>&gt;<i> they probably never will be.
+</I>&gt;<i>
+</I>&gt;<i> In the current version you do lose some optimizations if you stick to
+</I>&gt;<i> the strict data parallel syntax (e.g. loop fusion, directional guard
+</I>&gt;<i> cell fills for operator split algorithms). But it is still the most
+</I>&gt;<i> advanced array/field abstraction developed to date and I hope to get
+</I>&gt;<i> back to moving it forward again soon.
+</I>
+I hope so, too. POOMA is really the best designed package for CFD I
+know, and I'm glad to have stumbled over it.
+
+Richard.
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001270.html">[pooma-dev] Problem with Field::makeOwnCopy() and Relations
+</A></li>
+	<LI>Next message: <A HREF="001272.html">[pooma-dev] Problem with Field::makeOwnCopy() and Relations
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1271">[ date ]</a>
+              <a href="thread.html#1271">[ thread ]</a>
+              <a href="subject.html#1271">[ subject ]</a>
+              <a href="author.html#1271">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

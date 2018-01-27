@@ -1,0 +1,360 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> Explicit Instantiation Problem with Pooma 2 using KCC on RH 6.2 Linux
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20Explicit%20Instantiation%20Problem%20with%20Pooma%202%20using%20KCC%20on%20RH%206.2%20Linux&In-Reply-To=%3C15088.38283.319770.777522%40mutley.lanl.gov%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000299.html">
+   <LINK REL="Next"  HREF="000301.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>Explicit Instantiation Problem with Pooma 2 using KCC on RH 6.2 Linux</H1>
+    <B>Dave Nystrom</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20Explicit%20Instantiation%20Problem%20with%20Pooma%202%20using%20KCC%20on%20RH%206.2%20Linux&In-Reply-To=%3C15088.38283.319770.777522%40mutley.lanl.gov%3E"
+       TITLE="Explicit Instantiation Problem with Pooma 2 using KCC on RH 6.2 Linux">wdn at lanl.gov
+       </A><BR>
+    <I>Thu May  3 00:24:32 UTC 2001</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000299.html">Question about how to do something with Pooma 2
+</A></li>
+        <LI>Next message: <A HREF="000301.html">[pooma-dev] Explicit Instantiation Problem with Pooma 2 using KCC on RH 6.2 Linux
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#300">[ date ]</a>
+              <a href="thread.html#300">[ thread ]</a>
+              <a href="subject.html#300">[ subject ]</a>
+              <a href="author.html#300">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Below is a file, X.cc, which I am unable to compile with KCC on a RH 6.2
+Linux machine.  Below that is the build log with the KCC error message that I 
+receive when I try to compile it.  The template which I am trying to
+explicitly instantiate is one that is referenced by our Pooma 2 application
+code and the KCC prelinker is able to instantiate it just fine.  I have been
+able to determine which translation unit that the KCC prelinker chooses to
+instantiate this template in and have also tried to perform the explicit
+instantation in that same translation unit so that I could be sure that
+everything that KCC needed to see to perform the instantiation was in fact
+included and I get the same error message which I have included below.  I
+made a -E output file of the translation unit in question and sent it off to
+Arch to look at.  Arch looked at it and made a simpler test case which he
+sent off to EDG.  The conclusion of Arch and EDG was that Pooma 2 has a
+problem which makes it susceptible to the point of instantiation of a
+template.  Below is the reply from Arch and EDG.  Also below is a copy of the 
+test problem which Arch sent off to EDG which he felt was an accurate and
+simplifed version of the problem I was seeing.
+
+So, why do I care about this.  Because I am trying to build a Pooma 2
+template instantiation library specific to our new Pooma 2 application code
+so that I can speed up the compiles of developers working on our stuff.  I
+did this with our Pooma 1 application in the secure a few months back and got 
+alot of mileage out of it.  It is not really difficult modulo these sorts of
+problems.  In our current Pooma 2 application source code base the prelinker
+instantiates 1800-2000 of these View1&lt;Field&lt;T1,T2,T3&gt;,T4&gt;::sv templates with
+different template parameters.  Using xemacs and a keyboard macro, I can
+write instantiation requests for all 1800-2000 of them in about 15 minutes.
+With a little more sophistication, we could write a Perl tool that would make 
+it even easier.  This approach requires periodic maintenance but is not
+difficult especially if we took the time to write some Perl tools.  And it
+pushes the compilation of Pooma 2 only templates down to the level of Pooma
+2.  That means that we only have to build the Pooma 2 instantiations library
+when we change/update Pooma 2 or add/delete instantiations to the
+instantiations library when we feel inclined to do so.
+
+So, could someone take a look at this problem and figure out what needs to be 
+modified in Pooma 2 to make it possible to explicitly instantiate the
+View1&lt;Field&lt;T1,T2,T3&gt;,T4&gt;::sv?  Also, let me know if I have not explained
+anything clearly enough about the problem.
+
+Thanks for any help you can provide,
+
+-- 
+Dave Nystrom			email: <A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">wdn at lanl.gov</A>
+LANL X-3			phone: 505-667-7913	fax: 505-665-3046
+
+
+------------------Arch's Test Problem Sent to EDG----------------------
+It took the entire afternoon to reduce your example to a
+reasonable 41 lines and send it to EDG.
+Attached is the reduced case.  I'll let you know when I hear from EDG.
+
+- Arch
+
+
+//---------------------------------------------------------------------
+// Primary templates
+//---------------------------------------------------------------------
+template&lt;class T&gt; class Field;
+template&lt;class Subject&gt; struct Melon;	
+template&lt;class Thing&gt; struct Scene {};	
+template&lt;int Dim&gt; class Interval;
+
+//---------------------------------------------------------------------
+// Partial specializations
+//---------------------------------------------------------------------
+template&lt;class T&gt;
+struct Scene&lt;Field&lt;T&gt; &gt;;
+
+template&lt;class T&gt;
+struct Melon&lt;Field&lt;T&gt; &gt; {		// line #X
+    typedef T Trouble_t;
+};
+
+template&lt;class T&gt;
+struct Scene&lt;Field&lt;T&gt; &gt;
+{
+    typedef Field&lt;T&gt; Subject_t;
+#ifndef NO_BUG 
+    typedef typename Subject_t::Domain_t Domain_t;
+#endif
+    // &quot;Melon&quot; below should reference partial specialization on line = #X
+    typedef typename Melon&lt; Subject_t &gt;::Trouble_t Trouble_t;
+    static const bool sv = true;
+};
+
+//---------------------------------------------------------------------
+// Other miscellaneous definitions
+//---------------------------------------------------------------------
+template&lt;class T&gt;
+struct Field {
+    typedef Interval&lt;3&gt; Domain_t;
+    typename Scene&lt;Field&lt;T&gt; &gt;::Trouble_t boil() const;
+};
+
+const bool&amp; Zebra = Scene&lt;Field&lt;int&gt; &gt;::sv;
+
+--------------------Final Reply of Arch and EDG--------------------------
+My impression is that the Pooma 2 code has errors
+that are sensitive to the &quot;point of instantiation&quot;,
+and it's just dumb luck that implicit instantiation works.
+
+- Arch
+
+-----Original Message-----
+From: Dave Nystrom [mailto:<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">wdn at lanl.gov</A>]
+Sent: Tuesday, April 10, 2001 12:24 PM
+To: Robison, Arch
+Cc: 'Dave Nystrom'; '<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">c++support at kai.com</A>'
+Subject: RE: FW: [1C2901] RE: Problems trying to do explicit template
+instant iations
+
+
+OK, but now I am confused about what I need to do in the context of my
+original problem.  When this is described as a programmer error, is that
+referring to the way in which I am trying to do the instantiation?  Or does
+it mean that there is an error in the Pooma 2 code for the View1 template?
+Do you understand how to fix the &quot;programmer error&quot;?  Do you understand why
+the prelinker is able to do the instantiation but my explicit instantiation
+attempt fails?
+
+Dave
+
+Robison, Arch writes:
+ &gt; Here's a resend.  - Arch
+ &gt; 
+ &gt; &gt;  -----Original Message-----
+ &gt; &gt; From: 	Robison, Arch  
+ &gt; &gt; Sent:	Wednesday, April 04, 2001 8:16 AM
+ &gt; &gt; To:	'Dave Nystrom'
+ &gt; &gt; Cc:	'KCC Support'; Robison, Arch
+ &gt; &gt; Subject:	RE: [1C2901]  RE: Problems trying to do explicit template
+ &gt; &gt; instantiations
+ &gt; &gt; 
+ &gt; &gt; EDG says they are doing the right thing.  See below.
+ &gt; &gt; The references are to the example that I sent yesterday.
+ &gt; &gt; 
+ &gt; &gt; After looking at this for a while, I believe that we are doing the
+right
+ &gt; &gt; thing.
+ &gt; &gt; 
+ &gt; &gt; As our message says:
+ &gt; &gt; 
+ &gt; &gt; &quot;t1.c&quot;, line 38: error: class &quot;Scene&lt;Field&lt;int&gt;&gt;&quot; has no member
+ &gt; &gt; &quot;Trouble_t&quot;
+ &gt; &gt;       typename Scene&lt;Field&lt;T&gt; &gt;::Trouble_t boil() const;
+ &gt; &gt;                                  ^
+ &gt; &gt;           detected during:
+ &gt; &gt;             instantiation of class &quot;Field&lt;T&gt; [with T=int]&quot; at line 25
+ &gt; &gt;             instantiation of class &quot;Scene&lt;Field&lt;T&gt;&gt; [with T=int]&quot; at
+line
+ &gt; &gt; 41
+ &gt; &gt; 
+ &gt; &gt; 
+ &gt; &gt; The problem is that the instantiation of Field&lt;int&gt; is initiated by
+during
+ &gt; &gt; the
+ &gt; &gt; instantiation of Scene&lt;Field&lt;int&gt;&gt;, but Field&lt;int&gt; then makes reference
+to
+ &gt; &gt; a member of Scene&lt;Field&lt;int&gt;&gt; that has not yet been declared
+(Trouble_t).
+ &gt; &gt; 
+ &gt; &gt; Two other compilers (g++ and Borland) give similar messages on this
+ &gt; &gt; example.
+ &gt; &gt; 
+ &gt; &gt; This can be fixed by moving the declaration of Trouble_t to the point
+ &gt; &gt; immediately following the declaration of Subject_t.
+ &gt; &gt; 
+ &gt; &gt; So what you have is a code that is sensitive to the &quot;point of
+ &gt; &gt; instantiation&quot;.  Since points
+ &gt; &gt; of instantiation are defined by the ISO C++ standard, it's a programmer
+ &gt; &gt; error, albeit
+ &gt; &gt; an obscure and difficult to diagnose one.
+ &gt; &gt; 
+ &gt; &gt; - Arch
+ &gt; 
+
+--------------------------------X.cc-------------------------------------
+#include &quot;Pooma/NewFields.h&quot;
+
+// Test instantiation.
+
+#define T1 NoGeometry&lt;(int)3&gt;
+#define T2 int
+#define T3 CompressibleBrickView
+#define T4 Interval&lt;(int)3&gt;
+template View1&lt;Field&lt;T1,T2,T3&gt;,T4&gt;::sv;
+#undef T1
+#undef T2
+#undef T3
+#undef T4
+
+-----------------------------Build-Log-----------------------------------
+cd /usr/projects/blanca/usr/wdn/blanca_src_4.0/TecIntegrationLayer/Pooma2Integration/
+date; /usr/bin/time -p make RECURSE=1 app
+
+Setting csh aliases for Blanca source environment v 4.0 on host: mutley
+Wed May  2 17:16:38 MDT 2001
+
+COMPILING... See /scratch/wdn/obj_4.0/POOMA2INTEGRATION/LINUX_KCC_CART_XYZ_DEBUG/Pooma2Integration_src/TecMesh/X.o_1.info
+
+KCC -c /usr/projects/blanca/usr/wdn/blanca_src_4.0/TecIntegrationLayer/Pooma2Integration/Pooma2Integration_src/TecMesh/X.cc -o /scratch/wdn/obj_4.0/POOMA2INTEGRATION/LINUX_KCC_CART_XYZ_DEBUG/Pooma2Integration_src/TecMesh/X.o --output_dependencies /scratch/wdn/obj_4.0/POOMA2INTEGRATION/LINUX_KCC_CART_XYZ_DEBUG/Pooma2Integration_src/TecMesh/X.o.depend.mk.temp --diag_suppress 630 --COMPDO_fe_cc2c --pch_ignore_dir --use_pch /scratch/wdn/obj_4.0/POOMA2INTEGRATION/LINUX_KCC_CART_XYZ_DEBUG/POOMA2INTEGRATION_1.pch -DTEC_USE_POOMA2INTEGRATION -DTEC_USE_TECFRAMEWORK -DTEC_USE_POOMA2INSTANTIATIONS -DTEC_USE_STLINSTANTIATIONS -DTEC_USE_POOMA -DTEC_USE_CHEETAH -DTEC_USE_MM -DTEC_USE_PCG -DCART_XYZ -DDOUBLE_PRECISION -DPETE -DV034 -DTEC_NEW_POOMA_COMPRESSION -DTEC_USE_EXCEPTIONS -DTEC_LINUX -DTEC_USING_KCC_DEFINES -DTEC_KCC_INFINITE_COMPILE_TIME -DTEC_SINGLE_BRICK -DTEC_INST -DTEC_USE_PCH -I/usr/projects/blanca/usr/wdn/blanca_src_4.0/TecIntegrationLayer/Pooma2Integration -I/usr/projects/blanca/packages/TecFramework -I/usr/projects/blanca/packages/BlancaInstantiations/Pooma2Instantiations -I/usr/projects/blanca/packages/BlancaInstantiations/STLInstantiations -I/usr/projects/blanca/packages/PoomaII/r2/src -I/usr/projects/blanca/packages/PoomaII/r2/lib/LINUX_KCC_DEBUG_CHEETAH -I/usr/projects/blanca/packages/Cheetah/cheetah-1.0.0/src -I/usr/projects/blanca/packages/Cheetah/cheetah-1.0.0/lib/LINUX_KCC_DEBUG -I/home/wdn/packages/mpich-1.2.1/include -I/usr/projects/blanca/packages/mm-1.1.1/include -I/usr/projects/blanca/packages/pcg/pcg_f77 --display_error_number -fpic --strict -D__KAI_STRICT --diag_suppress 450 +K0 --no_kdebug
+
+&quot;/usr/projects/blanca/packages/PoomaII/r2/src/NewField/Field.h&quot;, line 1013: error #135: 
+          class &quot;View1&lt;Field&lt;NoGeometry&lt;3&gt;, int, CompressibleBrickView&gt;,
+          Interval&lt;3&gt;&gt;&quot; has no member &quot;ReadType_t&quot;
+    inline typename View1&lt;This_t, Domain_t&gt;::ReadType_t 
+                                             ^
+          detected during:
+            instantiation of class &quot;Field&lt;GeometryTag, T, EngineTag&gt; [with
+                      GeometryTag=NoGeometry&lt;3&gt;, T=int,
+                      EngineTag=CompressibleBrickView]&quot; at line 440
+            instantiation of class &quot;View1&lt;Field&lt;G1, T1, E1&gt;, Sub1&gt; [with
+                      GeometryTag=NoGeometry&lt;3&gt;, T=int,
+                      EngineTag=CompressibleBrickView, Sub1=Interval&lt;3&gt;]&quot; at
+                      line 9 of
+                      &quot;/usr/projects/blanca/usr/wdn/blanca_src_4.0/TecIntegrati
+                      onLayer/Pooma2Integration/Pooma2Integration_src/TecMesh/X
+                      .cc&quot;
+
+&quot;/usr/projects/blanca/packages/PoomaII/r2/src/NewField/Field.h&quot;, line 1020: error #135: 
+          class &quot;View1&lt;Field&lt;NoGeometry&lt;3&gt;, int, CompressibleBrickView&gt;,
+          Interval&lt;3&gt;&gt;&quot; has no member &quot;ReadType_t&quot;
+    inline typename View1&lt;This_t, Domain_t&gt;::ReadType_t 
+                                             ^
+          detected during:
+            instantiation of class &quot;Field&lt;GeometryTag, T, EngineTag&gt; [with
+                      GeometryTag=NoGeometry&lt;3&gt;, T=int,
+                      EngineTag=CompressibleBrickView]&quot; at line 440
+            instantiation of class &quot;View1&lt;Field&lt;G1, T1, E1&gt;, Sub1&gt; [with
+                      GeometryTag=NoGeometry&lt;3&gt;, T=int,
+                      EngineTag=CompressibleBrickView, Sub1=Interval&lt;3&gt;]&quot; at
+                      line 9 of
+                      &quot;/usr/projects/blanca/usr/wdn/blanca_src_4.0/TecIntegrati
+                      onLayer/Pooma2Integration/Pooma2Integration_src/TecMesh/X
+                      .cc&quot;
+
+&quot;/usr/projects/blanca/packages/PoomaII/r2/src/NewField/Field.h&quot;, line 1051: error #135: 
+          class &quot;View1&lt;Field&lt;NoGeometry&lt;3&gt;, int, CompressibleBrickView&gt;,
+          Interval&lt;3&gt;&gt;&quot; has no member &quot;Type_t&quot;
+    inline typename View1&lt;This_t, Domain_t&gt;::Type_t 
+                                             ^
+          detected during:
+            instantiation of class &quot;Field&lt;GeometryTag, T, EngineTag&gt; [with
+                      GeometryTag=NoGeometry&lt;3&gt;, T=int,
+                      EngineTag=CompressibleBrickView]&quot; at line 440
+            instantiation of class &quot;View1&lt;Field&lt;G1, T1, E1&gt;, Sub1&gt; [with
+                      GeometryTag=NoGeometry&lt;3&gt;, T=int,
+                      EngineTag=CompressibleBrickView, Sub1=Interval&lt;3&gt;]&quot; at
+                      line 9 of
+                      &quot;/usr/projects/blanca/usr/wdn/blanca_src_4.0/TecIntegrati
+                      onLayer/Pooma2Integration/Pooma2Integration_src/TecMesh/X
+                      .cc&quot;
+
+&quot;/usr/projects/blanca/packages/PoomaII/r2/src/NewField/Field.h&quot;, line 1058: error #135: 
+          class &quot;View1&lt;Field&lt;NoGeometry&lt;3&gt;, int, CompressibleBrickView&gt;,
+          Interval&lt;3&gt;&gt;&quot; has no member &quot;Type_t&quot;
+    inline typename View1&lt;This_t, Domain_t&gt;::Type_t 
+                                             ^
+          detected during:
+            instantiation of class &quot;Field&lt;GeometryTag, T, EngineTag&gt; [with
+                      GeometryTag=NoGeometry&lt;3&gt;, T=int,
+                      EngineTag=CompressibleBrickView]&quot; at line 440
+            instantiation of class &quot;View1&lt;Field&lt;G1, T1, E1&gt;, Sub1&gt; [with
+                      GeometryTag=NoGeometry&lt;3&gt;, T=int,
+                      EngineTag=CompressibleBrickView, Sub1=Interval&lt;3&gt;]&quot; at
+                      line 9 of
+                      &quot;/usr/projects/blanca/usr/wdn/blanca_src_4.0/TecIntegrati
+                      onLayer/Pooma2Integration/Pooma2Integration_src/TecMesh/X
+                      .cc&quot;
+
+&quot;/usr/projects/blanca/usr/wdn/blanca_src_4.0/TecIntegrationLayer/Pooma2Integration/Pooma2Integration_src/TecMesh/X.cc&quot;, line 9: error #77-D: 
+          this declaration has no storage class or type specifier
+  template View1&lt;Field&lt;T1,T2,T3&gt;,T4&gt;::sv;
+           ^
+
+&quot;/usr/projects/blanca/usr/wdn/blanca_src_4.0/TecIntegrationLayer/Pooma2Integration/Pooma2Integration_src/TecMesh/X.cc&quot;, line 9: error #147: 
+          declaration is incompatible with &quot;const bool View1&lt;Field&lt;G1, T1,
+          E1&gt;, Sub1&gt;::sv [with GeometryTag=NoGeometry&lt;3&gt;, T=int,
+          EngineTag=CompressibleBrickView, Sub1=Interval&lt;3&gt;]&quot; (declared at
+          line 446 of
+          &quot;/usr/projects/blanca/packages/PoomaII/r2/src/NewField/Field.h&quot;)
+  template View1&lt;Field&lt;T1,T2,T3&gt;,T4&gt;::sv;
+                                      ^
+
+6 errors detected in the compilation of &quot;/usr/projects/blanca/usr/wdn/blanca_src_4.0/TecIntegrationLayer/Pooma2Integration/Pooma2Integration_src/TecMesh/X.cc&quot;.
+KCC: Compilation failed.
+Command exited with non-zero status 2
+real 18.00
+user 12.97
+sys 1.24
+
+Error compiling /scratch/wdn/obj_4.0/POOMA2INTEGRATION/LINUX_KCC_CART_XYZ_DEBUG/Pooma2Integration_src/TecMesh/X.o
+make: *** [/scratch/wdn/obj_4.0/POOMA2INTEGRATION/LINUX_KCC_CART_XYZ_DEBUG/Pooma2Integration_src/TecMesh/X.o] Error 9
+Command exited with non-zero status 2
+real 24.05
+user 16.34
+sys 1.44
+
+Compilation exited abnormally with code 2 at Wed May  2 17:17:02
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000299.html">Question about how to do something with Pooma 2
+</A></li>
+	<LI>Next message: <A HREF="000301.html">[pooma-dev] Explicit Instantiation Problem with Pooma 2 using KCC on RH 6.2 Linux
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#300">[ date ]</a>
+              <a href="thread.html#300">[ thread ]</a>
+              <a href="subject.html#300">[ subject ]</a>
+              <a href="author.html#300">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

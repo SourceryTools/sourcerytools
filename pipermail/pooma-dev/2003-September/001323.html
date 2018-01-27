@@ -1,0 +1,221 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [pooma-dev] Sparse Engine
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bpooma-dev%5D%20Sparse%20Engine&In-Reply-To=%3C6BE65ABA-F004-11D7-AD5E-0003938E6E0A%40zianet.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001322.html">
+   <LINK REL="Next"  HREF="001324.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[pooma-dev] Sparse Engine</H1>
+    <B>John Hall</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bpooma-dev%5D%20Sparse%20Engine&In-Reply-To=%3C6BE65ABA-F004-11D7-AD5E-0003938E6E0A%40zianet.com%3E"
+       TITLE="[pooma-dev] Sparse Engine">jhh at zianet.com
+       </A><BR>
+    <I>Fri Sep 26 09:33:01 UTC 2003</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001322.html">[pooma-dev] Sparse Engine
+</A></li>
+        <LI>Next message: <A HREF="001324.html">[pooma-dev] Sparse Engine
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1323">[ date ]</a>
+              <a href="thread.html#1323">[ thread ]</a>
+              <a href="subject.html#1323">[ subject ]</a>
+              <a href="author.html#1323">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Richard:
+The idea is to get rid of the loop over materials found in our previous  
+iterations of our code. In fact we simply need to compute cell-average  
+quantities for the mixed cells and then perform a single data-parallel  
+computation over the single mixed material field which does the work  
+for all materials at once. So we do a little unstructured work to  
+compute the cell average quantities and then we do a data parallel  
+computation. There are some other advantages that accrue to the use of  
+this unstructured approach that would allow us to store some  
+information that would normally be too expensive to store, but, we  
+won't go into that here.
+
+The complication is that we want to (in the grand tradition of POOMA)  
+hide the underlying complexity of our storage scheme and make things  
+appear beautiful and logically simple. A good example might be using a  
+storage scheme for a symmetric matrix that only stores an upper  
+triangular matrix, but, that allows you to access any index into the  
+array and it internally maps the indices into the correct storage  
+location.
+
+In our example, the index array is positive for a pure cell and simply  
+is the material ID for the material contained in that cell. If the  
+index array contains a negative value, then it has traditionally been  
+an index into an unstructured linked-list of the mixed cells data. We  
+can then access this data and compute a cell-average value which we  
+store in that cell of the multi-material field and then we perform our  
+data-parallel operations on that multi-material field.
+
+We occasionally need to gather all of the pure and mixed material  
+values of a single material so that we can do a single-material  
+calculation like an EOS evaluation, so that is why we want the work  
+array (which we compress/deallocate when we are not using it). So the  
+various views of the data that we would take are the multi-material  
+cell average view, the gathered single material view and the overall  
+complicated-storage scheme view. To get the kind of performance the old  
+code has we will also need to introduce windowing and activity flags.  
+Basically, we are attempting to throw away any unnecessary computations  
+and minimize the data we are pushing through cache.
+
+The sparse tile layout doesn't have the concept of indirect addressing  
+using an index field. It is simply intended for block-AMR type meshes.  
+If we do AMR it would probably be a completely unstructured problem in  
+which any cell can be refined, rather than a block type. Unfortunately,  
+this again introduces the possibility of all-to-all communications  
+(slow) to find your neighbors, etc.
+
+We have also been dealing with the issue of how best to do masking. I  
+am beginning to think that we need another sparse storage idea so that  
+we end up with something equivalent to a block where in which the data  
+is collected into lists using a test and the computation is done simply  
+over that collection, which gets progressively smaller as the number of  
+tests increases. Currently, when using a mask, you end up traversing  
+all of the data, maybe even doing the computation everywhere and then  
+simply throwing away the result where the mask is not set (either by a  
+conditional or by multiplying by 0.0). Building the list for extremely  
+sparse data can be a huge win. Like I said, the old version of this  
+algorithm is running 20 times faster than the data-parallel version.  
+This is only possible by simply doing less work.
+
+We would also like to have exterior guards on a box with a lot of very  
+little logically distinct but shared memory patches without guard cells  
+within the box. Then we could maybe achieve some reasonable   
+compression and our computations should approach AMR storage schemes  
+without the undesired Gibb's phenomenon due to poor impedance matching  
+across T-joints that AMR has.
+
+I should note that we are aware of the issue of not using certain types  
+of dynamically allocated data structures because the guard cell copy  
+scheme might only move the pointer to the data and not the actual data.  
+We are taking this into account.
+
+Hope this helps,
+John Hall
+
+
+On Friday, September 26, 2003, at 02:07  AM, Richard Guenther wrote:
+
+&gt;<i> Ok, still trying to understand - this is something like (statically)
+</I>&gt;<i> specifying which cells participate in computation? Like you would
+</I>&gt;<i> have a usual brick engine in conjunction with a bitfield specifying
+</I>&gt;<i> a mask and using this in the evaluator loop (of course this would be
+</I>&gt;<i> less memory efficient)? So this would be a cheap way to do this
+</I>&gt;<i> compared to using the sparse tile layout?
+</I>&gt;<i>
+</I>&gt;<i> Thanks,
+</I>&gt;<i>
+</I>&gt;<i> Richard.
+</I>&gt;<i>
+</I>&gt;<i> On Fri, 26 Sep 2003, John H.Hall wrote:
+</I>&gt;<i>
+</I>&gt;&gt;<i> Richard:
+</I>&gt;&gt;<i> OK. Here goes. The basic idea is that we have a hierarchical field
+</I>&gt;&gt;<i> structure (built using hierarchical engines similar to the current
+</I>&gt;&gt;<i> multi-material field abstraction) which has a collection of 1-D
+</I>&gt;&gt;<i> dynamicFields (for the sparse unstructured storage), a shared Index
+</I>&gt;&gt;<i> (n-D) integer Array (or Field), and a single (n-D) scalar, vector or
+</I>&gt;&gt;<i> tensor field which has either the data for a pure cell, or a cell
+</I>&gt;&gt;<i> average value for mixed-material cell's data. As the problem evolves
+</I>&gt;&gt;<i> the material interfaces migrate and so the actual position of the
+</I>&gt;&gt;<i> unstructured cells changes. However, all the indirect indexing is  
+</I>&gt;&gt;<i> still
+</I>&gt;&gt;<i> local to the processor (except for normal guard cell communications).
+</I>&gt;&gt;<i> So this is much simpler than a real unstructured problem with
+</I>&gt;&gt;<i> all-to-all communications. In the general case, the sparse dynamic
+</I>&gt;&gt;<i> fields are only used to compute the cell-average quantities before a
+</I>&gt;&gt;<i> data-parallel computation across the single multi-material or
+</I>&gt;&gt;<i> cell-average field is performed. We would also like to take some views
+</I>&gt;&gt;<i> of the field in which all of the data for a particular material is
+</I>&gt;&gt;<i> gathered/scattered to/from a single spare dynamic work Array that is
+</I>&gt;&gt;<i> shared in this hierarchical structure.
+</I>&gt;&gt;<i>
+</I>&gt;&gt;<i> Field&lt;Mesh_t, Real, MixedCellEngine&gt; would look like this:
+</I>&gt;&gt;<i> ___________________
+</I>&gt;&gt;<i> |__________________| Single material Gather/Scatter 1-D Dynamic Work
+</I>&gt;&gt;<i> Array (both mixed and pure cells)
+</I>&gt;&gt;<i> ______
+</I>&gt;&gt;<i> |_____| mat A (1-D Dynamic Array/Field)
+</I>&gt;&gt;<i> _______
+</I>&gt;&gt;<i> |______| mat B (1-D Dynamic Array/Field)
+</I>&gt;&gt;<i> ______
+</I>&gt;&gt;<i> |_____| mat C (1-D Dynamic Array/Field)
+</I>&gt;&gt;<i> ______________________________________________________________________ 
+</I>&gt;&gt;<i> _
+</I>&gt;&gt;<i> |_____________________________________________________________________ 
+</I>&gt;&gt;<i> _|
+</I>&gt;&gt;<i>   Cell Average Quantities (n-D)
+</I>&gt;&gt;<i> ______________________________________________________________________ 
+</I>&gt;&gt;<i> _
+</I>&gt;&gt;<i> |_____________________________________________________________________ 
+</I>&gt;&gt;<i> _|
+</I>&gt;&gt;<i>   Integer Index Array (n-D)
+</I>&gt;&gt;<i> Single Index Array is shared by all Sparse Fields (e.g. Density,
+</I>&gt;&gt;<i> Pressure, etc.). This shares duty between
+</I>&gt;&gt;<i> providing the material index for a pure cell and an offset into a
+</I>&gt;&gt;<i> collection tracking the unstructured
+</I>&gt;&gt;<i> mixed cell data for a mixed cell.
+</I>&gt;&gt;<i>
+</I>&gt;&gt;<i> Multi-Patch should still work although the guard cell communications
+</I>&gt;&gt;<i> might be slightly more complicated.
+</I>&gt;&gt;<i>
+</I>&gt;&gt;<i> The number of cells which are indirectly addressed is very small (&lt; 5%
+</I>&gt;&gt;<i> of the total) so even using compressible brick we are wasting a lot of
+</I>&gt;&gt;<i> memory bandwidth and performing numerous extraneous computations. A
+</I>&gt;&gt;<i> comparison code using this structure is running 20 times faster than
+</I>&gt;&gt;<i> the equivalent data parallel POOMA R1 computation for the single
+</I>&gt;&gt;<i> processor serial case. We believe we can match that performance by
+</I>&gt;&gt;<i> building an engine that encapsulates the sparse nature reflected in  
+</I>&gt;&gt;<i> the
+</I>&gt;&gt;<i> problem and by making more use of the new engines POOMA R2 provides
+</I>&gt;&gt;<i> (stencil, etc.).
+</I>&gt;&gt;<i>
+</I>&gt;&gt;<i> Again, most of the computations are performed on the Cell-Average
+</I>&gt;&gt;<i> Quantities, so we just take a view, operator[]?, that returns that
+</I>&gt;&gt;<i> single field.
+</I>&gt;&gt;<i> John and Jean
+</I>&gt;<i>
+</I>&gt;<i> --
+</I>&gt;<i> Richard Guenther &lt;richard dot guenther at uni-tuebingen dot de&gt;
+</I>&gt;<i> WWW: <A HREF="http://www.tat.physik.uni-tuebingen.de/~rguenth/">http://www.tat.physik.uni-tuebingen.de/~rguenth/</A>
+</I>
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001322.html">[pooma-dev] Sparse Engine
+</A></li>
+	<LI>Next message: <A HREF="001324.html">[pooma-dev] Sparse Engine
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1323">[ date ]</a>
+              <a href="thread.html#1323">[ thread ]</a>
+              <a href="subject.html#1323">[ subject ]</a>
+              <a href="author.html#1323">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

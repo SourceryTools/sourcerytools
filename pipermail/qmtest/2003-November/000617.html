@@ -1,0 +1,1255 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> PATCH: Create working Windows distributions
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:qmtest%40codesourcery.com?Subject=Re%3A%20PATCH%3A%20Create%20working%20Windows%20distributions&In-Reply-To=%3C200311240637.hAO6b2EF027866%40sirius.codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000615.html">
+   <LINK REL="Next"  HREF="000618.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>PATCH: Create working Windows distributions</H1>
+    <B>Mark Mitchell</B> 
+    <A HREF="mailto:qmtest%40codesourcery.com?Subject=Re%3A%20PATCH%3A%20Create%20working%20Windows%20distributions&In-Reply-To=%3C200311240637.hAO6b2EF027866%40sirius.codesourcery.com%3E"
+       TITLE="PATCH: Create working Windows distributions">mark at codesourcery.com
+       </A><BR>
+    <I>Mon Nov 24 06:37:02 UTC 2003</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000615.html">PATCH: Fix packaging problems
+</A></li>
+        <LI>Next message: <A HREF="000618.html">QMTest 2.1 Prerelease 1 Available
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#617">[ date ]</a>
+              <a href="thread.html#617">[ thread ]</a>
+              <a href="subject.html#617">[ subject ]</a>
+              <a href="author.html#617">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>
+This patch allows &quot;python setup.py bdist_wininst&quot; to generate usable
+QMTest distributions.
+
+--
+Mark Mitchell
+CodeSourcery, LLC
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">mark at codesourcery.com</A>
+
+2003-11-23  Mark Mitchell  &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">mark at codesourcery.com</A>&gt;
+
+	* setup.py: Tidy up.  Use &quot;qmtest.py&quot; as the name of the main
+	script under Windows.
+	* qm/__init__.py: Do not honor qm.config settings under Windows.
+	* qm/test/.cvsignore: Add qmtest.py.
+	* qm/test/execution_engine.py
+	(ExecutionEngine.IsTerminationRequested): Rename to ..
+	(ExecutionEngine._IsTerminationRequested): ... this.
+	* qm/test/execution_thread.py
+	(ExecutionThread.IsTerminationRequested): Rename to ..
+	(ExecutionEngine._IsTerminationRequested): ... this.
+	* qm/test/qmtest: Do not honor rel_libdir on Windows.
+	* qm/test/clasess/pickle_result_stream.py
+	(PickleResultStream._is_binary_file): Set it.
+	* qm/test/doc/tour.xml: Update for changes in installation
+	procedures.
+	* qmdist/command/install_scripts.py (install_scripts.run): Process
+	both the &quot;qmtest&quot; and the &quot;qmtest.py&quot; script.
+	* scripts/qm-release: Remove.
+
+Index: setup.py
+===================================================================
+RCS file: /home/sc/Repository/qm/setup.py,v
+retrieving revision 1.7
+diff -c -5 -p -r1.7 setup.py
+*** setup.py	24 Nov 2003 00:52:57 -0000	1.7
+--- setup.py	24 Nov 2003 06:26:39 -0000
+***************
+*** 19,44 ****
+  
+  from   distutils.core import setup
+  import sys
+  import os
+  import os.path
+  import string
+  import glob
+  from   qmdist.command.build import build
+  from   qmdist.command.build_doc import build_doc
+  from   qmdist.command.install_data import install_data
+  from   qmdist.command.install_lib import install_lib
+  from   qmdist.command.install_scripts import install_scripts
+  from   qmdist.command.check import check
+  
+  ########################################################################
+  # Functions
+  ########################################################################
+  
+  def prefix(list, pref):
+  
+!     return map(lambda x, p=pref: os.path.join(p, x), list)
+  
+  
+  def files_with_ext(dir, ext):
+      &quot;&quot;&quot;Return all files in 'dir' with a particular extension.
+  
+--- 19,47 ----
+  
+  from   distutils.core import setup
+  import sys
+  import os
+  import os.path
++ from   os.path import join
+  import string
+  import glob
+  from   qmdist.command.build import build
+  from   qmdist.command.build_doc import build_doc
+  from   qmdist.command.install_data import install_data
+  from   qmdist.command.install_lib import install_lib
+  from   qmdist.command.install_scripts import install_scripts
+  from   qmdist.command.check import check
++ from   qm.__version import version
++ import shutil
+  
+  ########################################################################
+  # Functions
+  ########################################################################
+  
+  def prefix(list, pref):
+  
+!     return map(lambda x, p=pref: join(p, x), list)
+  
+  
+  def files_with_ext(dir, ext):
+      &quot;&quot;&quot;Return all files in 'dir' with a particular extension.
+  
+*************** def select_share_files(share_files, dir,
+*** 68,98 ****
+      files = filter(lambda f: \
+                       f == &quot;CATALOG&quot; or (os.path.splitext(f)[1] in exts),
+                     files)
+      if files:
+          files = prefix(files, dir)
+!         dir = os.path.join(&quot;qm&quot;, dir[len(&quot;share/&quot;):])
+          share_files[dir] = files
+  
+- packages=['qm',
+-           'qm/external',
+-           'qm/external/DocumentTemplate',
+-           'qm/test',
+-           'qm/test/classes',
+-           'qm/test/web']
+- 
+- classes = [&quot;classes.qmc&quot;]
+- 
+  diagnostics=['common.txt','common-help.txt']
+  
+  messages=['help.txt', 'diagnostics.txt']
+  
+- html_docs = []
+- 
+  if not os.path.isdir(os.path.normpath('qm/test/doc/html')):
+      print &quot;&quot;&quot;Warning: to include documentation run the
+               \'build_doc\' command first.&quot;&quot;&quot;
+  
+  else:
+      html_docs = filter(lambda f: f.endswith(&quot;.html&quot;),
+                         os.listdir(os.path.normpath('qm/test/doc/html')))
+  
+--- 71,91 ----
+      files = filter(lambda f: \
+                       f == &quot;CATALOG&quot; or (os.path.splitext(f)[1] in exts),
+                     files)
+      if files:
+          files = prefix(files, dir)
+!         dir = join(&quot;qm&quot;, dir[len(&quot;share/&quot;):])
+          share_files[dir] = files
+  
+  diagnostics=['common.txt','common-help.txt']
+  
+  messages=['help.txt', 'diagnostics.txt']
+  
+  if not os.path.isdir(os.path.normpath('qm/test/doc/html')):
+      print &quot;&quot;&quot;Warning: to include documentation run the
+               \'build_doc\' command first.&quot;&quot;&quot;
++     html_docs = []
+  
+  else:
+      html_docs = filter(lambda f: f.endswith(&quot;.html&quot;),
+                         os.listdir(os.path.normpath('qm/test/doc/html')))
+  
+*************** tutorial_files = files_with_ext(&quot;qm/test
+*** 100,127 ****
+  test_dtml_files = files_with_ext(&quot;qm/test/share/dtml&quot;, &quot;.dtml&quot;)
+  
+  share_files = {}
+  os.path.walk(&quot;share&quot;, select_share_files, share_files)
+  
+  setup(name=&quot;qm&quot;, 
+!       version=&quot;2.1&quot;,
+        author=&quot;CodeSourcery, LLC&quot;,
+        author_email=&quot;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">info at codesourcery.com</A>&quot;,
+        maintainer=&quot;Mark Mitchell&quot;,
+        maintainer_email=&quot;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">mark at codesourcery.com</A>&quot;,
+        url=&quot;<A HREF="http://www.codesourcery.com/qm/test">http://www.codesourcery.com/qm/test</A>&quot;,
+!       description=&quot;QMTest is a automated software test execution tool.&quot;,
+        
+        cmdclass={'build': build,
+                  'build_doc': build_doc,
+                  'install_data': install_data,
+                  'install_lib': install_lib,
+                  'install_scripts' : install_scripts,
+                  'check': check},
+  
+!       packages=packages,
+!       scripts=['qm/test/qmtest'],
+        data_files=[('qm/messages/test',
+                     prefix(messages, 'qm/test/share/messages')),
+                    # DTML files for the GUI.
+                    (&quot;qm/dtml/test&quot;, test_dtml_files),
+                    # The documentation.
+--- 93,141 ----
+  test_dtml_files = files_with_ext(&quot;qm/test/share/dtml&quot;, &quot;.dtml&quot;)
+  
+  share_files = {}
+  os.path.walk(&quot;share&quot;, select_share_files, share_files)
+  
++ # On UNIX, we want the main script to be &quot;qmtest&quot;.  On Windows, we need
++ # to use a &quot;.py&quot; extension so that users can invoke the script directly;
++ # if we were to omit the &quot;.py&quot; extension they would have to explicitly
++ # type &quot;python qmtest&quot; to invoke the script.  Searching for
++ # &quot;bdist_wininst&quot; in sys.argv is an (inelegant) way of checking to see
++ # if we are building a Windows binary installer.
++ qmtest_script = join(&quot;qm&quot;, &quot;test&quot;, &quot;qmtest&quot;)
++ py_script = qmtest_script + &quot;.py&quot;
++ if &quot;bdist_wininst&quot; in sys.argv:
++     shutil.copyfile(qmtest_script, py_script)
++     qmtest_script = py_script
++ elif os.path.exists(py_script):
++     # Avoid accidentally packaging the &quot;.py&quot; version of the script, if
++     # it exists.
++     os.remove(py_script)
++      
+  setup(name=&quot;qm&quot;, 
+!       version=version,
+        author=&quot;CodeSourcery, LLC&quot;,
+        author_email=&quot;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">info at codesourcery.com</A>&quot;,
+        maintainer=&quot;Mark Mitchell&quot;,
+        maintainer_email=&quot;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">mark at codesourcery.com</A>&quot;,
+        url=&quot;<A HREF="http://www.codesourcery.com/qm/test">http://www.codesourcery.com/qm/test</A>&quot;,
+!       description=&quot;QMTest is an automated software test execution tool.&quot;,
+        
+        cmdclass={'build': build,
+                  'build_doc': build_doc,
+                  'install_data': install_data,
+                  'install_lib': install_lib,
+                  'install_scripts' : install_scripts,
+                  'check': check},
+  
+!       packages=('qm',
+!                 'qm/external',
+!                 'qm/external/DocumentTemplate',
+!                 'qm/test',
+!                 'qm/test/classes',
+!                 'qm/test/web'),
+!       scripts=[qmtest_script],
+        data_files=[('qm/messages/test',
+                     prefix(messages, 'qm/test/share/messages')),
+                    # DTML files for the GUI.
+                    (&quot;qm/dtml/test&quot;, test_dtml_files),
+                    # The documentation.
+Index: qm/__init__.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/__init__.py,v
+retrieving revision 1.11
+diff -c -5 -p -r1.11 __init__.py
+*** qm/__init__.py	24 Nov 2003 00:52:57 -0000	1.11
+--- qm/__init__.py	24 Nov 2003 06:26:39 -0000
+***************
+*** 12,33 ****
+  # For license terms see the file COPYING.
+  #
+  ########################################################################
+  
+  ########################################################################
+! # imports
+  ########################################################################
+  
+  import string
+! from qm.common import *
+! from qm.diagnostic import error, warning, message
+  
+  try:
+!     # The config file is created during &quot;make install&quot; by setup.py.
+!     from qm.config import version, data_dir, lib_dir
+      version_info = tuple(string.split(version, '.'))
+      &quot;&quot;&quot;The version of QM as a tuple of '(major, minor, release)'.&quot;&quot;&quot;
+  except:
+      # If qm.config was not available, we are running out of the source tree.
+      common.is_installed = 0
+      from qm.__version import version, version_info
+      data_dir = &quot;share&quot;
+--- 12,56 ----
+  # For license terms see the file COPYING.
+  #
+  ########################################################################
+  
+  ########################################################################
+! # Imports
+  ########################################################################
+  
++ from   qm.common import *
++ from   qm.diagnostic import error, warning, message
+  import string
+! import sys
+! 
+! ########################################################################
+! # Variables
+! ########################################################################
+  
+  try:
+!     # The config file is created during &quot;make install&quot; by Distutils.
+!     from qm.config import version
+      version_info = tuple(string.split(version, '.'))
+      &quot;&quot;&quot;The version of QM as a tuple of '(major, minor, release)'.&quot;&quot;&quot;
++ 
++     # Get the relative paths from the prefix where QMTest was
++     # installed to the data directory (where documentation and such
++     # is installed) and the library directory (where the Python
++     # modules making up QMTest are installed).
++     if sys.platform != &quot;win32&quot;:
++         # On non-Windows platforms, the values written out at
++         # installation time are accurate.
++         from qm.config import data_dir, lib_dir
++     else:
++         # On Windows, Distutils does a mock installation and then
++         # creates a binary installer.  Unfortunately, at the time
++         # the mock installation is performed there is no way to know
++         # the eventual paths.  Therefore, the values indicated in
++         # config.py are incorrect.  The values given below correspond
++         # to the behavior of the binary installer.
++         data_dir = &quot;qm&quot;
++         lib_dir = os.path.join(&quot;Lib&quot;, &quot;site-packages&quot;, &quot;qm&quot;)
+  except:
+      # If qm.config was not available, we are running out of the source tree.
+      common.is_installed = 0
+      from qm.__version import version, version_info
+      data_dir = &quot;share&quot;
+Index: qm/test/.cvsignore
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/.cvsignore,v
+retrieving revision 1.6
+diff -c -5 -p -r1.6 .cvsignore
+*** qm/test/.cvsignore	14 Oct 2003 21:56:07 -0000	1.6
+--- qm/test/.cvsignore	24 Nov 2003 06:26:39 -0000
+***************
+*** 1,2 ****
+--- 1,3 ----
+  *.pyc
+  *.pyo
++ qmtest.py
+Index: qm/test/execution_engine.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/execution_engine.py,v
+retrieving revision 1.24
+diff -c -5 -p -r1.24 execution_engine.py
+*** qm/test/execution_engine.py	11 Aug 2003 22:55:14 -0000	1.24
+--- qm/test/execution_engine.py	24 Nov 2003 06:26:39 -0000
+*************** class ExecutionEngine:
+*** 224,246 ****
+          # Termination has not yet been requested.
+          self.__terminated = 0
+          
+  
+      def RequestTermination(self):
+!         &quot;&quot;&quot;Request termination.
+  
+!         Request that the execution thread be terminated.  This may
+!         take some time; tests that are already running will continue
+          to run, for example.&quot;&quot;&quot;
+  
+          self.__terminated = 1
+!         
+!         
+!     def IsTerminationRequested(self):
+          &quot;&quot;&quot;Returns true if termination has been requested.
+  
+!         returns -- True if Terminate has been called.&quot;&quot;&quot;
+  
+          return self.__terminated
+      
+  
+      def Run(self):
+--- 224,248 ----
+          # Termination has not yet been requested.
+          self.__terminated = 0
+          
+  
+      def RequestTermination(self):
+!         &quot;&quot;&quot;Request that the execution engine stop executing tests.
+  
+!         Request that the execution thread be terminated.  Termination
+!         may take some time; tests that are already running will continue
+          to run, for example.&quot;&quot;&quot;
+  
+          self.__terminated = 1
+! 
+! 
+!     def _IsTerminationRequested(self):
+          &quot;&quot;&quot;Returns true if termination has been requested.
+  
+!         returns -- True if no further tests should be executed.  If the
+!         value is -1, the execution engine should simply terminate
+!         gracefully.&quot;&quot;&quot;
+  
+          return self.__terminated
+      
+  
+      def Run(self):
+*************** class ExecutionEngine:
+*** 339,350 ****
+          self.__patterns = {}
+          # A map from target patterns to lists of test descriptors ready
+          # to run.
+          self.__target_pattern_queues = {}
+          
+!         while (self.__num_tests_started &lt; num_tests
+!                and not self.IsTerminationRequested()):
+              # Process any responses and update the count of idle targets.
+              while self.__CheckForResponse(wait=0):
+                  pass
+  
+              # Now look for idle targets.
+--- 341,354 ----
+          self.__patterns = {}
+          # A map from target patterns to lists of test descriptors ready
+          # to run.
+          self.__target_pattern_queues = {}
+          
+!         while self.__num_tests_started &lt; num_tests:
+!             # If the user interrupted QMTest, stop executing tests.
+!             if self._IsTerminationRequested():
+!                 break
+              # Process any responses and update the count of idle targets.
+              while self.__CheckForResponse(wait=0):
+                  pass
+  
+              # Now look for idle targets.
+Index: qm/test/execution_thread.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/execution_thread.py,v
+retrieving revision 1.6
+diff -c -5 -p -r1.6 execution_thread.py
+*** qm/test/execution_thread.py	13 May 2003 07:10:47 -0000	1.6
+--- qm/test/execution_thread.py	24 Nov 2003 06:26:39 -0000
+*************** class ExecutionThread(Thread, ExecutionE
+*** 108,124 ****
+          self.__lock.acquire()
+          ExecutionEngine.RequestTermination(self)
+          self.__lock.release()
+  
+  
+!     def IsTerminationRequested(self):
+          &quot;&quot;&quot;Returns true if termination has been requested.
+  
+          return -- True if Terminate has been called.&quot;&quot;&quot;
+  
+          self.__lock.acquire()
+!         terminated = ExecutionEngine.IsTerminationRequested(self)
+          self.__lock.release()
+          return terminated
+  
+      
+  ########################################################################
+--- 108,124 ----
+          self.__lock.acquire()
+          ExecutionEngine.RequestTermination(self)
+          self.__lock.release()
+  
+  
+!     def _IsTerminationRequested(self):
+          &quot;&quot;&quot;Returns true if termination has been requested.
+  
+          return -- True if Terminate has been called.&quot;&quot;&quot;
+  
+          self.__lock.acquire()
+!         terminated = ExecutionEngine._IsTerminationRequested(self)
+          self.__lock.release()
+          return terminated
+  
+      
+  ########################################################################
+Index: qm/test/qmtest
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/qmtest,v
+retrieving revision 1.2
+diff -c -5 -p -r1.2 qmtest
+*** qm/test/qmtest	10 Nov 2003 22:33:42 -0000	1.2
+--- qm/test/qmtest	24 Nov 2003 06:26:39 -0000
+*************** rel_prefix = os.path.join(os.pardir, os.
+*** 40,57 ****
+  This string gives the relative path from the directory containing this
+  script to the installation directory.  The value above is correct when
+  QMTest is being run out of the source tree.  When QMTest is installed,
+  this value is updated appropriately.&quot;&quot;&quot;
+  
+- rel_libdir = &quot;&quot;
+- &quot;&quot;&quot;The relative path from the prefix to the library directory.
+- 
+- This path gives the relative path from the prefix to the library
+- directory.  The value above is correct when QMTest is being run out of
+- the source tree.  When QMTest is installed, this value is updated
+- appropriately.&quot;&quot;&quot;
+- 
+  # Get the path to this script.
+  qm_path = os.path.abspath(sys.argv[0])
+  
+  # Get the root of the QMTest installation.
+  qm_home = os.environ.get(&quot;QM_HOME&quot;)
+--- 40,49 ----
+*************** if qm_home is None:
+*** 59,71 ****
+      # Get the path to the installation directory.
+      qm_home = os.path.normpath(os.path.join(os.path.dirname(qm_path),
+                                              rel_prefix))
+  
+  # Update sys.path so that we can find the rest of QMTest.
+! libdir = os.path.normpath(os.path.join(qm_home, rel_libdir))
+! if libdir not in sys.path:
+!     sys.path.insert(0, libdir)
+  
+  import qm
+  
+  # Set the prefix variable so that the rest of QMTest can find
+  # documentation files, test classes, and so forth.
+--- 51,79 ----
+      # Get the path to the installation directory.
+      qm_home = os.path.normpath(os.path.join(os.path.dirname(qm_path),
+                                              rel_prefix))
+  
+  # Update sys.path so that we can find the rest of QMTest.
+! if sys.platform != &quot;win32&quot;:
+!     rel_libdir = &quot;&quot;
+!     &quot;&quot;&quot;The relative path from the prefix to the library directory.
+! 
+!     This path gives the relative path from the prefix to the library
+!     directory.  The value above is correct when QMTest is being run out of
+!     the source tree.  When QMTest is installed, this value is updated
+!     appropriately.&quot;&quot;&quot;
+! 
+!     libdir = os.path.normpath(os.path.join(qm_home, rel_libdir))
+!     if libdir not in sys.path:
+!         sys.path.insert(0, libdir)
+! else:
+!     # On Windows, the value computed for rel_libdir is incorrect because
+!     # Distutils does a mock pre-installation using different directory
+!     # names than are used by the binary installer.  On Windows, however,
+!     # the QM module files are installed into a location that is already in
+!     # sys.path.
+!     pass
+  
+  import qm
+  
+  # Set the prefix variable so that the rest of QMTest can find
+  # documentation files, test classes, and so forth.
+Index: qm/test/classes/pickle_result_stream.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/classes/pickle_result_stream.py,v
+retrieving revision 1.6
+diff -c -5 -p -r1.6 pickle_result_stream.py
+*** qm/test/classes/pickle_result_stream.py	28 Sep 2003 22:53:21 -0000	1.6
+--- qm/test/classes/pickle_result_stream.py	24 Nov 2003 06:26:39 -0000
+*************** class PickleResultStream(FileResultStrea
+*** 112,121 ****
+--- 112,123 ----
+              &quot;&quot;&quot;,
+              default_value = 1,
+          ),
+      ]
+  
++     _is_binary_file = 1
++ 
+      def __init__(self, arguments):
+  
+          # Initialize the base class.
+          super(PickleResultStream, self).__init__(arguments)
+          # Create initial pickler.
+Index: qm/test/doc/tour.xml
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/doc/tour.xml,v
+retrieving revision 1.8
+diff -c -5 -p -r1.8 tour.xml
+*** qm/test/doc/tour.xml	26 Sep 2003 22:57:38 -0000	1.8
+--- qm/test/doc/tour.xml	24 Nov 2003 06:26:39 -0000
+***************
+*** 41,63 ****
+     copy of it.  Copy the entire test database directory tree to
+     another location.  If you've installed &qmtest; in the default
+     location you can make a copy of the sample database by running this
+     command on a UNIX system:
+      &lt;screen&gt;
+!      &prompt;&lt;userinput&gt;cp -r /usr/local/share/qm/tutorial/test/tdb tdb&lt;/userinput&gt;
+      &lt;/screen&gt;
+     On a Windows system, use this command at a DOS 
+       &lt;footnote&gt;&lt;para&gt;Under Windows, you must use the standard Windows
+       command shell (DOS) to run &qmtest;; alternative shells (such as Cygwin)
+       will not work with &qmtest;.&lt;/para&gt;&lt;/footnote&gt;
+     prompt:
+      &lt;screen&gt;
+!      &prompt;&lt;userinput&gt;xcopy c:\progra~1\qm\share\qm\tutorial\test\tdb tdb\ /s&lt;/userinput&gt;
+!     &lt;/screen&gt;
+!    If you installed &qmtest; in another directory,
+!    substitute that directory for &lt;filename&gt;/usr/local&lt;/filename&gt; or
+!    &lt;filename&gt;c:\progra~1\qm&lt;/filename&gt; in the commands above.&lt;/para&gt;
+  
+     &lt;para&gt;Then, enter the new directory you have created.  On both UNIX
+     and Windows systems, you can do this with this command:
+      &lt;screen&gt;
+       &prompt;&lt;userinput&gt;cd tdb&lt;/userinput&gt;
+--- 41,65 ----
+     copy of it.  Copy the entire test database directory tree to
+     another location.  If you've installed &qmtest; in the default
+     location you can make a copy of the sample database by running this
+     command on a UNIX system:
+      &lt;screen&gt;
+!      &prompt;&lt;userinput&gt;cp -r /usr/qm/tutorial/test/tdb tdb&lt;/userinput&gt;
+      &lt;/screen&gt;
+     On a Windows system, use this command at a DOS 
+       &lt;footnote&gt;&lt;para&gt;Under Windows, you must use the standard Windows
+       command shell (DOS) to run &qmtest;; alternative shells (such as Cygwin)
+       will not work with &qmtest;.&lt;/para&gt;&lt;/footnote&gt;
+     prompt:
+      &lt;screen&gt;
+!      &prompt;&lt;userinput&gt;xcopy c:\Python23\qm\tutorial\test\tdb tdb\ /s&lt;/userinput&gt;
+!     &lt;/screen&gt; 
+!    The exact paths to use depend on exactly how you have built and
+!    installed QMTest.  The paths above are correct for the binary RPM
+!    and Windows packages distributed by CodeSourcery.  If you build
+!    from the QMTest source distribution, the tutorial may be in another 
+!    location, such as &lt;filename&gt;/usr/local/share/qm&lt;/filename&gt;.&lt;/para&gt;
+  
+     &lt;para&gt;Then, enter the new directory you have created.  On both UNIX
+     and Windows systems, you can do this with this command:
+      &lt;screen&gt;
+       &prompt;&lt;userinput&gt;cd tdb&lt;/userinput&gt;
+***************
+*** 66,90 ****
+  
+     &lt;para&gt;Make sure that &qmtest; is in your &lt;envar&gt;PATH&lt;/envar&gt; so
+     that the operating system can find it.  On UNIX, you can use this
+     command:
+      &lt;screen&gt;
+!      &prompt;&lt;userinput&gt;PATH=/usr/local/bin:${PATH}; export PATH&lt;/userinput&gt;
+      &lt;/screen&gt;
+     in the Bourne shell.  In the C shell, use:
+      &lt;screen&gt;
+!      &prompt;&lt;userinput&gt;setenv PATH /usr/local/bin:${PATH}&lt;/userinput&gt;
+      &lt;/screen&gt;
+     On Windows, use:
+      &lt;screen&gt;
+!      &prompt;&lt;userinput&gt;PATH C:\progra~1\qm\bin;%PATH%&lt;/userinput&gt;
+      &lt;/screen&gt;
+!    In order to avoid having to retype these commands every time you
+     want to use &qmtest;, you can set up your system so that these
+     commands are executed automatically when you log in.  Consult your
+     system's manuals to find out how to do this.
+     &lt;/para&gt;
+   
+    &lt;/section&gt; &lt;!-- sec-testtut-setting-up --&gt;
+  
+    &lt;section id=&quot;sec-testtut-gui&quot;&gt;
+     &lt;title&gt;Starting the Graphical Interface&lt;/title&gt;
+--- 68,110 ----
+  
+     &lt;para&gt;Make sure that &qmtest; is in your &lt;envar&gt;PATH&lt;/envar&gt; so
+     that the operating system can find it.  On UNIX, you can use this
+     command:
+      &lt;screen&gt;
+!      &prompt;&lt;userinput&gt;PATH=/usr/bin:${PATH}; export PATH&lt;/userinput&gt;
+      &lt;/screen&gt;
+     in the Bourne shell.  In the C shell, use:
+      &lt;screen&gt;
+!      &prompt;&lt;userinput&gt;setenv PATH /usr/bin:${PATH}&lt;/userinput&gt;
+      &lt;/screen&gt;
+     On Windows, use:
+      &lt;screen&gt;
+!      &prompt;&lt;userinput&gt;PATH C:\Python23\Scripts;%PATH%&lt;/userinput&gt;
+      &lt;/screen&gt;
+!    If you are not using Python 2.3, replace
+!    &lt;filename&gt;C:\Python23&lt;/filename&gt; with the directory containing your
+!    Python installation.&lt;/para&gt;
+! 
+!    &lt;para&gt;In order to avoid having to retype these commands every time you
+     want to use &qmtest;, you can set up your system so that these
+     commands are executed automatically when you log in.  Consult your
+     system's manuals to find out how to do this.
+     &lt;/para&gt;
++ 
++    &lt;para&gt;On Windows, every command in this manual that begins with
++    &lt;command&gt;qmtest&lt;/command&gt; should be read as if it starts with
++    &lt;command&gt;qmtest.py&lt;/command&gt;.  For example, if this tutorial
++    instructs you to type:
++     &lt;screen&gt;
++      &prompt;&lt;userinput&gt;qmtest run&lt;/userinput&gt;
++     &lt;/screen&gt;
++    you should instead type:
++     &lt;screen&gt;
++      &prompt;&lt;userinput&gt;qmtest.py run&lt;/userinput&gt;
++     &lt;/screen&gt;
++    on a Windows system.
++    &lt;/para&gt;
+   
+    &lt;/section&gt; &lt;!-- sec-testtut-setting-up --&gt;
+  
+    &lt;section id=&quot;sec-testtut-gui&quot;&gt;
+     &lt;title&gt;Starting the Graphical Interface&lt;/title&gt;
+*************** QMTest running at <A HREF="http://127.0.0.1:1158/">http://127.0.0.1:1158/</A>
+*** 352,362 ****
+      &lt;/screen&gt;
+     On a Windows system, use these commands instead:
+      &lt;screen&gt;
+       &prompt;&lt;userinput&gt;cd ..&lt;/userinput&gt;
+       &prompt;&lt;userinput&gt;rmdir /s tdb&lt;/userinput&gt;
+!      &prompt;&lt;userinput&gt;xcopy c:\progra~1\qm\share\qm\tutorial\test\tdb tdb\ /s&lt;/userinput&gt;
+       &prompt;&lt;userinput&gt;cd tdb&lt;/userinput&gt;
+      &lt;/screen&gt;
+     &lt;/para&gt;
+  
+     &lt;para&gt;The command for running tests is &lt;command&gt;&amp;qmtest-cmd;
+--- 372,382 ----
+      &lt;/screen&gt;
+     On a Windows system, use these commands instead:
+      &lt;screen&gt;
+       &prompt;&lt;userinput&gt;cd ..&lt;/userinput&gt;
+       &prompt;&lt;userinput&gt;rmdir /s tdb&lt;/userinput&gt;
+!      &prompt;&lt;userinput&gt;xcopy c:\Python23\qm\tutorial\test\tdb tdb\ /s&lt;/userinput&gt;
+       &prompt;&lt;userinput&gt;cd tdb&lt;/userinput&gt;
+      &lt;/screen&gt;
+     &lt;/para&gt;
+  
+     &lt;para&gt;The command for running tests is &lt;command&gt;&amp;qmtest-cmd;
+Index: qmdist/command/install_scripts.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qmdist/command/install_scripts.py,v
+retrieving revision 1.2
+diff -c -5 -p -r1.2 install_scripts.py
+*** qmdist/command/install_scripts.py	24 Nov 2003 00:52:58 -0000	1.2
+--- qmdist/command/install_scripts.py	24 Nov 2003 06:26:39 -0000
+*************** class install_scripts(base.install_scrip
+*** 33,59 ****
+      def run(self):
+  
+          # Do the standard installation.
+          base.install_scripts.run(self)
+  
+!         # Postprocess the main QMTest Python script.
+!         qmtest_file = os.path.join(self.install_dir, &quot;qmtest&quot;)
+!         qmtest_script = open(qmtest_file).read()
+  
+!         # Encode the relative path from that script to the top of the
+!         # installation directory.
+!         i = self.distribution.get_command_obj('install')
+!         prefix = i.root or i.prefix
+!         rel_prefix = get_relative_path(self.install_dir, prefix)
+!         assignment = 'rel_prefix = &quot;%s&quot;' % rel_prefix
+!         qmtest_script = re.sub(&quot;rel_prefix = .*&quot;, assignment,
+!                                qmtest_script)
+!         # Encode the relative path from the prefix to the library
+!         # directory.
+!         il = self.distribution.get_command_obj('install_lib')
+!         rel_libdir = get_relative_path(prefix, il.install_dir)
+!         assignment = 'rel_libdir = &quot;%s&quot;' % rel_libdir
+!         qmtest_script = re.sub(&quot;rel_libdir = .*&quot;, assignment,
+!                                qmtest_script)
+! 
+!         # Write the script back out.
+!         open(qmtest_file, &quot;w&quot;).write(qmtest_script)
+--- 33,64 ----
+      def run(self):
+  
+          # Do the standard installation.
+          base.install_scripts.run(self)
+  
+!         # Postprocess the main QMTest Python script.  The script will
+!         # have &quot;.py&quot; extension on Windows systems, but not on UNIX
+!         # systems.
+!         for basename in (&quot;qmtest&quot;, &quot;qmtest.py&quot;):
+!             qmtest_file = os.path.join(self.install_dir, basename)
+!             if not os.path.exists(qmtest_file):
+!                 continue
+!             # Read the contents of the script.
+!             qmtest_script = open(qmtest_file).read()
+!             # Encode the relative path from that script to the top of the
+!             # installation directory.
+!             i = self.distribution.get_command_obj('install')
+!             prefix = i.root or i.prefix
+!             rel_prefix = get_relative_path(self.install_dir, prefix)
+!             assignment = 'rel_prefix = &quot;%s&quot;' % rel_prefix
+!             qmtest_script = re.sub(&quot;rel_prefix = .*&quot;, assignment,
+!                                    qmtest_script)
+!             # Encode the relative path from the prefix to the library
+!             # directory.
+!             il = self.distribution.get_command_obj('install_lib')
+!             rel_libdir = get_relative_path(prefix, il.install_dir)
+!             assignment = 'rel_libdir = &quot;%s&quot;' % rel_libdir
+!             qmtest_script = re.sub(&quot;rel_libdir = .*&quot;, assignment,
+!                                    qmtest_script)
+  
+!             # Write the script back out.
+!             open(qmtest_file, &quot;w&quot;).write(qmtest_script)
+Index: scripts/qm-release
+===================================================================
+RCS file: scripts/qm-release
+diff -N scripts/qm-release
+*** scripts/qm-release	7 Aug 2003 17:05:20 -0000	1.9
+--- /dev/null	1 Jan 1970 00:00:00 -0000
+***************
+*** 1,416 ****
+- #! /bin/sh
+- 
+- ########################################################################
+- #
+- # File:   qm-release
+- # Author: Mark Mitchell
+- # Date:   11/16/2001
+- #
+- # Contents:
+- #   Script to build QM releases.
+- #
+- # Copyright (C) 2001, 2002 CodeSourcery LLC
+- #
+- # For license terms see the file COPYING.
+- #
+- ########################################################################
+- 
+- ########################################################################
+- # Functions
+- ########################################################################
+- 
+- # Issue the error message given by $1 and exit with a non-zero
+- # exit code.
+- 
+- error() {
+-     echo &quot;qm-release: error: $1&quot;
+-     exit 1
+- }
+- 
+- # Issue a usage message explaining how to use this script.
+- 
+- usage() {
+- cat &lt;&lt;EOF
+- qm-release [-v version] [-u] [source] [rpm] [binary] [exec] [tag]
+- EOF
+-     exit 1
+- }
+- 
+- # Change to the directory given by $1.
+- 
+- changedir() {
+-     cd $1 || \
+- 	error &quot;Could not change directory to $1&quot;
+- }
+- 
+- # Determine the current version of QM by checking out the mainline
+- # version file.  Set QM_VERSION, QM_MAJOR_VER, QM_MINOR_VER, and
+- # QM_RELEASE_VER accordingly.
+- 
+- get_qm_version() {
+-     echo &quot;Determining QM version...&quot;
+- 
+-     # Remove any old source distribution.
+-     rm -rf qm-${DATE}
+-     # Check out the source distribution.
+-     ${CVS} co -d qm-${DATE} qm/version || \
+- 	error &quot;Could not check out version file&quot;
+-     . qm-${DATE}/version || \
+- 	error &quot;Could not read version file&quot;
+-     # Clean up.
+-     rm -rf qm-${DATE}
+- }
+- 
+- # Tag the sources.
+- 
+- tag_qm() {
+-     echo &quot;Tagging QM...&quot;
+- 
+-     # Remove any old source distribution.
+-     rm -rf qm-${QM_VERSION}
+-     # Check out the source distribution.
+-     ${CVS} co -d qm-${QM_VERSION} -r ${BRANCH} qm || \
+-       error &quot;Could not check out QM&quot;
+-     changedir qm-${QM_VERSION}
+-     # Create the version file.
+-     if [ $SNAPSHOT -eq 0 ]; then
+- 	cat &gt; version &lt;&lt;EOF
+- # This file is automatically generated.  Do not edit.
+- 
+- QM_VERSION=${QM_VERSION}
+- QM_MAJOR_VER=${QM_MAJOR_VER}
+- QM_MINOR_VER=${QM_MINOR_VER}
+- QM_RELEASE_VER=${QM_RELEASE_VER}
+- EOF
+-         # Commit the version file.
+- 	${CVS} commit -m 'Update version numbers.' version
+-     fi
+-     # Tag the sources.  Using the &quot;-F&quot; option to CVS makes sure that any
+-     # existing tag is moved, in case it takes several tries to get a 
+-     # release that we are happy with.
+-     ${CVS} tag -F ${QM_RELEASE_TAG} || \
+-       error &quot;Could not tag QM&quot;
+-     # Go back to the directory we started in.
+-     changedir ..
+- }
+- 
+- # Build QM itself from the source distribution.
+- 
+- build_qm() {
+-     echo &quot;Building QM...&quot;
+- 
+-     # Remove any old source distribution.
+-     rm -rf qm-${QM_VERSION}
+-     # Untar the source distribution.  Under Windows there seem
+-     # to be cases where &quot;tar xzf&quot; will crash, but separating the
+-     # decompression and untarring steps works reliably.
+-     (zcat ${QM_SOURCE_TAR_GZ} | tar xf -) || \
+-       error &quot;Could not unpack source distribution&quot;
+-     changedir qm-${QM_VERSION}
+-     # Create an installation directory.
+-     rm -rf ${QM_INSTALL_DIR}
+-     mkdir -p ${QM_INSTALL_DIR} || \
+-       error &quot;Could not create installation directory&quot;
+-     # Configure QM.
+-     ./configure --prefix=${QM_INSTALL_DIR} &quot;$@&quot; || \
+-       error &quot;Could not configure QM&quot;
+-     # Build it.
+-     make || error &quot;Could not build QM&quot;
+-     # Install it.
+-     make install || error &quot;Could not install QM&quot;
+-     # Go back to the directory we started in.
+-     changedir ..
+- }
+- 
+- # Build the source distribution.
+- 
+- build_source() {
+-     echo &quot;Building source distribution...&quot;
+-     # Remove the old version of the source distribution.
+-     rm -rf ${QM_SOURCE_TAR_GZ} qm-${QM_VERSION}
+-     ${CVS} export -d qm-${QM_VERSION} -r ${QM_RELEASE_TAG} qm || \
+-       error &quot;Could not check out QM&quot;
+-     # Remove the qm/track directory and packages that only it uses.
+-     rm -rf qm-${QM_VERSION}/qm/track qm-${QM_VERSION}/gadfly
+-     # The &quot;-P&quot; option is documented, but does not work, with &quot;cvs export&quot;
+-     # in CVS 1.10.7.  Therefore, just try to remove all the directories
+-     # exported; this will succeed only with empty directories.
+-     find qm-${QM_VERSION} -type d -exec rmdir {} \; &gt; /dev/null 2&gt;&amp;1 
+-     # Create the tar file.
+-     tar czf ${QM_SOURCE_TAR_GZ} ${TAR_OPTS} qm-${QM_VERSION} || \
+-       error &quot;Could not create tar file&quot;
+-     # Build QM to obtain documentation files.
+-     build_qm --enable-maintainer_mode
+-     # Recreate the source directory.
+-     echo &quot;Copying documentation...&quot;
+-     rm -rf qm-${QM_VERSION}
+-     tar xzf ${QM_SOURCE_TAR_GZ} || \
+-       error &quot;Could not unpack source distribution&quot;
+-     cp -r ${QM_INSTALL_DIR}/share/doc/qm/test/html \
+-           qm-${QM_VERSION}/qm/test/doc/html || \
+-       error &quot;Could not copy HTML manual&quot;
+-     (mkdir qm-${QM_VERSION}/qm/test/doc/print &amp;&amp; \
+-      cp -r ${QM_INSTALL_DIR}/share/doc/qm/test/pdf/manual.pdf \
+-           qm-${QM_VERSION}/qm/test/doc/print) || \
+-       error &quot;Could not copy PDF manual&quot;
+-     tar czf ${QM_SOURCE_TAR_GZ} ${TAR_OPTS} qm-${QM_VERSION} || \
+-       error &quot;Could not create tar file&quot;
+- }
+- 
+- # Build the RPM distribution.
+- 
+- build_rpm() {
+-     echo &quot;Building RPM distribution...&quot;
+-     cp ${QM_SOURCE_TAR_GZ} ${RPM_BASE}/SOURCES || \
+-       error &quot;Could not install source distribution&quot;
+-     (tar xzf ${QM_SOURCE_TAR_GZ} -O qm-${QM_VERSION}/qm.spec.in | \
+-       sed -e &quot;s|@QM_VERSION@|${QM_VERSION}|g&quot; &gt; qm.spec) || \
+-       error &quot;Could not extract spec file&quot;
+-     rpmbuild --quiet -ba --rmsource qm.spec || \
+-       error &quot;Could not create RPM&quot;
+-     cp ${RPM_BASE}/RPMS/i386/qm-${QM_VERSION}-0.i386.rpm ${QM_RPM}
+- }
+- 
+- # Build a binary distribution.
+- 
+- build_binary() {
+-     build_qm
+-     echo &quot;Building binary distribution...&quot;
+-     changedir ${QM_INSTALL_DIR}/..
+-     rm -f ../${QM_BINARY_TAR_GZ}
+-     tar czf ../${QM_BINARY_TAR_GZ} ${TAR_OPTS} qm-${QM_VERSION} || \
+-       error &quot;Could not create tar file&quot;
+-     changedir ..
+- }
+- 
+- # Build a self-extracting executable.
+- 
+- build_exec() {
+-     build_qm --with-python=/cygdrive/c/Python22/Python.exe
+-     echo &quot;Building ZIP file...&quot;
+-     changedir ${QM_INSTALL_DIR}
+-     rm -f ${QM_BINARY_ZIP}
+-     zip -q ${QM_BINARY_ZIP} -r . || \
+-       error &quot;Could not create zip file&quot;
+-     changedir ${QM_RELEASE_DIR}
+-     rm -f ${QM_BINARY_EXE}
+-     # The makesfx.exe exit code is apparently non-zero even on 
+-     # success, so we do not check the result.
+-     &quot;c:/Program Files/FreeExtractor/makesfx.exe&quot; \
+-       /zip=&quot;`cygpath -w ${QM_BINARY_ZIP}`&quot; \
+-       /sfx=&quot;`cygpath -w ${QM_BINARY_EXE}`&quot; \
+-       /title=&quot;QM ${QM_VERSION}&quot; \
+-       /website=&quot;<A HREF="http://www.codesourcery.com">http://www.codesourcery.com</A>&quot; \
+-       /intro=&quot;Thank you for installing QMTest!&quot; \
+-       /defaultpath=&quot;\$programfiles\$\\QM&quot;
+- }
+- 
+- # Upload files to the FTP server.
+- 
+- upload() {
+-   # Figure out what platform we are on.
+-   tar xzf ${QM_SOURCE_TAR_GZ} qm-${QM_VERSION}/config.guess || \
+-     error &quot;Could not obtain config.guess from source distribution.&quot;
+-   PLATFORM=`qm-${QM_VERSION}/config.guess`
+-   if [ $? -ne 0 ]; then
+-     error &quot;Could not obtain platform name.&quot;
+-   fi
+-   # We are not building Cygwin binaries, so transform &quot;cygwin&quot; into
+-   # &quot;windows&quot;.
+-   if [ $PLATFORM = i686-pc-cygwin ]; then
+-     PLATFORM=&quot;windows&quot;
+-   fi 
+-   PLATFORM_FTP_DIRECTORY=&quot;${FTP_DIRECTORY}/${PLATFORM}&quot;
+- 
+-   # Make sure the FTP directory exists.
+-   ssh ${FTP_SERVER} mkdir -p ${FTP_DIRECTORY} ${PLATFORM_FTP_DIRECTORY} || \
+-     error &quot;Could not create FTP directory.&quot;
+- 
+-   # Upload the source distribution.
+-   if [ ${SOURCE} -ne 0 ]; then
+-     scp ${QM_SOURCE_TAR_GZ} &quot;${FTP_SERVER}:${FTP_DIRECTORY}&quot; || \
+-       error &quot;Could not upload source distribution.&quot;
+-     # Upload the manual as well.
+-     tar xzf ${QM_SOURCE_TAR_GZ} \
+-       qm-${QM_VERSION}/qm/test/doc/print/manual.pdf \
+-       qm-${QM_VERSION}/qm/test/doc/html || \
+-       error &quot;Could not extract manuals.&quot;
+-     scp qm-${QM_VERSION}/qm/test/doc/print/manual.pdf \
+-       &quot;${FTP_SERVER}:${FTP_DIRECTORY}&quot; ||
+-       error &quot;Could not upload PDF manual.&quot;
+-     scp -r qm-${QM_VERSION}/qm/test/doc/html \
+-       &quot;${FTP_SERVER}:${FTP_DIRECTORY}/manual.html&quot; ||
+-       error &quot;Could not upload HTML manual.&quot;
+-   fi
+-   
+-   # Upload the RPM distribution.
+-   if [ ${RPM} -ne 0 ]; then
+-     scp ${QM_RPM} &quot;${FTP_SERVER}:${PLATFORM_FTP_DIRECTORY}&quot; || \
+-       error &quot;Could not upload RPM distribution.&quot;
+-   fi
+- 
+-   # Upload the binary distribution.
+-   if [ ${BINARY} -ne 0 ]; then
+-     scp ${QM_BINARY_TAR_GZ} &quot;${FTP_SERVER}:${PLATFORM_FTP_DIRECTORY}&quot; || \
+-       error &quot;Could not upload binary distribution.&quot;
+-   fi
+- 
+-   # Upload the self-extracting executable.
+-   if [ ${EXEC} -ne 0 ]; then
+-     scp ${QM_BINARY_EXE} &quot;${FTP_SERVER}:${PLATFORM_FTP_DIRECTORY}&quot; || \
+-       error &quot;Could not upload Windows distribution.&quot;
+-   fi
+- }
+- 
+- ########################################################################
+- # Initialization
+- ########################################################################
+- 
+- # The CVS server containing the GCC repository.
+- CVS_SERVER=&quot;cvs.codesourcery.com&quot;
+- # The path to the repository on that server.
+- CVS_REPOSITORY=&quot;/home/sc/Repository&quot;
+- # The CVS protocol to use.
+- CVS_PROTOCOL=&quot;pserver&quot;
+- # The username to use when connecting to the server.
+- CVS_USERNAME=&quot;anoncvs&quot;
+- 
+- # The major version of QM.
+- QM_MAJOR_VER=
+- # The minor version of QM.
+- QM_MINOR_VER=
+- # The version of QM.
+- QM_VERSION=
+- 
+- # The base RPM directory.
+- RPM_BASE=/usr/src/redhat
+- 
+- # The source distribution.
+- QM_SOURCE_TAR_GZ=
+- # The binary distribution.
+- QM_BINARY_TAR_GZ=
+- # The ZIP file.
+- QM_BINARY_ZIP=
+- # The executable file.
+- QM_BINARY_EXE=
+- # The RPM distribution.
+- QM_RPM=
+- 
+- # True if we are building a development snapshot, rather than a release.
+- SNAPSHOT=1
+- 
+- # Options to use with tar when creating an archive.
+- TAR_OPTS=&quot;--owner=root --group=root --mode=u+w,go-w,a+rX,a-st&quot;
+- 
+- # The CVS binary.
+- CVS=&quot;cvs -f -z9 -Q&quot;
+- # The QMTest branch to use.
+- BRANCH=HEAD
+- 
+- # The FTP server.
+- FTP_SERVER=&quot;ftp.codesourcery.com&quot;
+- # The FTP directory.
+- FTP_DIRECTORY=&quot;~ftp/pub/qmtest&quot;
+- 
+- # Modes of operation.
+- SOURCE=0
+- RPM=0
+- BINARY=0
+- EXEC=0
+- TAG=0
+- UPLOAD=0
+- 
+- ########################################################################
+- # Main Program
+- ########################################################################
+- 
+- # Set our umask so that everyone can read the files created.
+- umask 002
+- 
+- # Parse options.
+- while getopts &quot;uv:&quot; ARG; do
+-     case $ARG in
+-     u) 
+- 	UPLOAD=1
+- 	;;
+-     v)  
+- 	QM_VERSION=$OPTARG
+- 	# Compute the components of the version number.
+- 	QM_MAJOR_VER=`echo $QM_VERSION | awk --assign FS=. '{ print $1; }'`
+- 	QM_MINOR_VER=`echo $QM_VERSION | awk --assign FS=. '{ print $2; }'`
+- 	QM_RELEASE_VER=`echo $QM_VERSION | awk --assign FS=. '{ print $3; }'`
+- 	if test -z &quot;$QM_RELEASE_VER&quot;; then
+- 	    QM_RELEASE_VER=0
+- 	fi
+- 	# Use the release branch.
+- 	BRANCH=&quot;release-${QM_MAJOR_VER}-${QM_MINOR_VER}-branch&quot;
+- 	# Because a version was explicitly specified, we are not building 
+- 	# a snapshot. 
+- 	SNAPSHOT=0
+- 	;;
+-     \?) 
+-         usage
+- 	;;
+-     esac
+- done
+- shift `expr ${OPTIND} - 1`
+- 
+- # Set up a snapshot.
+- if [ $SNAPSHOT -ne 0 ]; then
+-     DATE=`date +%Y%m%d`
+-     get_qm_version
+-     # Add the date to the version name.
+-     QM_VERSION=&quot;${QM_VERSION}-${DATE}&quot;
+- fi
+- 
+- QM_RELEASE_DIR=`pwd`
+- QM_SOURCE_TAR_GZ=qm-${QM_VERSION}.tar.gz
+- QM_BINARY_TAR_GZ=qm-${QM_VERSION}-binary.tar.gz
+- QM_BINARY_ZIP=${QM_RELEASE_DIR}/qm-${QM_VERSION}.zip
+- QM_BINARY_EXE=${QM_RELEASE_DIR}/qm-${QM_VERSION}.exe
+- QM_RPM=${QM_RELEASE_DIR}/qm-${QM_VERSION}-0.i386.rpm
+- QM_INSTALL_DIR=${QM_RELEASE_DIR}/install/qm-${QM_VERSION}
+- FTP_DIRECTORY=${FTP_DIRECTORY}/qm-${QM_VERSION}
+- QM_RELEASE_TAG=&quot;release-`echo $QM_VERSION | sed -e 's|\.|-|g'`&quot;
+- 
+- # Handle the major modes.
+- while [ $# -ne 0 ]; do
+-     case $1 in
+-     source) SOURCE=1;;
+-     rpm)    RPM=1;;
+-     binary) BINARY=1;;
+-     exec)   EXEC=1;;
+-     tag)    TAG=1;;
+-     *)      usage;;
+-     esac
+-     shift
+- done
+- 
+- # Set up CVS.
+- CVSROOT=&quot;:${CVS_PROTOCOL}:${CVS_USERNAME}@&quot;
+- CVSROOT=&quot;${CVSROOT}${CVS_SERVER}:${CVS_REPOSITORY}&quot;
+- export CVSROOT
+- 
+- if [ ${UPLOAD} -eq 0 ]; then
+-     if [ ${TAG} -ne 0 ]; then
+-       tag_qm
+-     fi
+- 
+-     if [ ${SOURCE} -ne 0 ]; then
+-       build_source
+-     fi
+- 
+-     if [ ${RPM} -ne 0 ]; then
+-       build_rpm
+-     fi
+- 
+-     if [ ${BINARY} -ne 0 ]; then
+-       build_binary
+-     fi
+- 
+-     if [ ${EXEC} -ne 0 ]; then
+-       build_exec
+-     fi
+- else
+-     upload
+- fi
+--- 0 ----
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000615.html">PATCH: Fix packaging problems
+</A></li>
+	<LI>Next message: <A HREF="000618.html">QMTest 2.1 Prerelease 1 Available
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#617">[ date ]</a>
+              <a href="thread.html#617">[ thread ]</a>
+              <a href="subject.html#617">[ subject ]</a>
+              <a href="author.html#617">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">More information about the qmtest
+mailing list</a><br>
+</body></html>

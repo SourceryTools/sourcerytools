@@ -1,0 +1,369 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> Manual Patch: Automate Builds
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20Manual%20Patch%3A%20Automate%20Builds&In-Reply-To=%3C20020131180350.C29944%40vaio.codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000903.html">
+   <LINK REL="Next"  HREF="000905.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>Manual Patch: Automate Builds</H1>
+    <B>Jeffrey</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20Manual%20Patch%3A%20Automate%20Builds&In-Reply-To=%3C20020131180350.C29944%40vaio.codesourcery.com%3E"
+       TITLE="Manual Patch: Automate Builds">oldham at codesourcery.com
+       </A><BR>
+    <I>Fri Feb  1 02:03:50 UTC 2002</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000903.html">Manual Patch: Programs Tidying 2 of x
+</A></li>
+        <LI>Next message: <A HREF="000905.html">Manual Patch: Tidy Clean Targets
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#904">[ date ]</a>
+              <a href="thread.html#904">[ thread ]</a>
+              <a href="subject.html#904">[ subject ]</a>
+              <a href="author.html#904">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>2002-Jan-31  Jeffrey D. Oldham  &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">oldham at codesourcery.com</A>&gt;
+
+These changes help automate construction of the POOMA manual.
+	
+	* Makefile: Update 'figure', 'program', and 'clean' targets to
+	support recursive builds.
+	* makefile: Remove this file in favor of 'Makefile'.
+	* pooma.xml: Change the locations of annotated source files.
+	* programs/Doof2d/Makefile: Modify to use patch using remote
+	source files.
+	* programs/Sequential/Makefile: Likewise.
+
+Applied to mainline.
+
+Thanks,
+Jeffrey D. Oldham
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">oldham at codesourcery.com</A>
+-------------- next part --------------
+Index: Makefile
+===================================================================
+RCS file: /home/pooma/Repository/r2/docs/manual/Makefile,v
+retrieving revision 1.4
+diff -c -p -r1.4 Makefile
+*** Makefile	2002/01/31 21:20:26	1.4
+--- Makefile	2002/02/01 01:53:36
+*************** XMLSOURCES= $(MANUALNAME).xml introducti
+*** 18,32 ****
+              concepts.xml arrays.xml data-parallel.xml glossary.xml \
+              bibliography.xml 
+  
+! ## HERE  How do I include dependences on programs?
+! 
+  all: $(MANUALNAME).ps $(MANUALNAME).pdf $(MANUALNAME).html
+  
+! $(MANUALNAME).dvi $(MANUALNAME).pdf $(MANUALNAME).html: $(XMLSOURCES) figures
+  
+! figures:
+  	$(MAKE) -C figures
+  
+  genindex.sgm:
+  	perl collateindex.pl $(INDEXOPTIONS) -N -o $@
+  
+--- 18,38 ----
+              concepts.xml arrays.xml data-parallel.xml glossary.xml \
+              bibliography.xml 
+  
+! # Create all versions of the manual.
+  all: $(MANUALNAME).ps $(MANUALNAME).pdf $(MANUALNAME).html
+  
+! $(MANUALNAME).dvi $(MANUALNAME).pdf $(MANUALNAME).html: $(XMLSOURCES) figure \
+! 							program
+  
+! # Create the figures for the manual.
+! figure:
+  	$(MAKE) -C figures
+  
++ # Create the annotated programs for the manual.
++ program:
++ 	$(MAKE) -C programs/Doof2d
++ 	$(MAKE) -C programs/Sequential
++ 
+  genindex.sgm:
+  	perl collateindex.pl $(INDEXOPTIONS) -N -o $@
+  
+*************** $(MANUALNAME).pdf: $(XMLSOURCES) geninde
+*** 55,58 ****
+--- 61,67 ----
+  	pdfjadetex $(MANUALNAME).tex
+  
+  clean:
++ 	$(MAKE) -C programs/Doof2d clean
++ 	$(MAKE) -C programs/Sequential clean
++ 	$(MAKE) -C figures clean
+  	rm -f *.dvi *.aux *.log *.toc *.bak *.blg *.bbl *.glo *.idx *.lof *.lot *.htm *.html *.mpx mpxerr.tex HTML.index $(MANUALNAME).tex genindex.sgm pooma-html.manifest
+Index: makefile
+===================================================================
+RCS file: makefile
+diff -N makefile
+*** /tmp/cvsARpksG	Thu Jan 31 18:53:43 2002
+--- /dev/null	Fri Mar 23 21:37:44 2001
+***************
+*** 1,71 ****
+- ### Oldham, Jeffrey D.
+- ### 1997 Dec 26
+- ### misc
+- ###
+- ### LaTeX -&gt; PostScript/PDF/WWW
+- ### XML -&gt; TeX/DVI/PS/PDF
+- 
+- # Definitions for PostScript and WWW Creation
+- TEX=		latex
+- WWWHOMEDIR=	/u/oldham/www
+- LATEX2HTML=	latex2html
+- BASICLATEX2HTMLOPTIONS=	-info &quot;&quot; -no_footnode -no_math -html_version 3.2,math
+- #LATEX2HTMLOPTIONS=	-local_icons -split +1 $(BASICLATEX2HTMLOPTIONS)
+- LATEX2HTMLOPTIONS=	-no_navigation -split 0 $(BASICLATEX2HTMLOPTIONS)
+- MPOST=		mpost
+- 
+- # Definitions for Jade.
+- JADEDIR=		/usr/lib/sgml/stylesheets/docbook
+- PRINTDOCBOOKDSL=	print/docbook.dsl
+- HTMLDOCBOOKDSL=		html/docbook.dsl
+- XML=			dtds/decls/xml.dcl
+- INDEXOPTIONS=		-t 'Index' -i 'index' -g -p
+- 
+- CXXFLAGS= -g -Wall -pedantic -W -Wstrict-prototypes -Wpointer-arith -Wbad-function-cast -Wcast-align -Wconversion -Wnested-externs -Wundef -Winline -static
+- 
+- all: manual.ps
+- 
+- manual.dvi: manual.xml introduction.xml tutorial.xml concepts.xml glossary.xml
+- 
+- %.all:	%.ps %.pdf %.html
+- 	chmod 644 $*.ps $*.pdf
+- 	mv $*.ps $*.pdf $*
+- 
+- %.dvi:	%.ltx
+- 	$(TEX) $&lt;
+- 	# bibtex $*
+- 	# $(TEX) $&lt;
+- 	$(TEX) $&lt;
+- 
+- %.ps:	%.dvi
+- 	dvips -t letter $&lt; -o
+- 
+- %.pdf.ltx:	%.ltx
+- 	sed -e 's/^%\\usepackage{times}/\\usepackage{times}/' $&lt; &gt; $@
+- 
+- %.pdf:	%.pdf.ps
+- 	ps2pdf $&lt; $@
+- 
+- # This rule assumes index creation.
+- %.dvi:	%.xml genindex.sgm
+- 	jade -D$(JADEDIR) -t sgml -d $(HTMLDOCBOOKDSL) -V html-index $(XML) $&lt;
+- 	perl collateindex.pl $(INDEXOPTIONS) -o genindex.sgm HTML.index
+- 	jade -D$(JADEDIR) -t tex -d $(PRINTDOCBOOKDSL) $(XML) $&lt; &amp;&amp; jadetex $*.tex &amp;&amp; jadetex $*.tex &amp;&amp; jadetex $*.tex
+- 
+- genindex.sgm:
+- 	perl collateindex.pl $(INDEXOPTIONS) -N -o $@
+- 
+- %.html:	%.xml
+- 	jade -D$(JADEDIR) -t sgml -d $(HTMLDOCBOOKDSL) $(XML) $&lt;
+- 
+- %.pdf:	%.xml
+- 	jade -D$(JADEDIR) -t tex -d $(PRINTDOCBOOKDSL) $(XML) $&lt; &amp;&amp; pdfjadetex $*.tex &amp;&amp; pdfjadetex $*.tex
+- 
+- mproof-%.ps:	%.mp
+- 	declare -x TEX=latex &amp;&amp; $(MPOST) $&lt; &amp;&amp; tex mproof.tex $*.[0-9]* &amp;&amp; dvips mproof.dvi -o $@
+- 
+- %.txt:	%.ltx
+- 	detex $&lt; &gt; $@
+- 
+- clean:
+- 	rm -f *.dvi *.aux *.log *.toc *.bak *.blg *.bbl *.glo *.idx *.lof *.lot *.htm *.mpx mpxerr.tex HTML.index manual.tex
+--- 0 ----
+Index: pooma.xml
+===================================================================
+RCS file: /home/pooma/Repository/r2/docs/manual/pooma.xml,v
+retrieving revision 1.1
+diff -c -p -r1.1 pooma.xml
+*** pooma.xml	2002/01/31 21:20:27	1.1
+--- pooma.xml	2002/02/01 01:53:41
+***************
+*** 235,269 ****
+  
+  &lt;!-- External File Entities --&gt;
+  &lt;!-- Doof2d Programs --&gt;
+! &lt;!ENTITY doof2d-c-element SYSTEM &quot;./programs/examples/Doof2d/Doof2d-C-element-annotated.cpp&quot;&gt;
+    &lt;!-- hand-coded Doof2d implementation --&gt;
+! &lt;!ENTITY doof2d-array-element SYSTEM &quot;./programs/examples/Doof2d/Doof2d-Array-element-annotated.cpp&quot;&gt;
+    &lt;!-- Array element-wise Doof2d implementation --&gt;
+! &lt;!ENTITY doof2d-array-parallel SYSTEM &quot;./programs/examples/Doof2d/Doof2d-Array-parallel-annotated.cpp&quot;&gt;
+    &lt;!-- Array data-parallel Doof2d implementation --&gt;
+! &lt;!ENTITY doof2d-array-stencil SYSTEM &quot;./programs/examples/Doof2d/Doof2d-Array-stencil-annotated.cpp&quot;&gt;
+    &lt;!-- Array stencil Doof2d implementation --&gt;
+! &lt;!ENTITY doof2d-array-distributed SYSTEM &quot;./programs/examples/Doof2d/Doof2d-Array-distributed-annotated.cpp&quot;&gt;
+    &lt;!-- distributed Array stencil Doof2d implementation --&gt;
+! &lt;!ENTITY doof2d-field-parallel SYSTEM &quot;./programs/examples/Doof2d/Doof2d-Field-parallel-annotated.cpp&quot;&gt;
+    &lt;!-- Field data-parallel Doof2d implementation --&gt;
+! &lt;!ENTITY doof2d-field-distributed SYSTEM &quot;./programs/examples/Doof2d/Doof2d-Field-distributed-annotated.cpp&quot;&gt;
+    &lt;!-- Field data-parallel distributed Doof2d implementation --&gt;
+  
+  &lt;!-- Sequential Programs --&gt;
+! &lt;!ENTITY array-copy SYSTEM &quot;./programs/examples/Sequential/array-copy-annotated.cpp&quot;&gt;
+    &lt;!-- Illustrate Array reference semantics. --&gt;
+! &lt;!ENTITY array-size SYSTEM &quot;./programs/examples/Sequential/array-size-annotated.cpp&quot;&gt;
+    &lt;!-- Illustrate Array member functions. --&gt;
+! &lt;!ENTITY dynamicarray-example SYSTEM &quot;./programs/examples/Sequential/dynamicarray-annotated.cpp&quot;&gt;
+    &lt;!-- Illustrate using DynamicArray class. --&gt;
+! &lt;!ENTITY initialize-finalize SYSTEM &quot;./programs/examples/Sequential/initialize-finalize-annotated.cpp&quot;&gt;
+    &lt;!-- Illustrate initialize() and finalize(). --&gt;
+  
+  &lt;!-- Template Programs --&gt;
+! &lt;!ENTITY pairs-untemplated SYSTEM &quot;./programs/examples/Templates/pairs-untemplated-annotated.cpp&quot;&gt;
+    &lt;!-- Illustrate defining classes with pairs of values of the same type. --&gt;
+! &lt;!ENTITY pairs-templated SYSTEM &quot;./programs/examples/Templates/pairs-templated-annotated.cpp&quot;&gt;
+    &lt;!-- Illustrate defining a template class with pairs of values of the same type. --&gt;
+  ]&gt;
+  
+--- 235,269 ----
+  
+  &lt;!-- External File Entities --&gt;
+  &lt;!-- Doof2d Programs --&gt;
+! &lt;!ENTITY doof2d-c-element SYSTEM &quot;./programs/Doof2d/Doof2d-C-element-annotated.cpp&quot;&gt;
+    &lt;!-- hand-coded Doof2d implementation --&gt;
+! &lt;!ENTITY doof2d-array-element SYSTEM &quot;./programs/Doof2d/Doof2d-Array-element-annotated.cpp&quot;&gt;
+    &lt;!-- Array element-wise Doof2d implementation --&gt;
+! &lt;!ENTITY doof2d-array-parallel SYSTEM &quot;./programs/Doof2d/Doof2d-Array-parallel-annotated.cpp&quot;&gt;
+    &lt;!-- Array data-parallel Doof2d implementation --&gt;
+! &lt;!ENTITY doof2d-array-stencil SYSTEM &quot;./programs/Doof2d/Doof2d-Array-stencil-annotated.cpp&quot;&gt;
+    &lt;!-- Array stencil Doof2d implementation --&gt;
+! &lt;!ENTITY doof2d-array-distributed SYSTEM &quot;./programs/Doof2d/Doof2d-Array-distributed-annotated.cpp&quot;&gt;
+    &lt;!-- distributed Array stencil Doof2d implementation --&gt;
+! &lt;!ENTITY doof2d-field-parallel SYSTEM &quot;./programs/Doof2d/Doof2d-Field-parallel-annotated.cpp&quot;&gt;
+    &lt;!-- Field data-parallel Doof2d implementation --&gt;
+! &lt;!ENTITY doof2d-field-distributed SYSTEM &quot;./programs/Doof2d/Doof2d-Field-distributed-annotated.cpp&quot;&gt;
+    &lt;!-- Field data-parallel distributed Doof2d implementation --&gt;
+  
+  &lt;!-- Sequential Programs --&gt;
+! &lt;!ENTITY array-copy SYSTEM &quot;./programs/Sequential/array-copy-annotated.cpp&quot;&gt;
+    &lt;!-- Illustrate Array reference semantics. --&gt;
+! &lt;!ENTITY array-size SYSTEM &quot;./programs/Sequential/array-size-annotated.cpp&quot;&gt;
+    &lt;!-- Illustrate Array member functions. --&gt;
+! &lt;!ENTITY dynamicarray-example SYSTEM &quot;./programs/Sequential/dynamicarray-annotated.cpp&quot;&gt;
+    &lt;!-- Illustrate using DynamicArray class. --&gt;
+! &lt;!ENTITY initialize-finalize SYSTEM &quot;./programs/Sequential/initialize-finalize-annotated.cpp&quot;&gt;
+    &lt;!-- Illustrate initialize() and finalize(). --&gt;
+  
+  &lt;!-- Template Programs --&gt;
+! &lt;!ENTITY pairs-untemplated SYSTEM &quot;./programs/Sequential/pairs-untemplated-annotated.cpp&quot;&gt;
+    &lt;!-- Illustrate defining classes with pairs of values of the same type. --&gt;
+! &lt;!ENTITY pairs-templated SYSTEM &quot;./programs/Sequential/pairs-templated-annotated.cpp&quot;&gt;
+    &lt;!-- Illustrate defining a template class with pairs of values of the same type. --&gt;
+  ]&gt;
+  
+Index: programs/Doof2d/Makefile
+===================================================================
+RCS file: /home/pooma/Repository/r2/docs/manual/programs/Doof2d/Makefile,v
+retrieving revision 1.1
+diff -c -p -r1.1 Makefile
+*** programs/Doof2d/Makefile	2002/01/31 22:17:30	1.1
+--- programs/Doof2d/Makefile	2002/02/01 01:53:43
+***************
+*** 7,16 ****
+  ## These rules combine executable code, which can be compiled and run,
+  ## with DocBook annotations used in the manual to explain the code.
+  
+! all: Doof2d-C-element-annotated.cpp Doof2d-Array-element-annotated.cpp \
+       Doof2d-Array-parallel-annotated.cpp Doof2d-Array-stencil-annotated.cpp \
+       Doof2d-Array-distributed-annotated.cpp \
+       Doof2d-Field-parallel-annotated.cpp Doof2d-Field-distributed-annotated.cpp
+  
+! %-annotated.cpp: %-annotated.patch %.cpp
+! 	patch -o $@ &lt; $&lt;
+--- 7,24 ----
+  ## These rules combine executable code, which can be compiled and run,
+  ## with DocBook annotations used in the manual to explain the code.
+  
+! TARGETS= Doof2d-C-element-annotated.cpp Doof2d-Array-element-annotated.cpp \
+       Doof2d-Array-parallel-annotated.cpp Doof2d-Array-stencil-annotated.cpp \
+       Doof2d-Array-distributed-annotated.cpp \
+       Doof2d-Field-parallel-annotated.cpp Doof2d-Field-distributed-annotated.cpp
+  
+! all: $(TARGETS)
+! 
+! # directory containing the executable code
+! EXECUTABLEDIRECTORY= ../../../../examples/Manual/Doof2d/
+! 
+! %-annotated.cpp: %-annotated.patch $(EXECUTABLEDIRECTORY)/%.cpp
+! 	patch -o $@ $(EXECUTABLEDIRECTORY)/$*.cpp $&lt;
+! 
+! clean:
+! 	rm -f $(TARGETS)
+Index: programs/Sequential/Makefile
+===================================================================
+RCS file: /home/pooma/Repository/r2/docs/manual/programs/Sequential/Makefile,v
+retrieving revision 1.1
+diff -c -p -r1.1 Makefile
+*** programs/Sequential/Makefile	2002/01/31 22:20:43	1.1
+--- programs/Sequential/Makefile	2002/02/01 01:53:43
+***************
+*** 7,15 ****
+  ## These rules combine executable code, which can be compiled and run,
+  ## with DocBook annotations used in the manual to explain the code.
+  
+! all: array-copy-annotated.cpp dynamicarray-annotated.cpp \
+       initialize-finalize-annotated.cpp \
+       pairs-templated-annotated.cpp pairs-untemplated-annotated.cpp
+  
+! %-annotated.cpp: %-annotated.patch %.cpp
+! 	patch -o $@ &lt; $&lt;
+--- 7,24 ----
+  ## These rules combine executable code, which can be compiled and run,
+  ## with DocBook annotations used in the manual to explain the code.
+  
+! TARGETS= array-copy-annotated.cpp array-size-annotated.cpp \
+!      dynamicarray-annotated.cpp \
+       initialize-finalize-annotated.cpp \
+       pairs-templated-annotated.cpp pairs-untemplated-annotated.cpp
+  
+! all: $(TARGETS)
+! 
+! # directory containing the executable code
+! EXECUTABLEDIRECTORY= ../../../../examples/Manual/Sequential/
+! 
+! %-annotated.cpp: %-annotated.patch $(EXECUTABLEDIRECTORY)/%.cpp
+! 	patch -o $@ $(EXECUTABLEDIRECTORY)/$*.cpp $&lt;
+! 
+! clean:
+! 	rm -f $(TARGETS)
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000903.html">Manual Patch: Programs Tidying 2 of x
+</A></li>
+	<LI>Next message: <A HREF="000905.html">Manual Patch: Tidy Clean Targets
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#904">[ date ]</a>
+              <a href="thread.html#904">[ thread ]</a>
+              <a href="subject.html#904">[ subject ]</a>
+              <a href="author.html#904">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

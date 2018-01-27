@@ -1,0 +1,143 @@
+From kruse at freemail.absa.co.za  Fri Dec 21 07:12:30 2001
+From: kruse at freemail.absa.co.za (Walter Kruse)
+Date: Fri, 21 Dec 2001 09:12:30 +0200
+Subject: yahoo !!!
+Message-ID: <000801c189ee$e1ecf870$f78bcba3@tintin>
+
+I have been waiting for this tool for over a year. Very pleased to have finally downloaded it. When setting up on my W2K & IIS box though, I get the following output:
+
+
+ Microsoft Windows 2000 [Version 5.00.2195]
+(C) Copyright 1985-2000 Microsoft Corp.
+
+C:\>xcopy c:\progra~1\qm\share\qm\tutorial\test\tdb tdb\ /s
+Overwrite C:\tdb\exec0.qmt (Yes/No/All)? a
+C:\progra~1\qm\share\qm\tutorial\test\tdb\exec0.qmt
+C:\progra~1\qm\share\qm\tutorial\test\tdb\exec1.qmt
+C:\progra~1\qm\share\qm\tutorial\test\tdb\exec2.qmt
+C:\progra~1\qm\share\qm\tutorial\test\tdb\QMTest\configuration
+4 File(s) copied
+
+C:\>cd tdb
+
+C:\tdb>PATH C:\progra~1\qm\bin;%PATH%
+
+C:\tdb>qmtest gui
+Traceback (innermost last):
+  File "C:\progra~1\qm\lib\qm\qm\test\qmtest.py", line 61, in ?
+    import qm.test.cmdline
+  File "C:\progra~1\qm\lib\qm\qm\test\cmdline.py", line 38, in ?
+    import base
+  File "C:\progra~1\qm\lib\qm\qm\test\base.py", line 42, in ?
+    import qm.attachment
+  File "C:\progra~1\qm\lib\qm\qm\attachment.py", line 66, in ?
+    import xmlutil
+  File "C:\progra~1\qm\lib\qm\qm\xmlutil.py", line 41, in ?
+    import xml.dom
+ImportError: No module named xml.dom
+
+C:\tdb>
+-------------- next part --------------
+An HTML attachment was scrubbed...
+URL: <http://sourcerytools.com/pipermail/qmtest/attachments/20011221/75988266/attachment.html>
+
+From mark at codesourcery.com  Fri Dec 21 22:09:44 2001
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Fri, 21 Dec 2001 14:09:44 -0800
+Subject: [qmtest] yahoo !!!
+In-Reply-To: <000801c189ee$e1ecf870$f78bcba3@tintin>
+Message-ID: <39100000.1008972584@gandalf.codesourcery.com>
+
+> C:\tdb>qmtest gui
+> Traceback (innermost last):
+>   File "C:\progra~1\qm\lib\qm\qm\test\qmtest.py", line 61, in ?
+>     import qm.test.cmdline
+>   File "C:\progra~1\qm\lib\qm\qm\test\cmdline.py", line 38, in ?
+>     import base
+>   File "C:\progra~1\qm\lib\qm\qm\test\base.py", line 42, in ?
+>     import qm.attachment
+>   File "C:\progra~1\qm\lib\qm\qm\attachment.py", line 66, in ?
+>     import xmlutil
+>   File "C:\progra~1\qm\lib\qm\qm\xmlutil.py", line 41, in ?
+>     import xml.dom
+> ImportError: No module named xml.dom
+>
+
+How disturbing.  Would you check to see if there is a file named:
+
+  C:\progra~1\qm\lib\qm\xml\dom\__init__.py
+
+on your system?  If there is not, that probably reflects a packaging
+problem in Windows version of QMTest.  If there is such a file, we
+will track down the problems.
+
+We are hard at work on a QMTest 1.1 that provides a number of minor
+improvements; I would very much like to resolve this problem so that
+we can get a fixed version for you.
+
+Yours,
+
+--
+Mark Mitchell                   mark at codesourcery.com
+CodeSourcery, LLC               http://www.codesourcery.com
+
+
+
+From slamb at slamb.org  Tue Dec 25 06:51:45 2001
+From: slamb at slamb.org (Scott Lamb)
+Date: Tue, 25 Dec 2001 00:51:45 -0600 (CST)
+Subject: Makefile problems
+Message-ID: <Pine.BSF.4.30_heb2.09.0112250032510.52817-100000@cairo.zsat.net>
+
+Merry Christmas. (Or happy holidays, if you prefer.)
+
+QMTest does not build on my FreeBSD system. The problem is that it does
+not like systems which have GNU make as "gmake" and a different make as
+"make". The AC_PROG_MAKE_SET is in configure.in but it isn't actually used
+when calling make recursively. The two-line diff below fixed that problem.
+
+It would be nice if the makefiles were named "GNUmakefile" instead of
+"Makefile". GNU make will search for these files first and other makes
+will ignore them. With that and a Makefile that just fails, you've got a
+helpful error message. I.e., Makefile could be:
+
+all clean install:
+	@echo "GNU make is required. Try typing 'gmake' instead."
+	@false
+
+It would be _really_ nice if QMTest did not use recursive make at all,
+though that'd be a lot more work to change.  There's a good paper on why
+recursive make is bad at
+<http://www.pcug.org.au/~millerp/rmch/recu-make-cons-harm.html>. (If
+someone wants to see an example of the alternative, I can show you a
+project of mine. I'm proud of the build system, though the project as a
+whole has a ways to go.)
+
+Thanks,
+Scott Lamb
+
+--- qm/standard.mk.in   2001/12/13 03:53:50     1.20
++++ qm/standard.mk.in   2001/12/25 06:33:52
+@@ -165,7 +165,7 @@
+ subdirs:       $(SUBDIRS)
+
+ $(SUBDIRS):
+-       @cd $@ && make
++       @cd $@ && $(MAKE)
+
+ # Generate documentation from Python sources using HappyDoc.
+ ifneq ($(PYTHONDOCDIRS),)
+@@ -259,7 +259,7 @@
+
+ clean::
+        @for subdir in $(SUBDIRS); do \
+-          (cd $${subdir} && make $@); \
++          (cd $${subdir} && $(MAKE) $@); \
+         done
+
+ # Run regression tests.  Regression tests are stored in files named
+
+
+
+
+

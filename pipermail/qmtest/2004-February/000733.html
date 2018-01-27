@@ -1,0 +1,295 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [PATCH] Add more annotations to QMTest runs
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:qmtest%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20Add%20more%20annotations%20to%20QMTest%20runs&In-Reply-To=%3C20040211204531.GA27774%40njs.ddts.net%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000732.html">
+   <LINK REL="Next"  HREF="000734.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[PATCH] Add more annotations to QMTest runs</H1>
+    <B>Nathaniel Smith</B> 
+    <A HREF="mailto:qmtest%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20Add%20more%20annotations%20to%20QMTest%20runs&In-Reply-To=%3C20040211204531.GA27774%40njs.ddts.net%3E"
+       TITLE="[PATCH] Add more annotations to QMTest runs">njs at pobox.com
+       </A><BR>
+    <I>Wed Feb 11 20:45:31 UTC 2004</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000732.html">QMTest 2.1 Released
+</A></li>
+        <LI>Next message: <A HREF="000734.html">[qmtest] [PATCH] Add more annotations to QMTest runs
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#733">[ date ]</a>
+              <a href="thread.html#733">[ thread ]</a>
+              <a href="subject.html#733">[ subject ]</a>
+              <a href="author.html#733">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>This patch, attached for review, adds more default annotations to
+QMTest.  These are required for emulation of the TET[1] output format,
+but are useful generally.
+
+Also adds a few more calls to ExecutionEngine._Trace, and
+rationalizes the early termination handling;
+ExecutionEnginer._RunTests used to sometimes signal early termination
+by just exiting, and sometimes by raising an exception; we now always
+raise an exception of some form.
+
+New annotations:
+  qmtest.run.user: user who started the test run
+  qmtest.run.version: version of QMTest used for this test run
+  qmtest.run.uname: uname of the machine that started this test run
+  qmtest.run.aborted: present with value &quot;True&quot; if test run was
+    aborted early
+
+Questions:
+  - Currently the simple presence of qmtest.run.aborted signals an
+    aborted run; should we instead always write this annotation with
+    value either &quot;True&quot; or &quot;False&quot;?
+  - Is there any documentation that should be added for these?  As far
+    as I can tell, annotations aren't documentated at all ATM...
+
+[1] <A HREF="http://tetworks.opengroup.org">http://tetworks.opengroup.org</A>
+
+-- Nathaniel
+
+-- 
+&quot;If you can explain how you do something, then you're very very bad at it.&quot;
+  -- John Hopfield
+-------------- next part --------------
+? foo
+? results.qmr
+? qm/external/__init__.pyc
+? tests/regress/QMTest/regression_database.pyc
+? tests/regress/QMTest/selftest.pyc
+? tests/regress/env_context1/output.qmr
+? tests/regress/exception_test/output.qmr
+? tests/regress/gilles1/output.qmr
+? tests/regress/nocycle1/output.qmr
+? tests/regress/tuple1/QMTest/tuple_test.pyc
+? tests/results_files/QMTest/results_file_database.pyc
+? tests/results_files/QMTest/results_file_test.pyc
+Index: ChangeLog
+===================================================================
+RCS file: /home/qm/Repository/qm/ChangeLog,v
+retrieving revision 1.595
+diff -u -r1.595 ChangeLog
+--- ChangeLog	28 Jan 2004 19:50:51 -0000	1.595
++++ ChangeLog	11 Feb 2004 20:06:22 -0000
+@@ -1,3 +1,18 @@
++2004-02-11  Nathaniel Smith  &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">njs at codesourcery.com</A>&gt;
++
++	* qm/common.py: Import getpass.  
++	(get_username): New function.
++	* qm/test/execution_engine.py
++	(ExecutionEngine._WriteInitialAnnotations): New method.
++	(ExecutionEngine.Run): Call it.
++	(TerminationRequested): New exception.
++	(ExecutionEngine._RunTests): Raise it when terminating.
++	(ExecutionEngine.Run): Check for exceptions in _RunTests.
++	
++	(ExecutionEngine.RequestTermination): More tracing.
++	(ExecutionEngine.Run): Likewise.
++	(ExecutionEngine._RunTests): Likewise.
++	
+ 2004-01-28  Mark Mitchell  &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">mark at codesourcery.com</A>&gt;
+ 
+ 	* qm/test/classes/explicit_suite.py (ExplicitSuite.is_implicit):
+Index: qm/common.py
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/common.py,v
+retrieving revision 1.79
+diff -u -r1.79 common.py
+--- qm/common.py	24 Nov 2003 23:00:54 -0000	1.79
++++ qm/common.py	11 Feb 2004 20:06:22 -0000
+@@ -39,6 +39,7 @@
+ import time
+ import traceback
+ import types
++import getpass
+ if sys.platform != &quot;win32&quot;:
+     import fcntl
+     
+@@ -872,6 +873,31 @@
+         assignments[name] = value
+ 
+     return assignments
++
++
++def get_username():
++    &quot;&quot;&quot;Returns the current username as a string.
++
++    If the username cannot be found, raises a 'QMException'.&quot;&quot;&quot;
++
++    # First try using the 'getpass' module.
++    try:
++        return getpass.getuser()
++    except:
++        pass
++
++    # 'getpass' doesn't necessarily work on Windows, so if that fails,
++    # try the win32 function.
++    try:
++        import win32api
++    except ImportError:
++        pass
++    else:
++        return win32api.GetUserName()
++
++    # And if none of that worked, give up.
++    raise QMException, &quot;Cannot determine user name.&quot;
++
+ 
+ ########################################################################
+ # variables
+Index: qm/test/execution_engine.py
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/test/execution_engine.py,v
+retrieving revision 1.25
+diff -u -r1.25 execution_engine.py
+--- qm/test/execution_engine.py	24 Nov 2003 06:35:01 -0000	1.25
++++ qm/test/execution_engine.py	11 Feb 2004 20:06:22 -0000
+@@ -34,6 +34,13 @@
+ # Classes
+ ########################################################################
+ 
++class TerminationRequested(qm.common.QMException):
++    &quot;&quot;&quot;A target requested termination of the test loop.&quot;&quot;&quot;
++    
++    pass
++
++
++
+ class ExecutionEngine:
+     &quot;&quot;&quot;A 'ExecutionEngine' executes tests.
+ 
+@@ -232,6 +239,7 @@
+         may take some time; tests that are already running will continue
+         to run, for example.&quot;&quot;&quot;
+ 
++        self._Trace(&quot;Test loop termination requested.&quot;)
+         self.__terminated = 1
+ 
+ 
+@@ -253,20 +261,27 @@
+ 
+         returns -- True if any tests had unexpected outcomes.&quot;&quot;&quot;
+ 
+-        # Write out all the currently known annotations.
+-        start_time_str = qm.common.format_time_iso(time.time())
+-        for rs in self.__result_streams:
+-            rs.WriteAllAnnotations(self.__context)
+-            rs.WriteAnnotation(&quot;qmtest.run.start_time&quot;, start_time_str)
++        # Write out run metadata.
++        self._WriteInitialAnnotations()
+ 
+         # Start all of the targets.
+         for target in self.__targets:
+             target.Start(self.__response_queue, self)
+ 
+         # Run all of the tests.
++        self._Trace(&quot;Starting test loop&quot;)
+         try:
+-            self._RunTests()
++            try:
++                self._RunTests()
++            except:
++                self._Trace(&quot;Test loop exited with exception: %s&quot;
++                            % str(sys.exc_info()))
++                for rs in self.__result_streams:
++                    rs.WriteAnnotation(&quot;qmtest.run.aborted&quot;, &quot;True&quot;)
++                raise
+         finally:
++            self._Trace(&quot;Test loop finished.&quot;)
++
+             # Stop the targets.
+             self._Trace(&quot;Stopping targets.&quot;)
+             for target in self.__targets:
+@@ -346,7 +361,9 @@
+         while self.__num_tests_started &lt; num_tests:
+             # If the user interrupted QMTest, stop executing tests.
+             if self._IsTerminationRequested():
+-                break
++                self._Trace(&quot;Terminating test loop as requested.&quot;)
++                raise TerminationRequested, &quot;Termination requested.&quot;
++
+             # Process any responses and update the count of idle targets.
+             while self.__CheckForResponse(wait=0):
+                 pass
+@@ -378,8 +395,9 @@
+                     else:
+                         self.__target_state[target] = self.__TARGET_BUSY
+ 
+-        # Now all tests have been started; we just have wait for them
+-        # all to finish.
++        # Now every test that we're going to start has started; we just
++        # have wait for them all to finish.
++        self._Trace(&quot;Waiting for remaining tests to finish.&quot;)
+         while self.__running:
+             self.__CheckForResponse(wait=1)
+ 
+@@ -793,6 +811,31 @@
+             tracer.Write(message, &quot;exec&quot;)
+ 
+     
++    def _WriteInitialAnnotations(self):
++
++        # Calculate annotations.
++        start_time_str = qm.common.format_time_iso(time.time())
++
++        try:
++            username = qm.common.get_username()
++        except:
++            username = None
++
++        try:
++            uname = &quot; &quot;.join(os.uname())
++        except:
++            uname = None
++
++        # Write them.
++        for rs in self.__result_streams:
++            rs.WriteAllAnnotations(self.__context)
++            rs.WriteAnnotation(&quot;qmtest.run.start_time&quot;, start_time_str)
++            if username is not None:
++                rs.WriteAnnotation(&quot;qmtest.run.user&quot;, username)
++            rs.WriteAnnotation(&quot;qmtest.run.version&quot;, qm.version)
++            rs.WriteAnnotation(&quot;qmtest.run.uname&quot;, uname)
++
++
+ ########################################################################
+ # Local Variables:
+ # mode: python
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000732.html">QMTest 2.1 Released
+</A></li>
+	<LI>Next message: <A HREF="000734.html">[qmtest] [PATCH] Add more annotations to QMTest runs
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#733">[ date ]</a>
+              <a href="thread.html#733">[ thread ]</a>
+              <a href="subject.html#733">[ subject ]</a>
+              <a href="author.html#733">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">More information about the qmtest
+mailing list</a><br>
+</body></html>

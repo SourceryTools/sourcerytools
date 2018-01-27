@@ -1,0 +1,123 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [vsipl++] Matlab  IO
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20Matlab%20%20IO&In-Reply-To=%3C44A56D22.6020705%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000542.html">
+   
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[vsipl++] Matlab  IO</H1>
+    <B>Jules Bergmann</B> 
+    <A HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20Matlab%20%20IO&In-Reply-To=%3C44A56D22.6020705%40codesourcery.com%3E"
+       TITLE="[vsipl++] Matlab  IO">jules at codesourcery.com
+       </A><BR>
+    <I>Fri Jun 30 18:27:46 UTC 2006</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000542.html">[vsipl++] Matlab  IO
+</A></li>
+        
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#543">[ date ]</a>
+              <a href="thread.html#543">[ thread ]</a>
+              <a href="subject.html#543">[ subject ]</a>
+              <a href="author.html#543">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>
+&gt;&gt;<i> You can wrap the 'Swap_value' class with a function:
+</I>&gt;&gt;<i>
+</I>&gt;&gt;<i> template &lt;typename T&gt;
+</I>&gt;&gt;<i> void
+</I>&gt;&gt;<i> swap_value(T&amp; value, bool swap)
+</I>&gt;&gt;<i> {
+</I>&gt;&gt;<i>   if (swap)
+</I>&gt;&gt;<i>     swap_value&lt;T, sizeof(T), true&gt;::swap(&amp;value);
+</I>&gt;&gt;<i> }
+</I>&gt;&gt;<i>
+</I>&gt;<i> The reason that I didn't want this to be a function is because if I call 
+</I>&gt;<i> this in a loop, it will execute a condition every iteration of the loop. 
+</I>&gt;<i> If it is a template parameter, it might be a little better. What do you 
+</I>&gt;<i> think?
+</I>
+The template parameter version would be faster than the runtime version 
+if called directly.  However, since it is called through a function 
+pointer, the benefit is somewhat offset.
+
+To move the conditional and function pointer out of the inside loop, you 
+can do something like:
+
+	top_level_read()
+	{
+	  ... read matlab header ...
+	
+	  bool swap_bytes = (... check endian ...);
+
+	  if (swap_bytes)
+	    low_level_read&lt;true&gt;();
+	  else
+	    low_level_read&lt;false&gt;();
+	}
+
+	template &lt;bool SwapBytes&gt;
+	low_level_read()
+	{
+	  ...
+	  swap_value&lt;T, sizeof(T), SwapBytes&gt;::swap(&amp;value);
+	}
+
+Even in this case you could benefit from a helper function that deduces 
+T and calls sizeof():
+
+	template &lt;bool     SwapBytes,
+	          typename T&gt;
+	void
+	swap_value(T&amp; value)
+	{
+	  swap_value&lt;T, sizeof(T), SwapBytes&gt;::swap(&amp;value);
+	}
+
+which you would call as:
+
+	  swap_value&lt;SwapBytes&gt;(value);
+
+				-- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">jules at codesourcery.com</A>
+(650) 331-3385 x705
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000542.html">[vsipl++] Matlab  IO
+</A></li>
+	
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#543">[ date ]</a>
+              <a href="thread.html#543">[ thread ]</a>
+              <a href="subject.html#543">[ subject ]</a>
+              <a href="author.html#543">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">More information about the vsipl++
+mailing list</a><br>
+</body></html>

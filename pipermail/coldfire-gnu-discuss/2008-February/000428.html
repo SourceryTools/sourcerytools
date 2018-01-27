@@ -1,0 +1,293 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> file located in the SRAM
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:coldfire-gnu-discuss%40codesourcery.com?Subject=Re%3A%20file%20located%20in%20the%20SRAM&In-Reply-To=%3CACCD75711D8BB4428740F3921CA901DD36CDCB%40rst-ex2.rst-liftco.local%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000427.html">
+   <LINK REL="Next"  HREF="000430.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>file located in the SRAM</H1>
+    <B>Baumung Viktor</B> 
+    <A HREF="mailto:coldfire-gnu-discuss%40codesourcery.com?Subject=Re%3A%20file%20located%20in%20the%20SRAM&In-Reply-To=%3CACCD75711D8BB4428740F3921CA901DD36CDCB%40rst-ex2.rst-liftco.local%3E"
+       TITLE="file located in the SRAM">Viktor.Baumung at slc-liftco.com
+       </A><BR>
+    <I>Thu Feb 21 11:04:52 UTC 2008</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000427.html">[coldfire-gnu-discuss] m68k-elf-sprite options
+</A></li>
+        <LI>Next message: <A HREF="000430.html">Using ASSERT() in Linker Control Files
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#428">[ date ]</a>
+              <a href="thread.html#428">[ thread ]</a>
+              <a href="subject.html#428">[ subject ]</a>
+              <a href="author.html#428">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Hello,
+
+ 
+
+I am using Cobra5485-board from senTec with ColdFire 5485?CPU.
+
+ 
+
+The attached source Tree (test.tar.gz) was compiled with CodeSourcery
+G++, compiler version 4.2.1 (Sourcery G++ 4.2-59). It is simply a &quot;hello
+world&quot;
+
+Application.
+
+ 
+
+The Linker Script (cobra5485_sram.ld) was modified to put the
+&quot;sram_data.c&quot; .data section into an external SRAM. (section &quot;battram1&quot;).
+
+ 
+
+The &quot;Debug&quot; folder contains the Makefiles for building the binary. When
+the program is downloaded and started, the code jumps to address
+00000000, which causes the DBug Exception Handler (invalid instruction
+at PC 00000000).
+
+ 
+
+The working Version may be compiled with the other Linker script
+
+(cobra5485.ld)
+
+ 
+
+Here come interesting parts of &quot;diff -ub cobra5485.ld
+cobra5485_sram.ld&quot;:
+
+ 
+
+ MEMORY
+
+ {
+
+@@ -27,9 +30,12 @@
+
+   rambar0 (rwx) : ORIGIN = 0x20000000, LENGTH = 4K
+
+   rambar1 (rwx) : ORIGIN = 0x20002000, LENGTH = 4K
+
+   mbar (rw) : ORIGIN = 0x10000000, LENGTH = 0x40000
+
++   battram1 (rw) :  ORIGIN = 0xFB800000, LENGTH = 0xA000
+
+ }
+
+ 
+
+-/* These force the linker to search for particular symbols from
+
++
+
++/*
+
++ * These force the linker to search for particular symbols from
+
+  * the start of the link process and thus ensure the user's
+
+  * overrides are picked up
+
+  */
+
+@@ -43,6 +49,7 @@
+
+ PROVIDE(__cs3_heap_start = _end);
+
+ PROVIDE(__cs3_heap_end = __cs3_region_start_ram +
+__cs3_region_size_ram);
+
+ 
+
++
+
+ SECTIONS
+
+ {
+
+   .text :
+
+@@ -142,6 +149,12 @@
+
+     _etext = .;
+
+   } &gt;ram
+
+ 
+
++  .battram1 :
+
++  {
+
++    *sram_data.o (.data* .bss* COMMON)
+
++    _ebattram1 = .;
+
++  } &gt;battram1
+
++
+
+   .cs3.rom :
+
+   {
+
+     __cs3_region_start_rom = .;
+
+@@ -187,11 +200,13 @@
+
+     *(.rambar1)
+
+     . = ALIGN (8);
+
+   } &gt;rambar1
+
++
+
+   .cs3.rambar1.bss :
+
+   {
+
+     *(.rambar1.b)
+
+     . = ALIGN (8);
+
+   } &gt;rambar1
+
++
+
+   /* __cs3_region_end_rambar1 is deprecated */
+
+   __cs3_region_end_rambar1 = __cs3_region_start_rambar1 +
+LENGTH(rambar1);
+
+   __cs3_region_size_rambar1 = LENGTH(rambar1);
+
+@@ -204,12 +219,14 @@
+
+     __cs3_region_start_mbar = .;
+
+     __cs3_region_init_mbar = .;
+
+   } &gt;mbar
+
++
+
+   /* __cs3_region_end_mbar is deprecated */
+
+   __cs3_region_end_mbar = __cs3_region_start_mbar + LENGTH(mbar);
+
+   __cs3_region_size_mbar = LENGTH(mbar);
+
+ 
+
+   .data :
+
+   {
+
++    *(EXCLUDE_FILE(*sram_data.o) .data*)
+
+     *(.got.plt) *(.got)
+
+     *(.shdata)
+
+     *(.data .data.*)
+
+@@ -218,8 +235,10 @@
+
+     . = ALIGN (8);
+
+     _edata = .;
+
+   } &gt;ram
+
++
+
+   .bss :
+
+   {
+
++    *(EXCLUDE_FILE(*sram_data.o) .bss*)
+
+     *(.shbss)
+
+     *(.bss .bss.*)
+
+     *(.gnu.linkonce.b.*)
+
+ 
+
+---------------------------------------------------------------------
+
+Can you give a reason for this error? Attached you can find two files
+
+ 
+
+containing the original and modified linker script.
+
+ 
+
+Thank you very much for your support.
+
+ 
+
+ 
+
+With kind regards
+
+ 
+
+Viktor Baumung  
+
+
+
+ 
+
+-------------- next part --------------
+An HTML attachment was scrubbed...
+URL: &lt;<A HREF="http://sourcerytools.com/pipermail/coldfire-gnu-discuss/attachments/20080221/b5689b78/attachment.html">http://sourcerytools.com/pipermail/coldfire-gnu-discuss/attachments/20080221/b5689b78/attachment.html</A>&gt;
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: test.tar.gz
+Type: application/x-gzip
+Size: 103907 bytes
+Desc: test.tar.gz
+URL: &lt;<A HREF="http://sourcerytools.com/pipermail/coldfire-gnu-discuss/attachments/20080221/b5689b78/attachment.bin">http://sourcerytools.com/pipermail/coldfire-gnu-discuss/attachments/20080221/b5689b78/attachment.bin</A>&gt;
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000427.html">[coldfire-gnu-discuss] m68k-elf-sprite options
+</A></li>
+	<LI>Next message: <A HREF="000430.html">Using ASSERT() in Linker Control Files
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#428">[ date ]</a>
+              <a href="thread.html#428">[ thread ]</a>
+              <a href="subject.html#428">[ subject ]</a>
+              <a href="author.html#428">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/coldfire-gnu-discuss">More information about the coldfire-gnu-discuss
+mailing list</a><br>
+</body></html>

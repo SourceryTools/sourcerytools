@@ -1,0 +1,351 @@
+Index: src/vsip/opt/simd/simd.hpp
+===================================================================
+--- src/vsip/opt/simd/simd.hpp	(revision 173069)
++++ src/vsip/opt/simd/simd.hpp	(working copy)
+@@ -1134,6 +1134,26 @@
+     return t;
+   }
+ 
++  static simd_type load_unaligned(value_type const* addr)
++  {
++    base_simd_type v0=Simd_traits<T>::load_unaligned(((T const*)addr)+0);
++    base_simd_type v1=Simd_traits<T>::load_unaligned(((T const*)addr)+vec_size);
++#if __ghs__
++    simd_type t;
++    t.r = Simd_traits<T>::real_from_interleaved(v0, v1);
++    t.i = Simd_traits<T>::imag_from_interleaved(v0, v1);
++#else
++    // 070509: This causes an internal error with GHS:
++    //         "type-change_constant: integer to bad type"
++    simd_type t = 
++      {
++	Simd_traits<T>::real_from_interleaved(v0, v1),
++	Simd_traits<T>::imag_from_interleaved(v0, v1)
++      };
++#endif
++    return t;
++  }
++
+   static simd_type load(value_type const* addr)
+   {
+     base_simd_type v0 = Simd_traits<T>::load(((T const*)addr)+0);
+Index: src/vsip/opt/simd/expr_evaluator.hpp
+===================================================================
+--- src/vsip/opt/simd/expr_evaluator.hpp	(revision 173068)
++++ src/vsip/opt/simd/expr_evaluator.hpp	(working copy)
+@@ -56,14 +56,22 @@
+     !Is_split_block<BlockT>::value;
+ 
+   static bool 
+-  rt_valid(BlockT const &b)
++  rt_valid(BlockT const &b, int alignment)
+   {
+     Ext_data<BlockT, layout_type> dda(b, SYNC_IN);
+     return dda.stride(0) == 1 && 
+       (!A ||
+-       !Simd_traits<typename BlockT::value_type>::alignment_of(dda.data()));
++       Simd_traits<typename BlockT::value_type>::alignment_of(dda.data()) ==
++       alignment);
+   }
+ 
++  static int
++  alignment(BlockT const &b)
++  {
++    Ext_data<BlockT, layout_type> dda(b, SYNC_IN);
++    return Simd_traits<typename BlockT::value_type>::alignment_of(dda.data());
++  }
++
+   static proxy_type
+   create(BlockT const &b) 
+   {
+@@ -80,7 +88,7 @@
+   static bool const ct_valid = true;
+ 
+   static bool 
+-  rt_valid(Scalar_block<1, T> const &) {return true;}
++  rt_valid(Scalar_block<1, T> const &, int) {return true;}
+ 
+   static proxy_type
+   create(Scalar_block<1, T> const &b) 
+@@ -103,9 +111,9 @@
+   static bool const ct_valid = Unary_operator_map<T, O>::is_supported;
+ 
+   static bool 
+-  rt_valid(Unary_expr_block<D, O, B, T> const &b)
++  rt_valid(Unary_expr_block<D, O, B, T> const &b, int alignment)
+   {
+-    return Proxy_factory<B, A>::rt_valid(b.op());
++    return Proxy_factory<B, A>::rt_valid(b.op(), alignment);
+   }
+ 
+   static proxy_type
+@@ -129,9 +137,9 @@
+ 
+ 
+   static bool 
+-  rt_valid(Unary_expr_block<D, unaligned_functor, B, T> const &b)
++  rt_valid(Unary_expr_block<D, unaligned_functor, B, T> const &b, int alignment)
+   {
+-    return Proxy_factory<B, false>::rt_valid(b.op());
++    return Proxy_factory<B, false>::rt_valid(b.op(), alignment);
+   }
+ 
+   static proxy_type
+@@ -140,6 +148,7 @@
+     return proxy_type(Proxy_factory<B, false>::create(b.op()));
+   }
+ };
++
+ template <dimension_type                D,
+ 	  template <typename, typename> class O,
+ 	  typename                      LB,
+@@ -163,10 +172,10 @@
+     Proxy_factory<RB, A>::ct_valid;
+ 
+   static bool 
+-  rt_valid(Binary_expr_block<D, O, LB, LT, RB, RT> const &b)
++  rt_valid(Binary_expr_block<D, O, LB, LT, RB, RT> const &b, int alignment)
+   {
+-    return Proxy_factory<LB, A>::rt_valid(b.left()) &&
+-      Proxy_factory<RB, A>::rt_valid(b.right());
++    return Proxy_factory<LB, A>::rt_valid(b.left(), alignment) &&
++           Proxy_factory<RB, A>::rt_valid(b.right(), alignment);
+   }
+ 
+   static proxy_type
+@@ -207,11 +216,11 @@
+     Proxy_factory<Block3, A>::ct_valid;
+ 
+   static bool 
+-  rt_valid(SrcBlock const &b)
++  rt_valid(SrcBlock const &b, int alignment)
+   {
+-    return Proxy_factory<Block1, A>::rt_valid(b.first()) &&
+-           Proxy_factory<Block2, A>::rt_valid(b.second()) &&
+-           Proxy_factory<Block3, A>::rt_valid(b.third());
++    return Proxy_factory<Block1, A>::rt_valid(b.first(), alignment) &&
++           Proxy_factory<Block2, A>::rt_valid(b.second(), alignment) &&
++           Proxy_factory<Block3, A>::rt_valid(b.third(), alignment);
+   }
+ 
+   static proxy_type
+@@ -228,6 +237,7 @@
+   }
+ };
+ 
++
+ } // namespace vsip::impl::simd
+ 
+ 
+@@ -264,7 +274,7 @@
+     return (dda.stride(0) == 1 &&
+ 	    simd::Simd_traits<typename LB::value_type>::
+ 	      alignment_of(dda.data()) == 0 &&
+-	    simd::Proxy_factory<RB, true>::rt_valid(rhs));
++	    simd::Proxy_factory<RB, true>::rt_valid(rhs, 0));
+   }
+ 
+   static void exec(LB& lhs, RB const& rhs)
+@@ -331,7 +341,86 @@
+   }
+ };
+ 
++// This evaluator is for operations where all vectors are unaligned
++// Look at Simd_unaligned_loop_fusion_tag for mixed unaligned data.
++template <typename LB,
++	  typename RB>
++struct Serial_expr_evaluator<1, LB, RB, Simd_all_unaligned_loop_fusion_tag>
++{
++  typedef typename Adjust_layout_dim<
++                     1, typename Block_layout<LB>::layout_type>::type
++		layout_type;
+ 
++  static char const* name() { return "Expr_SIMD_All_Unaligned_Loop"; }
++  
++  static bool const ct_valid =
++    // Is SIMD supported at all ?
++    simd::Simd_traits<typename LB::value_type>::is_accel &&
++    // Check that direct access is possible.
++    Ext_data_cost<LB>::value == 0 &&
++    simd::Proxy_factory<RB, true>::ct_valid &&
++    // Only allow float, double, complex<float>, and complex<double> at this time.
++    (Type_equal<typename Scalar_of<typename LB::value_type>::type, float>::value ||
++     Type_equal<typename Scalar_of<typename LB::value_type>::type, double>::value) &&
++    // Make sure both sides have the same type.
++    Type_equal<typename LB::value_type, typename RB::value_type>::value &&
++    // Make sure the left side is not a complex split block.
++    !Is_split_block<LB>::value;
++
++
++  static bool rt_valid(LB& lhs, RB const& rhs)
++  {
++    Ext_data<LB, layout_type> dda(lhs, SYNC_OUT);
++    int lhs_a = simd::Proxy_factory<LB,       true>::alignment(lhs);
++    return (dda.stride(0) == 1 &&
++            simd::Proxy_factory<RB, true>::rt_valid(rhs, lhs_a));
++    
++    
++  }
++
++  static void exec(LB& lhs, RB const& rhs)
++  {
++    typedef typename simd::LValue_access_traits<typename LB::value_type> WAT;
++    typedef typename simd::Proxy_factory<RB, true>::access_traits EAT;
++    typedef typename simd::Proxy_factory<RB, true>::proxy_type proxy_type;
++
++    length_type const vec_size =
++      simd::Simd_traits<typename LB::value_type>::vec_size;
++    Ext_data<LB, layout_type> dda(lhs, SYNC_OUT);
++
++    simd::Proxy<WAT,true> lp(dda.data());
++    proxy_type rp(simd::Proxy_factory<RB,true>::create(rhs));
++
++    length_type const size = dda.size(0);
++    length_type n = size;
++
++    // loop using proxy interface. This generates the best code
++    // with gcc 3.4 (with gcc 4.1 the difference to the first case
++    // above is negligible).
++
++    // First, deal with unaligned pointers
++    typename Ext_data<LB, layout_type>::raw_ptr_type  raw_ptr = dda.data();
++    while(simd::Simd_traits<typename LB::value_type>::alignment_of(raw_ptr) &&
++          n > 0)
++    {
++      lhs.put(size-n, rhs.get(size-n));
++      n--;
++      raw_ptr++;
++    }
++
++    while (n >= vec_size)
++    {
++      lp.store(rp.load());
++      n -= vec_size;
++      lp.increment();
++      rp.increment();
++    }
++
++    // Process the remainder, using simple loop fusion.
++    for (index_type i = size - n; i != size; ++i) lhs.put(i, rhs.get(i));
++  }
++};
++
+ // This evaluator is for unaligned data. Any time any of the blocks are
+ // unaligned, we use this evalutator. Basically, in the evaluator list, this
+ // evaluator is right after the aligned evaluator and rt_valid determines
+@@ -368,7 +457,7 @@
+     return (dda.stride(0) == 1 &&
+ 	    simd::Simd_traits<typename LB::value_type>::
+ 	      alignment_of(dda.data()) == 0 &&
+-	    simd::Proxy_factory<RB, false>::rt_valid(rhs));
++	    simd::Proxy_factory<RB, false>::rt_valid(rhs, 0));
+   }
+ 
+   static void exec(LB& lhs, RB const& rhs)
+Index: src/vsip/opt/simd/eval_generic.hpp
+===================================================================
+--- src/vsip/opt/simd/eval_generic.hpp	(revision 173067)
++++ src/vsip/opt/simd/eval_generic.hpp	(working copy)
+@@ -658,6 +658,8 @@
+   
+   static bool rt_valid(DstBlock& dst, SrcBlock const& src)
+   {
++    typedef simd::Simd_traits<typename SrcBlock::value_type> simd;
++
+     // check if all data is unit stride
+     Ext_data<DstBlock, dst_lp>     ext_dst(dst,              SYNC_OUT);
+     Ext_data<Block1,   a_lp>       ext_a(src.first().left(), SYNC_IN);
+@@ -666,7 +668,11 @@
+            ext_a.stride(0) == 1 &&
+ 	   ext_b.stride(0) == 1 &&
+ 	   // make sure (A op B, A, k)
+-	   (&(src.first().left()) == &(src.second())));
++	   (&(src.first().left()) == &(src.second())) &&
++	   // make sure everyting is aligned!
++	   !simd::alignment_of(ext_dst.data()) &&
++	   !simd::alignment_of(ext_a.data()) &&
++	   !simd::alignment_of(ext_b.data()));
+   }
+ 
+   static void exec(DstBlock& dst, SrcBlock const& src)
+Index: src/vsip/opt/simd/expr_iterator.hpp
+===================================================================
+--- src/vsip/opt/simd/expr_iterator.hpp	(revision 173069)
++++ src/vsip/opt/simd/expr_iterator.hpp	(working copy)
+@@ -268,13 +268,14 @@
+   simd_type load() const
+   { return simd::perm(x0_, x1_, sh_); }
+ 
+-  void increment(length_type n = 1)
++  //void increment(length_type n = 1)
++  void increment()
+   {
+-    ptr_unaligned_ += n * Simd_traits<value_type>::vec_size;
+-    ptr_aligned_   += n;
++    ptr_unaligned_ += Simd_traits<value_type>::vec_size;
++    ptr_aligned_++;
+   
+     // update x0
+-    x0_ = (n == 1)? x1_:simd::load((value_type*)ptr_aligned_);
++    x0_ = x1_;
+ 
+     // update x1
+     x1_ = simd::load((value_type*)(ptr_aligned_+simd::vec_size));
+@@ -299,8 +300,9 @@
+ 
+   simd_type load() const { return simd::load_unaligned(ptr_unaligned_); }
+ 
+-  void increment(length_type n = 1)
+-  { ptr_unaligned_ += n * Simd_traits<value_type>::vec_size; }
++  //void increment(length_type n = 1)
++  void increment()
++  { ptr_unaligned_ += Simd_traits<value_type>::vec_size; }
+ 
+   value_type const*            ptr_unaligned_;
+ };
+@@ -316,12 +318,18 @@
+   typedef T value_type;
+   typedef typename Simd_traits<value_type>::simd_type simd_type;
+ 
+-  Proxy(value_type const *ptr) : ptr_(ptr) {}
++  Proxy(value_type const *ptr) : ptr_(ptr)
++  {
++    // Force alignment of pointer.
++    intptr_t int_ptr = (intptr_t)ptr_;
++    int_ptr &= ~(Simd_traits<value_type>::alignment-1);
++    ptr_ = (value_type*) int_ptr;
++  }
+ 
+   simd_type load() const { return Simd_traits<value_type>::load(ptr_);}
+ 
+   void increment(length_type n = 1)
+-  { ptr_ += n * Simd_traits<value_type>::vec_size;}
++  { ptr_ += Simd_traits<value_type>::vec_size;}
+ 
+ private:
+   value_type const *ptr_;
+@@ -341,7 +349,7 @@
+   { return simd_loader_.load(); }
+ 
+   void increment(length_type n = 1) 
+-  { simd_loader_.increment(n); }
++  { simd_loader_.increment(); }
+ 
+ private:
+   Simd_unaligned_loader<T>      simd_loader_;
+@@ -357,7 +365,14 @@
+   typedef T value_type;
+   typedef typename Simd_traits<value_type>::simd_type simd_type;
+ 
+-  Proxy(value_type *ptr) : ptr_(ptr) {}
++  Proxy(value_type *ptr) : ptr_(ptr)
++  {
++    // Force alignment of pointer.
++    intptr_t int_ptr = (intptr_t)ptr_;
++    int_ptr &= ~(Simd_traits<value_type>::alignment-1);
++    ptr_ = (value_type*) int_ptr;
++  }
++
+   template <typename T1>
+   Proxy operator = (Proxy<T1,IsAligned> const &o) 
+   {

@@ -1,0 +1,231 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [vsipl++] [patch] SAL dispatch for matrix and vector products
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20%5Bpatch%5D%20SAL%20dispatch%20for%20matrix%20and%20vector%20products&In-Reply-To=%3C4360D61B.6040508%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000102.html">
+   <LINK REL="Next"  HREF="000105.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[vsipl++] [patch] SAL dispatch for matrix and vector products</H1>
+    <B>Jules Bergmann</B> 
+    <A HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20%5Bpatch%5D%20SAL%20dispatch%20for%20matrix%20and%20vector%20products&In-Reply-To=%3C4360D61B.6040508%40codesourcery.com%3E"
+       TITLE="[vsipl++] [patch] SAL dispatch for matrix and vector products">jules at codesourcery.com
+       </A><BR>
+    <I>Thu Oct 27 13:28:59 UTC 2005</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000102.html">[patch] SAL dispatch for matrix and vector products
+</A></li>
+        <LI>Next message: <A HREF="000105.html">[PATCH] ipp.cpp, sal.cpp, FIR cleanup
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#104">[ date ]</a>
+              <a href="thread.html#104">[ thread ]</a>
+              <a href="subject.html#104">[ subject ]</a>
+              <a href="author.html#104">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Don,
+
+Don McCoy wrote:
+&gt;<i> I am working on BLAS dispatch as well.  Patch to follow.  This one just 
+</I>&gt;<i> includes SAL.  Hopefully I've separated them well.
+</I>&gt;<i> 
+</I>&gt;<i> Two issues worth pointing out:
+</I>&gt;<i> 
+</I>&gt;<i>    1) The exec() function checks for row-major ordering because it calls 
+</I>&gt;<i> the newer SAL functions (mat_mul) that allow the column-stride to be 
+</I>&gt;<i> specified.   I believe the rows must be unit stride.  This is a little 
+</I>&gt;<i> less general than the older ones (mulx) which allow non-unit strides.  
+</I>&gt;<i> Recently, we heard back from Mercury that the older ones perform better 
+</I>&gt;<i> (at this time).  Given that the older ones handle non-unit strides and 
+</I>&gt;<i> are faster, should we revert to using those?  If Mercury changes in the 
+</I>&gt;<i> future, then we can follow.
+</I>
+Yes, we should revert to the old ones for now.
+
+Because the old and new functions have different dispatch requirements 
+(for supported strides and mixing of dimension orderings), we should 
+have separate evaluators for each (as opposed to trying to hide the 
+different in sal::mmul).
+
+We almost need a Venn diagram to represent the non-overlapping sets of 
+functionality:
+
+The old matrix-multiply
+  - required all operands to have the same dimension-ordering
+  - supported non-unit stride in the minor dimension
+  - required the major dimension to be &quot;dense&quot;.  I.e. the major dimension
+    stride == minor dimenson size * minor dimension stride.
+  - provided a special case for unit-stride minor dimension (so called
+    &quot;fast&quot; versions)
+
+The new matrix-multiply
+  - supports mixing of dimension-ordering (via the transpose flags)
+  - requires unit-stride in the minor dimensions
+  - allows major dimensions to be non-dense, via the column stride.
+
+
+&gt;<i> 
+</I>&gt;<i>    2) Split-complex products (other than vector-vector) are not handled 
+</I>&gt;<i> at this time.  Just a reminder that we were going to discuss how to 
+</I>&gt;<i> address this issue sometime.
+</I>
+We should be able to handle this by:
+
+  - providing overloads of sal::mmul for std::pair&lt;T*, T*&gt;, and
+  - checking that all the matrices have the same complex format in ct_valid.
+
+Granted, we wont be able to fully exercise this until we get prod 
+integrated into the expression templates.
+
+
+More comments below on the matrix-matrix evaluator.  Some may apply to 
+the matrix-vector and vector-matrix evaluators too.
+
+				-- Jules
+
+
+&gt;<i> ------------------------------------------------------------------------
+</I>&gt;<i>
+</I>
+&gt;<i> + 
+</I>&gt;<i> + 
+</I>&gt;<i> + // SAL evaluator for matrix-matrix products.
+</I>&gt;<i> + 
+</I>&gt;<i> + template &lt;typename Block0,
+</I>&gt;<i> + 	  typename Block1,
+</I>&gt;<i> + 	  typename Block2&gt;
+</I>&gt;<i> + struct Evaluator&lt;Op_prod_mm, Block0, Op_list_2&lt;Block1, Block2&gt;,
+</I>&gt;<i> + 		 Mercury_sal_tag&gt;
+</I>&gt;<i> + {
+</I>&gt;<i> +   typedef typename Block0::value_type T;
+</I>
+You could move these typedefs here so the new ct_valid conditions below 
+fit on a single line:
+     typedef typename Block_layout&lt;Block0&gt;::order_type order0_type;
+     ...
+
+     typedef typename Block_layout&lt;Block0&gt;::complex_type complex0_type;
+     ...
+
+&gt;<i> + 
+</I>&gt;<i> +   static bool const ct_valid = 
+</I>&gt;<i> +     impl::sal::Sal_traits&lt;T&gt;::valid &amp;&amp;
+</I>&gt;<i> +     Type_equal&lt;T, typename Block1::value_type&gt;::value &amp;&amp;
+</I>&gt;<i> +     Type_equal&lt;T, typename Block2::value_type&gt;::value &amp;&amp;
+</I>&gt;<i> +     // check that direct access is supported
+</I>&gt;<i> +     Ext_data_cost&lt;Block0&gt;::value == 0 &amp;&amp;
+</I>&gt;<i> +     Ext_data_cost&lt;Block1&gt;::value == 0 &amp;&amp;
+</I>&gt;<i> +     Ext_data_cost&lt;Block2&gt;::value == 0;
+</I>
+Assuming that we're going to modify this evaluator to handle the old 
+matrix multiply, the ct_valid should also check that all three matrices 
+have the same dimension ordering.
+
+Also check that all the matrices have the same complex format (this 
+applies to both the old and new multiply).
+
+&gt;<i> + 
+</I>&gt;<i> +   static bool rt_valid(Block0&amp; r, Block1 const&amp; a, Block2 const&amp; b)
+</I>&gt;<i> +   {
+</I>&gt;<i> +     typedef typename Block_layout&lt;Block0&gt;::order_type order0_type;
+</I>&gt;<i> +     typedef typename Block_layout&lt;Block1&gt;::order_type order1_type;
+</I>&gt;<i> +     typedef typename Block_layout&lt;Block2&gt;::order_type order2_type;
+</I>&gt;<i> + 
+</I>&gt;<i> +     Ext_data&lt;Block0&gt; ext_r(const_cast&lt;Block0&amp;&gt;(r));
+</I>&gt;<i> +     Ext_data&lt;Block1&gt; ext_a(const_cast&lt;Block1&amp;&gt;(a));
+</I>&gt;<i> +     Ext_data&lt;Block2&gt; ext_b(const_cast&lt;Block2&amp;&gt;(b));
+</I>&gt;<i> + 
+</I>&gt;<i> +     bool is_r_row = Type_equal&lt;order0_type, row2_type&gt;::value;
+</I>&gt;<i> +     bool is_a_row = Type_equal&lt;order1_type, row2_type&gt;::value;
+</I>&gt;<i> +     bool is_b_row = Type_equal&lt;order2_type, row2_type&gt;::value;
+</I>&gt;<i> + 
+</I>&gt;<i> +     bool unit_stride = false;
+</I>&gt;<i> +     if ( is_r_row &amp;&amp; is_a_row &amp;&amp; is_b_row )
+</I>&gt;<i> +       unit_stride = (ext_a.stride(1) == 1) &amp;&amp; (ext_b.stride(1) == 1);
+</I>&gt;<i> + 
+</I>&gt;<i> +     return unit_stride;
+</I>
+For the old matrix multiply, we should check that
+
+	dimension_type const dim0 = order0_type::impl_dim0;
+	dimension_type const dim1 = order0_type::impl_dim1;
+
+	stride(dim0) == size(dim1) * stride(dim1)
+
+for each matrix (using impl_dim0 and impl_dim1 should make this work for 
+both the row- and column-major cases).
+
+&gt;<i> +   }
+</I>&gt;<i> + 
+</I>&gt;<i> +   static void exec(Block0&amp; r, Block1 const&amp; a, Block2 const&amp; b)
+</I>&gt;<i> +   {
+</I>&gt;<i> +     typedef typename Block0::value_type RT;
+</I>&gt;<i> + 
+</I>&gt;<i> +     typedef typename Block_layout&lt;Block0&gt;::order_type order0_type;
+</I>&gt;<i> +     typedef typename Block_layout&lt;Block1&gt;::order_type order1_type;
+</I>&gt;<i> +     typedef typename Block_layout&lt;Block2&gt;::order_type order2_type;
+</I>&gt;<i> + 
+</I>&gt;<i> +     Ext_data&lt;Block0&gt; ext_r(const_cast&lt;Block0&amp;&gt;(r));
+</I>&gt;<i> +     Ext_data&lt;Block1&gt; ext_a(const_cast&lt;Block1&amp;&gt;(a));
+</I>&gt;<i> +     Ext_data&lt;Block2&gt; ext_b(const_cast&lt;Block2&amp;&gt;(b));
+</I>&gt;<i> + 
+</I>
+(For the old matrix multiply) At this point, we can assume the three 
+matrices are either all row-major or all column-major.
+
+&gt;<i> +     if (Type_equal&lt;order0_type, row2_type&gt;::value)
+</I>&gt;<i> +     {
+</I>If row major, compute r = a b
+&gt;<i> +       // SAL supports column-stride parameter only (rows must be unit-stride)
+</I>&gt;<i> +       sal::mmul( a.size(2, 0), // M
+</I>&gt;<i> +                  b.size(2, 1), // N
+</I>&gt;<i> +                  a.size(2, 1), // P
+</I>&gt;<i> +                  ext_a.data(), ext_a.stride(0),
+</I>&gt;<i> +                  ext_b.data(), ext_b.stride(0),
+</I>&gt;<i> +                  ext_r.data(), ext_r.stride(0) );
+</I>&gt;<i> +     }
+</I>
+If column major, we can use relation:
+
+	(r = a b) &lt;=&gt; (trans(r) = trans(b) trans(a))	
+
+To compute r.
+
+
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000102.html">[patch] SAL dispatch for matrix and vector products
+</A></li>
+	<LI>Next message: <A HREF="000105.html">[PATCH] ipp.cpp, sal.cpp, FIR cleanup
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#104">[ date ]</a>
+              <a href="thread.html#104">[ thread ]</a>
+              <a href="subject.html#104">[ subject ]</a>
+              <a href="author.html#104">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">More information about the vsipl++
+mailing list</a><br>
+</body></html>

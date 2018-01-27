@@ -1,0 +1,371 @@
+From rguenth at tat.physik.uni-tuebingen.de  Fri Oct 18 13:00:23 2002
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Fri, 18 Oct 2002 15:00:23 +0200 (CEST)
+Subject: [BUG] FieldEngine::makeOwnCopy() does not compile
+Message-ID: <Pine.LNX.4.33.0210181458420.28219-100000@bellatrix.tat.physik.uni-tuebingen.de>
+
+Hi!
+
+FieldEngine::makeOwnCopy() does not compile and I cant figure out how the
+current "structure" of it should work. Can anybody enlighten me or fix the
+problem?
+
+Thanks, Richard.
+
+--
+Richard Guenther <richard.guenther at uni-tuebingen.de>
+WWW: http://www.tat.physik.uni-tuebingen.de/~rguenth/
+The GLAME Project: http://www.glame.de/
+
+
+
+From rguenth at tat.physik.uni-tuebingen.de  Mon Oct 21 10:21:31 2002
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Mon, 21 Oct 2002 12:21:31 +0200 (CEST)
+Subject: [PATCH] Re: [pooma-dev] [BUG] FieldEngine::makeOwnCopy() does not
+ compile
+In-Reply-To: <Pine.LNX.4.33.0210181458420.28219-100000@bellatrix.tat.physik.uni-tuebingen.de>
+Message-ID: <Pine.LNX.4.33.0210211220190.15835-100000@bellatrix.tat.physik.uni-tuebingen.de>
+
+On Fri, 18 Oct 2002, Richard Guenther wrote:
+
+> FieldEngine::makeOwnCopy() does not compile and I cant figure out how the
+> current "structure" of it should work. Can anybody enlighten me or fix the
+> problem?
+
+Ok, I needed this so I sat down and at least fixed it (probably not in an
+optimal way, but it seems to work). Apply the following
+
+Index: src/Field/FieldEngine/FieldEngine.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/Field/FieldEngine/FieldEngine.h,v
+retrieving revision 1.3
+diff -u -r1.3 FieldEngine.h
+--- src/Field/FieldEngine/FieldEngine.h	1 Jul 2002 22:25:53 -0000	1.3
++++ src/Field/FieldEngine/FieldEngine.h	21 Oct 2002 10:20:11 -0000
+@@ -587,6 +587,10 @@
+   {
+     PAssert(data_m.isValid());
+
++    // Remember data_m as model
++
++    RefCountedBlockPtr<Data_t> model = data_m;
++
+     // Create a blank slate of engines:
+
+     data_m = RefCountedBlockPtr<Data_t>();
+@@ -600,7 +604,7 @@
+     {
+       for (int c = 0; c < centering_m.size(); ++ c)
+       {
+-        data(m, c) = model.data(m, c);
++        data(m, c) = model[m*stride_m + c];
+         data(m, c).engine().makeOwnCopy();
+         data(m, c).relations().makeOwnCopy(s);
+       }
+
+
+
+From rguenth at tat.physik.uni-tuebingen.de  Thu Oct 24 11:51:32 2002
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Thu, 24 Oct 2002 13:51:32 +0200 (CEST)
+Subject: Missing ::layout() const in certain Engines
+Message-ID: <Pine.LNX.4.33.0210241348060.10183-100000@bellatrix.tat.physik.uni-tuebingen.de>
+
+Hi!
+
+Is there something why f.i. Engine< .. IndexFunction .. > or
+Engine< .. ApplyFieldStencil<> .. > dont have a ::layout() const
+method? This prevents me from f.e. writing
+
+  a(I) = stencil1(stencil2(b))(I);
+
+(doesnt compile, complains about missing ::layout()). If I just add
+
+  inline DomainLayout<Dim> layout() const { return DomainLayout<Dim>(domain_m); }
+
+to src/Field/DiffOps/FieldStencil.h::Engine<Dim, T, ApplyFieldStencil<Functor, Expression> >
+this compiles and seems to work as expected (need to do a formal testcase,
+though).
+
+Any hints to something I'm missing?
+
+Richard.
+
+--
+Richard Guenther <richard.guenther at uni-tuebingen.de>
+WWW: http://www.tat.physik.uni-tuebingen.de/~rguenth/
+The GLAME Project: http://www.glame.de/
+
+
+
+From rguenth at tat.physik.uni-tuebingen.de  Thu Oct 24 11:57:55 2002
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Thu, 24 Oct 2002 13:57:55 +0200 (CEST)
+Subject: [pooma-dev] Missing ::layout() const in certain Engines
+In-Reply-To: <Pine.LNX.4.33.0210241348060.10183-100000@bellatrix.tat.physik.uni-tuebingen.de>
+Message-ID: <Pine.LNX.4.33.0210241355580.10183-100000@bellatrix.tat.physik.uni-tuebingen.de>
+
+On the same thing, missing ::guardLayers() for the expression engine
+prevents
+
+  a(I) = stencil(5.0*a)(I);
+
+Are these just oversights? Is there a design document specifying methods
+all engines are required to implement? The same for layout and domain
+objects? If not, this seems to be badly needed, as well as tests to check
+the availability of those.
+
+Richard.
+
+--
+Richard Guenther <richard.guenther at uni-tuebingen.de>
+WWW: http://www.tat.physik.uni-tuebingen.de/~rguenth/
+The GLAME Project: http://www.glame.de/
+
+
+
+From jcrotinger at proximation.com  Thu Oct 24 17:00:33 2002
+From: jcrotinger at proximation.com (James Crotinger)
+Date: Thu, 24 Oct 2002 11:00:33 -0600
+Subject: [pooma-dev] Missing ::layout() const in certain Engines
+Message-ID: <F871BB04B0EA224A821A5274C31DF31509456E@proxim-sf001.santafe.proximation.com>
+
+Hi Richard.
+
+I suspect that some of the things you've mentioned would work fine with
+Bricks, but would be difficult to make work with multi-patch engines and
+Fields. Also, the team had various notes on things like Engine requirements,
+but these were never turned into formal documents and are probably lost.
+
+	Jim
+
+-----Original Message-----
+From: Richard Guenther [mailto:rguenth at tat.physik.uni-tuebingen.de] 
+Sent: Thursday, October 24, 2002 5:58 AM
+To: pooma-dev at pooma.codesourcery.com
+Subject: Re: [pooma-dev] Missing ::layout() const in certain Engines
+
+On the same thing, missing ::guardLayers() for the expression engine
+prevents
+
+  a(I) = stencil(5.0*a)(I);
+
+Are these just oversights? Is there a design document specifying methods
+all engines are required to implement? The same for layout and domain
+objects? If not, this seems to be badly needed, as well as tests to check
+the availability of those.
+
+Richard.
+
+--
+Richard Guenther <richard.guenther at uni-tuebingen.de>
+WWW: http://www.tat.physik.uni-tuebingen.de/~rguenth/
+The GLAME Project: http://www.glame.de/
+-------------- next part --------------
+An HTML attachment was scrubbed...
+URL: <http://sourcerytools.com/pipermail/pooma-dev/attachments/20021024/a49e0bbc/attachment.html>
+
+From rguenth at tat.physik.uni-tuebingen.de  Fri Oct 25 08:00:38 2002
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Fri, 25 Oct 2002 10:00:38 +0200 (CEST)
+Subject: POOMA Copyright assignment
+In-Reply-To: <75870000.1029315693@warlock.codesourcery.com>
+Message-ID: <Pine.LNX.4.33.0210250949300.10183-100000@bellatrix.tat.physik.uni-tuebingen.de>
+
+Hi!
+
+I finally got answers from all involved parties regarding to the copyright
+assignment to CodeSourcery and to distributing parts of my work in
+general. I'm sorry to say that neither of the involved parties likes to
+fill out the assignment - policy is that work done by me can be
+distributed (for free) only for scientific/educational/research purposes.
+
+I'll continue to submit bugfixing and small enhancement patches to the
+development list as I can just do those in my spare time. For those
+(usually one liners) I'm not going to sign anything, too. People at
+CodeSourcery can take them at their own risk or ignore them, but obviously
+they could be of value to other users. (*)
+
+I'll stop posting major enhancement patches as I'm not legally allowed to
+distribute them. I continue announcing the enhancements so if you're a
+scientist you may contact me privately and I'll send along patches.
+
+Oh well - politics, Richard.
+
+(*) I'll state for every such small patch that I'll put it into the public
+domain. As you usually can't re-invent a one-line bugfix (like a typo) I
+hope by posting such thing I dont prevent CodeSourcery from fixing such a
+bug "themselves" ;)
+
+--
+Richard Guenther <richard.guenther at uni-tuebingen.de>
+WWW: http://www.tat.physik.uni-tuebingen.de/~rguenth/
+The GLAME Project: http://www.glame.de/
+
+
+
+From rguenth at tat.physik.uni-tuebingen.de  Fri Oct 25 08:10:12 2002
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Fri, 25 Oct 2002 10:10:12 +0200 (CEST)
+Subject: [pooma-dev] Missing ::layout() const in certain Engines
+In-Reply-To: <F871BB04B0EA224A821A5274C31DF31509456E@proxim-sf001.santafe.proximation.com>
+Message-ID: <Pine.LNX.4.33.0210251009110.10183-100000@bellatrix.tat.physik.uni-tuebingen.de>
+
+On Thu, 24 Oct 2002, James Crotinger wrote:
+
+> Hi Richard.
+>
+> I suspect that some of the things you've mentioned would work fine with
+> Bricks, but would be difficult to make work with multi-patch engines and
+> Fields.
+
+Duh - you are right, my simple solution doesnt work for MultiPatch
+engines.
+
+Richard.
+
+--
+Richard Guenther <richard.guenther at uni-tuebingen.de>
+WWW: http://www.tat.physik.uni-tuebingen.de/~rguenth/
+The GLAME Project: http://www.glame.de/
+
+
+
+From rguenth at tat.physik.uni-tuebingen.de  Mon Oct 28 12:59:44 2002
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Mon, 28 Oct 2002 13:59:44 +0100 (CET)
+Subject: How to apply a functor to ET leafs
+Message-ID: <Pine.LNX.4.33.0210281353280.10183-100000@bellatrix.tat.physik.uni-tuebingen.de>
+
+Hi!
+
+I'd like to apply a functor to the parts of an expression and view
+the result as an expression. I suspect I can do this somehow using
+forEach(), but before I dig too far, I just ask if somebody knows
+the answer already. Take
+
+  Field_t A, B, C;
+  Interval I;
+
+  C(I) = forEach(A*B, evalAt(0.5), ?)(I);
+
+which should "evaluate" A and B at 0.5 and then just apply the usual
+expression for interval I.
+
+Can this be done?
+
+Richard.
+
+--
+Richard Guenther <richard.guenther at uni-tuebingen.de>
+WWW: http://www.tat.physik.uni-tuebingen.de/~rguenth/
+The GLAME Project: http://www.glame.de/
+
+
+
+From rguenth at tat.physik.uni-tuebingen.de  Mon Oct 28 13:39:34 2002
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Mon, 28 Oct 2002 14:39:34 +0100 (CET)
+Subject: [pooma-dev] How to apply a functor to ET leafs
+In-Reply-To: <Pine.LNX.4.33.0210281353280.10183-100000@bellatrix.tat.physik.uni-tuebingen.de>
+Message-ID: <Pine.LNX.4.33.0210281425210.10183-100000@bellatrix.tat.physik.uni-tuebingen.de>
+
+On Mon, 28 Oct 2002, Richard Guenther wrote:
+
+> Hi!
+>
+> I'd like to apply a functor to the parts of an expression and view
+> the result as an expression. I suspect I can do this somehow using
+> forEach(), but before I dig too far, I just ask if somebody knows
+> the answer already. Take
+>
+>   Field_t A, B, C;
+>   Interval I;
+>
+>   C(I) = forEach(A*B, evalAt(0.5), ?)(I);
+>
+> which should "evaluate" A and B at 0.5 and then just apply the usual
+> expression for interval I.
+
+To follow up myself I created
+
+struct evalAt {
+  evalAt(double x) : x_m(x) {}
+  const double x_m;
+};
+
+template <class T>
+struct LeafFunctor<T, evalAt >
+{
+  typedef double Type_t;
+  inline static Type_t apply(const T &p, const evalAt &x)
+  {
+    return peval(p, x.x_m);
+  }
+};
+
+and use now
+
+  C(I) = forEach((A*B).engine().expression(), evalAt(0.5), TreeCombine())(I);
+
+but of course I cannot take a view of an expression. So how do I
+re-construct a Field<,, ExpressionTag<>> from the forEach result? It needs
+to match the A*B expression obviously. Also just using
+
+  C(I) = forEach((A(I)*B(I)).engine().expression(), evalAt(0.5), TreeCombine());
+
+doesnt work, as evalAt gets called with Field<> as T, not with the actual
+elements it seems.
+
+I'm lost here, Richard.
+
+--
+Richard Guenther <richard.guenther at uni-tuebingen.de>
+WWW: http://www.tat.physik.uni-tuebingen.de/~rguenth/
+The GLAME Project: http://www.glame.de/
+
+
+
+From rguenth at tat.physik.uni-tuebingen.de  Wed Oct 30 09:37:18 2002
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Wed, 30 Oct 2002 10:37:18 +0100 (CET)
+Subject: Revised Q: How to apply a Stencil to all leafs in an expression
+Message-ID: <Pine.LNX.4.33.0210301030560.10183-100000@bellatrix.tat.physik.uni-tuebingen.de>
+
+Hi!
+
+To make my point in my previous messages more clear (just thought about
+what I'm actually trying to do), I like to apply a (Field)Stencil to all
+leafs (of Engine type, but just ignore this for now) in an expression.
+I.e. instead of writing
+
+  A(I) = (stencil(B)*stencil(C))(I);
+
+I'd like to write something like
+
+  A(I) = applyStencil(B*C)(I);
+
+for brevity (I really have huge expressions, they get completely
+unreadable otherwise).
+
+I know this has to be possible somehow, but I'm stuck at
+ a) Creating the Field type resulting from stencil(leaf)
+ b) how to use forEach() in conjunction with TreeCombine to stick
+    the result from a) in place of the leafs.
+
+Can anybody point me to the right traits classes that create the
+necessary types for me? I tried to find out where the Field type
+is constructed for a simple expression like A = B*C, but I failed
+here -- need some 'interactive C++ code explorer' that handles
+templates...
+
+Thanks, Richard.
+
+--
+Richard Guenther <richard.guenther at uni-tuebingen.de>
+WWW: http://www.tat.physik.uni-tuebingen.de/~rguenth/
+The GLAME Project: http://www.glame.de/
+
+
+

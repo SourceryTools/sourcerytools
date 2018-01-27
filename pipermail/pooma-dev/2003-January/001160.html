@@ -1,0 +1,282 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [PATCH] Re: [pooma-dev] [BUG] ScalarCode does not work for Arrays
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20Re%3A%20%5Bpooma-dev%5D%20%5BBUG%5D%20ScalarCode%20does%20not%20work%20for%20Arrays&In-Reply-To=%3CPine.LNX.4.33.0301151710030.19303-100000%40bellatrix.tat.physik.uni-tuebingen.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001159.html">
+   <LINK REL="Next"  HREF="001161.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[PATCH] Re: [pooma-dev] [BUG] ScalarCode does not work for Arrays</H1>
+    <B>Richard Guenther</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20Re%3A%20%5Bpooma-dev%5D%20%5BBUG%5D%20ScalarCode%20does%20not%20work%20for%20Arrays&In-Reply-To=%3CPine.LNX.4.33.0301151710030.19303-100000%40bellatrix.tat.physik.uni-tuebingen.de%3E"
+       TITLE="[PATCH] Re: [pooma-dev] [BUG] ScalarCode does not work for Arrays">rguenth at tat.physik.uni-tuebingen.de
+       </A><BR>
+    <I>Wed Jan 15 16:24:52 UTC 2003</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001159.html">[BUG] ScalarCode does not work for Arrays
+</A></li>
+        <LI>Next message: <A HREF="001161.html">[pooma-dev] [BUG] ScalarCode does not work for Arrays
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1160">[ date ]</a>
+              <a href="thread.html#1160">[ thread ]</a>
+              <a href="subject.html#1160">[ subject ]</a>
+              <a href="author.html#1160">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>On Wed, 15 Jan 2003, Richard Guenther wrote:
+
+&gt;<i> So I propose to make Engine's domain access interface match FieldEngine's,
+</I>&gt;<i> i.e. add Engine-&gt;physicalDomain(), make Array.physicalDomain() call that
+</I>&gt;<i> and return Layout-&gt;innerDomain() for this.
+</I>
+I looked at the various engines and a physicalDomain() method can not
+consitently defined for all of them, so I decided to go the simple way
+of just fixing Array.physicalDomain().
+
+The following patch does exactly this and introduces a testcase that fails
+before and succeeds after the patch (test with assertions on).
+
+Ok? (dont know if changing Array.physicalDomain() has any negative impact
+on user code - the testsuite doesnt care)
+
+Richard.
+
+diff -Nru a/r2/src/Array/Array.h b/r2/src/Array/Array.h
+--- a/r2/src/Array/Array.h	Wed Jan 15 17:12:42 2003
++++ b/r2/src/Array/Array.h	Wed Jan 15 17:12:42 2003
+@@ -1810,7 +1810,7 @@
+
+   inline Domain_t physicalDomain() const
+     {
+-      return engine_m.domain();
++      return engine_m.layout().innerDomain();
+     }
+
+   inline Domain_t totalDomain() const
+diff -Nru a/r2/src/Evaluator/tests/evaluatorTest2.cpp b/r2/src/Evaluator/tests/evaluatorTest2.cpp
+--- /dev/null	Wed Dec 31 16:00:00 1969
++++ b/r2/src/Evaluator/tests/evaluatorTest2.cpp	Wed Jan 15 17:12:42 2003
+@@ -0,0 +1,173 @@
++// -*- C++ -*-
++// ACL:license
++// ----------------------------------------------------------------------
++// This software and ancillary information (herein called &quot;SOFTWARE&quot;)
++// called POOMA (Parallel Object-Oriented Methods and Applications) is
++// made available under the terms described here.  The SOFTWARE has been
++// approved for release with associated LA-CC Number LA-CC-98-65.
++//
++// Unless otherwise indicated, this SOFTWARE has been authored by an
++// employee or employees of the University of California, operator of the
++// Los Alamos National Laboratory under Contract No. W-7405-ENG-36 with
++// the U.S. Department of Energy.  The U.S. Government has rights to use,
++// reproduce, and distribute this SOFTWARE. The public may copy, distribute,
++// prepare derivative works and publicly display this SOFTWARE without
++// charge, provided that this Notice and any statement of authorship are
++// reproduced on all copies.  Neither the Government nor the University
++// makes any warranty, express or implied, or assumes any liability or
++// responsibility for the use of this SOFTWARE.
++//
++// If SOFTWARE is modified to produce derivative works, such modified
++// SOFTWARE should be clearly marked, so as not to confuse it with the
++// version available from LANL.
++//
++// For more information about POOMA, send e-mail to <A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">pooma at acl.lanl.gov</A>,
++// or visit the POOMA web page at <A HREF="http://www.acl.lanl.gov/pooma/.">http://www.acl.lanl.gov/pooma/.</A>
++// ----------------------------------------------------------------------
++// ACL:license
++
++//-----------------------------------------------------------------------------
++// evaluatorTest2 - a simple patch function using ScalarCode
++//-----------------------------------------------------------------------------
++
++#include &quot;Pooma/Pooma.h&quot;
++#include &quot;Pooma/Arrays.h&quot;
++#include &quot;Pooma/Fields.h&quot; // for PerformUpdateTag() only!
++#include &quot;Evaluator/ScalarCode.h&quot;
++#include &quot;Utilities/Tester.h&quot;
++#include &lt;iostream&gt;
++
++// This really simple example doesn't do anything a stencil couldn't do,
++// but you could imagine writing something more complicated.
++
++struct MyFunction
++{
++  MyFunction() {}
++
++  template&lt;class A&gt;
++  void operator()(const A &amp;a, const Loc&lt;1&gt; &amp;i) const
++  {
++    if (a(i)&gt;5.0)
++      {
++	a(i) /= 4.0;
++      }
++  }
++
++  void scalarCodeInfo(ScalarCodeInfo&amp; i) const
++  {
++    i.arguments(1);
++    i.dimensions(1);
++    i.lowerExtent(0) = 0;
++    i.upperExtent(0) = 0;
++    i.write(0, true);
++    i.useGuards(0, false);
++  }
++};
++
++struct MyFunction2
++{
++  MyFunction2() {}
++
++  template&lt;class Array1, class Array2&gt;
++  void operator()(const Array1 &amp;a, const Array2 &amp;b, const Loc&lt;2&gt; &amp;i) const
++  {
++    Loc&lt;2&gt; dx(1, 0), dy(0, 1);
++    a(i) = 0.25 * (b(i-dx) + b(i+dx) + b(i-dy) + b(i+dy));
++  }
++
++  void scalarCodeInfo(ScalarCodeInfo&amp; i) const
++  {
++    i.arguments(2);
++    i.dimensions(2);
++    i.lowerExtent(0) = 1;
++    i.upperExtent(0) = 1;
++    i.lowerExtent(1) = 1;
++    i.upperExtent(1) = 1;
++    i.write(0, true);
++    i.write(1, false);
++    i.useGuards(0, false);
++    i.useGuards(1, true);
++  }
++};
++
++int main(int argc, char *argv[])
++{
++  // Initialize POOMA and output stream, using Tester class
++  Pooma::initialize(argc, argv);
++  Pooma::Tester tester(argc, argv);
++
++  {
++    int size = 120;
++
++    Interval&lt;1&gt; domain(size);
++    UniformGridPartition&lt;1&gt; partition(Loc&lt;1&gt;(10));
++    UniformGridLayout&lt;1&gt; layout(domain, partition, ReplicatedTag());
++
++    Array&lt;1,double,MultiPatch&lt;UniformTag, Brick&gt; &gt; a(layout),b(layout);
++
++    int i;
++    for (i = 0; i &lt; size; ++i )
++      {
++	a(i) = i;
++      }
++    b = where(a&gt;5.0,a/4.0,a);
++
++    ScalarCode&lt;MyFunction&gt;()(a);
++
++    tester.out() &lt;&lt; a &lt;&lt; std::endl;
++    tester.out() &lt;&lt; b &lt;&lt; std::endl;
++
++    tester.check(sum((a-b)*(a-b))&lt;0.001);
++  }
++
++  {
++    Interval&lt;2&gt; domain(9, 9);
++    UniformGridLayout&lt;2&gt; layout(domain, Loc&lt;2&gt;(3, 3),
++				GuardLayers&lt;2&gt;(1), ReplicatedTag());
++
++    Array&lt;2, double, MultiPatch&lt;UniformTag, Brick&gt; &gt; a(layout), b(layout), c(layout);
++
++    a(a.domain()) = 1.0;
++    b(b.domain()) = iota(b.domain()).comp(0) + iota(b.domain()).comp(1);
++    c(domain) = 0.25 * (b(domain - Loc&lt;2&gt;(1, 0)) + b(domain + Loc&lt;2&gt;(1, 0))
++			+ b(domain - Loc&lt;2&gt;(0, 1)) + b(domain + Loc&lt;2&gt;(0, 1)));
++    ScalarCode&lt;MyFunction2&gt;()(a, b);
++
++    tester.out() &lt;&lt; a &lt;&lt; std::endl;
++    tester.out() &lt;&lt; c &lt;&lt; std::endl;
++
++    tester.check(&quot;MultiPatch setup&quot;, all(a(domain) == c(domain)));
++  }
++
++  {
++    Interval&lt;2&gt; domain(9, 9);
++    UniformGridLayout&lt;2&gt; layout(domain, Loc&lt;2&gt;(3, 3),
++				GuardLayers&lt;2&gt;(1), DistributedTag());
++
++    Array&lt;2, double, MultiPatch&lt;UniformTag, Remote&lt;Brick&gt; &gt; &gt; a(layout), b(layout), c(layout);
++
++    a(a.domain()) = 1.0;
++    b(b.domain()) = iota(b.domain()).comp(0) + iota(b.domain()).comp(1);
++    c(domain) = 0.25 * (b(domain - Loc&lt;2&gt;(1, 0)) + b(domain + Loc&lt;2&gt;(1, 0))
++			+ b(domain - Loc&lt;2&gt;(0, 1)) + b(domain + Loc&lt;2&gt;(0, 1)));
++    ScalarCode&lt;MyFunction2&gt;()(a, b);
++
++    tester.out() &lt;&lt; a &lt;&lt; std::endl;
++    tester.out() &lt;&lt; c &lt;&lt; std::endl;
++
++    tester.check(&quot;Remote MultiPatch setup&quot;, all(a(domain) == c(domain)));
++  }
++
++  int retval = tester.results(&quot;evaluatorTest2 (ScalarCode)&quot;);
++
++  Pooma::finalize();
++
++  return retval;
++}
++
++// ACL:rcsinfo
++// ----------------------------------------------------------------------
++// $RCSfile: evaluatorTest3.cpp,v $   $Author: sa_smith $
++// $Revision: 1.13 $   $Date: 2000/06/05 18:03:35 $
++// ----------------------------------------------------------------------
++// ACL:rcsinfo
+diff -Nru a/r2/src/Evaluator/tests/makefile b/r2/src/Evaluator/tests/makefile
+--- a/r2/src/Evaluator/tests/makefile	Wed Jan 15 17:12:42 2003
++++ b/r2/src/Evaluator/tests/makefile	Wed Jan 15 17:12:42 2003
+@@ -34,7 +34,8 @@
+ PASS=APP
+
+
+-TESTS = compressibleTest1 evaluatorTest1 evaluatorTest3 \
++TESTS = compressibleTest1 \
++	evaluatorTest1 evaluatorTest2 evaluatorTest3 \
+ 	ReductionTest1 ReductionTest2 ReductionTest3 ReductionTest4
+
+ default:: build
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001159.html">[BUG] ScalarCode does not work for Arrays
+</A></li>
+	<LI>Next message: <A HREF="001161.html">[pooma-dev] [BUG] ScalarCode does not work for Arrays
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1160">[ date ]</a>
+              <a href="thread.html#1160">[ thread ]</a>
+              <a href="subject.html#1160">[ subject ]</a>
+              <a href="author.html#1160">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

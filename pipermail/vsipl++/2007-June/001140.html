@@ -1,0 +1,173 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [vsipl++] fftm compile problem
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20fftm%20compile%20problem&In-Reply-To=%3C46824B14.4090009%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001139.html">
+   <LINK REL="Next"  HREF="001141.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[vsipl++] fftm compile problem</H1>
+    <B>Jules Bergmann</B> 
+    <A HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20fftm%20compile%20problem&In-Reply-To=%3C46824B14.4090009%40codesourcery.com%3E"
+       TITLE="[vsipl++] fftm compile problem">jules at codesourcery.com
+       </A><BR>
+    <I>Wed Jun 27 11:33:40 UTC 2007</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001139.html">[vsipl++] fftm compile problem
+</A></li>
+        <LI>Next message: <A HREF="001141.html">[vsipl++] fftm compile problem
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1140">[ date ]</a>
+              <a href="thread.html#1140">[ thread ]</a>
+              <a href="subject.html#1140">[ subject ]</a>
+              <a href="author.html#1140">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>John,
+
+A couple of bits:
+
+- It should be possible to build Sourcery VSIPL++ with MinGW on windows. 
+  Unfortunately, you won't be able to use MinGW with the windows binary 
+package from our website, because that has been built with Intel C++, 
+which IIUC has a different C++ ABI than GCC on windows.
+
+To use MinGW, you will need to build the library from the source 
+package.  This requires you to run configure, so you will need either 
+MSys or cygwin (something to provide the equiv of /bin/sh).
+
+
+- MinGW GCC 3.4.5 will work fine (we use 3.4.4 to build our Linux binary 
+pacakges).  GCC 4.1/4.2 will give better performance, but that is 
+another matter ...
+
+
+- The compile error you're seeing is a result of the library not being 
+able to find a FFT backend.  This happens because you're missing some 
+macro definitions that need to be on the command line.
+
+If you look in the file 'lib/pkgconfig/vsipl++.pc' of the binary 
+package, you will see a line:
+
+cppflags=-I${includedir}  -DVSIP_IMPL_PAR_SERVICE=0 
+-DVSIP_IMPL_IPP_FFT=1 -DVSIP_IMPL_FFT_USE_FLOAT=1 
+-DVSIP_IMPL_FFT_USE_DOUBLE=1 -DVSIP_IMPL_FFT_USE_LONG_DOUBLE=1 
+-DVSIP_IMPL_PROVIDE_FFT_FLOAT=1 -DVSIP_IMPL_PROVIDE_FFT_DOUBLE=1 
+-DVSIP_IMPL_PROVIDE_FFT_LONG_DOUBLE=0 -DVSIP_IMPL_USE_CBLAS=2
+
+These macros tell the library which FFT backends to use (in this case, 
+we're using the IPP FFT, which happens to be how the windows binary 
+package was configured).
+
+Those definitions need to be on the command line when you compile.
+
+You might retry compiling fft.cpp as
+
+g++ -c -I/usr/local/include -DVSIP_IMPL_PAR_SERVICE=0 
+-DVSIP_IMPL_IPP_FFT=1 -DVSIP_IMPL_FFT_USE_FLOAT=1 
+-DVSIP_IMPL_FFT_USE_DOUBLE=1 -DVSIP_IMPL_FFT_USE_LONG_DOUBLE=1 
+-DVSIP_IMPL_PROVIDE_FFT_FLOAT=1 -DVSIP_IMPL_PROVIDE_FFT_DOUBLE=1 
+-DVSIP_IMPL_PROVIDE_FFT_LONG_DOUBLE=0 -DVSIP_IMPL_USE_CBLAS=2
+
+That should fix the compilation errors.  However, the above mentioned 
+problem of ICC and MinGW C++ ABI's being incompatible still remains of 
+course!
+
+- Sourcery VSIPL++ can be built with Cygwin too.
+
+
+Do you have MSYS installed along with MinGW?  If so, you should 
+configure the library from the source package.  The following configure 
+command would be a good starting point:
+
+	configure				\
+		--with-lapack=simple-builtin	\
+		--enable-fft=builtin
+
+Let us know how that works!
+
+				-- Jules
+
+
+Stefan Seefeld wrote:
+&gt;<i> Day, John wrote:
+</I>&gt;&gt;<i> Stefan wrote:
+</I>&gt;&gt;&gt;&gt;<i> You mention the windows binary release, which is configured / compiled
+</I>&gt;&gt;&gt;&gt;<i> for use with Intel's IPP and MKL libraries. But then you are talking about
+</I>&gt;&gt;&gt;&gt;<i> the source distribution, and mingw. To help you a little further it
+</I>&gt;&gt;&gt;&gt;<i> is important to know what Sourcery VSIPL++ package you use .....
+</I>&gt;&gt;<i>  
+</I>&gt;&gt;<i> At first I tried to build the source distribution using MinGW and g++ 3.4.5, but the build failed trying to configure ATLAS and I was not able to produce the config files.
+</I>&gt;<i> 
+</I>&gt;<i> Right, configuring ATLAS is not easy. We have never attempted to support ATLAS
+</I>&gt;<i> on Windows. Note, however, that there are a number of configure options to work
+</I>&gt;<i> around those problems by using alternate lapack implementations, or none at all
+</I>&gt;<i> (thus disabling parts of the functionality provided by the VSIPL++ spec). You
+</I>&gt;<i> can find out more about these in the quickstart
+</I>&gt;<i> (<A HREF="http://www.codesourcery.com/public/vsiplplusplus/sourceryvsipl++-1.3/quickstart/ch02s03.html">http://www.codesourcery.com/public/vsiplplusplus/sourceryvsipl++-1.3/quickstart/ch02s03.html</A>)
+</I>&gt;<i> 
+</I>&gt;&gt;<i> So then I tried using the IA32 binary, just to see if I could compile the example fft.cpp (and the BeamformEx files) from the MS-DOS command line:
+</I>&gt;&gt;<i>  
+</I>&gt;&gt;&gt;<i> g++ -c -I/usr/local/include fft.cpp
+</I>&gt;&gt;<i>  
+</I>&gt;&gt;<i> That's when the error occurred. I did not configure the fft backends or anything else. Nor did I expect the link step to work because there are no .a libraries in the Windows binary. 
+</I>&gt;<i> 
+</I>&gt;<i> That is strange, as the Windows binary package is configured / built
+</I>&gt;<i> for use with Intel's IPP and MKL. I'm thus not sure what causes the
+</I>&gt;<i> error message you are reporting. Please note that the suggested way
+</I>&gt;<i> to build applications with Sourcery VSIPL++ is to query compiler options
+</I>&gt;<i> from the vsipl++.pc files that are part of binary releases. It is possible,
+</I>&gt;<i> or even likely, that you are missing some important macro definition that
+</I>&gt;<i> causes the built-in FFT backends to be masked.
+</I>&gt;<i> 
+</I>&gt;&gt;<i> I suppose I will have to set up a Cygwin environment, but I was hoping that MinGW alone would work.
+</I>&gt;<i> 
+</I>&gt;<i> The only supported compiler on Windows is Intel's ICC. We haven't attempted
+</I>&gt;<i> to build using GCC on Windows, though we are now considering it.
+</I>&gt;<i> 
+</I>&gt;<i> Regards,
+</I>&gt;<i> 		Stefan
+</I>&gt;<i> 
+</I>
+
+-- 
+Jules Bergmann
+CodeSourcery
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">jules at codesourcery.com</A>
+(650) 331-3385 x705
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001139.html">[vsipl++] fftm compile problem
+</A></li>
+	<LI>Next message: <A HREF="001141.html">[vsipl++] fftm compile problem
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1140">[ date ]</a>
+              <a href="thread.html#1140">[ thread ]</a>
+              <a href="subject.html#1140">[ subject ]</a>
+              <a href="author.html#1140">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">More information about the vsipl++
+mailing list</a><br>
+</body></html>

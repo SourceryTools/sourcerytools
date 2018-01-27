@@ -1,0 +1,194 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> Forward Compatibility
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:qmtest%40codesourcery.com?Subject=Re%3A%20Forward%20Compatibility&In-Reply-To=%3C200309020113.h821Dfrp011778%40minax.codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   
+   <LINK REL="Next"  HREF="000487.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>Forward Compatibility</H1>
+    <B>Mark Mitchell</B> 
+    <A HREF="mailto:qmtest%40codesourcery.com?Subject=Re%3A%20Forward%20Compatibility&In-Reply-To=%3C200309020113.h821Dfrp011778%40minax.codesourcery.com%3E"
+       TITLE="Forward Compatibility">mark at codesourcery.com
+       </A><BR>
+    <I>Tue Sep  2 01:13:41 UTC 2003</I>
+    <P><UL>
+        
+        <LI>Next message: <A HREF="000487.html">[qmtest] Resource creation
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#486">[ date ]</a>
+              <a href="thread.html#486">[ thread ]</a>
+              <a href="subject.html#486">[ subject ]</a>
+              <a href="author.html#486">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>
+One of the goals for QMTest 2.1 is to promise forward compatibility
+for (at least a subset of) the QMTest APIs.  For example, we'd like to
+say that a test class that satisfies such-and-such interfaces, and
+uses only such-and-such other functionality in QMTest, is guaranteed
+to work with all future versions of QMTest.
+
+That will clearly make it easier for people to commit to using QMTest
+for important projects.
+
+To accomplish this goal, we must first say what it means to *be*
+forward compatible; it's not entirely obvious.  Unfortunately,
+defining this formally would require putting back on the formal
+semantics that I wore in graduate school, and we'd end up with fifty
+pages of theorems.  So, the definition will be necessary semi-formal.
+
+Once we know what compatibility means, we'll have to audit various
+interfaces in QMTest to satisfy ourselves that we can live with them
+forever.  (Of course, we don't want to change them gratuitously, even
+at this point, because there are already a lot of extension classes
+relying on the current interface.)
+
+Thoughts/comments on the attached?
+
+--
+Mark Mitchell
+CodeSourcery, LLC
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">mark at codesourcery.com</A>
+
+Introduction
+
+  The purpose of this document is to define the notion of &quot;forward
+  compatibility&quot; for QMTest.  A QMTest user or extension class author
+  can upgrade to a new version of QMTest if the new version is
+  &quot;forward compatible&quot; with the old version.  This document defines
+  this concept in more detail.
+
+  The definition of forward compatibility relies on two key ideas:
+
+  1. The user and/or extension class author must only rely on
+     interfaces that have been specifically labeled as &quot;compatible&quot;.
+     An interface that is not so labeled may be changed freely.
+
+     (Because no interface has been so labeled prior to QMTest 2.1,
+     all versions of QMTest up to and including 2.0.3 have been
+     vacuously forward compatible.)
+
+     Any labeled interface may modify the requirements described below
+     through its documentation.
+
+  2. The definition for larger units (such as classes or modules) is
+     built up from smaller units (such as variables or methods).
+
+Functions
+
+  A compatible function must not be removed.
+
+  The names of the function parameters and the order in which they
+  appear must not be altered.
+
+  The values of default arguments must not change unless the new values
+  have the same semantic implication as the old value.  (For example,
+  a default value of '{}' could be changed to a default value of
+  'None', if the new version of the function treated 'None' and '{}'
+  interchangeably.)
+
+  Parameter values that were previously valid (i.e., did not result in
+  an error message or the raising of an exception) must not become
+  invalid.  As an exception, if the previous behavior was incorrect,
+  in that the function did not follow its documented and intended
+  behavior, the previously valid parameter values may now be
+  considered invalid.
+
+  Parameter values that were previously invalid (i.e., resulted in an
+  error message or raising an exception) may now be considered valid.
+
+  New parameters may be added to a compatible function only if (a)
+  they are placed at the end of the parameter list and (b) they have
+  default values.
+
+  A function may be replaced with a callable object, or vice versa.
+
+Variables
+
+  All compatible variables are read only.  User code must not attempt
+  to modify a compatible variable.
+
+  A compatible variable must not be removed.
+
+  In general, the type of the variable must not change.  However, a
+  value whose type is a superclass may be replaced with a value whose
+  type is a subclass.  A value of a sequence type may be replaced with
+  a value of another sequence type.
+
+  A compatible variable whose value is a sequence type may contain
+  additional elements in the sequence.  A compatible variable whose
+  value is a dictionary type may add additional keys, or
+
+Classes
+ 
+  An old-style class may be replaced with a new-style class.
+
+  All direct or indirect superclasses must be compatible.
+
+  No direct or indirect superclass may be removed.  However, new super
+  classes may be added.  A direct superclass may become an indirect
+  superclass.
+
+  All functions and variables in the class must be compatible, with
+  two exceptions:
+
+  1. A function or variable may be removed, if a compatible function
+     is provided in a superclass.
+
+  2. A function or variable whose name begins with two underscores
+     need not be compatible.
+
+  Two classes that were previous different may become the same class,
+  provided that both names are still available.
+
+Modules
+
+  All functions, variables, and classes in a compatible module must be
+  compatible, with two exceptions:
+
+  1. A function, variable, or class whose name is not a public name in
+     the sense defined by Python.  (See the Python documentation for
+     &quot;__all__&quot; for a definintion of &quot;public name&quot;.)
+
+  2. A function, variable, or class whose name begins with two
+     underscores need not be compatible.
+
+File Formats
+
+  A compatible file can be read by future versions of QMTest.
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	
+	<LI>Next message: <A HREF="000487.html">[qmtest] Resource creation
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#486">[ date ]</a>
+              <a href="thread.html#486">[ thread ]</a>
+              <a href="subject.html#486">[ subject ]</a>
+              <a href="author.html#486">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">More information about the qmtest
+mailing list</a><br>
+</body></html>

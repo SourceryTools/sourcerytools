@@ -1,0 +1,1613 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [qmtest] Upgrading tests
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:qmtest%40codesourcery.com?Subject=Re%3A%20%5Bqmtest%5D%20Upgrading%20tests&In-Reply-To=%3C1073102733.3915.14.camel%40minax.codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000658.html">
+   <LINK REL="Next"  HREF="000661.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[qmtest] Upgrading tests</H1>
+    <B>Mark Mitchell</B> 
+    <A HREF="mailto:qmtest%40codesourcery.com?Subject=Re%3A%20%5Bqmtest%5D%20Upgrading%20tests&In-Reply-To=%3C1073102733.3915.14.camel%40minax.codesourcery.com%3E"
+       TITLE="[qmtest] Upgrading tests">mark at codesourcery.com
+       </A><BR>
+    <I>Sat Jan  3 04:05:33 UTC 2004</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000658.html">[qmtest] Upgrading tests
+</A></li>
+        <LI>Next message: <A HREF="000661.html">[qmtest] Patch 2.0.3 or use latest CVS?
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#664">[ date ]</a>
+              <a href="thread.html#664">[ thread ]</a>
+              <a href="subject.html#664">[ subject ]</a>
+              <a href="author.html#664">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>
+&gt;<i> That's a valid objection.  Zack has been complaining about
+</I>&gt;<i> non-orthogonalities in Database for some time; I will see if I can work
+</I>&gt;<i> on the issue that you raise.  I think I know how to clean this up in a
+</I>&gt;<i> relatively nice way.
+</I>
+This patch makes Database take an Extension instance as an argument to
+WriteExtension and eliminates the separate
+WriteTest/WriteResource/WriteSuite methods.  That provides more
+generality in Database and should make your upgrade code simpler.
+
+-- 
+Mark Mitchell &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">mark at codesourcery.com</A>&gt;
+CodeSourcery, LLC
+-------------- next part --------------
+2004-01-02  Mark Mitchell  &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">mark at codesourcery.com</A>&gt;
+
+	* qm/extension.py (Extension.MakeDomElement): New method.
+	(Extension.MakeDomDocument): Likewise.
+	(Extension.Write): Likewise.
+	* qm/test/base.py (extension_kinds): Add &quot;suite&quot;.
+	(qm.test.suite): Import it.
+	(__extension_bases): Mention &quot;suite&quot;.
+	* qm/test/datbase.py (Database.WriteTest): Remove.
+	(Database.RemoveTest): Likewise.
+	(Database.WriteResource): Likewise.
+	(Database.RemoveResource): Likewise.
+	(Database.WriteSuite): Likewise.
+	(Database.RemoveSuite): Likewise.
+	(Database.IsModifiable): Adjust comment.
+	(Database.RemoveExtension): New method.
+	(Database.WriteExtension): Likewise.
+	* qm/test/directory_suite.py (DirectorySuite.__init__): Adjust for
+	the fact that 'Suite' is now an 'Extension.
+	(DirectorySuite.IsImplicit): New method.
+	* qm/test/file_database.py (FileDatabase.RemoveTest): Remove.
+	(FileDatabase.RemoveResource): Likewise.
+	(FileDatabase.RemoveSuite): Likewise.
+	(FileDatabase._GetPath): New method.
+	(FileDatabase._RemoveEntity): Remove.
+	(FileDatabase.RemoveExtension): New test.
+	* qm/test/suite.py (Suite): Derive from Extension.
+	* qm/test/classes/explicit_suite.py: New file.
+	* qm/test/classes/classes.qmc: Regenerate.
+	* qm/test/classes/mount_database.py (MountedSuite.__init__):
+	Adjust for the fact that 'Suite' is now an 'Extension.
+	(MountedSuite.IsImplicit): New method.
+	* qm/test/clasess/xml_database.py (XMLDatabase.WriteTest): Remove.
+	(XMLDatabase.WriteResource): Likewise.
+	(XMLDatabase.WriteSuite): Likewise.
+	(XMLDatabase.__StoreAdjustments): Rework to adjust for the fact
+	that actual extension instances are provided.
+	(XMLDatabase._GetSuiteFromPath): Deal with old and new suite
+	formats.
+	(XMLDatabse.WriteExtension): New method.
+	* qm/test/doc/reference.xml: Do not mention WriteTest or
+	RemoveTest.
+	* qm/test/web/web.py (QMTestServer.HandleCreateSuite): Adjust for
+	changes above.
+	(QMTestServer.HandleDeleteItem): Likewise.
+	(QMTestServer.HandleDeleteSuite): Likewise.
+	(QMTestServer.HandleSubmitItem): Likewise.
+
+Index: qm/extension.py
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/extension.py,v
+retrieving revision 1.13
+diff -c -5 -p -r1.13 extension.py
+*** qm/extension.py	15 Sep 2003 20:26:40 -0000	1.13
+--- qm/extension.py	3 Jan 2004 04:01:30 -0000
+*************** class Extension(object):
+*** 110,119 ****
+--- 110,181 ----
+          # Perhaps a default value for a class argument should be used.
+          field = get_class_arguments_as_dictionary(self.__class__).get(name)
+          if field is None:
+              raise AttributeError, name
+          return field.GetDefaultValue()
++ 
++ 
++     def MakeDomElement(self, document, element = None):
++         &quot;&quot;&quot;Create a DOM node for 'self'.
++ 
++         'document' -- The DOM document that will contain the new
++         element.
++         
++         'element' -- If not 'None' the extension element to which items
++         will be added.  Otherwise, a new element will be created by this
++         function.
++         
++         returns -- A new DOM element corresponding to an instance of the
++         extension class.  The caller is responsible for attaching it to
++         the 'document'.&quot;&quot;&quot;
++ 
++         # Get all of the arguments.
++         arguments = get_class_arguments_as_dictionary(self.__class__)
++         import sys
++         print &gt;&gt; sys.stderr, arguments
++         # Determine which subset of the 'arguments' have been set
++         # explicitly.
++         explicit_arguments = {}
++         for name, field in arguments.items():
++             # Do not record computed fields.
++             if field.IsComputed():
++                 continue
++             print &gt;&gt; sys.stderr, name
++             if self.__dict__.has_key(name):
++                 explicit_arguments[name] = self.__dict__[name]
++ 
++         return make_dom_element(self.__class__, explicit_arguments,
++                                 document, element)
++ 
++ 
++     def MakeDomDocument(self):
++         &quot;&quot;&quot;Create a DOM document for 'self'.
++ 
++         'extension_class' -- A class derived from 'Extension'.
++ 
++         'arguments' -- The arguments to the extension class.
++         
++         returns -- A new DOM document corresponding to an instance of the
++         extension class.&quot;&quot;&quot;
++         
++         document = qm.xmlutil.create_dom_document(
++             public_id = &quot;Extension&quot;,
++             document_element_tag = &quot;extension&quot;
++             )
++         self.MakeDomElement(document, document.documentElement)
++         return document
++ 
++ 
++     def Write(self, file):
++         &quot;&quot;&quot;Write an XML description of 'self' to a file.
++         
++         'file' -- A file object to which the data should be written.&quot;&quot;&quot;
++         
++         document = self.MakeDomDocument()
++         document.writexml(file)
++                                 
++         
+                  
+  ########################################################################
+  # Functions
+  ########################################################################
+  
+Index: qm/test/base.py
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/test/base.py,v
+retrieving revision 1.95
+diff -c -5 -p -r1.95 base.py
+*** qm/test/base.py	24 Nov 2003 00:52:57 -0000	1.95
+--- qm/test/base.py	3 Jan 2004 04:01:30 -0000
+*************** def _result_from_dom(node):
+*** 395,404 ****
+--- 395,405 ----
+  extension_kinds = [ 'database',
+                      'label',
+                      'resource',
+                      'result_reader',
+                      'result_stream',
++                     'suite',
+                      'target',
+                      'test', ]
+  &quot;&quot;&quot;Names of different kinds of QMTest extension classes.&quot;&quot;&quot;
+  
+  __class_caches = {}
+*************** for kind in extension_kinds:
+*** 414,432 ****
+--- 415,435 ----
+  import qm.test.database
+  import qm.label
+  import qm.test.resource
+  import qm.test.result_reader
+  import qm.test.result_stream
++ import qm.test.suite
+  import qm.test.target
+  import qm.test.test
+  
+  __extension_bases = {
+      'database' : qm.test.database.Database,
+      'label' : qm.label.Label,
+      'resource' : qm.test.resource.Resource,
+      'result_reader' : qm.test.result_reader.ResultReader,
+      'result_stream' : qm.test.result_stream.ResultStream,
++     'suite' : qm.test.suite.Suite,
+      'target' : qm.test.target.Target,
+      'test' : qm.test.test.Test
+      }
+  &quot;&quot;&quot;A map from extension class kinds to base classes.
+  
+Index: qm/test/database.py
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/test/database.py,v
+retrieving revision 1.39
+diff -c -5 -p -r1.39 database.py
+*** qm/test/database.py	22 Sep 2003 04:53:47 -0000	1.39
+--- qm/test/database.py	3 Jan 2004 04:01:30 -0000
+*************** class Database(qm.extension.Extension):
+*** 596,645 ****
+          named 'test_id'.&quot;&quot;&quot;
+  
+          raise NoSuchTestError(test_id)
+  
+  
+-     def WriteTest(self, test):
+-         &quot;&quot;&quot;Store 'test' in the database.
+- 
+-         'test' -- A 'TestDescriptor' indicating the test that should
+-         be stored.
+- 
+-         'Attachment's associated with 'test' may be located in the
+-         'AttachmentStore' associated with this database, or in some
+-         other 'AttachmentStore'.  In the case that they are stored
+-         elsewhere, they must be copied into the 'AttachmentStore'
+-         associated with this database by use of the
+-         'AttachmentStore.Store' method.  The caller, not this method,
+-         is responsible for removing the original version of the
+-         attachment, if necessary.
+-          
+-         The 'test' may be new, or it may be a new version of an existing
+-         test.  If it is a new version of an existing test, the database
+-         may wish to clear out any storage associated with the existing
+-         test.  However, it is possible that 'Attachment's associated
+-         with the existing test are still present in 'test', in which
+-         case it would be a mistake to remove them.
+- 
+-         Derived classes must override this method.&quot;&quot;&quot;
+- 
+-         raise NotImplementedError
+- 
+- 
+-     def RemoveTest(self, test_id):
+-         &quot;&quot;&quot;Remove the test named 'test_id' from the database.
+- 
+-         'test_id' -- A label naming the test that should be removed.
+- 
+-         raises -- 'NoSuchTestError' if there is no test in the database
+-         named 'test_id'.
+- 
+-         Derived classes must override this method.&quot;&quot;&quot;
+- 
+-         raise NotImplementedError
+- 
+- 
+      def HasTest(self, test_id):
+          &quot;&quot;&quot;Check whether or not the database has a test named 'test_id'.
+  
+          'test_id' -- A label naming the test.
+  
+--- 596,605 ----
+*************** class Database(qm.extension.Extension):
+*** 698,739 ****
+              return DirectorySuite(self, &quot;&quot;)
+  
+          raise NoSuchSuiteError(suite_id)
+  
+  
+-     def WriteSuite(self, suite):
+-         &quot;&quot;&quot;Store 'suite' in the database.
+- 
+-         'suite' -- An instance of 'Suite' (or a derived class of
+-         'Suite') that should be stored.  The 'suite' will not be
+-         implicit.
+- 
+-         The 'suite' may be new, or it may be a new version of an
+-         existing testsuite.  If 'suite' is a new version of an existing
+-         suite, it may name fewer tests than the existing version.
+-         However, this method should not remove any of the tests
+-         themselves.
+- 
+-         Derived classes must override this method.&quot;&quot;&quot;
+- 
+-         raise NotImplementedError
+- 
+- 
+-     def RemoveSuite(self, suite_id):
+-         &quot;&quot;&quot;Remove the suite named 'suite_id' from the database.
+- 
+-         'suite_id' -- A label naming the suite that should be removed.
+-         The suite will not be implicit.
+-           
+-         raises -- 'NoSuchSuiteError' if there is no suite in the
+-         database named 'test_id'.
+- 
+-         Derived classes must override this method.&quot;&quot;&quot;
+- 
+-         raise NotImplementedError
+- 
+- 
+      def HasSuite(self, suite_id):
+          &quot;&quot;&quot;Check whether or not the database has a suite named 'suite_id'.
+  
+          'suite_id' -- A label naming the suite.
+  
+--- 658,667 ----
+*************** class Database(qm.extension.Extension):
+*** 789,826 ****
+          database named 'resource_id'.&quot;&quot;&quot;
+  
+          raise NoSuchResourceError(resource_id)
+  
+  
+-     def WriteResource(self, resource):
+-         &quot;&quot;&quot;Store 'resource' in the database.
+- 
+-         'resource' -- A 'ResourceDescriptor' indicating the resource that
+-         should be stored.
+- 
+-         The 'resource' may be new, or it may be a new version of an
+-         existing resource.
+- 
+-         Derived classes must override this method.&quot;&quot;&quot;
+- 
+-         raise NotImplementedError
+- 
+- 
+-     def RemoveResource(self, resource_id):
+-         &quot;&quot;&quot;Remove the resource named 'resource_id' from the database.
+- 
+-         'resource_id' -- A label naming the resource that should be
+-         removed.
+- 
+-         raises -- 'NoSuchResourceError' if there is no resource in the
+-         database named 'resource_id'.
+- 
+-         Derived classes must override this method.&quot;&quot;&quot;
+- 
+-         raise NotImplementedError
+- 
+- 
+      def HasResource(self, resource_id):
+          &quot;&quot;&quot;Check whether or not the database has a resource named
+          'resource_id'.
+  
+          'resource_id' -- A label naming the resource.
+--- 717,726 ----
+*************** class Database(qm.extension.Extension):
+*** 1041,1055 ****
+  
+          # Convert the maps to sequences.
+          return test_ids.keys(), suite_ids.keys()
+  
+  
+      def IsModifiable(self):
+          &quot;&quot;&quot;Returns true iff this database is modifiable.
+  
+          returns -- True iff this database is modifiable.  If the
+!         database is modifiable, it supports operations like 'WriteTest'
+          that make changes to the structure of the databaes itself.
+          Otherwise, the contents of the database may be viewed, but not
+          modified.&quot;&quot;&quot;
+  
+          return self.modifiable == &quot;true&quot;
+--- 941,986 ----
+  
+          # Convert the maps to sequences.
+          return test_ids.keys(), suite_ids.keys()
+  
+  
++     def RemoveExtension(self, id, kind):
++         &quot;&quot;&quot;Remove the extension 'id' from the database.
++ 
++         'id' -- A label for the 'Extension' instance stored in the
++         database.
++ 
++         'kind' -- The kind of 'Extension' stored with the given 'id'.
++         Some databases store different kinds of 'Extension' in different
++         namespaces so that it is possible for there to be more than one
++         'Extension' with the same 'id' in a single database.&quot;&quot;&quot;
++ 
++         raise NotImplementedError
++         
++         
++     def WriteExtension(self, id, extension):
++         &quot;&quot;&quot;Store 'extension' in the database, using the name 'id'.
++ 
++         'id' -- A label for the 'extension'.
++         
++         'extension' -- An instance of 'Extension'.
++ 
++         The 'extension' is stored in the database.  If there is a
++         previous item in the database with the same id', it is removed
++         and replaced with 'extension'.  Some databases may not be able
++         to store all 'Extension' instances; those database must throw an
++         exception when an attempt is made to store such an
++         'extension'.&quot;&quot;&quot;
++ 
++         raise NotImplementedError
++         
++         
+      def IsModifiable(self):
+          &quot;&quot;&quot;Returns true iff this database is modifiable.
+  
+          returns -- True iff this database is modifiable.  If the
+!         database is modifiable, it supports operatings like 'Write'
+          that make changes to the structure of the databaes itself.
+          Otherwise, the contents of the database may be viewed, but not
+          modified.&quot;&quot;&quot;
+  
+          return self.modifiable == &quot;true&quot;
+Index: qm/test/directory_suite.py
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/test/directory_suite.py,v
+retrieving revision 1.4
+diff -c -5 -p -r1.4 directory_suite.py
+*** qm/test/directory_suite.py	28 May 2002 01:37:55 -0000	1.4
+--- qm/test/directory_suite.py	3 Jan 2004 04:01:30 -0000
+*************** class DirectorySuite(Suite):
+*** 38,73 ****
+  
+          'directory' -- A label giving the directory corresponding to
+          this suite.&quot;&quot;&quot;
+  
+          # Construct the base class.
+!         Suite.__init__(self, database, directory, implicit=1)
+!         # Remember the database.
+!         self.__database = database
+  
+  
+      def GetTestIds(self):
+          &quot;&quot;&quot;Return the tests contained in this suite.
+          
+          returns -- A sequence of labels corresponding to the tests
+          contained in this suite.  Tests that are contained in this suite
+          only because they are contained in a suite which is itself
+          contained in this suite are not returned.&quot;&quot;&quot;
+  
+!         return self.__database.GetTestIds(self.GetId(), scan_subdirs=0)
+      
+  
+      def GetSuiteIds(self):
+          &quot;&quot;&quot;Return the suites contained in this suite.
+          
+          returns -- A sequence of labels corresponding to the suites
+          contained in this suite.  Suites that are contained in this
+          suite only because they are contained in a suite which is itself
+          contained in this suite are not returned.&quot;&quot;&quot;
+  
+!         return self.__database.GetSuiteIds(self.GetId(), scan_subdirs=0)
+  
+  ########################################################################
+  # Local Variables:
+  # mode: python
+  # indent-tabs-mode: nil
+  # fill-column: 72
+--- 38,78 ----
+  
+          'directory' -- A label giving the directory corresponding to
+          this suite.&quot;&quot;&quot;
+  
+          # Construct the base class.
+!         super(DirectorySuite, self).__init__({},
+!                                              qmtest_id = directory,
+!                                              qmtest_database = database)
+  
+  
+      def GetTestIds(self):
+          &quot;&quot;&quot;Return the tests contained in this suite.
+          
+          returns -- A sequence of labels corresponding to the tests
+          contained in this suite.  Tests that are contained in this suite
+          only because they are contained in a suite which is itself
+          contained in this suite are not returned.&quot;&quot;&quot;
+  
+!         return self.GetDatabase().GetTestIds(self.GetId(), scan_subdirs=0)
+      
+  
+      def GetSuiteIds(self):
+          &quot;&quot;&quot;Return the suites contained in this suite.
+          
+          returns -- A sequence of labels corresponding to the suites
+          contained in this suite.  Suites that are contained in this
+          suite only because they are contained in a suite which is itself
+          contained in this suite are not returned.&quot;&quot;&quot;
+  
+!         return self.GetDatabase().GetSuiteIds(self.GetId(), scan_subdirs=0)
+  
++ 
++     def IsImplicit(self):
++ 
++         return 1
++     
+  ########################################################################
+  # Local Variables:
+  # mode: python
+  # indent-tabs-mode: nil
+  # fill-column: 72
+Index: qm/test/file_database.py
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/test/file_database.py,v
+retrieving revision 1.20
+diff -c -5 -p -r1.20 file_database.py
+*** qm/test/file_database.py	28 Nov 2003 20:34:58 -0000	1.20
+--- qm/test/file_database.py	3 Jan 2004 04:01:30 -0000
+*************** class FileDatabase(Database):
+*** 56,79 ****
+              raise NoSuchTestError, test_id
+  
+          return self._GetTestFromPath(test_id, os.path.normpath(path))
+  
+  
+-     def RemoveTest(self, test_id):
+-         &quot;&quot;&quot;Remove the test named 'test_id' from the database.
+- 
+-         'test_id' -- A label naming the test that should be removed.
+- 
+-         raises -- 'NoSuchTestError' if there is no test in the database
+-         named 'test_id'.
+- 
+-         Derived classes may override this method if they need to remove
+-         additional information from the database.&quot;&quot;&quot;
+- 
+-         self.__RemoveEntity(self.GetTestPath(test_id), NoSuchTestError)
+- 
+- 
+      def GetTestPath(self, test_id):
+          &quot;&quot;&quot;Return the file containing 'test_id'.
+  
+          'test_id' -- The name of a test.
+  
+--- 56,65 ----
+*************** class FileDatabase(Database):
+*** 122,146 ****
+              return DirectorySuite(self, suite_id)
+          else:
+              return self._GetSuiteFromPath(suite_id, os.path.normpath(path))
+  
+          
+-     def RemoveSuite(self, suite_id):
+-         &quot;&quot;&quot;Remove the suite named 'suite_id' from the database.
+- 
+-         'suite_id' -- A label naming the suite that should be removed.
+-         The suite will not be implicit.
+-         
+-         raises -- 'NoSuchSuiteError' if there is no suite in the database
+-         named 'suite_id'.
+- 
+-         Derived classes may override this method if they need to remove
+-         additional information from the database.&quot;&quot;&quot;
+- 
+-         self.__RemoveEntity(self.GetSuitePath(suite_id), NoSuchSuiteError)
+- 
+- 
+      def GetSuitePath(self, suite_id):
+          &quot;&quot;&quot;Return the file containing 'suite_id'.
+  
+          'suite_id' -- The name of a suite.
+  
+--- 108,117 ----
+*************** class FileDatabase(Database):
+*** 189,213 ****
+              raise NoSuchResourceError, resource_id
+  
+          return self._GetResourceFromPath(resource_id, os.path.normpath(path))
+  
+  
+-     def RemoveResource(self, resource_id):
+-         &quot;&quot;&quot;Remove the resource named 'resource_id' from the database.
+- 
+-         'resource_id' -- A label naming the resource that should be removed.
+- 
+-         raises -- 'NoSuchResourceError' if there is no resource in the database
+-         named 'resource_id'.
+- 
+-         Derived classes may override this method if they need to remove
+-         additional information from the database.&quot;&quot;&quot;
+- 
+-         self.__RemoveEntity(self.GetResourcePath(resource_id),
+-                             NoSuchResourceError)
+- 
+- 
+      def GetResourcePath(self, resource_id):
+          &quot;&quot;&quot;Return the file containing 'resource_id'.
+  
+          'resource_id' -- The name of a resource.
+  
+--- 160,169 ----
+*************** class FileDatabase(Database):
+*** 279,288 ****
+--- 235,258 ----
+          # Get all the files of the appropriate kind.
+          return self._GetLabels(file_dir, scan_subdirs, directory,
+                                 lambda p: self._IsFile(kind, p))
+  
+  
++     def _GetPath(self, kind, id):
++         &quot;&quot;&quot;Returns the file system path corresponding to 'id'.
++ 
++         'kind' -- An extension kind.
++ 
++         'id' -- The name of the entity.
++ 
++         returns -- The path in which the entity is stored.&quot;&quot;&quot;
++ 
++         return { Database.RESOURCE : self.GetResourcePath,
++                  Database.TEST : self.GetTestPath,
++                  Database.SUITE : self.GetSuitePath } [kind] (id)
++         
++         
+      def _IsFile(self, kind, path):
+          &quot;&quot;&quot;Returns true if 'path' is a file of the indicated 'kind'.
+  
+          'kind' -- One of 'Database.ITEM_KINDS'.
+  
+*************** class FileDatabase(Database):
+*** 411,431 ****
+                                                                entry_label),
+                                                predicate))
+  
+          return labels
+          
+-         
+-     def __RemoveEntity(self, path, exception):
+-         &quot;&quot;&quot;Remove an entity.
+- 
+-         'path' -- The name of the file containing the entity.
+  
+!         'exception' -- The type of exception to raise if the file
+!         is not present.&quot;&quot;&quot;
+  
+          if not os.path.isfile(path):
+!             raise exception, entity_id
+  
+          os.remove(path)
+  
+  
+      def _AreLabelsPaths(self):
+--- 381,398 ----
+                                                                entry_label),
+                                                predicate))
+  
+          return labels
+          
+  
+!     def RemoveExtension(self, id, kind):
+  
++         path = self._GetPath(kind, id)
+          if not os.path.isfile(path):
+!             raise { Database.RESOURCE : NoSuchResourceError,
+!                     Database.TEST: NoSuchTestError,
+!                     Database.SUITE: NoSuchSuiteError }[kind], id
+  
+          os.remove(path)
+  
+  
+      def _AreLabelsPaths(self):
+Index: qm/test/suite.py
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/test/suite.py,v
+retrieving revision 1.3
+diff -c -5 -p -r1.3 suite.py
+*** qm/test/suite.py	28 May 2002 01:37:55 -0000	1.3
+--- qm/test/suite.py	3 Jan 2004 04:01:30 -0000
+***************
+*** 12,132 ****
+  # For license terms see the file COPYING.
+  #
+  ########################################################################
+  
+  ########################################################################
+! # classes
+  ########################################################################
+  
+! class Suite:
+!    &quot;&quot;&quot;A collection of tests.
+  
+!    A test suite is a collection of tests.  The suite may contain other
+!    suites by reference as well; all tests contained in these contained
+!    suites are considered contained in the containing suite as well.&quot;&quot;&quot;
+! 
+!    def __init__(self,
+!                 database,
+!                 suite_id,
+!                 implicit=0,
+!                 test_ids=[],
+!                 suite_ids=[]):
+!        &quot;&quot;&quot;Create a new test suite instance.
+! 
+!        'database' -- The database in which this suite is located.
+!        
+!        'suite_id' -- The ID of the new suite.
+! 
+!        'implicit' -- If true, this is an implicit suite, generated
+!        automatically by QMTest.
+! 
+!        'test_ids' -- A sequence of IDs of tests contained in the suite.
+! 
+!        'suite_ids' -- A sequence of IDs of suites contained in the
+!        suite.&quot;&quot;&quot;
+! 
+!        self.__database = database
+!        self.__id = suite_id
+!        self.__implicit = implicit
+!        self.__test_ids = list(test_ids)
+!        self.__suite_ids = list(suite_ids)
+! 
+! 
+!    def GetDatabase(self):
+!        &quot;&quot;&quot;Return the 'Database' that contains this suite.
+! 
+!        returns -- The 'Database' that contains this suite.&quot;&quot;&quot;
+! 
+!        return self.__database
+! 
+!    
+!    def GetId(self):
+!        &quot;&quot;&quot;Return the ID of this test suite.&quot;&quot;&quot;
+! 
+!        return self.__id
+! 
+! 
+!    def IsImplicit(self):
+!        &quot;&quot;&quot;Return true if this is an implicit test suite.
+! 
+!        Implicit test suites cannot be edited.&quot;&quot;&quot;
+  
+!        return self.__implicit
+  
+  
+!    def GetTestIds(self):
+!        &quot;&quot;&quot;Return the tests contained in this suite.
+         
+-        returns -- A sequence of labels corresponding to the tests
+-        contained in this suite.  Tests that are contained in this suite
+-        only because they are contained in a suite which is itself
+-        contained in this suite are not returned.&quot;&quot;&quot;
+- 
+-        return self.__test_ids
+- 
+-    
+-    def GetSuiteIds(self):
+-        &quot;&quot;&quot;Return the suites contained in this suite.
+         
+-        returns -- A sequence of labels corresponding to the suites
+-        contained in this suite.  Suites that are contained in this suite
+-        only because they are contained in a suite which is itself
+-        contained in this suite are not returned.&quot;&quot;&quot;
+- 
+-        return self.__suite_ids
+- 
+- 
+-    def GetAllTestAndSuiteIds(self):
+-        &quot;&quot;&quot;Return the tests/suites contained in this suite and its subsuites.
+  
+-        returns -- A pair '(test_ids, suite_ids)'.  The 'test_ids' and
+-        'suite_ids' elements are both sequences of labels.  The values
+-        returned include all tests and suites that are contained in this
+-        suite and its subsuites, recursively.&quot;&quot;&quot;
+- 
+-        suite = self
+-        
+-        test_ids = []
+-        suite_ids = []
+- 
+-        # Maintain a work list of suites to process.
+-        work_list = [suite]
+-        # Process until the work list is empty.
+-        while len(work_list) &gt; 0:
+-            suite = work_list.pop(0)
+-            # Accumulate test and resource IDs in the suite.
+-            test_ids.extend(suite.GetTestIds())
+-            # Find sub suites in the suite.
+-            sub_suite_ids = suite.GetSuiteIds()
+-            # Accumulate them.
+-            suite_ids.extend(sub_suite_ids)
+-            # Retrieve the 'Suite' objects.
+-            sub_suites = map(self.GetDatabase().GetSuite, sub_suite_ids)
+-            # Don't expand ordinary suites contained in implicit suites.
+-            if suite.IsImplicit():
+-                sub_suites = filter(lambda s: s.IsImplicit(), sub_suites)
+-            # Add contained suites to the work list.
+-            work_list.extend(sub_suites)
+- 
+-        return test_ids, suite_ids
+-        
+-        
+--- 12,147 ----
+  # For license terms see the file COPYING.
+  #
+  ########################################################################
+  
+  ########################################################################
+! # Imports
+  ########################################################################
+  
+! import qm
+! import qm.extension
+  
+! ########################################################################
+! # Classes
+! ########################################################################
+  
+! class Suite(qm.extension.Extension):
+!     &quot;&quot;&quot;A collection of tests.
+  
++      A test suite is a collection of tests.  The suite may contain other
++     suites by reference as well; all tests contained in these contained
++     suites are considered contained in the containing suite as well.&quot;&quot;&quot;
++ 
++     arguments = [
++        ]
++ 
++     kind = &quot;suite&quot;
++ 
++     EXTRA_ID = &quot;qmtest_id&quot;
++     &quot;&quot;&quot;The name of the extra keyword argument to '__init__' that
++     specifies the name of the test or resource.&quot;&quot;&quot;
++ 
++     EXTRA_DATABASE = &quot;qmtest_database&quot;
++     &quot;&quot;&quot;The name of the extra keyword argument to '__init__' that
++     specifies the database containing the test or resource.&quot;&quot;&quot;
++ 
++ 
++     def __init__(self, arguments, **extras):
++         &quot;&quot;&quot;Construct a new 'Runnable'.
++         
++         'arguments' -- As for 'Extension.__init__'.
++         
++         'extras' -- Extra keyword arguments provided by QMTest.
++         Derived classes must pass along any unrecognized keyword
++         arguments to this method.  All extra keyword arguments
++         provided by QMTest will begin with 'qmtest_'.  These arguments
++         are provided as keyword arguments so that additional arguments
++         can be added in the future without necessitating changes to
++         test or resource classes.  Derived classes should not rely in
++         any way on the contents of 'extras'.&quot;&quot;&quot;
++         
++         qm.extension.Extension.__init__(self, arguments)
++         
++         self.__id = extras[self.EXTRA_ID]
++         self.__database = extras[self.EXTRA_DATABASE]
++         
++         
++     def GetDatabase(self):
++         &quot;&quot;&quot;Return the 'Database' that contains this suite.
++         
++         returns -- The 'Database' that contains this suite.&quot;&quot;&quot;
++         
++         return self.__database
++     
++ 
++     def GetId(self):
++         &quot;&quot;&quot;Return the ID of this test suite.&quot;&quot;&quot;
++         
++         return self.__id
++ 
++ 
++     def GetTestIds(self):
++         &quot;&quot;&quot;Return the tests contained in this suite.
++         
++         returns -- A sequence of labels corresponding to the tests
++         contained in this suite.  Tests that are contained in this suite
++         only because they are contained in a suite which is itself
++         contained in this suite are not returned.&quot;&quot;&quot;
++         
++         return []
++ 
++ 
++     def GetSuiteIds(self):
++         &quot;&quot;&quot;Return the suites contained in this suite.
++         
++         returns -- A sequence of labels corresponding to the suites
++         contained in this suite.  Suites that are contained in this suite
++         only because they are contained in a suite which is itself
++         contained in this suite are not returned.&quot;&quot;&quot;
++         
++         return []
++ 
++ 
++     def IsImplicit(self):
++         &quot;&quot;&quot;Return true if this is an implicit test suite.
++         
++         Implicit test suites cannot be edited.&quot;&quot;&quot;
++         
++         raise NotImplementedError
++     
++ 
++     def GetAllTestAndSuiteIds(self):
++         &quot;&quot;&quot;Return the tests/suites contained in this suite and its subsuites.
++         
++         returns -- A pair '(test_ids, suite_ids)'.  The 'test_ids' and
++         'suite_ids' elements are both sequences of labels.  The values
++         returned include all tests and suites that are contained in this
++         suite and its subsuites, recursively.&quot;&quot;&quot;
++         
++         suite = self
++         
++         test_ids = []
++         suite_ids = []
++         
++         # Maintain a work list of suites to process.
++         work_list = [suite]
++         # Process until the work list is empty.
++         while len(work_list) &gt; 0:
++             suite = work_list.pop(0)
++             # Accumulate test and resource IDs in the suite.
++             test_ids.extend(suite.GetTestIds())
++             # Find sub suites in the suite.
++             sub_suite_ids = suite.GetSuiteIds()
++             # Accumulate them.
++             suite_ids.extend(sub_suite_ids)
++             # Retrieve the 'Suite' objects.
++             sub_suites = map(self.GetDatabase().GetSuite, sub_suite_ids)
++             # Don't expand ordinary suites contained in implicit suites.
++             if suite.IsImplicit():
++                 sub_suites = filter(lambda s: s.IsImplicit(), sub_suites)
++             # Add contained suites to the work list.
++             work_list.extend(sub_suites)
+  
+!         return test_ids, suite_ids
+         
+         
+  
+Index: qm/test/classes/classes.qmc
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/test/classes/classes.qmc,v
+retrieving revision 1.14
+diff -c -5 -p -r1.14 classes.qmc
+*** qm/test/classes/classes.qmc	22 Sep 2003 04:53:48 -0000	1.14
+--- qm/test/classes/classes.qmc	3 Jan 2004 04:01:30 -0000
+***************
+*** 12,27 ****
+   &lt;class kind=&quot;target&quot; name=&quot;process_target.ProcessTarget&quot;/&gt;
+   &lt;class kind=&quot;target&quot; name=&quot;rsh_target.RSHTarget&quot;/&gt;
+   &lt;class kind=&quot;target&quot; name=&quot;serial_target.SerialTarget&quot;/&gt;
+   &lt;class kind=&quot;target&quot; name=&quot;thread_target.ThreadTarget&quot;/&gt;
+   &lt;class kind=&quot;database&quot; name=&quot;mount_database.MountDatabase&quot;/&gt;
+   &lt;class kind=&quot;test&quot; name=&quot;command.ExecTest&quot;/&gt;
+   &lt;class kind=&quot;test&quot; name=&quot;command.ShellCommandTest&quot;/&gt;
+   &lt;class kind=&quot;test&quot; name=&quot;command.ShellScriptTest&quot;/&gt;
+   &lt;class kind=&quot;test&quot; name=&quot;file.FileContentsTest&quot;/&gt;
+   &lt;class kind=&quot;test&quot; name=&quot;python.ExceptionTest&quot;/&gt;
+   &lt;class kind=&quot;test&quot; name=&quot;python.ExecTest&quot;/&gt;
+   &lt;class kind=&quot;test&quot; name=&quot;python.StringExceptionTest&quot;/&gt;
+   &lt;class kind=&quot;label&quot; name=&quot;file_label.FileLabel&quot;/&gt;
+   &lt;class kind=&quot;label&quot; name=&quot;python_label.PythonLabel&quot;/&gt;
+!  &lt;class kind=&quot;database&quot; name=&quot;xml_database.XMLDatabase&quot;/&gt;
+  &lt;/class-directory&gt;
+--- 12,28 ----
+   &lt;class kind=&quot;target&quot; name=&quot;process_target.ProcessTarget&quot;/&gt;
+   &lt;class kind=&quot;target&quot; name=&quot;rsh_target.RSHTarget&quot;/&gt;
+   &lt;class kind=&quot;target&quot; name=&quot;serial_target.SerialTarget&quot;/&gt;
+   &lt;class kind=&quot;target&quot; name=&quot;thread_target.ThreadTarget&quot;/&gt;
+   &lt;class kind=&quot;database&quot; name=&quot;mount_database.MountDatabase&quot;/&gt;
++  &lt;class kind=&quot;database&quot; name=&quot;xml_database.XMLDatabase&quot;/&gt;
+   &lt;class kind=&quot;test&quot; name=&quot;command.ExecTest&quot;/&gt;
+   &lt;class kind=&quot;test&quot; name=&quot;command.ShellCommandTest&quot;/&gt;
+   &lt;class kind=&quot;test&quot; name=&quot;command.ShellScriptTest&quot;/&gt;
+   &lt;class kind=&quot;test&quot; name=&quot;file.FileContentsTest&quot;/&gt;
+   &lt;class kind=&quot;test&quot; name=&quot;python.ExceptionTest&quot;/&gt;
+   &lt;class kind=&quot;test&quot; name=&quot;python.ExecTest&quot;/&gt;
+   &lt;class kind=&quot;test&quot; name=&quot;python.StringExceptionTest&quot;/&gt;
+   &lt;class kind=&quot;label&quot; name=&quot;file_label.FileLabel&quot;/&gt;
+   &lt;class kind=&quot;label&quot; name=&quot;python_label.PythonLabel&quot;/&gt;
+!  &lt;class kind=&quot;suite&quot; name=&quot;explicit_suite.ExplicitSuite&quot;/&gt;
+  &lt;/class-directory&gt;
+Index: qm/test/classes/explicit_suite.py
+===================================================================
+RCS file: qm/test/classes/explicit_suite.py
+diff -N qm/test/classes/explicit_suite.py
+*** /dev/null	1 Jan 1970 00:00:00 -0000
+--- qm/test/classes/explicit_suite.py	3 Jan 2004 04:01:30 -0000
+***************
+*** 0 ****
+--- 1,59 ----
++ ########################################################################
++ #
++ # File:   suite.py
++ # Author: Mark Mitchell
++ # Date:   1/02/2004
++ #
++ # Contents:
++ #   QMTest ExplicitSuite class
++ #
++ # Copyright (c) 2004 by CodeSourcery, LLC.  All rights reserved. 
++ #
++ # For license terms see the file COPYING.
++ #
++ ########################################################################
++ 
++ ########################################################################
++ # Imports
++ ########################################################################
++ 
++ from   qm.fields import BooleanField, SetField, TextField
++ import qm.test.suite
++ 
++ ########################################################################
++ # Classes
++ ########################################################################
++ 
++ class ExplicitSuite(qm.test.suite.Suite):
++     &quot;&quot;&quot;An 'ExplicitSuite' stores all of the test and suite ids explicitly.&quot;&quot;&quot;
++ 
++     arguments = [
++         SetField(
++             TextField(
++                 name = &quot;test_ids&quot;,
++                 title = &quot;Test Names&quot;,
++                 description = &quot;&quot;&quot;The the tests contained in this suite.&quot;&quot;&quot;)),
++         SetField(
++             TextField(
++                 name = &quot;suite_ids&quot;,
++                 title = &quot;Suite Names&quot;,
++                 description = &quot;&quot;&quot;The the suites contained in this suite.&quot;&quot;&quot;)),
++         BooleanField(name = &quot;is_implicit&quot;,
++                      title = &quot;Implicit?&quot;,
++                      description = &quot;&quot;&quot;,
++                      True if this test is implicitly generated by QMTest.&quot;&quot;&quot;),
++         ]
++     
++     def IsImplicit(self):
++ 
++         return self.is_implicit
++    
++ 
++     def GetTestIds(self):
++       
++         return self.test_ids
++ 
++    
++     def GetSuiteIds(self):
++       
++         return self.suite_ids
+Index: qm/test/classes/mount_database.py
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/test/classes/mount_database.py,v
+retrieving revision 1.3
+diff -c -5 -p -r1.3 mount_database.py
+*** qm/test/classes/mount_database.py	20 Aug 2003 18:46:57 -0000	1.3
+--- qm/test/classes/mount_database.py	3 Jan 2004 04:01:30 -0000
+*************** class MountDatabase(Database):
+*** 41,55 ****
+      class MountedSuite(Suite):
+          &quot;&quot;&quot;A 'MountedSuite' is a suite from a mounted database.&quot;&quot;&quot;
+  
+          def __init__(self, database, suite_id, joiner, suite):
+  
+!             Suite.__init__(self, database, suite_id, suite.IsImplicit())
+              self.__suite = suite
+              self.__joiner = joiner
+  
+  
+          def GetTestIds(self):
+  
+              return map(self.__joiner, self.__suite.GetTestIds())
+                                                           
+  
+--- 41,63 ----
+      class MountedSuite(Suite):
+          &quot;&quot;&quot;A 'MountedSuite' is a suite from a mounted database.&quot;&quot;&quot;
+  
+          def __init__(self, database, suite_id, joiner, suite):
+  
+!             super(MountDatabase.MountedSuite, self).\
+!                 __init__({},
+!                          qmtest_id = suite_id,
+!                          qmtest_database = database)
+              self.__suite = suite
+              self.__joiner = joiner
+  
+  
++         def IsImplicit(self):
++ 
++             return self.__suite.IsImplicit()
++ 
++         
+          def GetTestIds(self):
+  
+              return map(self.__joiner, self.__suite.GetTestIds())
+                                                           
+  
+Index: qm/test/classes/xml_database.py
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/test/classes/xml_database.py,v
+retrieving revision 1.16
+diff -c -5 -p -r1.16 xml_database.py
+*** qm/test/classes/xml_database.py	15 Sep 2003 20:26:41 -0000	1.16
+--- qm/test/classes/xml_database.py	3 Jan 2004 04:01:30 -0000
+***************
+*** 17,33 ****
+--- 17,35 ----
+  # imports
+  ########################################################################
+  
+  import os
+  import qm.common
++ from   qm.extension import get_class_arguments
+  import qm.fields
+  import qm.label
+  import qm.structured_text
+  import qm.test.base
+  from   qm.test.database import *
+  from   qm.test.file_database import *
+  from   qm.test.suite import *
++ from   qm.test.classes.explicit_suite import ExplicitSuite
+  import qm.xmlutil
+  import shutil
+  import string
+  import xml
+  import xml.dom
+*************** class XMLDatabase(ExtensionDatabase):
+*** 65,90 ****
+                                 test_id=test_id,
+                                 message=str(exception))
+              raise TestFileError, message
+          
+  
+-     def WriteTest(self, test):
+- 
+-         self.__StoreAttachments(test)
+-                                 
+-         # Find the file system path for the test file.
+-         test_path = self.GetTestPath(test.GetId())
+-         # If the file is in a new subdirectory, create it.
+-         containing_directory = os.path.dirname(test_path)
+-         if not os.path.isdir(containing_directory):
+-             os.makedirs(containing_directory)
+-         # Write out the test.
+-         qm.extension.write_extension_file(test.GetClass(),
+-                                           test.GetArguments(),
+-                                           open(test_path, &quot;w&quot;))
+- 
+- 
+      def _GetResourceFromPath(self, resource_id, resource_path):
+          try:
+              return self.__LoadItem(resource_id, resource_path,
+                                     self.__ParseResourceDocument)
+          except Exception, exception:
+--- 67,76 ----
+*************** class XMLDatabase(ExtensionDatabase):
+*** 92,169 ****
+              message = qm.error(&quot;error loading xml resource&quot;,
+                                 resource_id=resource_id,
+                                 message=str(exception))
+              raise TestFileError, message
+          
+- 
+-     def WriteResource(self, resource):
+- 
+-         self.__StoreAttachments(resource)
+- 
+-         # Find the file system path for the resource file.
+-         resource_path = self.GetResourcePath(resource.GetId())
+-         # If the file is in a new subdirectory, create it.
+-         containing_directory = os.path.dirname(resource_path)
+-         if not os.path.isdir(containing_directory):
+-             os.makedirs(containing_directory)
+-         # Write out the resource.
+-         qm.extension.write_extension_file(resource.GetClass(),
+-                                           resource.GetArguments(),
+-                                           open(resource_path, &quot;w&quot;))
+- 
+- 
+-     def WriteSuite(self, suite):
+-         &quot;&quot;&quot;Write 'suite' to the database as a suite file.&quot;&quot;&quot;
+- 
+-         # Don't write directory suites to suite file.
+-         assert not suite.IsImplicit()
+- 
+-         # Generate the document and document type for XML suite files.
+-         document = qm.xmlutil.create_dom_document(
+-             public_id=&quot;QMTest/Suite&quot;,
+-             document_element_tag=&quot;suite&quot;
+-             )
+-         # Construct the suite element node by adding children for test
+-         # IDs and suite IDs.  Use the raw test and suite IDs, i.e. don't
+-         # expand suites to their contained tests. 
+-         suite_element = document.documentElement
+-         for test_id in suite.GetTestIds():
+-             test_id_element = qm.xmlutil.create_dom_text_element(
+-                 document, &quot;test_id&quot;, test_id)
+-             suite_element.appendChild(test_id_element)
+-         for suite_id in suite.GetSuiteIds():
+-             suite_id_element = qm.xmlutil.create_dom_text_element(
+-                 document, &quot;suite_id&quot;, suite_id)
+-             suite_element.appendChild(suite_id_element)
+-         # Find the file system path for the suite file.
+-         suite_path = self.GetSuitePath(suite.GetId())
+-         # If the file is in a new subdirectory, create it.
+-         containing_directory = os.path.dirname(suite_path)
+-         if not os.path.isdir(containing_directory):
+-             os.makedirs(containing_directory)
+-         # Write out the suite.
+-         document.writexml(open(suite_path, &quot;w&quot;))
+- 
+      # Helper functions.
+  
+      def __StoreAttachments(self, item):
+          &quot;&quot;&quot;Store all attachments in 'item' in the attachment store.
+  
+!         'item' -- A 'TestDescriptor' or 'ResourceDescriptor'.  If any of
+!         its fields contain attachments, add them to the
+!         'AttachmentStore'.&quot;&quot;&quot;
+             
+!         for field in item.GetClassArguments():
+              if isinstance(field, qm.fields.AttachmentField):
+!                 attachment = item.GetArguments()[field.GetName()]
+                  if (attachment is not None
+                      and attachment.GetStore() != self.__store):
+                      location = \
+                          self.__MakeDataFilePath(item.GetId(),
+                                                  attachment.GetFileName())
+!                     item.GetArguments()[field.GetName()] = \
+!                          self.__store.Store(attachment, location)
+  
+           
+      def __MakeDataFilePath(self, item_id, file_name):
+          &quot;&quot;&quot;Construct the path to an attachment data file.
+  
+--- 78,105 ----
+              message = qm.error(&quot;error loading xml resource&quot;,
+                                 resource_id=resource_id,
+                                 message=str(exception))
+              raise TestFileError, message
+          
+      # Helper functions.
+  
+      def __StoreAttachments(self, item):
+          &quot;&quot;&quot;Store all attachments in 'item' in the attachment store.
+  
+!         'item' -- A 'Test' or 'Resource'.  If any of its fields contain
+!         attachments, add them to the 'AttachmentStore'.&quot;&quot;&quot;
+             
+!         for field in get_class_arguments(item.__class__):
+              if isinstance(field, qm.fields.AttachmentField):
+!                 attachment = getattr(item, field.GetName())
+                  if (attachment is not None
+                      and attachment.GetStore() != self.__store):
+                      location = \
+                          self.__MakeDataFilePath(item.GetId(),
+                                                  attachment.GetFileName())
+!                     setattr(item, field.GetName(),
+!                             self.__store.Store(attachment, location))
+  
+           
+      def __MakeDataFilePath(self, item_id, file_name):
+          &quot;&quot;&quot;Construct the path to an attachment data file.
+  
+*************** class XMLDatabase(ExtensionDatabase):
+*** 290,313 ****
+          # Make sure there is a file by that name.
+          if not os.path.isfile(path):
+              raise NoSuchSuiteError, &quot;no suite file %s&quot; % path
+          # Load and parse the suite file.
+          document = qm.xmlutil.load_xml_file(path)
+          suite = document.documentElement
+!         assert suite.tagName == &quot;suite&quot;
+!         # Extract the test and suite IDs.
+!         test_ids = qm.xmlutil.get_child_texts(suite, &quot;test_id&quot;)
+!         suite_ids = qm.xmlutil.get_child_texts(suite, &quot;suite_id&quot;)
+!         # Make sure they're all valid.
+!         for id_ in test_ids + suite_ids:
+!             if not self.IsValidLabel(id_, is_component = 0):
+!                 raise RuntimeError, qm.error(&quot;invalid id&quot;, id=id_)
+!         # Construct the suite.
+!         return Suite(self, suite_id, implicit=0,
+!                      test_ids=test_ids, suite_ids=suite_ids)
+! 
+! 
+      def GetAttachmentStore(self):
+          &quot;&quot;&quot;Returns the 'AttachmentStore' associated with the database.
+  
+          returns -- The 'AttachmentStore' containing the attachments
+          associated with tests and resources in this database.&quot;&quot;&quot;
+--- 226,280 ----
+          # Make sure there is a file by that name.
+          if not os.path.isfile(path):
+              raise NoSuchSuiteError, &quot;no suite file %s&quot; % path
+          # Load and parse the suite file.
+          document = qm.xmlutil.load_xml_file(path)
++         # For backwards compatibility, handle XML files using the
++         # &quot;suite&quot; tag.  New databases will have Suite files using the
++         # &quot;extension&quot; tag.
+          suite = document.documentElement
+!         if suite.tagName == &quot;suite&quot;:
+!             assert suite.tagName == &quot;suite&quot;
+!             # Extract the test and suite IDs.
+!             test_ids = qm.xmlutil.get_child_texts(suite, &quot;test_id&quot;)
+!             suite_ids = qm.xmlutil.get_child_texts(suite, &quot;suite_id&quot;)
+!             # Make sure they're all valid.
+!             for id_ in test_ids + suite_ids:
+!                 if not self.IsValidLabel(id_, is_component = 0):
+!                     raise RuntimeError, qm.error(&quot;invalid id&quot;, id=id_)
+!             # Construct the suite.
+!             return ExplicitSuite({ &quot;is_implicit&quot; : 0,
+!                                    &quot;test_ids&quot; : test_ids,
+!                                    &quot;suite_ids&quot; : suite_ids },
+!                                  self, suite_id)
+!         else:
+!             # Load the extension.
+!             extension_class, arguments = \
+!                 qm.extension.parse_dom_element(
+!                     suite,
+!                     lambda n: get_extension_class(n, &quot;suite&quot;, self),
+!                     self.GetAttachmentStore())
+!             # Construct the actual instance.
+!             extras = { extension_class.EXTRA_ID : suite_id,
+!                        extension_class.EXTRA_DATABASE : self }
+!             return extension_class(arguments, **extras)
+! 
+! 
+!     def WriteExtension(self, id, extension):
+! 
+!         kind = extension.kind
+!         if kind in (&quot;resource&quot;, &quot;test&quot;):
+!             self.__StoreAttachments(extension)
+!         # Figure out what path should be used to store the test.
+!         path = self._GetPath(kind, id)
+!         # If the file is in a new subdirectory, create it.
+!         containing_directory = os.path.dirname(path)
+!         if not os.path.isdir(containing_directory):
+!             os.makedirs(containing_directory)
+!         extension.Write(open(path, &quot;w&quot;))
+!         
+!                  
+      def GetAttachmentStore(self):
+          &quot;&quot;&quot;Returns the 'AttachmentStore' associated with the database.
+  
+          returns -- The 'AttachmentStore' containing the attachments
+          associated with tests and resources in this database.&quot;&quot;&quot;
+Index: qm/test/doc/reference.xml
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/test/doc/reference.xml,v
+retrieving revision 1.35
+diff -c -5 -p -r1.35 reference.xml
+*** qm/test/doc/reference.xml	20 Nov 2003 02:45:45 -0000	1.35
+--- qm/test/doc/reference.xml	3 Jan 2004 04:01:30 -0000
+***************
+*** 1120,1133 ****
+      directories it would search when running tests, including those
+      given by the environment variable
+      &lt;envar&gt;QMTEST_CLASS_PATH&lt;/envar&gt;.&lt;/para&gt;
+  
+      &lt;para&gt;The &lt;replaceable&gt;kind&lt;/replaceable&gt; argument tells QMTest
+!     what kind of extension class you are registering.  The
+!     &lt;replaceable&gt;kind&lt;/replaceable&gt; must be one of
+!     &lt;literal&gt;test&lt;/literal&gt;, &lt;literal&gt;resource&lt;/literal&gt;,
+!     &lt;literal&gt;target&lt;/literal&gt;, or &lt;literal&gt;database&lt;/literal&gt;.&lt;/para&gt;
+  
+      &lt;para&gt;The &lt;replaceable&gt;class-name&lt;/replaceable&gt; argument gives the
+      name of the class in the form
+      &lt;classname&gt;module.Class&lt;/classname&gt;.  QMTest will look for a file
+      whose basename is the module name and whose extension is either
+--- 1120,1132 ----
+      directories it would search when running tests, including those
+      given by the environment variable
+      &lt;envar&gt;QMTEST_CLASS_PATH&lt;/envar&gt;.&lt;/para&gt;
+  
+      &lt;para&gt;The &lt;replaceable&gt;kind&lt;/replaceable&gt; argument tells QMTest
+!     what kind of extension class you are registering.  If you invoke 
+!     &lt;command&amp;qmtest-cmd; register&lt;/command&gt; with no arguments it will
+!     provide you with a list of the available extension kinds.&lt;/para&gt;
+  
+      &lt;para&gt;The &lt;replaceable&gt;class-name&lt;/replaceable&gt; argument gives the
+      name of the class in the form
+      &lt;classname&gt;module.Class&lt;/classname&gt;.  QMTest will look for a file
+      whose basename is the module name and whose extension is either
+***************
+*** 2372,2389 ****
+    &lt;classname&gt;TestDescriptor&lt;/classname&gt; indicates the test class, and
+    the arguments to that test class.  QMTest uses that information to
+    instantiate an instance of the test class itself as
+    appropriate.&lt;/para&gt;
+  
+!   &lt;para&gt;The &lt;function&gt;WriteTest&lt;/function&gt; is the inverse of
+    &lt;function&gt;GetTest&lt;/function&gt;.  The test database is responsible for
+!   storing the &lt;classname&gt;TestDescriptor&lt;/classname&gt; provided to
+!   &lt;function&gt;WriteTest&lt;/function&gt;.  The name of test can be obtained
+!   by calling &lt;function&gt;TestDescriptor.GetId&lt;/function&gt;.  When the
+!   &lt;function&gt;RemoveTest&lt;/function&gt; function is called the database is
+!   responsible for removing the test named by the
+!   &lt;parameter&gt;test_id&lt;/parameter&gt; parameter.&lt;/para&gt;
+  
+    &lt;para&gt;The functions that handle resources are analogous to those
+    for tests.  For exmaple, &lt;function&gt;GetResource&lt;/function&gt; plays the
+    same role for resources as &lt;function&gt;GetTest&lt;/function&gt; does for
+    tests.&lt;/para&gt;
+--- 2371,2387 ----
+    &lt;classname&gt;TestDescriptor&lt;/classname&gt; indicates the test class, and
+    the arguments to that test class.  QMTest uses that information to
+    instantiate an instance of the test class itself as
+    appropriate.&lt;/para&gt;
+  
+!   &lt;para&gt;The &lt;function&gt;Write&lt;/function&gt; function is the inverse of
+    &lt;function&gt;GetTest&lt;/function&gt;.  The test database is responsible for
+!   storing the &lt;classname&gt;Test&lt;/classname&gt; provided.  The name of test
+!   can be obtained by calling &lt;function&gt;GetId&lt;/function&gt; on the
+!   &lt;classname&gt;Test&lt;/classname&gt;.  When the &lt;function&gt;Remove&lt;/function&gt;
+!   function is called the database is responsible for removing the test
+!   named by the &lt;parameter&gt;id&lt;/parameter&gt; parameter.&lt;/para&gt;
+  
+    &lt;para&gt;The functions that handle resources are analogous to those
+    for tests.  For exmaple, &lt;function&gt;GetResource&lt;/function&gt; plays the
+    same role for resources as &lt;function&gt;GetTest&lt;/function&gt; does for
+    tests.&lt;/para&gt;
+Index: qm/test/web/web.py
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/test/web/web.py,v
+retrieving revision 1.78
+diff -c -5 -p -r1.78 web.py
+*** qm/test/web/web.py	29 Sep 2003 07:03:04 -0000	1.78
+--- qm/test/web/web.py	3 Jan 2004 04:01:30 -0000
+*************** class QMTestServer(qm.web.WebServer):
+*** 1693,1703 ****
+              # Yes.  Instead of showing the page for editing the suite,
+              # redisplay the new suite page with error messages.
+              return NewSuitePage(self, suite_id, field_errors)(request)
+          else:
+              # Everything looks good.  Make an empty suite.
+!             suite = Suite(self.__database, suite_id)
+              # Show the editing page.
+              return ShowSuitePage(self, suite, edit=1, is_new_suite=1)(request)
+  
+  
+      def HandleDeleteItem(self, request):
+--- 1693,1709 ----
+              # Yes.  Instead of showing the page for editing the suite,
+              # redisplay the new suite page with error messages.
+              return NewSuitePage(self, suite_id, field_errors)(request)
+          else:
+              # Everything looks good.  Make an empty suite.
+!             suite_class = qm.test.base.get_extension_class(
+!                &quot;explicit_suite.ExplicitSuite&quot;,
+!                &quot;suite&quot;,
+!                self.GetDatabase())
+!             extras = { suite_class.EXTRA_DATABASE : self.GetDatabase(),
+!                        suite_class.EXTRA_ID : suite_id }
+!             suite = suite_class({}, **extras)
+              # Show the editing page.
+              return ShowSuitePage(self, suite, edit=1, is_new_suite=1)(request)
+  
+  
+      def HandleDeleteItem(self, request):
+*************** class QMTestServer(qm.web.WebServer):
+*** 1716,1728 ****
+          item_id = request[&quot;id&quot;]
+          # The script name determines whether we're deleting a test or an
+          # resource. 
+          script_name = request.GetScriptName()
+          if script_name == &quot;delete-test&quot;:
+!             database.RemoveTest(item_id)
+          elif script_name == &quot;delete-resource&quot;:
+!             database.RemoveResource(item_id)
+          else:
+              raise RuntimeError, &quot;unrecognized script name&quot;
+          # Redirect to the main page.
+          request = qm.web.WebRequest(&quot;dir&quot;, base=request)
+          raise qm.web.HttpRedirect, request
+--- 1722,1734 ----
+          item_id = request[&quot;id&quot;]
+          # The script name determines whether we're deleting a test or an
+          # resource. 
+          script_name = request.GetScriptName()
+          if script_name == &quot;delete-test&quot;:
+!             database.RemoveExtension(item_id, database.TEST)
+          elif script_name == &quot;delete-resource&quot;:
+!             database.RemoveExtension(item_id, database.RESOURCE)
+          else:
+              raise RuntimeError, &quot;unrecognized script name&quot;
+          # Redirect to the main page.
+          request = qm.web.WebRequest(&quot;dir&quot;, base=request)
+          raise qm.web.HttpRedirect, request
+*************** class QMTestServer(qm.web.WebServer):
+*** 1737,1747 ****
+          request.&quot;&quot;&quot;
+  
+          database = self.__database
+          # Extract the suite ID.
+          suite_id = request[&quot;id&quot;]
+!         database.RemoveSuite(suite_id)
+          # Redirect to the main page.
+          raise qm.web.HttpRedirect, qm.web.WebRequest(&quot;dir&quot;, base=request)
+  
+  
+      def HandleDir(self, request):
+--- 1743,1753 ----
+          request.&quot;&quot;&quot;
+  
+          database = self.__database
+          # Extract the suite ID.
+          suite_id = request[&quot;id&quot;]
+!         database.RemoveExtension(suite_id, database.SUITE)
+          # Redirect to the main page.
+          raise qm.web.HttpRedirect, qm.web.WebRequest(&quot;dir&quot;, base=request)
+  
+  
+      def HandleDir(self, request):
+*************** class QMTestServer(qm.web.WebServer):
+*** 2302,2315 ****
+  	    request = qm.web.WebRequest(&quot;edit-&quot; + type, base=request, 
+                                          id=item_id)
+  	    return ShowItemPage(self, item, 1, 0, type, field_errors)(request)
+  
+          # Store it in the database.
+!         if type is &quot;test&quot;:
+!             database.WriteTest(item)
+!         elif type is &quot;resource&quot;:
+!             database.WriteResource(item)
+  
+          # Remove any attachments located in the temporary store as they
+          # have now been copied to the store associated with the
+          # database.
+          temporary_store = self.__temporary_store
+--- 2308,2318 ----
+  	    request = qm.web.WebRequest(&quot;edit-&quot; + type, base=request, 
+                                          id=item_id)
+  	    return ShowItemPage(self, item, 1, 0, type, field_errors)(request)
+  
+          # Store it in the database.
+!         database.WriteExtension(item_id, item.GetItem())
+  
+          # Remove any attachments located in the temporary store as they
+          # have now been copied to the store associated with the
+          # database.
+          temporary_store = self.__temporary_store
+*************** class QMTestServer(qm.web.WebServer):
+*** 2385,2397 ****
+          if string.strip(suite_ids) == &quot;&quot;:
+              suite_ids = []
+          else:
+              suite_ids = string.split(suite_ids, &quot;,&quot;)
+          # Construct a new suite.
+!         suite = Suite(self, suite_id, test_ids=test_ids, suite_ids=suite_ids)
+          # Store it.
+!         database.WriteSuite(suite)
+          # Redirect to a page that displays the newly-edited item.
+          raise qm.web.HttpRedirect, \
+                qm.web.WebRequest(&quot;show-suite&quot;, base=request, id=suite_id)
+  
+  
+--- 2388,2408 ----
+          if string.strip(suite_ids) == &quot;&quot;:
+              suite_ids = []
+          else:
+              suite_ids = string.split(suite_ids, &quot;,&quot;)
+          # Construct a new suite.
+!         suite_class = qm.test.base.get_extension_class(
+!             &quot;explicit_suite.ExplicitSuite&quot;,
+!             &quot;suite&quot;,
+!             self.GetDatabase())
+!         extras = { suite_class.EXTRA_DATABASE : self.GetDatabase(),
+!                    suite_class.EXTRA_ID : suite_id }
+!         suite = suite_class({ &quot;test_ids&quot; : test_ids,
+!                               &quot;suite_ids&quot; : suite_ids },
+!                             **extras)
+          # Store it.
+!         database.WriteExtension(suite_id, suite)
+          # Redirect to a page that displays the newly-edited item.
+          raise qm.web.HttpRedirect, \
+                qm.web.WebRequest(&quot;show-suite&quot;, base=request, id=suite_id)
+  
+  
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000658.html">[qmtest] Upgrading tests
+</A></li>
+	<LI>Next message: <A HREF="000661.html">[qmtest] Patch 2.0.3 or use latest CVS?
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#664">[ date ]</a>
+              <a href="thread.html#664">[ thread ]</a>
+              <a href="subject.html#664">[ subject ]</a>
+              <a href="author.html#664">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">More information about the qmtest
+mailing list</a><br>
+</body></html>

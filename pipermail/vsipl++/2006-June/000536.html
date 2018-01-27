@@ -1,0 +1,859 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [vsipl++] Matlab IO
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20Matlab%20IO&In-Reply-To=%3C44997E96.2020302%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000535.html">
+   <LINK REL="Next"  HREF="000539.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[vsipl++] Matlab IO</H1>
+    <B>Assem Salama</B> 
+    <A HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20Matlab%20IO&In-Reply-To=%3C44997E96.2020302%40codesourcery.com%3E"
+       TITLE="[vsipl++] Matlab IO">assem at codesourcery.com
+       </A><BR>
+    <I>Wed Jun 21 17:15:02 UTC 2006</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000535.html">Matlab IO
+</A></li>
+        <LI>Next message: <A HREF="000539.html">Matlab  IO
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#536">[ date ]</a>
+              <a href="thread.html#536">[ thread ]</a>
+              <a href="subject.html#536">[ subject ]</a>
+              <a href="author.html#536">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Everyone,
+  Just realized that I still have to work on swapping headers, doing 
+that now...
+
+Thanks,
+Assem
+
+Assem Salama wrote:
+&gt;<i> Everyone,
+</I>&gt;<i>  Fixed endian stuff according to Jule's comments.
+</I>&gt;<i>
+</I>&gt;<i> Assem
+</I>&gt;<i> ------------------------------------------------------------------------
+</I>&gt;<i>
+</I>&gt;<i> ? .matlab_file.cpp.swp
+</I>&gt;<i> ? .matlab_file.hpp.swp
+</I>&gt;<i> ? generic_reader.hpp
+</I>&gt;<i> ? matlab_file.cpp
+</I>&gt;<i> ? matlab_file.hpp
+</I>&gt;<i> ? matlab_temp
+</I>&gt;<i> Index: matlab.hpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: matlab.hpp
+</I>&gt;<i> diff -N matlab.hpp
+</I>&gt;<i> --- /dev/null	1 Jan 1970 00:00:00 -0000
+</I>&gt;<i> +++ matlab.hpp	21 Jun 2006 16:05:23 -0000
+</I>&gt;<i> @@ -0,0 +1,279 @@
+</I>&gt;<i> +#ifndef VSIP_CSL_MATLAB_HPP
+</I>&gt;<i> +#define VSIP_CSL_MATLAB_HPP
+</I>&gt;<i> +
+</I>&gt;<i> +#include &lt;stdint.h&gt;
+</I>&gt;<i> +#include &lt;iostream&gt;
+</I>&gt;<i> +#include &lt;vsip/support.hpp&gt;
+</I>&gt;<i> +#include &lt;vsip/impl/metaprogramming.hpp&gt;
+</I>&gt;<i> +#include &lt;vsip/impl/fns_elementwise.hpp&gt;
+</I>&gt;<i> +#include &lt;vsip/impl/length.hpp&gt;
+</I>&gt;<i> +#include &lt;vsip/impl/domain-utils.hpp&gt;
+</I>&gt;<i> +
+</I>&gt;<i> +namespace vsip_csl
+</I>&gt;<i> +{
+</I>&gt;<i> +
+</I>&gt;<i> +namespace matlab
+</I>&gt;<i> +{
+</I>&gt;<i> +  struct data_element
+</I>&gt;<i> +  {
+</I>&gt;<i> +    int32_t type;
+</I>&gt;<i> +    uint32_t size;
+</I>&gt;<i> +  };
+</I>&gt;<i> +
+</I>&gt;<i> +  template &lt;int Dim&gt;
+</I>&gt;<i> +  struct view_header
+</I>&gt;<i> +  {
+</I>&gt;<i> +    data_element header;
+</I>&gt;<i> +    data_element array_flags_header;
+</I>&gt;<i> +    char array_flags[8];
+</I>&gt;<i> +    data_element dim_header;
+</I>&gt;<i> +    uint32_t dim[Dim + Dim%2]; //the dim has to be aligned to an 8 byte boundary
+</I>&gt;<i> +    data_element array_name_header;
+</I>&gt;<i> +  };
+</I>&gt;<i> +
+</I>&gt;<i> +  // helper struct to get the imaginary part of a view.
+</I>&gt;<i> +  template &lt;typename ViewT,
+</I>&gt;<i> +            bool IsComplex =
+</I>&gt;<i> +	      vsip::impl::Is_complex&lt;typename ViewT::value_type&gt;::value&gt;
+</I>&gt;<i> +  struct Subview_helper;
+</I>&gt;<i> +
+</I>&gt;<i> +  template &lt;typename ViewT&gt;
+</I>&gt;<i> +  struct Subview_helper&lt;ViewT,true&gt;
+</I>&gt;<i> +  {
+</I>&gt;<i> +    typedef typename ViewT::realview_type realview_type;
+</I>&gt;<i> +    typedef typename ViewT::imagview_type imagview_type;
+</I>&gt;<i> +
+</I>&gt;<i> +    static realview_type real(ViewT v) { return v.real(); }
+</I>&gt;<i> +    static imagview_type imag(ViewT v) { return v.imag(); }
+</I>&gt;<i> +  };
+</I>&gt;<i> +
+</I>&gt;<i> +  template &lt;typename ViewT&gt;
+</I>&gt;<i> +  struct Subview_helper&lt;ViewT,false&gt;
+</I>&gt;<i> +  {
+</I>&gt;<i> +    typedef ViewT realview_type;
+</I>&gt;<i> +    typedef ViewT imagview_type;
+</I>&gt;<i> +
+</I>&gt;<i> +    static realview_type real(ViewT v) { return v; }
+</I>&gt;<i> +    static imagview_type imag(ViewT v) { return v; }
+</I>&gt;<i> +  };
+</I>&gt;<i> +
+</I>&gt;<i> +  template &lt;typename T,size_t type_size,bool to_swap_or_not_to_swap&gt;
+</I>&gt;<i> +  struct swap_value 
+</I>&gt;<i> +  { 
+</I>&gt;<i> +    static void swap(T *d) {d=d;} 
+</I>&gt;<i> +  };
+</I>&gt;<i> +
+</I>&gt;<i> +  template &lt;typename T&gt;
+</I>&gt;<i> +  struct swap_value&lt;T,2,true&gt;
+</I>&gt;<i> +  {
+</I>&gt;<i> +    static void swap(T* d)
+</I>&gt;<i> +    {
+</I>&gt;<i> +      char *p = reinterpret_cast&lt;char*&gt;(d);
+</I>&gt;<i> +      std::swap(p[0],p[1]);
+</I>&gt;<i> +    }
+</I>&gt;<i> +  };
+</I>&gt;<i> +
+</I>&gt;<i> +  template &lt;typename T&gt;
+</I>&gt;<i> +  struct swap_value&lt;T,4,true&gt;
+</I>&gt;<i> +  {
+</I>&gt;<i> +    static void swap(T* d)
+</I>&gt;<i> +    {
+</I>&gt;<i> +      char *p = reinterpret_cast&lt;char*&gt;(d);
+</I>&gt;<i> +      std::swap(p[0],p[3]);
+</I>&gt;<i> +      std::swap(p[1],p[2]);
+</I>&gt;<i> +    }
+</I>&gt;<i> +  };
+</I>&gt;<i> +
+</I>&gt;<i> +  template &lt;typename T&gt;
+</I>&gt;<i> +  struct swap_value&lt;T,8,true&gt;
+</I>&gt;<i> +  {
+</I>&gt;<i> +    static void swap(T* d)
+</I>&gt;<i> +    {
+</I>&gt;<i> +      char *p = reinterpret_cast&lt;char*&gt;(d);
+</I>&gt;<i> +      std::swap(p[0],p[7]);
+</I>&gt;<i> +      std::swap(p[1],p[6]);
+</I>&gt;<i> +      std::swap(p[2],p[5]);
+</I>&gt;<i> +      std::swap(p[3],p[4]);
+</I>&gt;<i> +    }
+</I>&gt;<i> +  };
+</I>&gt;<i> +
+</I>&gt;<i> +
+</I>&gt;<i> +  // generic reader that allows us to read a generic type and cast to another
+</I>&gt;<i> +  
+</I>&gt;<i> +  // the read function for real or complex depending of the view that was
+</I>&gt;<i> +  // passed in
+</I>&gt;<i> +  template &lt;typename T1,
+</I>&gt;<i> +	    typename ViewT&gt;
+</I>&gt;<i> +  void read(std::istream&amp; is,ViewT v,uint16_t endian)
+</I>&gt;<i> +  {
+</I>&gt;<i> +    vsip::dimension_type const View_dim = ViewT::dim;
+</I>&gt;<i> +    vsip::Index&lt;View_dim&gt; my_index;
+</I>&gt;<i> +    vsip::impl::Length&lt;View_dim&gt; v_extent = extent(v);
+</I>&gt;<i> +    T1 data;
+</I>&gt;<i> +    typedef typename ViewT::value_type scalar_type;
+</I>&gt;<i> +    typedef void (*fn_type)(T1 *data);
+</I>&gt;<i> +    fn_type swap_fn;
+</I>&gt;<i> +
+</I>&gt;<i> +    // get num_points
+</I>&gt;<i> +    vsip::length_type num_points = v.size();
+</I>&gt;<i> +
+</I>&gt;<i> +    // figure out if we need to do endian swaps
+</I>&gt;<i> +    if(endian != ('M' &lt;&lt; 8 | 'I'))
+</I>&gt;<i> +      swap_fn = swap_value&lt;T1,sizeof(T1),true&gt;::swap;
+</I>&gt;<i> +    else
+</I>&gt;<i> +      swap_fn = swap_value&lt;T1,sizeof(T1),false&gt;::swap;
+</I>&gt;<i> +
+</I>&gt;<i> +    // read all the points
+</I>&gt;<i> +    for(vsip::index_type i=0;i&lt;num_points;i++) {
+</I>&gt;<i> +      is.read(reinterpret_cast&lt;char*&gt;(&amp;data),sizeof(data));
+</I>&gt;<i> +      swap_fn(&amp;data);
+</I>&gt;<i> +      put(v,my_index,scalar_type(data));
+</I>&gt;<i> +
+</I>&gt;<i> +      // increment index
+</I>&gt;<i> +      my_index = vsip::impl::next(v_extent,my_index);
+</I>&gt;<i> +    }
+</I>&gt;<i> +
+</I>&gt;<i> +  }
+</I>&gt;<i> +
+</I>&gt;<i> +  // a write function to output a view to a matlab file.
+</I>&gt;<i> +  template &lt;typename ViewT&gt;
+</I>&gt;<i> +  void write(std::ostream&amp; os,ViewT v)
+</I>&gt;<i> +  {
+</I>&gt;<i> +    vsip::dimension_type const View_dim = ViewT::dim;
+</I>&gt;<i> +    vsip::Index&lt;View_dim&gt; my_index;
+</I>&gt;<i> +    vsip::impl::Length&lt;View_dim&gt; v_extent = extent(v);
+</I>&gt;<i> +    typename ViewT::value_type data;
+</I>&gt;<i> +
+</I>&gt;<i> +    // get num_points
+</I>&gt;<i> +    vsip::length_type num_points = v.size();
+</I>&gt;<i> +
+</I>&gt;<i> +    // write all the points
+</I>&gt;<i> +    for(vsip::index_type i=0;i&lt;num_points;i++) {
+</I>&gt;<i> +      data = get(v,my_index);
+</I>&gt;<i> +      os.write(reinterpret_cast&lt;char*&gt;(&amp;data),sizeof(data));
+</I>&gt;<i> +
+</I>&gt;<i> +      // increment index
+</I>&gt;<i> +      my_index = vsip::impl::next(v_extent,my_index);
+</I>&gt;<i> +    }
+</I>&gt;<i> +
+</I>&gt;<i> +  }
+</I>&gt;<i> +
+</I>&gt;<i> +  struct header
+</I>&gt;<i> +  {
+</I>&gt;<i> +    char description[116];
+</I>&gt;<i> +    char subsyt_data[8];
+</I>&gt;<i> +    char version[2];
+</I>&gt;<i> +    uint16_t endian;
+</I>&gt;<i> +  };
+</I>&gt;<i> +
+</I>&gt;<i> +  // constants for matlab binary format
+</I>&gt;<i> +
+</I>&gt;<i> +  // data types
+</I>&gt;<i> +  static int const miINT8           = 1;
+</I>&gt;<i> +  static int const miUINT8          = 2;
+</I>&gt;<i> +  static int const miINT16          = 3;
+</I>&gt;<i> +  static int const miUINT16         = 4;
+</I>&gt;<i> +  static int const miINT32          = 5;
+</I>&gt;<i> +  static int const miUINT32         = 6;
+</I>&gt;<i> +  static int const miSINGLE         = 7;
+</I>&gt;<i> +  static int const miDOUBLE         = 9;
+</I>&gt;<i> +  static int const miINT64          = 12;
+</I>&gt;<i> +  static int const miUINT64         = 13;
+</I>&gt;<i> +  static int const miMATRIX         = 14;
+</I>&gt;<i> +  static int const miCOMPRESSED     = 15;
+</I>&gt;<i> +  static int const miUTF8           = 16;
+</I>&gt;<i> +  static int const miUTF16          = 17;
+</I>&gt;<i> +  static int const miUTF32          = 18;
+</I>&gt;<i> +  
+</I>&gt;<i> +  // class types
+</I>&gt;<i> +  static int const mxCELL_CLASS     = 1;
+</I>&gt;<i> +  static int const mxSTRUCT_CLASS   = 2;
+</I>&gt;<i> +  static int const mxOBJECT_CLASS   = 3;
+</I>&gt;<i> +  static int const mxCHAR_CLASS     = 4;
+</I>&gt;<i> +  static int const mxSPARSE_CLASS   = 5;
+</I>&gt;<i> +  static int const mxDOUBLE_CLASS   = 6;
+</I>&gt;<i> +  static int const mxSINGLE_CLASS   = 7;
+</I>&gt;<i> +  static int const mxINT8_CLASS     = 8;
+</I>&gt;<i> +  static int const mxUINT8_CLASS    = 9;
+</I>&gt;<i> +  static int const mxINT16_CLASS    = 10;
+</I>&gt;<i> +  static int const mxUINT16_CLASS   = 11;
+</I>&gt;<i> +  static int const mxINT32_CLASS    = 12;
+</I>&gt;<i> +  static int const mxUINT32_CLASS   = 13;
+</I>&gt;<i> +
+</I>&gt;<i> +  // matlab header traits
+</I>&gt;<i> +  template &lt;int size,bool is_signed,bool is_int&gt;
+</I>&gt;<i> +  struct Matlab_header_traits;
+</I>&gt;<i> +
+</I>&gt;<i> +  template &lt;&gt;
+</I>&gt;<i> +  struct Matlab_header_traits&lt;1, true, true&gt; // char
+</I>&gt;<i> +  { 
+</I>&gt;<i> +    static int const value_type = miINT8;
+</I>&gt;<i> +    static int const class_type = mxINT8_CLASS; 
+</I>&gt;<i> +  };
+</I>&gt;<i> +
+</I>&gt;<i> +  template &lt;&gt;
+</I>&gt;<i> +  struct Matlab_header_traits&lt;1, false, true&gt; // unsigned char
+</I>&gt;<i> +  { 
+</I>&gt;<i> +    static int const value_type = miUINT8;
+</I>&gt;<i> +    static int const class_type = mxUINT8_CLASS; 
+</I>&gt;<i> +  };
+</I>&gt;<i> +
+</I>&gt;<i> +  template &lt;&gt;
+</I>&gt;<i> +  struct Matlab_header_traits&lt;2, true, true&gt; // short
+</I>&gt;<i> +  { 
+</I>&gt;<i> +    static int const value_type = miINT16;
+</I>&gt;<i> +    static int const class_type = mxINT16_CLASS; 
+</I>&gt;<i> +  };
+</I>&gt;<i> +
+</I>&gt;<i> +  template &lt;&gt;
+</I>&gt;<i> +  struct Matlab_header_traits&lt;2, false, true&gt; // unsigned short
+</I>&gt;<i> +  { 
+</I>&gt;<i> +    static int const value_type = miUINT16;
+</I>&gt;<i> +    static int const class_type = mxUINT16_CLASS; 
+</I>&gt;<i> +  };
+</I>&gt;<i> +
+</I>&gt;<i> +  template &lt;&gt;
+</I>&gt;<i> +  struct Matlab_header_traits&lt;4, true, true&gt; // int
+</I>&gt;<i> +  { 
+</I>&gt;<i> +    static int const value_type= miINT32;
+</I>&gt;<i> +    static int const class_type= mxINT32_CLASS;
+</I>&gt;<i> +  };
+</I>&gt;<i> +
+</I>&gt;<i> +  template &lt;&gt;
+</I>&gt;<i> +  struct Matlab_header_traits&lt;4, false, true&gt; // unsigned int
+</I>&gt;<i> +  { 
+</I>&gt;<i> +    static int const value_type= miUINT32;
+</I>&gt;<i> +    static int const class_type= mxUINT32_CLASS;
+</I>&gt;<i> +  };
+</I>&gt;<i> +
+</I>&gt;<i> +  template &lt;&gt;
+</I>&gt;<i> +  struct Matlab_header_traits&lt;4, true, false&gt; // float
+</I>&gt;<i> +  { 
+</I>&gt;<i> +    static int const value_type= miSINGLE;
+</I>&gt;<i> +    static int const class_type= mxSINGLE_CLASS;
+</I>&gt;<i> +  };
+</I>&gt;<i> +
+</I>&gt;<i> +  template &lt;&gt;
+</I>&gt;<i> +  struct Matlab_header_traits&lt;8, true, false&gt; // double
+</I>&gt;<i> +  { 
+</I>&gt;<i> +    static int const value_type= miDOUBLE;
+</I>&gt;<i> +    static int const class_type= mxDOUBLE_CLASS;
+</I>&gt;<i> +  };
+</I>&gt;<i> +
+</I>&gt;<i> +  // matlab desired layouts
+</I>&gt;<i> +  template &lt;template &lt;typename,typename&gt; class View&gt;
+</I>&gt;<i> +  struct Matlab_desired_LP
+</I>&gt;<i> +  {
+</I>&gt;<i> +    static vsip::dimension_type const dim = vsip::impl::Dim_of_view&lt;View&gt;::dim;
+</I>&gt;<i> +    typedef vsip::impl::Layout&lt;dim,
+</I>&gt;<i> +                     typename vsip::impl::Col_major&lt;dim&gt;::type,
+</I>&gt;<i> +                     vsip::impl::Stride_unit_dense,
+</I>&gt;<i> +		     vsip::impl::Cmplx_split_fmt&gt; type;
+</I>&gt;<i> +  };
+</I>&gt;<i> +
+</I>&gt;<i> +
+</I>&gt;<i> +} // namesapce matlab
+</I>&gt;<i> +
+</I>&gt;<i> +} // namespace vsip_csl
+</I>&gt;<i> +
+</I>&gt;<i> +#endif // VSIP_CSL_MATLAB_HPP
+</I>&gt;<i> Index: matlab_bin_formatter.hpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: matlab_bin_formatter.hpp
+</I>&gt;<i> diff -N matlab_bin_formatter.hpp
+</I>&gt;<i> --- /dev/null	1 Jan 1970 00:00:00 -0000
+</I>&gt;<i> +++ matlab_bin_formatter.hpp	21 Jun 2006 16:05:23 -0000
+</I>&gt;<i> @@ -0,0 +1,370 @@
+</I>&gt;<i> +/* Copyright (c) 2005, 2006 by CodeSourcery.  All rights reserved. */
+</I>&gt;<i> +
+</I>&gt;<i> +/** @file    vsip_csl/matlab_bin_formatter.hpp
+</I>&gt;<i> +    @author  Assem Salama
+</I>&gt;<i> +    @date    2006-05-22
+</I>&gt;<i> +    @brief   VSIPL++ CodeSourcery Library: Matlab binary formatter
+</I>&gt;<i> +*/
+</I>&gt;<i> +
+</I>&gt;<i> +#ifndef VSIP_CSL_MATLAB_BIN_FORMATTER_HPP
+</I>&gt;<i> +#define VSIP_CSL_MATLAB_BIN_FORMATTER_HPP
+</I>&gt;<i> +
+</I>&gt;<i> +#include &lt;stdint.h&gt;
+</I>&gt;<i> +#include &lt;string&gt;
+</I>&gt;<i> +#include &lt;limits&gt;
+</I>&gt;<i> +#include &lt;vsip_csl/matlab.hpp&gt;
+</I>&gt;<i> +#include &lt;vsip/impl/fns_scalar.hpp&gt;
+</I>&gt;<i> +#include &lt;vsip/impl/fns_elementwise.hpp&gt;
+</I>&gt;<i> +#include &lt;vsip/impl/metaprogramming.hpp&gt;
+</I>&gt;<i> +#include &lt;vsip/impl/view_traits.hpp&gt;
+</I>&gt;<i> +#include &lt;vsip/impl/extdata.hpp&gt;
+</I>&gt;<i> +
+</I>&gt;<i> +namespace vsip_csl
+</I>&gt;<i> +{
+</I>&gt;<i> +
+</I>&gt;<i> +  struct Matlab_bin_hdr
+</I>&gt;<i> +  {
+</I>&gt;<i> +    Matlab_bin_hdr(std::string const&amp; descr) : 
+</I>&gt;<i> +      description(descr),version(&quot;MATLAB 5.0 : &quot;) {}
+</I>&gt;<i> +    Matlab_bin_hdr() : 
+</I>&gt;<i> +      description(&quot; &quot;),version(&quot;MATLAB 5.0 : &quot;) {}
+</I>&gt;<i> +
+</I>&gt;<i> +    // description
+</I>&gt;<i> +    std::string description;
+</I>&gt;<i> +    std::string version;
+</I>&gt;<i> +    uint16_t endian;
+</I>&gt;<i> +
+</I>&gt;<i> +  };
+</I>&gt;<i> +
+</I>&gt;<i> +  template &lt;typename ViewT&gt;
+</I>&gt;<i> +  struct Matlab_bin_formatter
+</I>&gt;<i> +  {
+</I>&gt;<i> +    Matlab_bin_formatter(ViewT v,std::string const&amp; name) :
+</I>&gt;<i> +      view(v), name(name), header()  {}
+</I>&gt;<i> +    Matlab_bin_formatter(ViewT v,std::string const&amp; name,
+</I>&gt;<i> +      Matlab_bin_hdr &amp;h) :
+</I>&gt;<i> +        view(v), name(name), header(h)  {}
+</I>&gt;<i> +
+</I>&gt;<i> +    ViewT view;
+</I>&gt;<i> +    std::string name;
+</I>&gt;<i> +    Matlab_bin_hdr header;
+</I>&gt;<i> +
+</I>&gt;<i> +  };
+</I>&gt;<i> +
+</I>&gt;<i> +} // namespace vsip_csl
+</I>&gt;<i> +
+</I>&gt;<i> +/****************************************************************************
+</I>&gt;<i> + * Definitions
+</I>&gt;<i> + ***************************************************************************/
+</I>&gt;<i> +
+</I>&gt;<i> +namespace vsip_csl
+</I>&gt;<i> +{
+</I>&gt;<i> +
+</I>&gt;<i> +// operator to write matlab header
+</I>&gt;<i> +inline
+</I>&gt;<i> +std::ostream&amp;
+</I>&gt;<i> +operator&lt;&lt;(
+</I>&gt;<i> +  std::ostream&amp;           o,
+</I>&gt;<i> +  Matlab_bin_hdr const&amp;   h)
+</I>&gt;<i> +{
+</I>&gt;<i> +  matlab::header m_hdr;
+</I>&gt;<i> +
+</I>&gt;<i> +  // set hdr to spaces
+</I>&gt;<i> +  memset(&amp;(m_hdr),' ',sizeof(m_hdr));
+</I>&gt;<i> +  strncpy(m_hdr.description, h.version.data(), h.version.length());
+</I>&gt;<i> +  strncpy(m_hdr.description+h.version.length(), h.description.data(),
+</I>&gt;<i> +    h.description.length());
+</I>&gt;<i> +  m_hdr.version[1] = 0x01; m_hdr.version[0] = 0x00;
+</I>&gt;<i> +  m_hdr.endian = 'M' &lt;&lt; 8 | 'I';
+</I>&gt;<i> +
+</I>&gt;<i> +  // write header
+</I>&gt;<i> +  o.write(reinterpret_cast&lt;char*&gt;(&amp;m_hdr),sizeof(m_hdr));
+</I>&gt;<i> +
+</I>&gt;<i> +  return o;
+</I>&gt;<i> +}
+</I>&gt;<i> +// operator to write a view to a matlab file
+</I>&gt;<i> +template &lt;typename T,
+</I>&gt;<i> +          typename Block0,
+</I>&gt;<i> +	  template &lt;typename,typename&gt; class const_View&gt;
+</I>&gt;<i> +inline
+</I>&gt;<i> +std::ostream&amp;
+</I>&gt;<i> +operator&lt;&lt;(
+</I>&gt;<i> +  std::ostream&amp;                                       o,
+</I>&gt;<i> +  Matlab_bin_formatter&lt;const_View&lt;T,Block0&gt; &gt; const&amp;  mbf)
+</I>&gt;<i> +{
+</I>&gt;<i> +  typedef typename vsip::impl::Scalar_of&lt;T&gt;::type scalar_type;
+</I>&gt;<i> +  matlab::data_element temp_data_element;
+</I>&gt;<i> +  size_t    sz;
+</I>&gt;<i> +  matlab::view_header&lt;vsip::impl::Dim_of_view&lt;const_View&gt;::dim &gt; m_view;
+</I>&gt;<i> +  vsip::length_type num_points = mbf.view.size();
+</I>&gt;<i> +  vsip::dimension_type v_dims = vsip::impl::Dim_of_view&lt;const_View&gt;::dim;
+</I>&gt;<i> +
+</I>&gt;<i> +  memset(&amp;m_view,0,sizeof(m_view));
+</I>&gt;<i> +
+</I>&gt;<i> +  // matrix data type
+</I>&gt;<i> +  m_view.header.type = matlab::miMATRIX;
+</I>&gt;<i> +  m_view.header.size = 1; // TEMP
+</I>&gt;<i> +
+</I>&gt;<i> +  // array flags
+</I>&gt;<i> +  m_view.array_flags_header.type = matlab::miUINT32;
+</I>&gt;<i> +  m_view.array_flags_header.size = 8;
+</I>&gt;<i> +  if(vsip::impl::Is_complex&lt;T&gt;::value) 
+</I>&gt;<i> +    m_view.array_flags[1] |= 0x8; // Complex
+</I>&gt;<i> +
+</I>&gt;<i> +  // fill in class
+</I>&gt;<i> +  m_view.array_flags[0] = 
+</I>&gt;<i> +    matlab::Matlab_header_traits&lt;sizeof(scalar_type),
+</I>&gt;<i> +                  std::numeric_limits&lt;scalar_type&gt;::is_signed,
+</I>&gt;<i> +                  std::numeric_limits&lt;scalar_type&gt;::is_integer&gt;::class_type;
+</I>&gt;<i> +
+</I>&gt;<i> +  // make sure we found a matching trait
+</I>&gt;<i> +  assert(m_view.array_flags[0] != 0);
+</I>&gt;<i> +  
+</I>&gt;<i> +  // dimension sizes
+</I>&gt;<i> +  m_view.dim_header.type = matlab::miINT32;
+</I>&gt;<i> +  m_view.dim_header.size = v_dims*4; // 4 bytes per dimension
+</I>&gt;<i> +  // fill in dimension
+</I>&gt;<i> +  for(vsip::dimension_type i =0;i&lt;v_dims;i++)
+</I>&gt;<i> +  {
+</I>&gt;<i> +    m_view.dim[i] = mbf.view.size(i);
+</I>&gt;<i> +  }
+</I>&gt;<i> +
+</I>&gt;<i> +  // if this view is a vector, we need to make second dimension a one
+</I>&gt;<i> +  if(v_dims == 1)
+</I>&gt;<i> +  {
+</I>&gt;<i> +    m_view.dim_header.size += 4;
+</I>&gt;<i> +    m_view.dim[1] = 1;
+</I>&gt;<i> +  }
+</I>&gt;<i> +
+</I>&gt;<i> +  // array name
+</I>&gt;<i> +  m_view.array_name_header.type = matlab::miINT8;
+</I>&gt;<i> +  m_view.array_name_header.size = mbf.name.length();
+</I>&gt;<i> +
+</I>&gt;<i> +
+</I>&gt;<i> +  // calculate size
+</I>&gt;<i> +  sz = sizeof(m_view)-8;
+</I>&gt;<i> +  sz += mbf.name.length();
+</I>&gt;<i> +  sz += (8-mbf.name.length())&amp;0x7;
+</I>&gt;<i> +  sz += 8; // 8 bytes of header for real data
+</I>&gt;<i> +  if(vsip::impl::Is_complex&lt;T&gt;::value) sz += 8; // 8 more for complex data
+</I>&gt;<i> +  sz += num_points*sizeof(T);
+</I>&gt;<i> +  m_view.header.size = sz;
+</I>&gt;<i> +
+</I>&gt;<i> +  o.write(reinterpret_cast&lt;char*&gt;(&amp;m_view),sizeof(m_view));
+</I>&gt;<i> +
+</I>&gt;<i> +  // write array name
+</I>&gt;<i> +  o.write(mbf.name.c_str(),mbf.name.length());
+</I>&gt;<i> +  // pad
+</I>&gt;<i> +  { 
+</I>&gt;<i> +    char c=0;
+</I>&gt;<i> +    for(vsip::length_type i=0;i&lt;((8-mbf.name.length())&amp;0x7);i++) o.write(&amp;c,1);
+</I>&gt;<i> +  }
+</I>&gt;<i> +
+</I>&gt;<i> +  // write data
+</I>&gt;<i> +  {
+</I>&gt;<i> +  
+</I>&gt;<i> +    // make sure we don't need a copy if we use Ext data
+</I>&gt;<i> +    if(vsip::impl::Ext_data_cost&lt;Block0,
+</I>&gt;<i> +      typename matlab::Matlab_desired_LP&lt;const_View&gt;::type &gt;::value==0)
+</I>&gt;<i> +    {
+</I>&gt;<i> +      vsip::impl::Ext_data&lt;Block0,
+</I>&gt;<i> +	                 typename matlab::Matlab_desired_LP&lt;const_View&gt;::type &gt;
+</I>&gt;<i> +	     
+</I>&gt;<i> +	       m_ext(mbf.view.block());
+</I>&gt;<i> +
+</I>&gt;<i> +      typedef typename vsip::impl::Ext_data&lt;Block0,
+</I>&gt;<i> +	typename matlab::Matlab_desired_LP&lt;const_View&gt;::type &gt;::storage_type
+</I>&gt;<i> +		storage_type;
+</I>&gt;<i> +
+</I>&gt;<i> +      temp_data_element.type = matlab::Matlab_header_traits&lt;sizeof(scalar_type),
+</I>&gt;<i> +                  std::numeric_limits&lt;scalar_type&gt;::is_signed,
+</I>&gt;<i> +                  std::numeric_limits&lt;scalar_type&gt;::is_integer&gt;::value_type;
+</I>&gt;<i> +
+</I>&gt;<i> +      temp_data_element.size = num_points*sizeof(scalar_type);
+</I>&gt;<i> +      for(int i=0;i&lt;=vsip::impl::Is_complex&lt;T&gt;::value;i++)
+</I>&gt;<i> +      {
+</I>&gt;<i> +        o.write(reinterpret_cast&lt;char*&gt;(&amp;temp_data_element),
+</I>&gt;<i> +                  sizeof(temp_data_element));
+</I>&gt;<i> +        if(i==0) o.write(reinterpret_cast&lt;char*&gt;
+</I>&gt;<i> +             (storage_type::get_real_ptr(m_ext.data())),
+</I>&gt;<i> +                  num_points*sizeof(scalar_type));
+</I>&gt;<i> +        else o.write(reinterpret_cast&lt;char*&gt;
+</I>&gt;<i> +             (storage_type::get_imag_ptr(m_ext.data())),
+</I>&gt;<i> +                  num_points*sizeof(scalar_type));
+</I>&gt;<i> +      }
+</I>&gt;<i> +    }
+</I>&gt;<i> +    else
+</I>&gt;<i> +    {
+</I>&gt;<i> +      typedef matlab::Subview_helper&lt;const_View&lt;T,Block0&gt; &gt; subview;
+</I>&gt;<i> +      typedef typename subview::realview_type r_v;
+</I>&gt;<i> +      typedef typename subview::imagview_type i_v;
+</I>&gt;<i> +
+</I>&gt;<i> +      // conventional way
+</I>&gt;<i> +      temp_data_element.type = matlab::Matlab_header_traits&lt;sizeof(scalar_type),
+</I>&gt;<i> +                  std::numeric_limits&lt;scalar_type&gt;::is_signed,
+</I>&gt;<i> +                  std::numeric_limits&lt;scalar_type&gt;::is_integer&gt;::value_type;
+</I>&gt;<i> +
+</I>&gt;<i> +      temp_data_element.size = num_points*sizeof(scalar_type);
+</I>&gt;<i> +      for(int i=0;i&lt;=vsip::impl::Is_complex&lt;T&gt;::value;i++)
+</I>&gt;<i> +      {
+</I>&gt;<i> +        o.write(reinterpret_cast&lt;char*&gt;(&amp;temp_data_element),
+</I>&gt;<i> +                  sizeof(temp_data_element));
+</I>&gt;<i> +        if(i==0) matlab::write&lt;r_v&gt;(o,subview::real(mbf.view));
+</I>&gt;<i> +        else     matlab::write&lt;i_v&gt;(o,subview::imag(mbf.view));
+</I>&gt;<i> +      }
+</I>&gt;<i> +    }
+</I>&gt;<i> +  }
+</I>&gt;<i> +
+</I>&gt;<i> +  return o;
+</I>&gt;<i> +}
+</I>&gt;<i> +
+</I>&gt;<i> +// operator to read matlab header
+</I>&gt;<i> +inline
+</I>&gt;<i> +std::istream&amp;
+</I>&gt;<i> +operator&gt;&gt;(
+</I>&gt;<i> +  std::istream&amp;           is,
+</I>&gt;<i> +  Matlab_bin_hdr          &amp;h)
+</I>&gt;<i> +{
+</I>&gt;<i> +  matlab::header m_hdr;
+</I>&gt;<i> +
+</I>&gt;<i> +  // read header
+</I>&gt;<i> +  is.read(reinterpret_cast&lt;char*&gt;(&amp;m_hdr),sizeof(m_hdr));
+</I>&gt;<i> +
+</I>&gt;<i> +  h.version[1] = m_hdr.version[1];
+</I>&gt;<i> +  h.version[0] = m_hdr.version[0];
+</I>&gt;<i> +  h.endian = m_hdr.endian;
+</I>&gt;<i> +
+</I>&gt;<i> +  return is;
+</I>&gt;<i> +}
+</I>&gt;<i> +
+</I>&gt;<i> +// operator to read view from matlab file
+</I>&gt;<i> +template &lt;typename T,
+</I>&gt;<i> +          typename Block0,
+</I>&gt;<i> +	  template &lt;typename,typename&gt; class View&gt;
+</I>&gt;<i> +inline
+</I>&gt;<i> +std::istream&amp;
+</I>&gt;<i> +operator&gt;&gt;(
+</I>&gt;<i> +  std::istream&amp;                                       is,
+</I>&gt;<i> +  Matlab_bin_formatter&lt;View&lt;T,Block0&gt; &gt;               mbf)
+</I>&gt;<i> +{
+</I>&gt;<i> +  matlab::data_element temp_data_element;
+</I>&gt;<i> +  matlab::view_header&lt;vsip::impl::Dim_of_view&lt;View&gt;::dim&gt; m_view;
+</I>&gt;<i> +  typedef typename vsip::impl::Scalar_of&lt;T&gt;::type scalar_type;
+</I>&gt;<i> +  typedef matlab::Subview_helper&lt;View&lt;T,Block0&gt; &gt; subview;
+</I>&gt;<i> +  typedef typename subview::realview_type r_v;
+</I>&gt;<i> +  typedef typename subview::imagview_type i_v;
+</I>&gt;<i> +  vsip::dimension_type v_dim = vsip::impl::Dim_of_view&lt;View&gt;::dim;
+</I>&gt;<i> +
+</I>&gt;<i> +
+</I>&gt;<i> +  // read header
+</I>&gt;<i> +  is.read(reinterpret_cast&lt;char*&gt;(&amp;m_view),sizeof(m_view));
+</I>&gt;<i> +
+</I>&gt;<i> +  // is this complex?
+</I>&gt;<i> +  if(vsip::impl::Is_complex&lt;T&gt;::value &amp;&amp; !(m_view.array_flags[1]&amp;0x8))
+</I>&gt;<i> +    VSIP_IMPL_THROW(std::runtime_error(
+</I>&gt;<i> +      &quot;Trying to read complex matrix into a real matrix&quot;));
+</I>&gt;<i> +
+</I>&gt;<i> +
+</I>&gt;<i> +  // is this the same class?
+</I>&gt;<i> +  if(!(m_view.array_flags[0] == 
+</I>&gt;<i> +            (matlab::Matlab_header_traits&lt;sizeof(scalar_type),
+</I>&gt;<i> +                  std::numeric_limits&lt;scalar_type&gt;::is_signed,
+</I>&gt;<i> +                  std::numeric_limits&lt;scalar_type&gt;::is_integer&gt;::class_type)))
+</I>&gt;<i> +    VSIP_IMPL_THROW(std::runtime_error(
+</I>&gt;<i> +      &quot;Trying to read a matrix of a different class&quot;));
+</I>&gt;<i> +
+</I>&gt;<i> +  // do dimensions agree?
+</I>&gt;<i> +  if(v_dim == 1) m_view.dim_header.size -= 4; // special case for vectors
+</I>&gt;<i> +  if(v_dim != (m_view.dim_header.size/4))
+</I>&gt;<i> +    VSIP_IMPL_THROW(std::runtime_error(
+</I>&gt;<i> +      &quot;Trying to read a matrix of different dimensions&quot;));
+</I>&gt;<i> +
+</I>&gt;<i> +  for(vsip::dimension_type i=0;i&lt;v_dim;i++)
+</I>&gt;<i> +    if(mbf.view.size(i) != m_view.dim[i])
+</I>&gt;<i> +      VSIP_IMPL_THROW(std::runtime_error(
+</I>&gt;<i> +        &quot;Matrix dimensions don't agree&quot;));
+</I>&gt;<i> +
+</I>&gt;<i> +  // read array name
+</I>&gt;<i> +  if(m_view.array_name_header.type &amp; 0xffff0000)
+</I>&gt;<i> +  {
+</I>&gt;<i> +    // array name is short
+</I>&gt;<i> +
+</I>&gt;<i> +  }
+</I>&gt;<i> +  else
+</I>&gt;<i> +  {
+</I>&gt;<i> +    int length = m_view.array_name_header.size;
+</I>&gt;<i> +    char c;
+</I>&gt;<i> +    char c_array[128];
+</I>&gt;<i> +    // the name is longer than 4 bytes
+</I>&gt;<i> +    if(length &gt; 128)
+</I>&gt;<i> +      VSIP_IMPL_THROW(std::runtime_error(
+</I>&gt;<i> +        &quot;Name of matrix is too large&quot;));
+</I>&gt;<i> +
+</I>&gt;<i> +    is.read(c_array,length);
+</I>&gt;<i> +    c_array[length] = 0;
+</I>&gt;<i> +    // read padding
+</I>&gt;<i> +    for(int i=0;i&lt;((8-length)&amp;0x7);i++) is.read(&amp;c,1);
+</I>&gt;<i> +  }
+</I>&gt;<i> +
+</I>&gt;<i> +  // read data, we will go in this loop twice if we have complex data
+</I>&gt;<i> +  for (int i=0;i &lt;= vsip::impl::Is_complex&lt;T&gt;::value;i++)
+</I>&gt;<i> +  {
+</I>&gt;<i> +    uint16_t endian = mbf.header.endian;
+</I>&gt;<i> +
+</I>&gt;<i> +    // read data header
+</I>&gt;<i> +    is.read(reinterpret_cast&lt;char*&gt;(&amp;temp_data_element),
+</I>&gt;<i> +            sizeof(temp_data_element));
+</I>&gt;<i> +
+</I>&gt;<i> +    // Because we don't know how the data was stored, we need to instantiate
+</I>&gt;<i> +    // generic_reader which can read a type and cast into a different one
+</I>&gt;<i> +    if(temp_data_element.type == matlab::miINT8) 
+</I>&gt;<i> +    {
+</I>&gt;<i> +      if(i==0)matlab::read&lt;int8_t,r_v&gt;(is,subview::real(mbf.view),endian);
+</I>&gt;<i> +      else    matlab::read&lt;int8_t,i_v&gt;(is,subview::imag(mbf.view),endian);
+</I>&gt;<i> +    }
+</I>&gt;<i> +    else if(temp_data_element.type == matlab::miUINT8) 
+</I>&gt;<i> +    {
+</I>&gt;<i> +      if(i==0)matlab::read&lt;uint8_t,r_v&gt;(is,subview::real(mbf.view),endian);
+</I>&gt;<i> +      else    matlab::read&lt;uint8_t,i_v&gt;(is,subview::imag(mbf.view),endian);
+</I>&gt;<i> +    }
+</I>&gt;<i> +    else if(temp_data_element.type == matlab::miINT16) 
+</I>&gt;<i> +    {
+</I>&gt;<i> +      if(i==0)matlab::read&lt;int16_t,r_v&gt;(is,subview::real(mbf.view),endian);
+</I>&gt;<i> +      else    matlab::read&lt;int16_t,i_v&gt;(is,subview::imag(mbf.view),endian);
+</I>&gt;<i> +    }
+</I>&gt;<i> +    else if(temp_data_element.type == matlab::miUINT16) 
+</I>&gt;<i> +    {
+</I>&gt;<i> +      if(i==0)matlab::read&lt;uint16_t,r_v&gt;(is,subview::real(mbf.view),endian);
+</I>&gt;<i> +      else    matlab::read&lt;uint16_t,i_v&gt;(is,subview::imag(mbf.view),endian);
+</I>&gt;<i> +    }
+</I>&gt;<i> +    else if(temp_data_element.type == matlab::miINT32) 
+</I>&gt;<i> +    {
+</I>&gt;<i> +      if(i==0)matlab::read&lt;int32_t,r_v&gt;(is,subview::real(mbf.view),endian);
+</I>&gt;<i> +      else    matlab::read&lt;int32_t,i_v&gt;(is,subview::imag(mbf.view),endian);
+</I>&gt;<i> +    }
+</I>&gt;<i> +    else if(temp_data_element.type == matlab::miUINT32) 
+</I>&gt;<i> +    {
+</I>&gt;<i> +      if(i==0)matlab::read&lt;uint32_t,r_v&gt;(is,subview::real(mbf.view),endian);
+</I>&gt;<i> +      else    matlab::read&lt;uint32_t,i_v&gt;(is,subview::imag(mbf.view),endian);
+</I>&gt;<i> +    }
+</I>&gt;<i> +    else if(temp_data_element.type == matlab::miSINGLE) 
+</I>&gt;<i> +    {
+</I>&gt;<i> +      if(i==0)matlab::read&lt;float,r_v&gt;(is,subview::real(mbf.view),endian);
+</I>&gt;<i> +      else    matlab::read&lt;float,i_v&gt;(is,subview::imag(mbf.view),endian);
+</I>&gt;<i> +    }
+</I>&gt;<i> +    else
+</I>&gt;<i> +    {
+</I>&gt;<i> +      if(i==0)matlab::read&lt;double,r_v&gt;(is,subview::real(mbf.view),endian);
+</I>&gt;<i> +      else    matlab::read&lt;double,i_v&gt;(is,subview::imag(mbf.view),endian);
+</I>&gt;<i> +    }
+</I>&gt;<i> +
+</I>&gt;<i> +  }
+</I>&gt;<i> +
+</I>&gt;<i> +  return is;
+</I>&gt;<i> +}
+</I>&gt;<i> +
+</I>&gt;<i> +
+</I>&gt;<i> +
+</I>&gt;<i> +} // namespace vsip_csl
+</I>&gt;<i> +
+</I>&gt;<i> +#endif // VSIP_CSL_MATLAB_BIN_FORMATTER_HPP
+</I>&gt;<i> Index: matlab_text_formatter.hpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: matlab_text_formatter.hpp
+</I>&gt;<i> diff -N matlab_text_formatter.hpp
+</I>&gt;<i> --- /dev/null	1 Jan 1970 00:00:00 -0000
+</I>&gt;<i> +++ matlab_text_formatter.hpp	21 Jun 2006 16:05:23 -0000
+</I>&gt;<i> @@ -0,0 +1,91 @@
+</I>&gt;<i> +/* Copyright (c) 2005, 2006 by CodeSourcery.  All rights reserved. */
+</I>&gt;<i> +
+</I>&gt;<i> +/** @file    vsip_csl/matlab_text_formatter.hpp
+</I>&gt;<i> +    @author  Assem Salama
+</I>&gt;<i> +    @date    2006-05-22
+</I>&gt;<i> +    @brief   VSIPL++ CodeSourcery Library: Matlab text formatter
+</I>&gt;<i> +*/
+</I>&gt;<i> +
+</I>&gt;<i> +#ifndef VSIP_CSL_MATLAB_TEXT_FORMATTER_HPP
+</I>&gt;<i> +#define VSIP_CSL_MATLAB_TEXT_FORMATTER_HPP
+</I>&gt;<i> +
+</I>&gt;<i> +#include &lt;string&gt;
+</I>&gt;<i> +#include &lt;vsip/support.hpp&gt;
+</I>&gt;<i> +
+</I>&gt;<i> +namespace vsip_csl
+</I>&gt;<i> +{
+</I>&gt;<i> +
+</I>&gt;<i> +  /// This struct is just used as a wrapper so that we can overload the
+</I>&gt;<i> +  /// &lt;&lt; operator
+</I>&gt;<i> +  template &lt;typename ViewT&gt;
+</I>&gt;<i> +  struct Matlab_text_formatter
+</I>&gt;<i> +  {
+</I>&gt;<i> +    Matlab_text_formatter(ViewT v) : v_(v), view_name_(&quot;a&quot;)  {}
+</I>&gt;<i> +    Matlab_text_formatter(ViewT v,std::string name) :
+</I>&gt;<i> +      v_(v), view_name_(name)  {}
+</I>&gt;<i> +
+</I>&gt;<i> +    ViewT v_;
+</I>&gt;<i> +    std::string view_name_;
+</I>&gt;<i> +  };
+</I>&gt;<i> +
+</I>&gt;<i> +
+</I>&gt;<i> +} // namespace vsip_csl
+</I>&gt;<i> +
+</I>&gt;<i> +
+</I>&gt;<i> +/****************************************************************************
+</I>&gt;<i> + * Definitions
+</I>&gt;<i> + ***************************************************************************/
+</I>&gt;<i> +
+</I>&gt;<i> +namespace vsip_csl
+</I>&gt;<i> +{
+</I>&gt;<i> +
+</I>&gt;<i> +/// Write a matrix to a stream using a Matlab_text_formatter
+</I>&gt;<i> +
+</I>&gt;<i> +template &lt;typename T,
+</I>&gt;<i> +          typename Block0&gt;
+</I>&gt;<i> +inline
+</I>&gt;<i> +std::ostream&amp;
+</I>&gt;<i> +operator&lt;&lt;(
+</I>&gt;<i> +  std::ostream&amp;		                                out,
+</I>&gt;<i> +  Matlab_text_formatter&lt;vsip::Matrix&lt;T,Block0&gt; &gt;        mf)
+</I>&gt;<i> +  VSIP_NOTHROW
+</I>&gt;<i> +
+</I>&gt;<i> +{
+</I>&gt;<i> +  out &lt;&lt; mf.view_name_ &lt;&lt; &quot; = &quot; &lt;&lt; std::endl;
+</I>&gt;<i> +  out &lt;&lt; &quot;[&quot; &lt;&lt; std::endl;
+</I>&gt;<i> +  for(vsip::index_type i=0;i&lt;mf.v_.size(0);i++) {
+</I>&gt;<i> +    out &lt;&lt; &quot;  [ &quot;;
+</I>&gt;<i> +    for(vsip::index_type j=0;j&lt;mf.v_.size(1);j++)
+</I>&gt;<i> +      out &lt;&lt; mf.v_.get(i,j) &lt;&lt; &quot; &quot;;
+</I>&gt;<i> +    out &lt;&lt; &quot;]&quot; &lt;&lt; std::endl;
+</I>&gt;<i> +  }
+</I>&gt;<i> +  out &lt;&lt; &quot;];&quot; &lt;&lt; std::endl;
+</I>&gt;<i> +
+</I>&gt;<i> +  return out;
+</I>&gt;<i> +}
+</I>&gt;<i> +
+</I>&gt;<i> +/// Write a vector to a stream using a Matlab_text_formatter
+</I>&gt;<i> +
+</I>&gt;<i> +template &lt;typename T,
+</I>&gt;<i> +          typename Block0&gt;
+</I>&gt;<i> +inline
+</I>&gt;<i> +std::ostream&amp;
+</I>&gt;<i> +operator&lt;&lt;(
+</I>&gt;<i> +  std::ostream&amp;		                          out,
+</I>&gt;<i> +  Matlab_text_formatter&lt;vsip::Vector&lt;T,Block0&gt; &gt;  mf)
+</I>&gt;<i> +  VSIP_NOTHROW
+</I>&gt;<i> +
+</I>&gt;<i> +{
+</I>&gt;<i> +  out &lt;&lt; mf.view_name_ &lt;&lt; &quot; = &quot; &lt;&lt; std::endl;
+</I>&gt;<i> +  out &lt;&lt; &quot;[ &quot;; 
+</I>&gt;<i> +  for(vsip::index_type i=0;i&lt;mf.v_.size(0);i++) {
+</I>&gt;<i> +    out &lt;&lt; mf.v_.get(i) &lt;&lt; &quot; &quot;;
+</I>&gt;<i> +  }
+</I>&gt;<i> +  out &lt;&lt; &quot;];&quot; &lt;&lt; std::endl;
+</I>&gt;<i> +
+</I>&gt;<i> +  return out;
+</I>&gt;<i> +}
+</I>&gt;<i> +
+</I>&gt;<i> +} // namespace vsip_csl
+</I>&gt;<i> +
+</I>&gt;<i> +#endif // VSIP_CSL_MATLAB_TEXT_FORMATTER_HPP
+</I>&gt;<i> Index: output.hpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: /home/cvs/Repository/vpp/src/vsip_csl/output.hpp,v
+</I>&gt;<i> retrieving revision 1.2
+</I>&gt;<i> diff -u -r1.2 output.hpp
+</I>&gt;<i> --- output.hpp	25 May 2006 19:06:49 -0000	1.2
+</I>&gt;<i> +++ output.hpp	21 Jun 2006 16:05:23 -0000
+</I>&gt;<i> @@ -114,6 +114,6 @@
+</I>&gt;<i>    return out;
+</I>&gt;<i>  }
+</I>&gt;<i>  
+</I>&gt;<i> -} // namespace vsip
+</I>&gt;<i> +} // namespace vsip_csl
+</I>&gt;<i>  
+</I>&gt;<i>  #endif // VSIP_CSL_OUTPUT_HPP
+</I>&gt;<i>   
+</I>
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000535.html">Matlab IO
+</A></li>
+	<LI>Next message: <A HREF="000539.html">Matlab  IO
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#536">[ date ]</a>
+              <a href="thread.html#536">[ thread ]</a>
+              <a href="subject.html#536">[ subject ]</a>
+              <a href="author.html#536">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">More information about the vsipl++
+mailing list</a><br>
+</body></html>

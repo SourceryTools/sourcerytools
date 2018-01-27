@@ -1,0 +1,157 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [vsipl++] [patch] CML backend fir FIR filters
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20%5Bpatch%5D%20CML%20backend%20fir%20FIR%20filters&In-Reply-To=%3C484FC8DA.1020206%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001364.html">
+   <LINK REL="Next"  HREF="001368.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[vsipl++] [patch] CML backend fir FIR filters</H1>
+    <B>Jules Bergmann</B> 
+    <A HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20%5Bpatch%5D%20CML%20backend%20fir%20FIR%20filters&In-Reply-To=%3C484FC8DA.1020206%40codesourcery.com%3E"
+       TITLE="[vsipl++] [patch] CML backend fir FIR filters">jules at codesourcery.com
+       </A><BR>
+    <I>Wed Jun 11 12:45:14 UTC 2008</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001364.html">[patch] CML backend fir FIR filters
+</A></li>
+        <LI>Next message: <A HREF="001368.html">[vsipl++] [patch] CML backend fir FIR filters
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1366">[ date ]</a>
+              <a href="thread.html#1366">[ thread ]</a>
+              <a href="subject.html#1366">[ subject ]</a>
+              <a href="author.html#1366">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Don McCoy wrote:
+&gt;<i> This patch adds support for real, single-precision, floating point FIR
+</I>&gt;<i> filters using CML. 
+</I>&gt;<i> 
+</I>&gt;<i> There is some overlap with another patch of mine (06/07: [patch] Fix for
+</I>&gt;<i> Fir destructor not getting called) as well as one of Stefan's (06/09:
+</I>&gt;<i> patch: Fix various FIR backends to support negative strides), but it's
+</I>&gt;<i> minimal as most of my changes are in the file opt/cbe/cml/fir.hpp.  I
+</I>&gt;<i> will merge before committing, once those patches are in.
+</I>
+Don,
+
+This looks good, along with the reference counting and stride fixes.
+
+Please apply.
+
+				thanks,
+				-- Jules
+
+&gt;<i> +  Fir_impl(Fir_impl const &amp;fir)
+</I>&gt;<i> +    : base(fir),
+</I>&gt;<i> +      fir_obj_ptr_(NULL),
+</I>&gt;<i> +      filter_state_(fir.filter_state_)
+</I>&gt;<i> +  {
+</I>&gt;<i> +    fir_create(
+</I>&gt;<i> +      &amp;fir_obj_ptr_,
+</I>&gt;<i> +      fir.fir_obj_ptr_-&gt;K,
+</I>
+CML objects are intended to be opaque.
+
+Let's keep this for now, but create an issue (#175) to add a new CML
+attribute function that returns a pointer to the kernel coefficients.
+
+	float*
+	cml_fir_attr_kernel_f(
+	   cml_fir_f* obj);
+
+
+&gt;<i> +      1, // kernel stride
+</I>&gt;<i> +      this-&gt;decimation(),
+</I>&gt;<i> +      this-&gt;filter_state_,
+</I>&gt;<i> +      this-&gt;kernel_size(),
+</I>&gt;<i> +      this-&gt;input_size());
+</I>&gt;<i> +  }
+</I>
+
+
+&gt;<i> +template &lt;typename T, symmetry_type S, obj_state C&gt; 
+</I>&gt;<i> +struct Evaluator&lt;Fir_tag, Cml_tag,
+</I>&gt;<i> +                 Ref_counted_ptr&lt;Fir_backend&lt;T, S, C&gt; &gt;
+</I>&gt;<i> +                 (aligned_array&lt;T&gt;, 
+</I>&gt;<i> +                  length_type, length_type, length_type,
+</I>&gt;<i> +                  unsigned, alg_hint_type)&gt;
+</I>&gt;<i> +{
+</I>&gt;<i> +  static bool const ct_valid = // false;
+</I>
+Some left-over debug code         ^^^^^^^^^
+
+&gt;<i> +    Type_equal&lt;T, float&gt;::value;
+</I>&gt;<i> +
+</I>&gt;<i> +  typedef Ref_counted_ptr&lt;Fir_backend&lt;T, S, C&gt; &gt; return_type;
+</I>&gt;<i> +  // rt_valid takes the first argument by reference to avoid taking
+</I>&gt;<i> +  // ownership.
+</I>&gt;<i> +  static bool rt_valid(aligned_array&lt;T&gt; const &amp;, length_type k,
+</I>&gt;<i> +                       length_type i, length_type d,
+</I>&gt;<i> +                       unsigned, alg_hint_type)
+</I>&gt;<i> +  {
+</I>&gt;<i> +    length_type o = k * (1 + (S != nonsym)) - (S == sym_even_len_odd) - 1;
+</I>&gt;<i> +    assert(i &gt; 0); // input size
+</I>&gt;<i> +    assert(d &gt; 0); // decimation
+</I>&gt;<i> +    assert(o + 1 &gt; d); // M &gt;= decimation
+</I>&gt;<i> +    assert(i &gt;= o);    // input_size &gt;= M 
+</I>&gt;<i> +
+</I>&gt;<i> +    length_type output_size = (i + d - 1) / d;
+</I>&gt;<i> +    return i == output_size * d;
+</I>
+What is rt_valid checking exactly?
+
+I think I see.  Does CML FIR not work on fixed size inputs if i % d !=
+0?  Argh!  That's a mistake on my part with the API design.  I wonder
+how often such cases happen in practice.
+
+Regardless, can you add a comment to that effect?
+
+&quot;CML FIR objects have fixed output size, whereas VSIPL++ FIR objects
+have fixed input size.  If input size is not a multiple of the
+decimation, output size will vary from frame to frame.&quot;
+
+
+&gt;<i> +  }
+</I>
+-- 
+Jules Bergmann
+CodeSourcery
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">jules at codesourcery.com</A>
+(650) 331-3385 x705
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001364.html">[patch] CML backend fir FIR filters
+</A></li>
+	<LI>Next message: <A HREF="001368.html">[vsipl++] [patch] CML backend fir FIR filters
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1366">[ date ]</a>
+              <a href="thread.html#1366">[ thread ]</a>
+              <a href="subject.html#1366">[ subject ]</a>
+              <a href="author.html#1366">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">More information about the vsipl++
+mailing list</a><br>
+</body></html>

@@ -1,0 +1,709 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> PATCH: Fix TimeoutRedirectedExecutable hang
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:qmtest%40codesourcery.com?Subject=Re%3A%20PATCH%3A%20Fix%20TimeoutRedirectedExecutable%20hang&In-Reply-To=%3C200304172250.h3HMoqhX005249%40minax.codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000309.html">
+   <LINK REL="Next"  HREF="000311.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>PATCH: Fix TimeoutRedirectedExecutable hang</H1>
+    <B>Mark Mitchell</B> 
+    <A HREF="mailto:qmtest%40codesourcery.com?Subject=Re%3A%20PATCH%3A%20Fix%20TimeoutRedirectedExecutable%20hang&In-Reply-To=%3C200304172250.h3HMoqhX005249%40minax.codesourcery.com%3E"
+       TITLE="PATCH: Fix TimeoutRedirectedExecutable hang">mark at codesourcery.com
+       </A><BR>
+    <I>Thu Apr 17 22:50:52 UTC 2003</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000309.html">Made warning filtering more fine grained
+</A></li>
+        <LI>Next message: <A HREF="000311.html">Proposal: modules reload
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#310">[ date ]</a>
+              <a href="thread.html#310">[ thread ]</a>
+              <a href="subject.html#310">[ subject ]</a>
+              <a href="author.html#310">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>
+Last nights' Starbucks hacking:
+
+There was a flaw in the logic for the new combo timeout/redirection
+Executable class that could cause things to wait for the timeout to
+expire, even when the primary child process was done executing.
+
+Fixed with this patch, which also contains some documentation
+improvements.
+
+--
+Mark Mitchell
+CodeSourcery, LLC
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">mark at codesourcery.com</A>
+
+2003-04-17  Mark Mitchell  &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">mark at codesourcery.com</A>&gt;
+
+	* qm/executable.py (Executable.Spawn): Close the write end of the
+	exception_pipe here.  Call _HandleChild.
+	(Executable.Run): Do not close the write end of the
+	exception_pipe.
+	(Executable._InitializeChild): Fix thinko.
+	(Executable._HandleChild): New method.
+	(RedirectedExecutable._HandleChild): New method.
+	(RedirectedExecutable._DoParent): Do not close pipe ends here.
+	(TimeoutExecutable._DoParent): Rename to ...
+	(TimeoutExecutable._HandleChild): ... this.
+	(TimeoutExecutable.Run): Robustify.
+	(TimeoutRedirectedExecutable._DoParent): Remove.
+	(TimeoutRedirectedExecutable._HandleChild): New method.
+
+	* qm/test/database.py (TestDescriptor.__init__): Correct error in
+	doc-string.
+	* qm/test/resource.py (Resource.SetUp): Improve doc-string.
+	* qm/test/target.py (Target._SetUpResource): Fix typo in comment.
+	* qm/test/doc/reference.xml: Improve target documentation.
+
+Index: qm/executable.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/executable.py,v
+retrieving revision 1.9
+diff -c -5 -p -r1.9 executable.py
+*** qm/executable.py	13 Apr 2003 17:22:25 -0000	1.9
+--- qm/executable.py	17 Apr 2003 22:42:34 -0000
+***************
+*** 5,15 ****
+  # Date:   11/14/2002
+  #
+  # Contents:
+  #   Executable, RedirectedExecutable
+  #
+! # Copyright (c) 2002 by CodeSourcery, LLC.  All rights reserved. 
+  #
+  ########################################################################
+  
+  ########################################################################
+  # Imports
+--- 5,15 ----
+  # Date:   11/14/2002
+  #
+  # Contents:
+  #   Executable, RedirectedExecutable
+  #
+! # Copyright (c) 2002, 2003 by CodeSourcery, LLC.  All rights reserved. 
+  #
+  ########################################################################
+  
+  ########################################################################
+  # Imports
+*************** class Executable(object):
+*** 92,108 ****
+          'path' -- If not 'None', the path to the program to run.  If
+          'None', 'arguments[0]' is used.
+  
+          'exception_pipe' -- If not 'None', a pipe that the child can
+          use to communicate an exception to the parent.  This pipe is
+!         only used on UNIX systems.
+  
+          returns -- The PID of the child.
+  
+          Before creating the child, the parent will call
+          'self._InitializeParent'.  On UNIX systems, the child will
+          call 'self._InitializeChild' after 'fork', but before 'exec'.
+  
+          If the path to the program is absolute, or contains no
+          separator characters, it is not modified.  Otherwise the path
+          to the program is relative, it is transformed into an absolute
+          path using 'dir' as the base, or the current directory if
+--- 92,115 ----
+          'path' -- If not 'None', the path to the program to run.  If
+          'None', 'arguments[0]' is used.
+  
+          'exception_pipe' -- If not 'None', a pipe that the child can
+          use to communicate an exception to the parent.  This pipe is
+!         only used on UNIX systems.  The write end of the pipe will be
+!         closed by this function.
+  
+          returns -- The PID of the child.
+  
+          Before creating the child, the parent will call
+          'self._InitializeParent'.  On UNIX systems, the child will
+          call 'self._InitializeChild' after 'fork', but before 'exec'.
++         On non-UNIX systems, 'self._InitializeChild' will never be
++         called.
++ 
++         After creating the child, 'self._HandleChild' is called in the
++         parent.  This hook should be used to handle tasks that must be
++         performed after the child is running.
+  
+          If the path to the program is absolute, or contains no
+          separator characters, it is not modified.  Otherwise the path
+          to the program is relative, it is transformed into an absolute
+          path using 'dir' as the base, or the current directory if
+*************** class Executable(object):
+*** 112,121 ****
+--- 119,129 ----
+          # are maintained so as to support multiple inheritance; in
+          # that situation these functions in this class may be called
+          # more than once.
+          self.__has_initialize_child_run = 0
+          self.__has_initialize_parent_run = 0
++         self.__has_handle_child_run = 1
+          self.__has_do_parent_run = 0
+          
+          # Remember the directory in which the execution will occur.
+          self.__dir = dir
+  
+*************** class Executable(object):
+*** 191,200 ****
+--- 199,216 ----
+                      os._exit(1)
+  
+                  # This code should never be reached.
+                  assert None
+  
++         # Nothing will be written to the exception pipe in the parent.
++         if exception_pipe:
++             os.close(exception_pipe[1])
++             
++         # Let the parent take any actions required after creating the
++         # child.
++         self._HandleChild()
++         
+          return self.__child
+  
+  
+      def Run(self, arguments=[], environment = None, dir = None,
+              path = None):
+*************** class Executable(object):
+*** 236,253 ****
+              # descriptor is not passed on to the child.
+              fd = exception_pipe[1]
+              fcntl.fcntl(fd, F_SETFD, fcntl.fcntl(fd, F_GETFD) | FD_CLOEXEC)
+          else:
+              exception_pipe = None
+!             
+          # Start the program.
+          child = self.Spawn(arguments, environment, dir, path, exception_pipe)
+  
+-         # Close the write end of the exception pipe.
+-         if sys.platform != &quot;win32&quot;:
+-             os.close(exception_pipe[1])
+-             
+          # Give the parent a chance to do whatever it needs to do.
+          self._DoParent()
+          
+          # Wait for the child to exit.
+          if sys.platform == &quot;win32&quot;:
+--- 252,265 ----
+              # descriptor is not passed on to the child.
+              fd = exception_pipe[1]
+              fcntl.fcntl(fd, F_SETFD, fcntl.fcntl(fd, F_GETFD) | FD_CLOEXEC)
+          else:
+              exception_pipe = None
+! 
+          # Start the program.
+          child = self.Spawn(arguments, environment, dir, path, exception_pipe)
+  
+          # Give the parent a chance to do whatever it needs to do.
+          self._DoParent()
+          
+          # Wait for the child to exit.
+          if sys.platform == &quot;win32&quot;:
+*************** class Executable(object):
+*** 277,307 ****
+  
+          returns -- Under Windows, a 'PySTARTUPINFO' structure
+          explaining how the child should be initialized.  On other
+          systems, the return value is ignored.&quot;&quot;&quot;
+  
+!         self.__has_initialize_parent_run = 1
+  
+-         if sys.platform == &quot;win32&quot;:
+-             return win32process.STARTUPINFO()
+  
+  
+      def _InitializeChild(self):
+          &quot;&quot;&quot;Initialize the child process.
+  
+          After 'fork' is called this method is invoked to give the
+          child a chance to initialize itself.  '_InitializeParent' will
+          already have been called in the parent process.
+  
+          This method is not used under Windows.&quot;&quot;&quot;
+  
+          assert sys.platform != &quot;win32&quot;
+!         
+!         self.__has_initialize_child_run = 1
+!         
+!         if self.__dir:
+!             os.chdir(self.__dir)
+  
+  
+      def _DoParent(self):
+          &quot;&quot;&quot;Perform actions required in the parent after 'Spawn'.&quot;&quot;&quot;
+  
+--- 289,331 ----
+  
+          returns -- Under Windows, a 'PySTARTUPINFO' structure
+          explaining how the child should be initialized.  On other
+          systems, the return value is ignored.&quot;&quot;&quot;
+  
+!         if not self.__has_initialize_parent_run:
+!             self.__has_initialize_parent_run = 1
+!             if sys.platform == &quot;win32&quot;:
+!                 return win32process.STARTUPINFO()
+  
+  
++     def _HandleChild(self):
++         &quot;&quot;&quot;Run in the parent process after the child has been created.
++ 
++         The child process has been spawned; its PID is avialable via
++         '_GetChildPID'.  Take any actions in the parent that are
++         required now that the child exists.
++ 
++         Derived class versions must call this method.&quot;&quot;&quot;
+  
++         self.__has_handle_child_run = 1
++     
++         
+      def _InitializeChild(self):
+          &quot;&quot;&quot;Initialize the child process.
+  
+          After 'fork' is called this method is invoked to give the
+          child a chance to initialize itself.  '_InitializeParent' will
+          already have been called in the parent process.
+  
+          This method is not used under Windows.&quot;&quot;&quot;
+  
+          assert sys.platform != &quot;win32&quot;
+! 
+!         if not self.__has_initialize_child_run:
+!             self.__has_initialize_child_run = 1
+!             if self.__dir:
+!                 os.chdir(self.__dir)
+  
+  
+      def _DoParent(self):
+          &quot;&quot;&quot;Perform actions required in the parent after 'Spawn'.&quot;&quot;&quot;
+  
+*************** class RedirectedExecutable(Executable):
+*** 443,462 ****
+              os.dup2(self._stdout_pipe[1], 2)
+          else:
+              os.close(2)
+  
+  
+!     def _DoParent(self):
+  
+          # Close the pipe ends that we do not need.
+          if self._stdin_pipe:
+              self._ClosePipeEnd(self._stdin_pipe[0])
+          if self._stdout_pipe:
+              self._ClosePipeEnd(self._stdout_pipe[1])
+          if self._stderr_pipe:
+              self._ClosePipeEnd(self._stderr_pipe[1])
+  
+          # Process the various redirected streams until none of the
+          # streams remain open.
+          if sys.platform != &quot;win32&quot;:
+              while 1:
+                  # Prepare the lists of interesting descriptors.
+--- 467,493 ----
+              os.dup2(self._stdout_pipe[1], 2)
+          else:
+              os.close(2)
+  
+  
+!     def _HandleChild(self):
+  
++         Executable._HandleChild(self)
++         
+          # Close the pipe ends that we do not need.
+          if self._stdin_pipe:
+              self._ClosePipeEnd(self._stdin_pipe[0])
+          if self._stdout_pipe:
+              self._ClosePipeEnd(self._stdout_pipe[1])
+          if self._stderr_pipe:
+              self._ClosePipeEnd(self._stderr_pipe[1])
+  
++         
++     def _DoParent(self):
++ 
++         Executable._DoParent(self)
++ 
+          # Process the various redirected streams until none of the
+          # streams remain open.
+          if sys.platform != &quot;win32&quot;:
+              while 1:
+                  # Prepare the lists of interesting descriptors.
+*************** class TimeoutExecutable(Executable):
+*** 717,729 ****
+          if self.__timeout &gt;= 0:
+              os.setpgid(0, 0)
+          
+          return Executable._InitializeChild(self)
+  
+-     
+-     def _DoParent(self):
+  
+          if self.__timeout &gt;= 0:
+              # Put the child into its own process group.  This step is
+              # performed in both the parent and the child; therefore both
+              # processes can safely assume that the creation of the process
+              # group has taken place.
+--- 748,762 ----
+          if self.__timeout &gt;= 0:
+              os.setpgid(0, 0)
+          
+          return Executable._InitializeChild(self)
+  
+  
++     def _HandleChild(self):
++ 
++         Executable._HandleChild(self)
++         
+          if self.__timeout &gt;= 0:
+              # Put the child into its own process group.  This step is
+              # performed in both the parent and the child; therefore both
+              # processes can safely assume that the creation of the process
+              # group has taken place.
+*************** class TimeoutExecutable(Executable):
+*** 767,789 ****
+                  finally:
+                      # Exit.  This code is in a finally clause so that
+                      # we are guaranteed to get here no matter what.
+                      os._exit(0)
+  
+-         return Executable._DoParent(self)
+- 
+  
+      def Run(self, arguments=[], environment = None, dir = None,
+              path = None):
+  
+          # Run the process.
+!         status = Executable.Run(self, arguments, environment, dir, path)
+!         # Clean up the monitoring program; it is no longer needed.
+!         if self.__timeout &gt;= 0:
+!             os.kill(self.__monitor_pid, signal.SIGKILL)
+!             os.waitpid(self.__monitor_pid, 0)
+! 
+          return status
+  
+  
+  
+  class TimeoutRedirectedExecutable(TimeoutExecutable,
+--- 800,822 ----
+                  finally:
+                      # Exit.  This code is in a finally clause so that
+                      # we are guaranteed to get here no matter what.
+                      os._exit(0)
+  
+  
+      def Run(self, arguments=[], environment = None, dir = None,
+              path = None):
+  
+          # Run the process.
+!         try:
+!             status = Executable.Run(self, arguments, environment, dir, path)
+!         finally:
+!             # Clean up the monitoring program; it is no longer needed.
+!             if self.__timeout &gt;= 0:
+!                 os.kill(self.__monitor_pid, signal.SIGKILL)
+!                 os.waitpid(self.__monitor_pid, 0)
+!                 
+          return status
+  
+  
+  
+  class TimeoutRedirectedExecutable(TimeoutExecutable,
+*************** class TimeoutRedirectedExecutable(Timeou
+*** 800,808 ****
+  
+          TimeoutExecutable._InitializeParent(self)
+          RedirectedExecutable._InitializeParent(self)
+  
+  
+!     def _DoParent(self):
+  
+!         TimeoutExecutable._DoParent(self)
+!         RedirectedExecutable._DoParent(self)
+--- 833,847 ----
+  
+          TimeoutExecutable._InitializeParent(self)
+          RedirectedExecutable._InitializeParent(self)
+  
+  
+!     def _HandleChild(self):
+  
+!         # Order is important.  The pipes created by
+!         # 'RedirectedExecutable' must be closed before the monitor
+!         # process (created by 'TimeoutExecutable') is created.
+!         # Otherwise, if the child process dies, 'select' in the parent
+!         # will not return as the monitor process still has the file
+!         # descriptor open.
+!         RedirectedExecutable._HandleChild(self)
+!         TimeoutExecutable._HandleChild(self)
+Index: qm/test/database.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/database.py,v
+retrieving revision 1.34
+diff -c -5 -p -r1.34 database.py
+*** qm/test/database.py	14 Apr 2003 06:06:40 -0000	1.34
+--- qm/test/database.py	17 Apr 2003 22:42:34 -0000
+*************** class TestDescriptor(ItemDescriptor):
+*** 187,200 ****
+          'test_id' -- The test ID.
+  
+          'test_class_name' -- The name of the test class of which this is
+          an instance.
+  
+!         'arguments' -- This test's arguments to the test class.
+! 
+!         'resources' -- A sequence of IDs of resources to run before and
+!         after the test is run.&quot;&quot;&quot;
+  
+          # Initialize the base class.
+          ItemDescriptor.__init__(self, database,
+                                  test_id, test_class_name, arguments)
+  
+--- 187,197 ----
+          'test_id' -- The test ID.
+  
+          'test_class_name' -- The name of the test class of which this is
+          an instance.
+  
+!         'arguments' -- This test's arguments to the test class.&quot;&quot;&quot;
+  
+          # Initialize the base class.
+          ItemDescriptor.__init__(self, database,
+                                  test_id, test_class_name, arguments)
+  
+Index: qm/test/resource.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/resource.py,v
+retrieving revision 1.9
+diff -c -5 -p -r1.9 resource.py
+*** qm/test/resource.py	17 Oct 2002 20:38:15 -0000	1.9
+--- qm/test/resource.py	17 Apr 2003 22:42:34 -0000
+***************
+*** 5,15 ****
+  # Date:   2001-10-10
+  #
+  # Contents:
+  #   QMTest Resource class.
+  #
+! # Copyright (c) 2001, 2002 by CodeSourcery, LLC.  All rights reserved. 
+  #
+  # For license terms see the file COPYING.
+  #
+  ########################################################################
+  
+--- 5,15 ----
+  # Date:   2001-10-10
+  #
+  # Contents:
+  #   QMTest Resource class.
+  #
+! # Copyright (c) 2001, 2002, 2003 by CodeSourcery, LLC.  All rights reserved. 
+  #
+  # For license terms see the file COPYING.
+  #
+  ########################################################################
+  
+*************** class Resource(qm.test.runnable.Runnable
+*** 74,84 ****
+      
+      def SetUp(self, context, result):
+          &quot;&quot;&quot;Set up the resource.
+  
+          'context' -- A 'Context' giving run-time parameters to the
+!         test.
+  
+          'result' -- A 'Result' object.  The outcome will be
+          'Result.PASS' when this method is called.  The 'result' may be
+          modified by this method to indicate outcomes other than
+          'Result.PASS' or to add annotations.
+--- 74,86 ----
+      
+      def SetUp(self, context, result):
+          &quot;&quot;&quot;Set up the resource.
+  
+          'context' -- A 'Context' giving run-time parameters to the
+!         resource.  The resource may place additional variables into
+!         the 'context'; these variables will be visible to tests that
+!         depend on the resource.
+  
+          'result' -- A 'Result' object.  The outcome will be
+          'Result.PASS' when this method is called.  The 'result' may be
+          modified by this method to indicate outcomes other than
+          'Result.PASS' or to add annotations.
+*************** class Resource(qm.test.runnable.Runnable
+*** 98,105 ****
+          modified by this method to indicate outcomes other than
+          'Result.PASS' or to add annotations.
+  
+          This method should not return a value.
+  
+!         Derived classes must override this method.&quot;&quot;&quot;
+  
+!         raise NotImplementedError
+--- 100,107 ----
+          modified by this method to indicate outcomes other than
+          'Result.PASS' or to add annotations.
+  
+          This method should not return a value.
+  
+!         Derived classes may override this method.&quot;&quot;&quot;
+  
+!         pass
+Index: qm/test/target.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/target.py,v
+retrieving revision 1.17
+diff -c -5 -p -r1.17 target.py
+*** qm/test/target.py	6 Mar 2003 20:54:44 -0000	1.17
+--- qm/test/target.py	17 Apr 2003 22:42:35 -0000
+*************** class Target(qm.extension.Extension):
+*** 338,348 ****
+              resource_desc = self.GetDatabase().GetResource(resource_name)
+              # Set up the resources on which this resource depends.
+              self.__SetUpResources(resource_desc, context)
+              # Set up the resource itself.
+              resource_desc.SetUp(context, result)
+!             # Obtain the resource with the try-block so that if it
+              # cannot be obtained the exception is handled below.
+              resource = resource_desc.GetItem()
+          except self.__ResourceSetUpException, e:
+              result.Fail(qm.message(&quot;failed resource&quot;),
+                          { result.RESOURCE : e.resource })
+--- 338,348 ----
+              resource_desc = self.GetDatabase().GetResource(resource_name)
+              # Set up the resources on which this resource depends.
+              self.__SetUpResources(resource_desc, context)
+              # Set up the resource itself.
+              resource_desc.SetUp(context, result)
+!             # Obtain the resource within the try-block so that if it
+              # cannot be obtained the exception is handled below.
+              resource = resource_desc.GetItem()
+          except self.__ResourceSetUpException, e:
+              result.Fail(qm.message(&quot;failed resource&quot;),
+                          { result.RESOURCE : e.resource })
+Index: qm/test/doc/reference.xml
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/doc/reference.xml,v
+retrieving revision 1.19
+diff -c -5 -p -r1.19 reference.xml
+*** qm/test/doc/reference.xml	14 Apr 2003 06:06:40 -0000	1.19
+--- qm/test/doc/reference.xml	17 Apr 2003 22:42:35 -0000
+***************
+*** 127,146 ****
+     needed.  The arguments to the resource class are what make two
+     instances of the same resource class different from each other.
+     For example, in the case of a resource that sets up a database, the
+     records to place in the database might be given as arguments.
+     Every resource has a name, using the same format that is used for
+!    tests.  It is possible to have a test and resource with the same
+!    name; the test and resource namespaces are distinct.&lt;/para&gt;
+  
+     &lt;para&gt;Under some circumstances (such as running tests on multiple
+     machines at once), &qmtest; may create more than one instance of
+     the same resource.  Therefore, you should never depend on there
+     being only one instance of a resource.  In addition, if you have
+     asked &qmtest; to run tests concurrently, two tests may access the
+!    same resource at the same time.&lt;/para&gt;
+   
+     &lt;para&gt;Setting up or cleaning up a resource produces a result, just
+     like those produced for tests.  &qmtest; will display these results
+     in its summary output and record them in the results file.&lt;/para&gt;
+  
+    &lt;/section&gt; &lt;!-- sec-resources --&gt;
+--- 127,155 ----
+     needed.  The arguments to the resource class are what make two
+     instances of the same resource class different from each other.
+     For example, in the case of a resource that sets up a database, the
+     records to place in the database might be given as arguments.
+     Every resource has a name, using the same format that is used for
+!    tests.&lt;/para&gt;
+  
+     &lt;para&gt;Under some circumstances (such as running tests on multiple
+     machines at once), &qmtest; may create more than one instance of
+     the same resource.  Therefore, you should never depend on there
+     being only one instance of a resource.  In addition, if you have
+     asked &qmtest; to run tests concurrently, two tests may access the
+!    same resource at the same time.  You can, however, be assured that
+!    there will be only one instance of a particular resource on a
+!    particular target at any one time.&lt;/para&gt;
+   
++    &lt;para&gt;Tests have limited access to the resources on which they
++    depend.  A resource may place additional information into the
++    context (&lt;xref linnkend=&quot;sec-context&quot;/&gt;) that is visible to the
++    test.  However, the actual resource object itself is not available
++    to tests.  (The reason for this limitiation is that for a target
++    consisting of multiple processes, the resource object may not be
++    located in the process as the test that depends upon it.)&lt;/para&gt;
++ 
+     &lt;para&gt;Setting up or cleaning up a resource produces a result, just
+     like those produced for tests.  &qmtest; will display these results
+     in its summary output and record them in the results file.&lt;/para&gt;
+  
+    &lt;/section&gt; &lt;!-- sec-resources --&gt;
+***************
+*** 162,173 ****
+     is a set of key/value pairs.  The keys are always strings.  The
+     values of all context properties provided by the user are strings.
+     In general, all tests in a given use of &qmtest; will have the same
+     context.  However, when a resource is set up, it may place
+     additional information in the context of those tests that depend
+!    upon it; the tests can use this information to locate the resource.
+!    The values inserted by the resource may have any types.&lt;/para&gt;
+  
+     &lt;para&gt;All context properties whose names begin with
+     &quot;&lt;literal&gt;qmtest.&lt;/literal&gt;&quot; are reserved for use by
+     &qmtest;.  The values inserted by &qmtest; may have any type.  Test
+     and resource classes should not depend on the presence or absence
+--- 171,182 ----
+     is a set of key/value pairs.  The keys are always strings.  The
+     values of all context properties provided by the user are strings.
+     In general, all tests in a given use of &qmtest; will have the same
+     context.  However, when a resource is set up, it may place
+     additional information in the context of those tests that depend
+!    upon it.  The values inserted by the resource may have any type, so
+!    long as they can be &quot;pickled&quot; by Python.&lt;/para&gt;
+  
+     &lt;para&gt;All context properties whose names begin with
+     &quot;&lt;literal&gt;qmtest.&lt;/literal&gt;&quot; are reserved for use by
+     &qmtest;.  The values inserted by &qmtest; may have any type.  Test
+     and resource classes should not depend on the presence or absence
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000309.html">Made warning filtering more fine grained
+</A></li>
+	<LI>Next message: <A HREF="000311.html">Proposal: modules reload
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#310">[ date ]</a>
+              <a href="thread.html#310">[ thread ]</a>
+              <a href="subject.html#310">[ subject ]</a>
+              <a href="author.html#310">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">More information about the qmtest
+mailing list</a><br>
+</body></html>

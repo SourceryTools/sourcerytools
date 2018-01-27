@@ -1,0 +1,540 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [vsipl++] lu solver
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20lu%20solver&In-Reply-To=%3C453F7C18.9050607%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000756.html">
+   <LINK REL="Next"  HREF="000758.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[vsipl++] lu solver</H1>
+    <B>Stefan Seefeld</B> 
+    <A HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20lu%20solver&In-Reply-To=%3C453F7C18.9050607%40codesourcery.com%3E"
+       TITLE="[vsipl++] lu solver">stefan at codesourcery.com
+       </A><BR>
+    <I>Wed Oct 25 15:00:40 UTC 2006</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000756.html">lu solver
+</A></li>
+        <LI>Next message: <A HREF="000758.html">[vsipl++] lu solver
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#757">[ date ]</a>
+              <a href="thread.html#757">[ thread ]</a>
+              <a href="subject.html#757">[ subject ]</a>
+              <a href="author.html#757">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Assem,
+
+it would be best to generate patches from the toplevel source tree, as 
+opposed some subdirectory
+therein. That makes it clear which files are being talked about. (This 
+gets particularly confusing if
+the @file key on top of a given file is wrong, as below. :-) )
+
+
+Assem Salama wrote:
+
+&gt;<i> Everone,
+</I>&gt;<i>  This is the LU solver using CVSIP. This is still using Cvsip_matrix 
+</I>&gt;<i> and Cvsip_lu.
+</I>&gt;<i>
+</I>&gt;<i> Thanks,
+</I>&gt;<i> Assem
+</I>&gt;<i>
+</I>&gt;<i>------------------------------------------------------------------------
+</I>&gt;<i>
+</I>&gt;<i>Index: solver_lu.hpp
+</I>&gt;<i>===================================================================
+</I>&gt;<i>--- solver_lu.hpp	(revision 151855)
+</I>&gt;<i>+++ solver_lu.hpp	(working copy)
+</I>&gt;<i>@@ -3,12 +3,12 @@
+</I>&gt;<i> /** @file    vsip/impl/lapack/solver_lu.hpp
+</I>&gt;<i>  
+</I>&gt;<i>
+</I>I suspect that should be vsip/core/cvsip/solver_lu.hpp, right ?
+
+&gt;<i>     @author  Assem Salama
+</I>&gt;<i>     @date    2006-04-13
+</I>&gt;<i>  
+</I>&gt;<i>
+</I>
+Some nit-picking: If we insist on having a @date key in the files, they 
+should contain some real value, not just
+a copy of a file this originally was a copy of. (Note that I'm indeed 
+not sure about the need for @date, nor
+most of the other keys. But that's for another discussion...)
+
+&gt;<i>-    @brief   VSIPL++ Library: LU linear system solver using lapack.
+</I>&gt;<i>+    @brief   VSIPL++ Library: LU linear system solver using cvsip.
+</I>&gt;<i> 
+</I>&gt;<i> */
+</I>&gt;<i> 
+</I>&gt;<i>-#ifndef VSIP_REF_IMPL_SOLVER_LU_HPP
+</I>&gt;<i>-#define VSIP_REF_IMPL_SOLVER_LU_HPP
+</I>&gt;<i>+#ifndef VSIP_CORE_CVSIP_SOLVER_LU_HPP
+</I>&gt;<i>+#define VSIP_CORE_CVSIP_SOLVER_LU_HPP
+</I>&gt;<i> 
+</I>&gt;<i> /***********************************************************************
+</I>&gt;<i>   Included Files
+</I>&gt;<i>@@ -25,6 +25,7 @@
+</I>&gt;<i> #include &lt;vsip/core/cvsip/cvsip_matrix.hpp&gt;
+</I>&gt;<i> #include &lt;vsip/core/cvsip/cvsip_lu.hpp&gt;
+</I>&gt;<i> 
+</I>&gt;<i>+#include &lt;vsip_csl/output.hpp&gt;
+</I>&gt;<i>  
+</I>&gt;<i>
+</I>
+This file shouldn't depend on vsip_csl code.
+
+&gt;<i> 
+</I>&gt;<i> 
+</I>&gt;<i> /***********************************************************************
+</I>&gt;<i>@@ -78,7 +79,6 @@
+</I>&gt;<i>   typedef std::vector&lt;int, Aligned_allocator&lt;int&gt; &gt; vector_type;
+</I>&gt;<i> 
+</I>&gt;<i>   length_type  length_;			// Order of A.
+</I>&gt;<i>-  vector_type  ipiv_;			// Additional info on Q
+</I>&gt;<i> 
+</I>&gt;<i>   Matrix&lt;T, data_block_type&gt; data_;	// Factorized Cholesky matrix (A)
+</I>&gt;<i>   cvsip::Cvsip_matrix&lt;T&gt;     cvsip_data_;
+</I>&gt;<i>@@ -101,9 +101,8 @@
+</I>&gt;<i>   )
+</I>&gt;<i> VSIP_THROW((std::bad_alloc))
+</I>&gt;<i>   : length_      (length),
+</I>&gt;<i>-    ipiv_        (length_),
+</I>&gt;<i>     data_        (length_, length_),
+</I>&gt;<i>-    cvsip_data_  (data_.block().impl_data(), length_, length_),
+</I>&gt;<i>+    cvsip_data_  (data_.block().impl_data(), length_, length_, col2_type()),
+</I>&gt;<i>     cvsip_lud_   (length_)
+</I>&gt;<i> {
+</I>&gt;<i>   assert(length_ &gt; 0);
+</I>&gt;<i>@@ -115,14 +114,11 @@
+</I>&gt;<i> Lud_impl&lt;T, Cvsip_tag&gt;::Lud_impl(Lud_impl const&amp; lu)
+</I>&gt;<i> VSIP_THROW((std::bad_alloc))
+</I>&gt;<i>   : length_      (lu.length_),
+</I>&gt;<i>-    ipiv_        (length_),
+</I>&gt;<i>     data_        (length_, length_),
+</I>&gt;<i>     cvsip_data_  (data_.block().impl_data(), length_, length_),
+</I>&gt;<i>     cvsip_lud_   (length_)
+</I>&gt;<i> {
+</I>&gt;<i>   data_ = lu.data_;
+</I>&gt;<i>-  for (index_type i=0; i&lt;length_; ++i)
+</I>&gt;<i>-    ipiv_[i] = lu.ipiv_[i];
+</I>&gt;<i> }
+</I>&gt;<i> 
+</I>&gt;<i> 
+</I>&gt;<i>@@ -143,6 +139,7 @@
+</I>&gt;<i> /// FLOPS:
+</I>&gt;<i> ///   real   : UPDATE
+</I>&gt;<i> ///   complex: UPDATE
+</I>&gt;<i>+//
+</I>&gt;<i> 
+</I>&gt;<i> template &lt;typename T&gt;
+</I>&gt;<i> template &lt;typename Block&gt;
+</I>&gt;<i>@@ -152,16 +149,15 @@
+</I>&gt;<i> {
+</I>&gt;<i>   assert(m.size(0) == length_ &amp;&amp; m.size(1) == length_);
+</I>&gt;<i> 
+</I>&gt;<i>+  cvsip_data_.release(false);
+</I>&gt;<i>   assign_local(data_, m);
+</I>&gt;<i>+  cvsip_data_.admit(true);
+</I>&gt;<i> 
+</I>&gt;<i>   bool success = cvsip_lud_.decompose(cvsip_data_);
+</I>&gt;<i> 
+</I>&gt;<i>-
+</I>&gt;<i>   return success;
+</I>&gt;<i> }
+</I>&gt;<i> 
+</I>&gt;<i>-
+</I>&gt;<i>-
+</I>&gt;<i> /// Solve Op(A) x = b (where A previously given to decompose)
+</I>&gt;<i> ///
+</I>&gt;<i> /// Op(A) is
+</I>&gt;<i>@@ -201,12 +197,13 @@
+</I>&gt;<i> 
+</I>&gt;<i>   if (tr == mat_ntrans)
+</I>&gt;<i>     trans = VSIP_MAT_NTRANS;
+</I>&gt;<i>-  else if (tr == mat_trans)
+</I>&gt;<i>+  else if (tr == mat_trans &amp;&amp; ! Is_complex&lt;T&gt;::value)
+</I>&gt;<i>     trans = VSIP_MAT_TRANS;
+</I>&gt;<i>-  else if (tr == mat_herm)
+</I>&gt;<i>-  {
+</I>&gt;<i>-    assert(Is_complex&lt;T&gt;::value);
+</I>&gt;<i>+  else if (tr == mat_herm &amp;&amp; Is_complex&lt;T&gt;::value)
+</I>&gt;<i>     trans = VSIP_MAT_HERM;
+</I>&gt;<i>+  else {
+</I>&gt;<i>+    VSIP_IMPL_THROW(unimplemented(
+</I>&gt;<i>+      &quot;Lud_impl cvsip solver doesn't support this transformation&quot;));
+</I>&gt;<i>   }
+</I>&gt;<i> 
+</I>&gt;<i>  
+</I>&gt;<i>
+</I>
+Since the above exception would percolate up to the public API, I don't 
+think &quot;Lud_impl cvsip solver&quot; is the best
+name to give to the actual code. May be &quot;cvsip LU solver backend&quot; ?
+
+&gt;<i>   {
+</I>&gt;<i>@@ -215,7 +212,6 @@
+</I>&gt;<i>     cvsip::Cvsip_matrix&lt;T&gt;
+</I>&gt;<i> 	      cvsip_b_int(b_ext.data(),b_ext.size(0),b_ext.size(1),
+</I>&gt;<i> 			               b_ext.stride(0),b_ext.stride(1));
+</I>&gt;<i>-
+</I>&gt;<i>     cvsip_lud_.solve(trans,cvsip_b_int);
+</I>&gt;<i> 
+</I>&gt;<i>   }
+</I>&gt;<i>@@ -229,4 +225,4 @@
+</I>&gt;<i> } // namespace vsip
+</I>&gt;<i> 
+</I>&gt;<i> 
+</I>&gt;<i>-#endif // VSIP_IMPL_LAPACK_SOLVER_LU_HPP
+</I>&gt;<i>+#endif // VSIP_CORE_CVSIP_SOLVER_LU_HPP
+</I>&gt;<i>Index: cvsip.hpp
+</I>&gt;<i>===================================================================
+</I>&gt;<i>--- cvsip.hpp	(revision 151857)
+</I>&gt;<i>+++ cvsip.hpp	(working copy)
+</I>&gt;<i>@@ -147,6 +147,8 @@
+</I>&gt;<i> { \
+</I>&gt;<i>   return VF(lu_obj, op, view); \
+</I>&gt;<i> }
+</I>&gt;<i>+
+</I>&gt;<i>+
+</I>&gt;<i> /******************************************************************************
+</I>&gt;<i>  * Function declarations
+</I>&gt;<i> ******************************************************************************/
+</I>&gt;<i>  
+</I>&gt;<i>
+</I>
+Please make sure only real changes make their way into a patch.
+
+&gt;<i>Index: cvsip_lu.hpp
+</I>&gt;<i>===================================================================
+</I>&gt;<i>--- cvsip_lu.hpp	(revision 151855)
+</I>&gt;<i>+++ cvsip_lu.hpp	(working copy)
+</I>&gt;<i>@@ -31,8 +31,8 @@
+</I>&gt;<i>   typedef typename Cvsip_traits&lt;T&gt;::lud_object_type     lud_object_type;
+</I>&gt;<i> 
+</I>&gt;<i>   public:
+</I>&gt;<i>-    Cvsip_lud(int n);
+</I>&gt;<i>-    ~Cvsip_lud();
+</I>&gt;<i>+    Cvsip_lud&lt;T&gt;(int n);
+</I>&gt;<i>+    ~Cvsip_lud&lt;T&gt;();
+</I>&gt;<i>  
+</I>&gt;<i>
+</I>
+The original 'Cvsip_lud' declarator should be fine.
+
+&gt;<i> 
+</I>&gt;<i>     int decompose(Cvsip_matrix&lt;T&gt; &amp;a);
+</I>&gt;<i>     int solve(vsip_mat_op op, Cvsip_matrix&lt;T&gt; &amp;xb);
+</I>&gt;<i>@@ -56,10 +56,9 @@
+</I>&gt;<i> template &lt;typename T&gt;
+</I>&gt;<i> int Cvsip_lud&lt;T&gt;::decompose(Cvsip_matrix&lt;T&gt; &amp;a)
+</I>&gt;<i> {
+</I>&gt;<i>-  a.admit(false);
+</I>&gt;<i>+
+</I>&gt;<i>   int ret = lud(lu_, a.get_view());
+</I>&gt;<i>-  a.release(true);
+</I>&gt;<i>-  return ret;
+</I>&gt;<i>+  return !ret;
+</I>&gt;<i> }
+</I>&gt;<i> 
+</I>&gt;<i> template &lt;typename T&gt;
+</I>&gt;<i>@@ -67,7 +66,6 @@
+</I>&gt;<i> {
+</I>&gt;<i>   xb.admit(true);
+</I>&gt;<i>   int ret = lusol(lu_, op, xb.get_view());
+</I>&gt;<i>-  printf(&quot;RET: %d\n&quot;, ret);
+</I>&gt;<i>   xb.release(true);
+</I>&gt;<i>   return ret;
+</I>&gt;<i> }
+</I>&gt;<i>Index: cvsip_matrix.hpp
+</I>&gt;<i>===================================================================
+</I>&gt;<i>--- cvsip_matrix.hpp	(revision 151855)
+</I>&gt;<i>+++ cvsip_matrix.hpp	(working copy)
+</I>&gt;<i>@@ -32,9 +32,10 @@
+</I>&gt;<i> 
+</I>&gt;<i>   public:
+</I>&gt;<i>     Cvsip_matrix&lt;T&gt;(T *block, int m, int n, int s1, int s2);
+</I>&gt;<i>-    Cvsip_matrix&lt;T&gt;(int m, int n, int s1, int s2);
+</I>&gt;<i>-    Cvsip_matrix&lt;T&gt;(T *block, int m, int n);
+</I>&gt;<i>-    Cvsip_matrix&lt;T&gt;(int m, int n);
+</I>&gt;<i>+    template &lt;typename OrderT&gt;
+</I>&gt;<i>+    Cvsip_matrix&lt;T&gt;(int m, int n, OrderT const&amp;);
+</I>&gt;<i>+    template &lt;typename OrderT&gt;
+</I>&gt;<i>+    Cvsip_matrix&lt;T&gt;(T *block, int m, int n, OrderT const&amp;);
+</I>&gt;<i>     ~Cvsip_matrix&lt;T&gt;();
+</I>&gt;<i> 
+</I>&gt;<i>     mview_type *get_view() { return mview_; }
+</I>&gt;<i>@@ -42,8 +43,8 @@
+</I>&gt;<i>     void release(bool flag) { blockrelease(mblock_, flag); }
+</I>&gt;<i>     
+</I>&gt;<i>   private:
+</I>&gt;<i>-    mview_type         *mview_;
+</I>&gt;<i>-    block_type         *mblock_;
+</I>&gt;<i>+    mview_type*        mview_;
+</I>&gt;<i>+    block_type*        mblock_;
+</I>&gt;<i>     bool               local_data_;
+</I>&gt;<i>     
+</I>&gt;<i>     
+</I>&gt;<i>@@ -53,51 +54,47 @@
+</I>&gt;<i> Cvsip_matrix&lt;T&gt;::Cvsip_matrix(T *block, int m, int n, int s1, int s2)
+</I>&gt;<i> {
+</I>&gt;<i>   // block is allocated, just bind to it.
+</I>&gt;<i>-  mblock_ = blockbind(block, m*n, VSIP_MEM_NONE);
+</I>&gt;<i>+  mblock_ = blockbind(block, (n-1)*s2 + (m-1)*s1 + 1, VSIP_MEM_NONE);
+</I>&gt;<i> 
+</I>&gt;<i>-  // block must be dense
+</I>&gt;<i>-  mview_ = mbind(mblock_, 0, s1, n, s2, m);
+</I>&gt;<i>+  mview_ = mbind(mblock_, 0, s1, m, s2, n);
+</I>&gt;<i> 
+</I>&gt;<i>   local_data_ = false;
+</I>&gt;<i> }
+</I>&gt;<i> 
+</I>&gt;<i> template &lt;typename T&gt;
+</I>&gt;<i>-Cvsip_matrix&lt;T&gt;::Cvsip_matrix(int m, int n, int s1, int s2)
+</I>&gt;<i>+template &lt;typename OrderT&gt;
+</I>&gt;<i>+Cvsip_matrix&lt;T&gt;::Cvsip_matrix(int m, int n, OrderT const&amp; = row2_type())
+</I>&gt;<i> {
+</I>&gt;<i>   // create block
+</I>&gt;<i>   blockcreate(m*n, VSIP_MEM_NONE, &amp;mblock_);
+</I>&gt;<i> 
+</I>&gt;<i>   // block must be dense
+</I>&gt;<i>-  mview_ = mbind(mblock_, 0, s1, n, s2, m);
+</I>&gt;<i>+  if(Type_equal&lt;OrderT, row2_type&gt;::value)
+</I>&gt;<i>+    mview_ = mbind(mblock_, 0, m, n, 1, m);
+</I>&gt;<i>+  else
+</I>&gt;<i>+    mview_ = mbind(mblock_, 0, 1, n, n, m);
+</I>&gt;<i> 
+</I>&gt;<i>   local_data_ = true;
+</I>&gt;<i> }
+</I>&gt;<i> 
+</I>&gt;<i> template &lt;typename T&gt;
+</I>&gt;<i>-Cvsip_matrix&lt;T&gt;::Cvsip_matrix(T *block, int m, int n)
+</I>&gt;<i>+template &lt;typename OrderT&gt;
+</I>&gt;<i>+Cvsip_matrix&lt;T&gt;::Cvsip_matrix(T *block, int m, int n,
+</I>&gt;<i>+		              OrderT const&amp; = row2_type())
+</I>&gt;<i> {
+</I>&gt;<i>   // block is allocated, just bind to it.
+</I>&gt;<i>   mblock_ = blockbind(block, m*n, VSIP_MEM_NONE);
+</I>&gt;<i> 
+</I>&gt;<i>   // block must be dense
+</I>&gt;<i>-  mview_ = mbind(mblock_, 0, 1, n, n, m);
+</I>&gt;<i>+  if(Type_equal&lt;OrderT, row2_type&gt;::value)
+</I>&gt;<i>+    mview_ = mbind(mblock_, 0, m, n, 1, m);
+</I>&gt;<i>+  else
+</I>&gt;<i>+    mview_ = mbind(mblock_, 0, 1, n, n, m);
+</I>&gt;<i> 
+</I>&gt;<i>   local_data_ = false;
+</I>&gt;<i> }
+</I>&gt;<i> 
+</I>&gt;<i> template &lt;typename T&gt;
+</I>&gt;<i>-Cvsip_matrix&lt;T&gt;::Cvsip_matrix(int m, int n)
+</I>&gt;<i>-{
+</I>&gt;<i>-  // create block
+</I>&gt;<i>-  blockcreate(m*n, VSIP_MEM_NONE, &amp;mblock_);
+</I>&gt;<i>-
+</I>&gt;<i>-  // block must be dense
+</I>&gt;<i>-  mview_ = mbind(mblock_, 0, 1, n, n, m);
+</I>&gt;<i>-
+</I>&gt;<i>-  local_data_ = true;
+</I>&gt;<i>-}
+</I>&gt;<i>-
+</I>&gt;<i>-template &lt;typename T&gt;
+</I>&gt;<i> Cvsip_matrix&lt;T&gt;::~Cvsip_matrix()
+</I>&gt;<i> {
+</I>&gt;<i>   // destroy everything!
+</I>&gt;<i>Index: solver-lu.cpp
+</I>&gt;<i>  
+</I>&gt;<i>
+</I>
+As we just relocated and renamed most files, please make sure to follow 
+the naming
+conventions. Use '_' instead of '-', and use lu.hpp, instead of 
+solver_hpp (and likewise
+for the cpp).
+
+
+&gt;<i>===================================================================
+</I>&gt;<i>--- solver-lu.cpp	(revision 151693)
+</I>&gt;<i>+++ solver-lu.cpp	(working copy)
+</I>&gt;<i>@@ -26,6 +26,12 @@
+</I>&gt;<i> #include &quot;test-random.hpp&quot;
+</I>&gt;<i> #include &quot;solver-common.hpp&quot;
+</I>&gt;<i> 
+</I>&gt;<i>+#ifdef VSIP_IMPL_HAVE_CVSIP
+</I>&gt;<i>+#define TEST_TRANSPOSE_SOLVE      0
+</I>&gt;<i>+#else
+</I>&gt;<i>+#define TEST_TRANSPOSE_SOLVE      1
+</I>&gt;<i>+#endif
+</I>&gt;<i>+
+</I>&gt;<i> #define VERBOSE       0
+</I>&gt;<i>  
+</I>&gt;<i>
+</I>
+This looks like debug code. Should that really go into the repository ?
+
+&gt;<i> #define DO_ASSERT     1
+</I>&gt;<i>  
+</I>&gt;<i>
+</I>
+Same here. Additionally, why don't you use &lt;cassert&gt; instead
+(i.e. a noop in release mode, and a real test with potential abort()
+otherwise) ?
+
+&gt;<i> #define DO_SWEEP      0
+</I>&gt;<i>  
+</I>&gt;<i>
+</I>Likewise.
+
+
+&gt;<i>@@ -100,7 +106,9 @@
+</I>&gt;<i> 
+</I>&gt;<i>     // 2. Solve A X = B.
+</I>&gt;<i>     lu.template solve&lt;mat_ntrans&gt;(b, x1);
+</I>&gt;<i>+#if TEST_TRANSPOSE_SOLVE == 1
+</I>&gt;<i>     lu.template solve&lt;mat_trans&gt;(b, x2);
+</I>&gt;<i>+#endif
+</I>&gt;<i>     lu.template solve&lt;Test_traits&lt;T&gt;::trans&gt;(b, x3); // mat_herm if T complex
+</I>&gt;<i>   }
+</I>&gt;<i>   if (rtm == by_value)
+</I>&gt;<i>@@ -114,7 +122,9 @@
+</I>&gt;<i> 
+</I>&gt;<i>     // 2. Solve A X = B.
+</I>&gt;<i>     x1 = lu.template solve&lt;mat_ntrans&gt;(b);
+</I>&gt;<i>+#if TEST_TRANSPOSE_SOLVE == 1
+</I>&gt;<i>     x2 = lu.template solve&lt;mat_trans&gt;(b);
+</I>&gt;<i>+#endif
+</I>&gt;<i>     x3 = lu.template solve&lt;Test_traits&lt;T&gt;::trans&gt;(b); // mat_herm if T complex
+</I>&gt;<i>   }
+</I>&gt;<i> 
+</I>&gt;<i>@@ -126,7 +136,9 @@
+</I>&gt;<i>   Matrix&lt;T&gt; chk3(n, p);
+</I>&gt;<i> 
+</I>&gt;<i>   prod(a, x1, chk1);
+</I>&gt;<i>+#if TEST_TRANSPOSE_SOLVE == 1
+</I>&gt;<i>   prod(trans(a), x2, chk2);
+</I>&gt;<i>+#endif
+</I>&gt;<i>   prod(trans_or_herm(a), x3, chk3);
+</I>&gt;<i> 
+</I>&gt;<i>   typedef typename vsip::impl::Scalar_of&lt;T&gt;::type scalar_type;
+</I>&gt;<i>@@ -169,8 +181,13 @@
+</I>&gt;<i>   {
+</I>&gt;<i>     scalar_type residual_1 = norm_2((b - chk1).col(i));
+</I>&gt;<i>     scalar_type err1       = residual_1 / (a_norm_2 * norm_2(x1.col(i)) * eps);
+</I>&gt;<i>+#if TEST_TRANSPOSE_SOLVE == 1
+</I>&gt;<i>     scalar_type residual_2 = norm_2((b - chk2).col(i));
+</I>&gt;<i>     scalar_type err2       = residual_2 / (a_norm_2 * norm_2(x2.col(i)) * eps);
+</I>&gt;<i>+#else
+</I>&gt;<i>+    scalar_type residual_2 = 0;
+</I>&gt;<i>+    scalar_type err2       = 0;
+</I>&gt;<i>+#endif
+</I>&gt;<i>     scalar_type residual_3 = norm_2((b - chk3).col(i));
+</I>&gt;<i>     scalar_type err3       = residual_3 / (a_norm_2 * norm_2(x3.col(i)) * eps);
+</I>&gt;<i> 
+</I>&gt;<i>@@ -192,7 +209,9 @@
+</I>&gt;<i> 
+</I>&gt;<i> #if DO_ASSERT
+</I>&gt;<i>     test_assert(err1 &lt; p_limit);
+</I>&gt;<i>+#if TEST_TRANSPOSE_SOLVE == 1
+</I>&gt;<i>     test_assert(err2 &lt; p_limit);
+</I>&gt;<i>+#endif
+</I>&gt;<i>     test_assert(err3 &lt; p_limit);
+</I>&gt;<i> #endif
+</I>&gt;<i> 
+</I>&gt;<i>@@ -247,7 +266,9 @@
+</I>&gt;<i> 
+</I>&gt;<i>     // 2. Solve A X = B.
+</I>&gt;<i>     lu.template solve&lt;mat_ntrans&gt;(b, x1);
+</I>&gt;<i>+#if TEST_TRANSPOSE_SOLVE == 1
+</I>&gt;<i>     lu.template solve&lt;mat_trans&gt;(b, x2);
+</I>&gt;<i>+#endif
+</I>&gt;<i>     lu.template solve&lt;Test_traits&lt;T&gt;::trans&gt;(b, x3); // mat_herm if T complex
+</I>&gt;<i>   }
+</I>&gt;<i>   if (rtm == by_value)
+</I>&gt;<i>@@ -261,7 +282,9 @@
+</I>&gt;<i> 
+</I>&gt;<i>     // 2. Solve A X = B.
+</I>&gt;<i>     impl::assign_local(x1, lu.template solve&lt;mat_ntrans&gt;(b));
+</I>&gt;<i>+#if TEST_TRANSPOSE_SOLVE == 1
+</I>&gt;<i>     impl::assign_local(x2, lu.template solve&lt;mat_trans&gt;(b));
+</I>&gt;<i>+#endif
+</I>&gt;<i>     impl::assign_local(x3, lu.template solve&lt;Test_traits&lt;T&gt;::trans&gt;(b));
+</I>&gt;<i>   }
+</I>&gt;<i> 
+</I>&gt;<i>@@ -273,7 +296,9 @@
+</I>&gt;<i>   Matrix&lt;T, block_type&gt; chk3(n, p);
+</I>&gt;<i> 
+</I>&gt;<i>   prod(a, x1, chk1);
+</I>&gt;<i>+#if TEST_TRANSPOSE_SOLVE == 1
+</I>&gt;<i>   prod(trans(a), x2, chk2);
+</I>&gt;<i>+#endif
+</I>&gt;<i>   prod(trans_or_herm(a), x3, chk3);
+</I>&gt;<i> 
+</I>&gt;<i>   typedef typename vsip::impl::Scalar_of&lt;T&gt;::type scalar_type;
+</I>&gt;<i>@@ -317,8 +342,13 @@
+</I>&gt;<i>   {
+</I>&gt;<i>     scalar_type residual_1 = norm_2((b - chk1).col(i));
+</I>&gt;<i>     scalar_type err1       = residual_1 / (a_norm_2 * norm_2(x1.col(i)) * eps);
+</I>&gt;<i>+#if TEST_TRANSPOSE_SOLVE == 1
+</I>&gt;<i>     scalar_type residual_2 = norm_2((b - chk2).col(i));
+</I>&gt;<i>     scalar_type err2       = residual_2 / (a_norm_2 * norm_2(x2.col(i)) * eps);
+</I>&gt;<i>+#else
+</I>&gt;<i>+    scalar_type residual_2 = 0;
+</I>&gt;<i>+    scalar_type err2       = 0;
+</I>&gt;<i>+#endif
+</I>&gt;<i>     scalar_type residual_3 = norm_2((b - chk3).col(i));
+</I>&gt;<i>     scalar_type err3       = residual_3 / (a_norm_2 * norm_2(x3.col(i)) * eps);
+</I>&gt;<i> 
+</I>&gt;<i>@@ -339,7 +369,9 @@
+</I>&gt;<i> #endif
+</I>&gt;<i> 
+</I>&gt;<i>     test_assert(err1 &lt; p_limit);
+</I>&gt;<i>+#if TEST_TRANSPOSE_SOLVE == 1
+</I>&gt;<i>     test_assert(err2 &lt; p_limit);
+</I>&gt;<i>+#endif
+</I>&gt;<i>     test_assert(err3 &lt; p_limit);
+</I>&gt;<i> 
+</I>&gt;<i>     if (err1 &gt; max_err1) max_err1 = err1;
+</I>&gt;<i>  
+</I>&gt;<i>
+</I>
+Thanks,
+       Stefan
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000756.html">lu solver
+</A></li>
+	<LI>Next message: <A HREF="000758.html">[vsipl++] lu solver
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#757">[ date ]</a>
+              <a href="thread.html#757">[ thread ]</a>
+              <a href="subject.html#757">[ subject ]</a>
+              <a href="author.html#757">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">More information about the vsipl++
+mailing list</a><br>
+</body></html>

@@ -1,0 +1,1013 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> Scalar code example 1.
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20Scalar%20code%20example%201.&In-Reply-To=%3C5.0.0.25.2.20010421150958.00a62760%40x-mail.lanl.gov%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000278.html">
+   <LINK REL="Next"  HREF="000280.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>Scalar code example 1.</H1>
+    <B>Jean Marshall</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20Scalar%20code%20example%201.&In-Reply-To=%3C5.0.0.25.2.20010421150958.00a62760%40x-mail.lanl.gov%3E"
+       TITLE="Scalar code example 1.">jcm at lanl.gov
+       </A><BR>
+    <I>Sun Apr 22 00:10:05 UTC 2001</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000278.html">Status Reports
+</A></li>
+        <LI>Next message: <A HREF="000280.html">DynamicArray destroy methods
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#279">[ date ]</a>
+              <a href="thread.html#279">[ thread ]</a>
+              <a href="subject.html#279">[ subject ]</a>
+              <a href="author.html#279">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>An HTML attachment was scrubbed...
+URL: &lt;<A HREF="http://sourcerytools.com/pipermail/pooma-dev/attachments/20010421/a7c1eb42/attachment.html">http://sourcerytools.com/pipermail/pooma-dev/attachments/20010421/a7c1eb42/attachment.html</A>&gt;
+-------------- next part --------------
+//:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+//  CCSource File: QRelations
+//  Author:      jcm 
+//  Date:        Sat - Nov 18, 2000 
+//  Namespace:   conejo
+//  Framework:   Tecolote
+//  Copyright:   Los Alamos National Laboratory 
+//               Full Copyright=$(TECOLOTE_ROOT)/Doc/Copyright
+//  RCS_VERSION_ID: $Id: 
+//:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+#if !defined (__MWERKS__)
+#include &quot;Demo_src/include/DemoPCH.hh&quot;
+#pragma hdrstop
+#endif // !__MWERKS__
+
+#include &quot;Demo_src/Model/CompatibleHydro/QRelations.t.hh&quot;
+
+#include &quot;TecFramework_src/MetaTypes/MetaTypes.hh&quot;
+#include &quot;TecFramework_src/Foundation/LoadObject.hh&quot;
+
+namespace conejo
+{
+   using namespace TecFramework;
+   using namespace poomalote;
+   using namespace Hydrodynamics;
+   using namespace PhysicsBaseClasses;
+   using namespace std;
+
+   static MetaClass&lt;ITecoloteTraits&lt;QRelations&lt;ThreeDF&lt;DefaultTraits&gt; &gt;,  RelationPkg&gt; &gt;
+                QRelations3DMeta(&quot;QRelations3D&quot;, QRelations&lt;ThreeDF&lt;DefaultTraits&gt; &gt;::MakePersistents());
+
+   LoadObjectGroup QRelations3DBase_cc = { &amp;QRelations3DMeta };
+
+}          // end namespace conejo
+
+namespace TecFramework
+{
+    using namespace conejo;
+
+    LoadObjectGroup QRelations3D_cc = { &amp;QRelations3DBase_cc };
+
+}    // end namespace TecFramework
+
+-------------- next part --------------
+//:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+//  Source File: QRelations
+//  Author:      jcm
+//  Date:        Sat - Nov 18, 2000
+//  Namespace:   conejo
+//  Framework:   Tecolote
+//  Copyright:   Los Alamos National Laboratory
+//               Full Copyright=$(TECOLOTE_ROOT)/Doc/Copyright
+//  RCS_VERSION_ID: $Id:
+//:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+
+#ifndef  __conejo_QRelations_t_hh
+#define  __conejo_QRelations_t_hh
+
+#include &quot;PhysicsBaseClasses_src/HelperClasses/MMField.hh&quot;
+#include &quot;Demo_src/Model/CompatibleHydro/QRelations.hh&quot;
+#include &quot;Evaluator/ScalarCode.h&quot;
+
+//#define ENTER(a)
+#define ENTER(a) tecout &lt;&lt; &quot;Entering &quot; &lt;&lt; a &lt;&lt; endl;
+
+namespace conejo
+{
+   using namespace TecFramework;
+   using namespace poomalote;
+   using namespace PhysicsBaseClasses;
+   using namespace Hydrodynamics;
+   using namespace std;
+
+   const Real spokeCutoff = 1.0e-12; // We get this value from Ed's code
+
+   // $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
+   template &lt;class Traits&gt;
+   BEGIN_PERSISTENT(QRelations&lt;Traits&gt;)
+      PERSISTENT( linearQ,  &quot;LinearQ&quot; )
+      PERSISTENT( quadQ,    &quot;QuadQ&quot;   )
+   END_PERSISTENT
+
+   //$ linearQ : Real - linear coefficient for Q
+   //
+   //$ quadQ   : Real - quadratic coefficient for Q
+   //
+   // $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
+
+    //-----------------------------------------------------------------------------
+    // Test function
+    //-----------------------------------------------------------------------------
+    template&lt;class Traits&gt;
+    struct EdgeQPressureInfo
+    {
+      void scalarCodeInfo(ScalarCodeInfo &amp;info) const
+      {
+        info.arguments(5);
+
+        info.write(0, true );
+        info.write(1, false);
+        info.write(2, false);
+        info.write(3, false);
+        info.write(4, false);
+//        info.write(5, false);
+//        info.write(6, false);
+ //       info.write(7, false);
+        info.useGuards(0, false);
+        info.useGuards(1, true);
+        info.useGuards(2, true);
+        info.useGuards(3, true);
+        info.useGuards(4, true);
+//        info.useGuards(5, true);
+//        info.useGuards(6, true);
+//        info.useGuards(7, true);
+
+        info.dimensions(Traits::Dim);
+
+        for (int i = 0; i &lt; Traits::Dim; ++i)
+        {
+          info.lowerExtent(i) = 2;
+          info.upperExtent(i) = 2;
+        }
+      }
+    };
+
+    template&lt;class Traits&gt;
+    struct ScalarEdgeQPressure
+      : public EdgeQPressureInfo&lt;Traits&gt;
+    {
+      // Typedefs
+      FIELD_TYPEDEFS(Traits)
+
+      ScalarEdgeQPressure(const Real&amp; inLinearQ )
+        : EdgeQPressureInfo&lt;Traits&gt;(),
+          linearQ(inLinearQ)
+      {
+      }
+
+      template&lt;class F1, class F2, class F3, class F4, class F5&gt;
+      void operator()(const F1&amp; EdgeQPressure,     const F2&amp; EdgeGammaConstant, const F3&amp; EdgeSoundSpeed,
+                      const F4&amp; EdgeVelocity,      const F5&amp; EdgePsiLimiter,    const Loc&lt;Traits::Dim&gt; &amp;loc)
+      {
+		if( EdgePsiLimiter(loc) &lt; eps ) {
+		    EdgeQPressure(loc) = 0.0;
+		    return;
+		}
+
+		Real edgeVelocityMagnitude = sqrt(dot(EdgeVelocity(loc),EdgeVelocity(loc)));
+		
+		EdgeQPressure(loc) = edgeVelocityMagnitude * EdgePsiLimiter(loc) *
+		                     (EdgeGammaConstant(loc) * edgeVelocityMagnitude +
+		                      sqrt( linearQ * linearQ * EdgeSoundSpeed(loc) * EdgeSoundSpeed(loc) +
+		                      EdgeGammaConstant(loc) * EdgeGammaConstant(loc) * edgeVelocityMagnitude * edgeVelocityMagnitude));
+      }
+
+    private:
+      Real linearQ;
+    };
+
+	//======================================================================
+	// Constructor -- QRelations&lt;Traits&gt;::QRelations
+	//======================================================================
+
+	template &lt;class Traits&gt;
+	QRelations&lt;Traits&gt;::QRelations( DataDirectory* pDataDir, const string&amp; inName )
+	 :  CompatibleRelations(pDataDir,inName),
+	    Old(pDataDir-&gt;strictGet&lt;DataDirectory&gt;(&quot;CompatibleHydroOld&quot;)),
+	    linearQ(1.0),
+	    quadQ(1.0)
+	{
+        VectorField&amp; EdgeLength   = DataDir.get&lt;VectorField&gt;( &quot;EdgeLength&quot;,   Mesh.getField&lt;VectorField&gt;    ( AllEdge() ) );
+	    for(int d=0;d&lt;Dim;++d) {
+	        Interval&lt;1&gt; CVert(CoarseVert[d]);
+	        RDomain.push_back(CoarseVert);
+	        RDomain[d][d] = Interval&lt;1&gt;(CVert.first(),    CVert.last() - 2);
+	        LDomain.push_back(CoarseVert);
+	        LDomain[d][d] = Interval&lt;1&gt;(CVert.first() + 1,CVert.last() - 1);
+	        Loc&lt;Dim&gt; offset(0); offset[d] = 1;
+	        RightEdgeNgbr.push_back(RDomain[d]);
+	        RightEdgeNgbr[d] += offset;
+	        LeftEdgeNgbr.push_back(LDomain[d]);
+	        LeftEdgeNgbr[d] -= offset;
+	        CoarseEdges.push_back(Range&lt;Dim&gt;(EdgeLength[d].domain()));
+	        LowerVert.push_back(CoarseEdges[d]);
+	        UpperVert.push_back(CoarseEdges[d] + offset);
+	        EdgeNgbr.push_back( Range&lt;Dim&gt;(EdgeLength[d].domain() + offset) );
+	    }
+	}          // end constructor
+
+	//======================================================================
+	// Destructor -- QRelations&lt;Traits&gt;::~QRelations
+	//======================================================================
+
+	template &lt;class Traits&gt;
+	QRelations&lt;Traits&gt;::~QRelations( ) { }
+
+	//======================================================================
+	// Function -- QRelations&lt;Traits&gt;::createRelations
+	//======================================================================
+
+	template &lt;class Traits&gt;
+	void QRelations&lt;Traits&gt;::createRelations( ) {
+		ENTER(&quot;QRelations::createRelations&quot;);
+		
+        gammaConst = 2.6666666666666667 * 0.25 * quadQ;
+
+        // Dt is an Independent Constant Field used in Relationships
+        ScalarField&amp; Dt                = DataDir.get&lt;ScalarField&gt;( &quot;Dt&quot;,                 Mesh.getField&lt;ScalarField&gt;    ( Vert   () ) );
+
+        // -------------------------------------------------------------------------------------------------------------------------
+        // Input Fields to QRelations
+        // -------------------------------------------------------------------------------------------------------------------------
+        ScalarField&amp; OldDt             = Old.get&lt;ScalarField&gt;    ( &quot;Dt&quot;,                 Mesh.getField&lt;ScalarField&gt;    ( Vert   () ) );
+        VectorField&amp; OldVelocity       = Old.get&lt;VectorField&gt;    ( &quot;Velocity&quot; ,          Mesh.getField&lt;VectorField&gt;    ( Vert   () ) );
+        VectorField&amp; OldEdgeLength     = Old.get&lt;VectorField&gt;    ( &quot;EdgeLength&quot; ,        FineMesh.getField&lt;VectorField&gt;( AllEdge() ) );
+	    VectorField&amp; OldEdgeVelocity   = Old.get&lt;VectorField&gt;    ( &quot;EdgeVelocity&quot;,       Mesh.getField&lt;VectorField&gt;    ( AllEdge() ) );
+        ScalarField&amp; Volume            = DataDir.get&lt;ScalarField&gt;( &quot;Volume&quot;,             Mesh.getField&lt;ScalarField&gt;    ( Cell   () ) );
+        ScalarField&amp; SubVolume         = DataDir.get&lt;ScalarField&gt;( &quot;SubVolume&quot;,          FineMesh.getField&lt;ScalarField&gt;( Cell   () ) );
+        VectorField&amp; SubFaceAreas      = DataDir.get&lt;VectorField&gt;( &quot;SubFaceAreas&quot; ,      FineMesh.getField&lt;VectorField&gt;( AllFace() ) );
+        VectorField&amp; EdgeLength        = DataDir.get&lt;VectorField&gt;( &quot;EdgeLength&quot; ,        FineMesh.getField&lt;VectorField&gt;( AllEdge() ) );
+        VectorField&amp; Velocity          = DataDir.get&lt;VectorField&gt;( &quot;Velocity&quot;,           Mesh.getField&lt;VectorField&gt;    ( Vert   () ) );
+        ScalarField&amp; CellDensity       = DataDir.get&lt;ScalarField&gt;( &quot;CellDensity&quot;,        Mesh.getField&lt;ScalarField&gt;    ( Cell   () ) );
+        ScalarField&amp; CellSoundSpeedSq  = DataDir.get&lt;ScalarField&gt;( &quot;CellSoundSpeedSq&quot;,   Mesh.getField&lt;ScalarField&gt;    ( Cell   () ) );
+        ScalarField&amp; CellGammaConstant = DataDir.get&lt;ScalarField&gt;( &quot;CellGammaConstant&quot;,  Mesh.getField&lt;ScalarField&gt;    ( Cell   () ) );
+        CellGammaConstant = gammaConst; // Should go away when we use more sophisticated EOSs.
+        // -------------------------------------------------------------------------------------------------------------------------
+		// Store the sqrt because it is used to calculate the VertSoundSpeed
+        // -------------------------------------------------------------------------------------------------------------------------
+        ScalarField&amp; CellSoundSpeed    = DataDir.get&lt;ScalarField&gt;( &quot;CellSoundSpeed&quot;,     Mesh.getField&lt;ScalarField&gt;    ( Cell   () ) );
+		
+        // -------------------------------------------------------------------------------------------------------------------------
+		// Vertex Fields -- (weighted) sums of SubCell Fields
+        // -------------------------------------------------------------------------------------------------------------------------
+	    ScalarField&amp; VertVolume        = DataDir.get&lt;ScalarField&gt;( &quot;VertVolume&quot;,         Mesh.getField&lt;ScalarField&gt;    ( Vert   () ) );
+//	    ScalarField&amp; WeightedVertVol   = DataDir.get&lt;ScalarField&gt;( &quot;WeightedVertVol&quot;,    Mesh.getField&lt;ScalarField&gt;    ( Vert   () ) );
+	    ScalarField&amp; VertDensity       = DataDir.get&lt;ScalarField&gt;( &quot;VertDensity&quot;,        Mesh.getField&lt;ScalarField&gt;    ( Vert   () ) );
+        ScalarField&amp; VertSoundSpeed    = DataDir.get&lt;ScalarField&gt;( &quot;VertSoundSpeed&quot;,     Mesh.getField&lt;ScalarField&gt;    ( Vert   () ) );
+	    ScalarField&amp; VertGammaConstant = DataDir.get&lt;ScalarField&gt;( &quot;VertGammaConstant&quot;,  Mesh.getField&lt;ScalarField&gt;    ( Vert   () ) );
+
+        // -------------------------------------------------------------------------------------------------------------------------
+        // Edge Fields that hold Q-related quantities
+        // -------------------------------------------------------------------------------------------------------------------------
+	    VectorField&amp; EdgeVelocity      = DataDir.get&lt;VectorField&gt;( &quot;EdgeVelocity&quot;,       Mesh.getField&lt;VectorField&gt;    ( AllEdge() ) );
+	    ScalarField&amp; EdgeDensity       = DataDir.get&lt;ScalarField&gt;( &quot;EdgeDensity&quot;,        Mesh.getField&lt;ScalarField&gt;    ( AllEdge() ) );
+	    ScalarField&amp; EdgeQPressure     = DataDir.get&lt;ScalarField&gt;( &quot;EdgeQPressure&quot;,      Mesh.getField&lt;ScalarField&gt;    ( AllEdge() ) );
+	    ScalarField&amp; EdgeSoundSpeed    = DataDir.get&lt;ScalarField&gt;( &quot;EdgeSoundSpeed&quot;,     Mesh.getField&lt;ScalarField&gt;    ( AllEdge() ) );
+	    ScalarField&amp; EdgeGammaConstant = DataDir.get&lt;ScalarField&gt;( &quot;EdgeGammaConstant&quot;,  Mesh.getField&lt;ScalarField&gt;    ( AllEdge() ) );
+	    ScalarField&amp; EdgeQTmpMax       = DataDir.get&lt;ScalarField&gt;( &quot;EdgeQTmpMax&quot;,        Mesh.getField&lt;ScalarField&gt;    ( AllEdge() ) );
+	    ScalarField&amp; SpokeDVolDt       = DataDir.get&lt;ScalarField&gt;( &quot;SpokeDVolDt&quot;,        FineMesh.getField&lt;ScalarField&gt;( AllFace() ) );
+	    ScalarField&amp; SpokeQSwitch      = DataDir.get&lt;ScalarField&gt;( &quot;SpokeQSwitch&quot;,       FineMesh.getField&lt;ScalarField&gt;( AllFace() ) );
+
+	
+        ScalarField&amp; RightLimiterRatio = DataDir.get&lt;ScalarField&gt;( &quot;RightLimiterRatio&quot;,  Mesh.getField&lt;ScalarField&gt;    ( AllEdge() ) );
+        ScalarField&amp; LeftLimiterRatio  = DataDir.get&lt;ScalarField&gt;( &quot;LeftLimiterRatio&quot;,   Mesh.getField&lt;ScalarField&gt;    ( AllEdge() ) );
+	    ScalarField&amp; EdgePsiLimiter    = DataDir.get&lt;ScalarField&gt;( &quot;EdgePsiLimiter&quot;,     Mesh.getField&lt;ScalarField&gt;    ( AllEdge() ) );
+	
+        // -------------------------------------------------------------------------------------------------------------------------
+        // Output Fields from QRelations
+        // -------------------------------------------------------------------------------------------------------------------------
+        ScalarField&amp; CellQ             = DataDir.get&lt;ScalarField&gt;( &quot;CellQ&quot;,              Mesh.getField&lt;ScalarField&gt;    ( Cell   () ) );
+        VectorField&amp; SubForceQ         = DataDir.get&lt;VectorField&gt;( &quot;SubForceQ&quot;,          FineMesh.getField&lt;VectorField&gt;( Cell   () ) );
+        ScalarField&amp; SubPressureQMod   = DataDir.get&lt;ScalarField&gt;( &quot;SubPressureQMod&quot;,    FineMesh.getField&lt;ScalarField&gt;( Cell   () ) );
+
+		Let::NewRelation( *(pParent)this, &amp;Parent::calcSqrt,                 CellSoundSpeed,      CellSoundSpeedSq );
+		Let::NewRelation( *(pParent)this, &amp;Parent::calcWeightedVertAvg,      VertSoundSpeed,      CellSoundSpeed,    SubVolume,        VertVolume );
+		Let::NewRelation( *(pParent)this, &amp;Parent::calcWeightedVertAvg,      VertGammaConstant,   CellGammaConstant, SubVolume,        VertVolume );
+
+		Let::NewRelation( *this, &amp;QRelations&lt;Traits&gt;::calcEdgeVelocity,      EdgeVelocity,        OldVelocity );
+		Let::NewRelation( *this, &amp;QRelations&lt;Traits&gt;::calcEdgeDensity,       EdgeDensity,         VertDensity );
+		Let::NewRelation( *this, &amp;QRelations&lt;Traits&gt;::calcEdgeGammaConstant, EdgeGammaConstant,   VertGammaConstant );
+		Let::NewRelation( *this, &amp;QRelations&lt;Traits&gt;::calcEdgeQPressure,     EdgeQPressure,       EdgeGammaConstant, EdgeSoundSpeed,   EdgeVelocity, EdgePsiLimiter );
+		Let::NewRelation( *this, &amp;QRelations&lt;Traits&gt;::calcEdgeSoundSpeed,    EdgeSoundSpeed,      VertSoundSpeed );
+		Let::NewRelation( *this, &amp;QRelations&lt;Traits&gt;::calcEdgeQTmpMax,       EdgeQTmpMax,         EdgeDensity,       EdgeQPressure  );
+		Let::NewRelation( *this, &amp;QRelations&lt;Traits&gt;::calcSpokeDVolDt,       SpokeDVolDt,         EdgeVelocity,      SubFaceAreas   );
+        Let::NewRelation( *this, &amp;QRelations&lt;Traits&gt;::calcSpokeQSwitch,      SpokeQSwitch,        SpokeDVolDt,       Volume,            OldDt );
+		
+		Let::NewRelation( *this, &amp;QRelations&lt;Traits&gt;::calcRightLimiterRatio, RightLimiterRatio,   OldEdgeLength,     OldEdgeVelocity );
+		Let::NewRelation( *this, &amp;QRelations&lt;Traits&gt;::calcLeftLimiterRatio,  LeftLimiterRatio,    OldEdgeLength,     OldEdgeVelocity );
+		Let::NewRelation( *this, &amp;QRelations&lt;Traits&gt;::calcEdgePsiLimiter,    EdgePsiLimiter,      RightLimiterRatio, LeftLimiterRatio, OldEdgeLength, OldEdgeVelocity, OldDt );
+
+		Let::NewRelation( *this, &amp;QRelations&lt;Traits&gt;::calcCellQ,             CellQ,               EdgeQTmpMax,       SpokeQSwitch      );
+		Let::NewRelation( *this, &amp;QRelations&lt;Traits&gt;::calcSubForceQ,         SubForceQ,           EdgeQTmpMax,       EdgeVelocity,     SpokeDVolDt,   SpokeQSwitch );
+		Let::NewRelation( *this, &amp;QRelations&lt;Traits&gt;::calcSubPressureQMod,   SubPressureQMod,     EdgeQPressure,     SpokeQSwitch      );
+		
+	}
+	
+
+	//======================================================================
+	// Function -- QRelations&lt;Traits&gt;::calcEdgeVelocity
+	//======================================================================
+
+	template &lt;class Traits&gt;
+	void QRelations&lt;Traits&gt;::calcEdgeVelocity ( const VectorField&amp;  EdgeVelocity,
+	                    	   			        const VectorField&amp;  OldVelocity)
+	{
+		ENTER(&quot;QRelations::calcEdgeVelocity&quot;);
+		int d = getEdgeDirection(EdgeVelocity);
+		EdgeVelocity(CoarseEdges[d]) = OldVelocity(EdgeNgbr[d]) - OldVelocity(CoarseEdges[d]);
+	}           // end function calcEdgeVelocity
+	
+
+	//======================================================================
+	// Function -- QRelations&lt;Traits&gt;::calcEdgeDensity
+	//======================================================================
+
+	template &lt;class Traits&gt;
+	void QRelations&lt;Traits&gt;::calcEdgeDensity ( const ScalarField&amp;  EdgeDensity,
+	                    	   			       const ScalarField&amp;  VertDensity)
+	{
+		ENTER(&quot;QRelations::calcEdgeDensity&quot;);
+		
+		int d = getEdgeDirection(EdgeDensity);
+		EdgeDensity(CoarseEdges[d]) = 2.0 * ( VertDensity(CoarseEdges[d]) * VertDensity(EdgeNgbr[d]) ) /
+		                                    ( VertDensity(CoarseEdges[d]) + VertDensity(EdgeNgbr[d]) );
+	    ScalarField&amp; VertVolume        = DataDir.get&lt;ScalarField&gt;( &quot;VertVolume&quot;,         Mesh.getField&lt;ScalarField&gt;    ( Vert   () ) );
+	    ScalarField&amp; CellDensity       = DataDir.strictGet&lt;ScalarField&gt;( &quot;CellDensity&quot; );
+	}           // end function calcEdgeDensity
+	
+	//======================================================================
+	// Function -- QRelations&lt;Traits&gt;::calcEdgeGammaConstant
+	//======================================================================
+
+	template &lt;class Traits&gt;
+	void QRelations&lt;Traits&gt;::calcEdgeGammaConstant ( const ScalarField&amp;  EdgeGammaConstant,
+	                    	   			             const ScalarField&amp;  VertGammaConstant)
+	{
+		ENTER(&quot;QRelations::calcEdgeGammaConstant&quot;);
+		
+		int d = getEdgeDirection(EdgeGammaConstant);
+		EdgeGammaConstant(CoarseEdges[d]) = 0.5 * ( VertGammaConstant(CoarseEdges[d]) + VertGammaConstant(EdgeNgbr[d]) );
+	}           // end function calcEdgeGammaConstant
+	
+	
+	//======================================================================
+	// Function -- QRelations&lt;Traits&gt;::calcEdgeQPressure
+	//======================================================================
+
+	template &lt;class Traits&gt;
+	void QRelations&lt;Traits&gt;::calcEdgeQPressure ( const ScalarField&amp;  EdgeQPressure,
+	                    	   			         const ScalarField&amp;  EdgeGammaConstant,
+	                    	   			         const ScalarField&amp;  EdgeSoundSpeed,
+	                    	   			         const VectorField&amp;  EdgeVelocity,
+ 	                    	   			         const ScalarField&amp;  EdgePsiLimiter )
+	{
+		ENTER(&quot;QRelations::calcEdgeQPressure&quot;);
+		
+		int d = getEdgeDirection(EdgeQPressure);
+		EdgeGammaConstant[d].update();
+		EdgeSoundSpeed[d].update();
+		EdgeVelocity[d].update();
+		EdgePsiLimiter[d].update();
+		
+		ScalarEdgeQPressure&lt;Traits&gt; sEdgeQPressure(linearQ);
+        ScalarCode&lt;ScalarEdgeQPressure&lt;Traits&gt; &gt; scEdgeQPressure(sEdgeQPressure);
+
+        scEdgeQPressure(EdgeQPressure,EdgeGammaConstant[d], EdgeSoundSpeed[d],EdgeVelocity[d],EdgePsiLimiter[d]);
+	}           // end function EdgeQPressure
+
+	//======================================================================
+	// Function -- QRelations&lt;Traits&gt;::calcEdgeSoundSpeed
+	//======================================================================
+
+	template &lt;class Traits&gt;
+	void QRelations&lt;Traits&gt;::calcEdgeSoundSpeed ( const ScalarField&amp;  EdgeSoundSpeed,
+	                    	   			          const ScalarField&amp;  VertSoundSpeed )
+	{
+		ENTER(&quot;QRelations::calcEdgeSoundSpeed&quot;);
+		
+		int d = getEdgeDirection(EdgeSoundSpeed);
+		VertSoundSpeed.update();
+		EdgeSoundSpeed(CoarseEdges[d]) = min( VertSoundSpeed(CoarseEdges[d]),VertSoundSpeed(EdgeNgbr[d]) );
+	}           // end function calcEdgeSoundSpeed
+
+
+	//======================================================================
+	// Function -- QRelations&lt;Traits&gt;::calcEdgeQTmpMax
+	//======================================================================
+
+	template &lt;class Traits&gt;
+	void QRelations&lt;Traits&gt;::calcEdgeQTmpMax ( const ScalarField&amp;  EdgeQTmpMax,
+	                    	   			       const ScalarField&amp;  EdgeDensity,
+	                    	   			       const ScalarField&amp;  EdgeQPressure )
+	{
+		ENTER(&quot;QRelations::calcEdgeQTmpMax&quot;);
+		int d = getEdgeDirection(EdgeQTmpMax);
+		EdgeQTmpMax = EdgeDensity[d] * EdgeQPressure[d];
+	}           // end function calcEdgeQTmpMax
+	
+	//======================================================================
+	// Function -- QRelations&lt;Traits&gt;::calcSpokeDVolDt
+	//======================================================================
+
+	template &lt;class Traits&gt;
+	void QRelations&lt;Traits&gt;::calcSpokeDVolDt ( const ScalarField&amp;  SpokeDVolDt,
+	                    	   			       const VectorField&amp;  EdgeVelocity,
+	                    	   			       const VectorField&amp;  SubFaceAreas)
+	{
+		ENTER(&quot;QRelations::calcSpokeDVolDt&quot;);
+		int d = getFaceDirection(SpokeDVolDt);
+		EdgeVelocity[d].update();
+		SubFaceAreas[d].update();
+	   	for(int edg=0;edg&lt;nEdgesPerDimension;++edg) {
+		    SpokeDVolDt(Spoke[d][edg]) = dot(EdgeVelocity[d](CellEdge[d][edg]),SubFaceAreas[d](Spoke[d][edg]));
+		}
+	}           // end function calcSpokeDVolDt
+	
+    //======================================================================
+	// Function -- QRelations&lt;Traits&gt;::calcSpokeQSwitch
+	//======================================================================
+
+	template &lt;class Traits&gt;
+	void QRelations&lt;Traits&gt;::calcSpokeQSwitch ( const ScalarField&amp;  SpokeQSwitch,
+	                    	   			   const ScalarField&amp;  SpokeDVolDt,
+	                    	   			   const ScalarField&amp;  Volume,
+	                    	   			   const ScalarField&amp;  Dt )
+	{
+		ENTER(&quot;QRelations::calcSpokeQSwitch&quot;);
+		int d = getFaceDirection(SpokeQSwitch);
+	   	for(int edg=0;edg&lt;nEdgesPerDimension;++edg) {
+		    SpokeQSwitch(Spoke[d][edg]) = (-Dt(CoarseCell) * SpokeDVolDt[d](Spoke[d][edg]))/Volume(CoarseCell);
+		}
+		SpokeQSwitch = where(SpokeQSwitch &gt; spokeCutoff, 1.0, 0.0);
+	}           // end function calcSpokeQSwitch
+	
+	//======================================================================
+	// Function -- QRelations&lt;Traits&gt;::calcRightLimiterRatio
+	//======================================================================
+
+	template &lt;class Traits&gt;
+    void QRelations&lt;Traits&gt;::calcRightLimiterRatio ( const ScalarField&amp;  RightLimiterRatio,
+                                                     const VectorField&amp;  EdgeLength,
+                                                     const VectorField&amp;  EdgeVelocity)
+	{
+		ENTER(&quot;QRelations::calcRightLimiterRatio&quot;);
+		int d = getEdgeDirection(RightLimiterRatio);
+        EdgeLength[d].update();
+        EdgeVelocity[d].update();
+		RightLimiterRatio = 1.0;
+
+		RightLimiterRatio(RDomain[d]) = dot(EdgeLength[d](RightEdgeNgbr[d]),
+		                                    EdgeLength[d](RDomain[d]))       *
+                                        dot(EdgeVelocity[d](RDomain[d]),
+		                                    EdgeVelocity[d](RDomain[d]));
+
+		RightLimiterRatio(RDomain[d]) = where(RightLimiterRatio(RDomain[d]) &gt; numeric_limits&lt;Real&gt;::epsilon(),
+                                                (dot(EdgeVelocity[d](RightEdgeNgbr[d]),
+                                                     EdgeVelocity[d](RDomain[d]))       *
+                                                 dot(EdgeLength[d](RDomain[d]),
+                                                     EdgeLength[d](RDomain[d])) ) /
+                                               RightLimiterRatio(RDomain[d]),
+                                               1.0 );
+
+        //-------------------------------------------------------------
+        //  if ( d == 0 ) {
+        //  } else if ( d == 1) {
+        //     RightLimiterRatio -= 1.0;
+        //     tecout &lt;&lt; &quot;RightLimiterRatio[1] = &quot; &lt;&lt; endl;
+        //     tecout &lt;&lt; RightLimiterRatio &lt;&lt; endl;
+        //     RightLimiterRatio += 1.0;
+        //  }
+        //-------------------------------------------------------------
+
+
+	}           // end function calcRightLimiterRatio
+
+	//======================================================================
+	// Function -- QRelations&lt;Traits&gt;::calcLeftLimiterRatio
+	//======================================================================
+
+	template &lt;class Traits&gt;
+    void QRelations&lt;Traits&gt;::calcLeftLimiterRatio ( const ScalarField&amp;  LeftLimiterRatio,
+                                                    const VectorField&amp;  EdgeLength,
+                                                    const VectorField&amp;  EdgeVelocity)
+	{
+		ENTER(&quot;QRelations::calcLeftLimiterRatio&quot;);
+		int d = getEdgeDirection(LeftLimiterRatio);
+        EdgeLength[d].update();
+        EdgeVelocity[d].update();
+		LeftLimiterRatio = 1.0;
+
+		LeftLimiterRatio(LDomain[d]) = dot(EdgeLength[d](LeftEdgeNgbr[d]),
+		                                    EdgeLength[d](LDomain[d]))       *
+                                        dot(EdgeVelocity[d](LDomain[d]),
+		                                    EdgeVelocity[d](LDomain[d]));
+
+		LeftLimiterRatio(LDomain[d]) = where(LeftLimiterRatio(LDomain[d]) &gt; numeric_limits&lt;Real&gt;::epsilon(),
+                                              (dot(EdgeVelocity[d](LeftEdgeNgbr[d]),
+                                                    EdgeVelocity[d](LDomain[d]))       *
+                                               dot(EdgeLength[d](LDomain[d]),
+                                                    EdgeLength[d](LDomain[d])) ) /
+                                               LeftLimiterRatio(LDomain[d]),
+                                               1.0 );
+
+        //-------------------------------------------------------------
+        // if ( d == 0 ) {
+        // } else if ( d == 1) {
+        //    LeftLimiterRatio -= 1.0;
+        //    tecout &lt;&lt; &quot;LeftLimiterRatio[1] = &quot; &lt;&lt; endl;
+        //    tecout &lt;&lt; LeftLimiterRatio &lt;&lt; endl;
+        //    LeftLimiterRatio += 1.0;
+        // }
+        //-------------------------------------------------------------
+
+	}           // end function calcLeftLimiterRatio
+
+	//======================================================================
+	// Function -- QRelations&lt;Traits&gt;::calcEdgePsiLimiter
+	//======================================================================
+
+	template &lt;class Traits&gt;
+    void QRelations&lt;Traits&gt;::calcEdgePsiLimiter ( const ScalarField&amp;  EdgePsiLimiter,
+                                                  const ScalarField&amp;  RightLimiterRatio,
+                                                  const ScalarField&amp;  LeftLimiterRatio,
+                                                  const VectorField&amp;  EdgeLength,
+                                                  const VectorField&amp;  EdgeVelocity,
+                                                  const ScalarField&amp;  Dt)
+	{
+		ENTER(&quot;QRelations::calcEdgePsiLimiter&quot;);
+
+		int d = getEdgeDirection(EdgePsiLimiter);
+
+        //------------------------------------------------------------------------
+        //  Typically the EdgePsiLimiter is limited between 0 and 1,
+        //  For this algorithm, 0 means do not have any artificial viscosity
+        //  along the edge.
+        //
+        //  (In Randy Christensen's paper, EdgePsiLimiter is
+        //  PsiLimiter = 1.0 - EdgePsiLimiter, so that when he calculates the
+        //  Q, there is a factor of ( 1.0 - PsiLimiter) in the expression.  This
+        //  means his PsiLimiter has a different meaning than the one used here.
+        //  Don M )
+        //------------------------------------------------------------------------
+        RightLimiterRatio[d].update();
+        LeftLimiterRatio[d].update();
+        EdgeLength[d].update();
+        EdgeVelocity[d].update();
+		EdgePsiLimiter = 1.0 - max( 0.0, min( min( 2.0 * RightLimiterRatio[d],
+		                                       2.0 * LeftLimiterRatio[d]),
+                                          min( 0.5 * (RightLimiterRatio[d] +
+		                                              LeftLimiterRatio[d]),
+		                                       1.0 ) ) );
+		
+
+
+        //------------------------------------------------------------------------
+        // The where statement turns off the limiter when:
+        //    1.  The limiter is non zero because of round off
+        //    2.  The edge is degenerate (the vertex points coincide)
+        //    3.  The change in the velocity along the edge is too small for
+        //           anything to happen during the time step.
+        //------------------------------------------------------------------------
+        EdgePsiLimiter = where( (EdgePsiLimiter &gt; numeric_limits&lt;Real&gt;::epsilon() &amp;&amp;
+		                      dot(EdgeLength[d],EdgeLength[d])    &gt;
+		                     numeric_limits&lt;Real&gt;::epsilon()             &amp;&amp;
+		                      dot(EdgeVelocity[d],EdgeVelocity[d]) * Dt * Dt  &gt;
+		                     numeric_limits&lt;Real&gt;::epsilon() *
+		                      dot(EdgeLength[d],EdgeLength[d]) ),
+		                   EdgePsiLimiter, 0.0 );
+
+//---------------------------------------------------------------------------------------------------------
+       if ( d == 0 ) {
+//        //   tecout &lt;&lt; &quot;eps = &quot; &lt;&lt; eps &lt;&lt;endl;
+//        //   tecout &lt;&lt; &quot;numeric_limits&lt;Real&gt;::epsilon() = &quot; &lt;&lt; numeric_limits&lt;Real&gt;::epsilon() &lt;&lt; endl;
+//           tecout &lt;&lt; &quot; Dt = &quot; &lt;&lt; Dt &lt;&lt; endl;
+//           tecout &lt;&lt; &quot;EdgePsiLimiter[0] = &quot; &lt;&lt; endl;
+//           tecout &lt;&lt; EdgePsiLimiter &lt;&lt; endl;
+//           tecout &lt;&lt; &quot;EdgeVelocity[0] = &quot; &lt;&lt; endl;
+//           tecout &lt;&lt; EdgeVelocity[0] &lt;&lt; endl;
+        } else if ( d == 1) {
+//        //   tecout &lt;&lt; &quot;RightLimiterRatio[1] = &quot; &lt;&lt; endl;
+//        //   tecout &lt;&lt; RightLimiterRatio[1] &lt;&lt; endl;
+//        //   tecout &lt;&lt; &quot;LeftLimiterRatio[1] = &quot; &lt;&lt; endl;
+//        //   tecout &lt;&lt; LeftLimiterRatio[1] &lt;&lt; endl;
+//           tecout &lt;&lt; &quot;EdgePsiLimiter[1] = &quot; &lt;&lt; endl;
+//           tecout &lt;&lt; EdgePsiLimiter &lt;&lt; endl;
+//           tecout &lt;&lt; &quot;EdgeVelocity[1] = &quot; &lt;&lt; endl;   
+//           tecout &lt;&lt; EdgeVelocity[1] &lt;&lt; endl;
+        }
+//---------------------------------------------------------------------------------------------------------
+
+	}           // end function calcEdgePsiLimiter
+
+	//======================================================================
+	// Function -- QRelations&lt;Traits&gt;::calcCellQ
+	//======================================================================
+
+	template &lt;class Traits&gt;
+	void QRelations&lt;Traits&gt;::calcCellQ ( const ScalarField&amp;  CellQ,
+	                    	   			 const ScalarField&amp;  EdgeQTmpMax,
+                                         const ScalarField&amp;  SpokeQSwitch )
+	{
+		ENTER(&quot;QRelations::calcCellQ&quot;);
+		EdgeQTmpMax.update();
+		SpokeQSwitch.update();
+		CellQ = 0.0;
+		for ( int d = 0; d &lt; Dim; ++d ) {
+		    for ( int edg = 0; edg &lt; nEdgesPerDimension; ++edg ) {
+		        CellQ(CoarseCell) = max( CellQ(CoarseCell), EdgeQTmpMax[d](CellEdge[d][edg]) * SpokeQSwitch[d](Spoke[d][edg]) );
+		    }
+		}
+
+//----------------------------------------
+//         tecout &lt;&lt; &quot; in calcCellQ: CellQ = &quot; &lt;&lt; endl;
+//         tecout &lt;&lt; CellQ &lt;&lt; endl;
+//----------------------------------------
+
+	}           // end function calcCellQ
+
+	//======================================================================
+	// Function -- QRelations&lt;Traits&gt;::calcSubForceQ
+	//======================================================================
+
+	template &lt;class Traits&gt;
+	void QRelations&lt;Traits&gt;::calcSubForceQ ( const VectorField&amp;  SubForceQ,
+	                    	   			     const ScalarField&amp;  EdgeQTmpMax,
+	                    	   			     const VectorField&amp;  EdgeVelocity,
+	                    	   			     const ScalarField&amp;  SpokeDVolDt,
+                                             const ScalarField&amp;  SpokeQSwitch )
+	{
+		ENTER(&quot;QRelations::calcSubForceQ&quot;);
+	    SubForceQ = 0.0;
+		for ( int d = 0; d &lt; Dim; ++d ) {
+		    Loc&lt;Dim&gt; offset(0); offset[d] = 1;
+		    for ( int edg = 0; edg &lt; nEdgesPerDimension; ++edg ) {
+		        SubForceQ(Spoke[d][edg] - offset) -=(EdgeVelocity[d](CellEdge[d][edg]) *
+		                                             SpokeDVolDt[d] (Spoke[d][edg])    *
+		                                             EdgeQTmpMax[d] (CellEdge[d][edg]) *
+                                                     SpokeQSwitch[d](Spoke[d][edg]) )  /
+                                                    (dot(EdgeVelocity[d](CellEdge[d][edg]),EdgeVelocity[d](CellEdge[d][edg]))+eps);
+
+		        SubForceQ(Spoke[d][edg])          +=(EdgeVelocity[d](CellEdge[d][edg]) *
+		                                             SpokeDVolDt[d] (Spoke[d][edg])    *
+		                                             EdgeQTmpMax[d] (CellEdge[d][edg]) *
+                                                     SpokeQSwitch[d](Spoke[d][edg]) )  /
+                                                    (dot(EdgeVelocity[d](CellEdge[d][edg]),EdgeVelocity[d](CellEdge[d][edg]))+eps);
+		    }
+		}
+
+//--------------------------------------------
+//         tecout &lt;&lt; &quot; in calcSubForceQ: SubForceQ = &quot; &lt;&lt; endl;
+//         tecout &lt;&lt; SubForceQ &lt;&lt; endl;
+//--------------------------------------------
+
+	}           // end function calcSubForceQ
+
+	//======================================================================
+	// Function -- QRelations&lt;Traits&gt;::calcSubPressureQMod
+	//======================================================================
+
+	template &lt;class Traits&gt;
+	void QRelations&lt;Traits&gt;::calcSubPressureQMod ( const ScalarField&amp;  SubPressureQMod,
+	                    	   			           const ScalarField&amp;  EdgeQPressure,
+                                                   const ScalarField&amp;  SpokeQSwitch )
+	{
+		ENTER(&quot;QRelations::calcSubPressureQMod&quot;);
+		
+	    SubPressureQMod = 0.0;
+		for ( int d = 0; d &lt; Dim; ++d ) {
+		    Loc&lt;Dim&gt; offset(0); offset[d] = 1;
+		    for ( int edg = 0; edg &lt; nEdgesPerDimension; ++edg ) {
+		        SubPressureQMod(Spoke[d][edg] - offset) += EdgeQPressure[d](CellEdge[d][edg]) *
+                                                           SpokeQSwitch[d](Spoke[d][edg]);
+
+		        SubPressureQMod(Spoke[d][edg])          += EdgeQPressure[d](CellEdge[d][edg]) *
+                                                           SpokeQSwitch[d](Spoke[d][edg]);
+
+		    }
+		}
+	}           // end function calcSubPressureQMod
+
+
+}          // end namespace conejo
+
+#endif     // end shroud __conejo_QRelations_t_hh
+-------------- next part --------------
+//:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+//  CCSource File: QRelations
+//  Author:      jcm 
+//  Date:        Sat - Nov 18, 2000 
+//  Namespace:   conejo
+//  Framework:   Tecolote
+//  Copyright:   Los Alamos National Laboratory 
+//               Full Copyright=$(TECOLOTE_ROOT)/Doc/Copyright
+//  RCS_VERSION_ID: $Id: 
+//:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+#if !defined (__MWERKS__)
+#include &quot;Demo_src/include/DemoPCH.hh&quot;
+#pragma hdrstop
+#endif // !__MWERKS__
+
+#include &quot;Demo_src/Model/CompatibleHydro/QRelations.t.hh&quot;
+
+#include &quot;TecFramework_src/MetaTypes/MetaTypes.hh&quot;
+#include &quot;TecFramework_src/Foundation/LoadObject.hh&quot;
+
+namespace conejo
+{
+   using namespace TecFramework;
+   using namespace poomalote;
+   using namespace Hydrodynamics;
+   using namespace PhysicsBaseClasses;
+   using namespace std;
+
+   static MetaClass&lt;ITecoloteTraits&lt;QRelations&lt;OneDF&lt;DefaultTraits&gt; &gt;,  RelationPkg&gt; &gt;
+                QRelations1DMeta(&quot;QRelations1D&quot;, QRelations&lt;OneDF&lt;DefaultTraits&gt; &gt;::MakePersistents());
+
+   LoadObjectGroup QRelations1DBase_cc = { &amp;QRelations1DMeta };
+
+}          // end namespace conejo
+
+namespace TecFramework
+{
+    using namespace conejo;
+
+    LoadObjectGroup QRelations1D_cc = { &amp;QRelations1DBase_cc };
+
+}    // end namespace TecFramework
+-------------- next part --------------
+//:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+//  CCSource File: QRelations
+//  Author:      jcm 
+//  Date:        Sat - Nov 18, 2000 
+//  Namespace:   conejo
+//  Framework:   Tecolote
+//  Copyright:   Los Alamos National Laboratory 
+//               Full Copyright=$(TECOLOTE_ROOT)/Doc/Copyright
+//  RCS_VERSION_ID: $Id: 
+//:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+#if !defined (__MWERKS__)
+#include &quot;Demo_src/include/DemoPCH.hh&quot;
+#pragma hdrstop
+#endif // !__MWERKS__
+
+#include &quot;Demo_src/Model/CompatibleHydro/QRelations.t.hh&quot;
+
+#include &quot;TecFramework_src/MetaTypes/MetaTypes.hh&quot;
+#include &quot;TecFramework_src/Foundation/LoadObject.hh&quot;
+
+namespace conejo
+{
+   using namespace TecFramework;
+   using namespace poomalote;
+   using namespace Hydrodynamics;
+   using namespace PhysicsBaseClasses;
+   using namespace std;
+
+   static MetaClass&lt;ITecoloteTraits&lt;QRelations&lt;TwoDF&lt;DefaultTraits&gt; &gt;,  RelationPkg&gt; &gt;
+                QRelations2DMeta(&quot;QRelations2D&quot;, QRelations&lt;TwoDF&lt;DefaultTraits&gt; &gt;::MakePersistents());
+
+   LoadObjectGroup QRelations2DBase_cc = { &amp;QRelations2DMeta };
+
+}          // end namespace conejo
+
+namespace TecFramework
+{
+    using namespace conejo;
+
+    LoadObjectGroup QRelations2D_cc = { &amp;QRelations2DBase_cc };
+
+}    // end namespace TecFramework
+
+-------------- next part --------------
+//:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+//  Header File: QRelations
+//  Author:      jcm
+//  Date:        Sat - Nov 18, 2000
+//  Namespace:   conejo
+//  Framework:   Tecolote
+//  Copyright:   Los Alamos National Laboratory
+//               Full Copyright=$(TECOLOTE_ROOT)/Doc/Copyright
+//  RCS_VERSION_ID: $Id:
+//:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+#ifndef  __conejo_QRelations_hh
+#define  __conejo_QRelations_hh
+
+#define DEBUG_UPDATERS 1
+
+#include &quot;Hydrodynamics_src/CompatibleHydro/CompatibleRelations.hh&quot;
+#include &quot;Pooma2Integration_src/TecMesh/TecMesh.hh&quot;
+#include &quot;Pooma/NewFields.h&quot;
+
+namespace conejo
+{
+   using namespace TecFramework;
+   using namespace Hydrodynamics;
+   using namespace poomalote;
+   using namespace std;
+
+   //*******************************************************************
+   // Tecolote Class - QRelations
+   // ------------------------------------------------------------------
+   // Summary:
+   //
+   // This class holds functions that define Independent/Dependent
+   // Field Relationships.  These Relationships cause Dependent
+   // Fields to be updated automatically when they are used and
+   // are out-of-date with respect to their Independent Fields.
+   //
+   //
+   //  When declaring Relation functions, include in the parameter
+   // list the Fields that will participate in the relationships.
+   //  The Dependent Field is listed first (the LField - Left
+   // of the equals sign) and the Independent Fields are listed
+   // next (the RFields - Right of the equals sign), followed
+   // by any scalar values.  It is not necessary to include the
+   // parameter types if they default to the types declared in
+   // your Model class.
+   //
+   //  An example of a relation-function declaration is:
+   //
+   //       GammaLaw( Pressure, Density, IntEnergy);
+   //
+   //  where Pressure is a function of Density and IntEnergy,
+   // and the GammaLaw function defines the expressions to update
+   // the Pressure.
+   //*******************************************************************
+   template &lt;class Traits&gt;
+   class QRelations : public CompatibleRelations&lt;Traits&gt;
+   {
+
+   public:
+
+      PERSISTENT_MEMBERS(QRelations)
+
+      // Typedefs
+      FIELD_TYPEDEFS(Traits)
+      typedef CompatibleRelations&lt;Traits&gt;  Parent;
+      typedef CompatibleRelations&lt;Traits&gt; *pParent;
+
+      // Tecolote Constructor
+      QRelations( DataDirectory* pDataDir, const string&amp; inName);
+
+      // Public Member Functions
+      void createRelations (void);
+
+	  void calcWeightedVertVol ( const ScalarField&amp;  WeightedVertVol,
+	                    	   	 const ScalarField&amp;  SubVertVolume,
+	                    	   	 const ScalarField&amp;  VertVolume );
+
+//	  void calcEdgeVolume ( const ScalarField&amp;  EdgeVolume,
+//	                    	const ScalarField&amp;  WeightedVertVol );
+	                    	   	
+      void calcEdgeVelocity   ( const VectorField&amp;  EdgeVelocity,
+                                const VectorField&amp;  OldVelocity);
+
+	  void calcSpokeDVolDt( const ScalarField&amp;  SpokeDVolDt,
+	                              const VectorField&amp;  EdgeVelocity,
+	                    	      const VectorField&amp;  SubFaceAreas);
+	                    	   	
+      void calcEdgeDensity    ( const ScalarField&amp;  EdgeDensity,
+                                const ScalarField&amp;  VertDensity);
+
+	  void calcEdgeGammaConstant( const ScalarField&amp;  EdgeGammaConstant,
+	                    	   	  const ScalarField&amp;  VertGammaConstant);
+
+	   void calcEdgeQPressure ( const ScalarField&amp;  EdgeQPressure,
+	                    	   	const ScalarField&amp;  EdgeGammaConstant,
+	                    	   	const ScalarField&amp;  EdgeSoundSpeed,
+	                    	   	const VectorField&amp;  EdgeVelocity,
+ 	                    	   	const ScalarField&amp;  EdgePsiLimiter );
+ 	                    	
+      void calcEdgeSoundSpeed ( const ScalarField&amp;  EdgeSoundSpeed,
+                                const ScalarField&amp;  VertSoundSpeed );
+
+	  void calcEdgeQTmpMax    ( const ScalarField&amp;  EdgeQTmpMax,
+	                    	    const ScalarField&amp;  EdgeDensity,
+	                    	    const ScalarField&amp;  EdgeQPressure );
+
+      void calcRightLimiterRatio( const ScalarField&amp;  RightLimiterRatio,
+                                  const VectorField&amp;  EdgeDeltaLength,
+                                  const VectorField&amp;  EdgeVelocity);
+
+      void calcLeftLimiterRatio ( const ScalarField&amp;  LeftLimiterRatio,
+                                  const VectorField&amp;  EdgeDeltaLength,
+                                  const VectorField&amp;  EdgeVelocity);
+
+      void calcEdgePsiLimiter ( const ScalarField&amp;  EdgePsiLimiter,
+                                const ScalarField&amp;  RightLimiterRatio,
+                                const ScalarField&amp;  LeftLimiterRatio,
+                                const VectorField&amp;  EdgeDeltaLength,
+                                const VectorField&amp;  EdgeVelocity,
+                                const ScalarField&amp;  Dt);
+
+      void calcSpokeQSwitch   ( const ScalarField&amp;  SpokeQSwitch,
+                                const ScalarField&amp;  SpokeDVolDt,
+                                const ScalarField&amp;  Volume,
+                                const ScalarField&amp;  Dt);
+
+
+      void calcCellQ          ( const ScalarField&amp;  CellQ,
+                                const ScalarField&amp;  EdgeQTmpMax,
+                                const ScalarField&amp;  SpokeQSwitch );
+
+
+	  void calcSubForceQ      ( const VectorField&amp;  SubForceQ,
+	                    	    const ScalarField&amp;  EdgeQTmpMax,
+	                    	   	const VectorField&amp;  EdgeVelocity,
+	                    	   	const ScalarField&amp;  SpokeDVolDt,
+                                const ScalarField&amp;  SpokeQSwitch );
+	                    	   	
+	  void calcSubPressureQMod( const ScalarField&amp;  SubPressureQMod,
+	                    	   	const ScalarField&amp;  EdgeQPressure,
+                                const ScalarField&amp;  SpokeQSwitch );
+
+   //..............................................................
+   // The 6 C++ default methods
+   //
+   public:
+      virtual ~QRelations();
+   private:
+      QRelations();
+   // QRelations(const QRelations&amp; c);
+      QRelations&amp; operator=(const QRelations&amp; c);
+   // QRelations* operator&amp;();
+   // const QRelations* operator&amp;() const;
+   //..............................................................
+
+   private:
+
+		// Private Member Functions
+
+		//----------------
+		// Member Data
+		//----------------
+		DataDirectory&amp; Old;
+		Real   linearQ;
+		Real   quadQ;
+		Real   gammaConst;
+		vector&lt;Range&lt;Dim&gt; &gt;             RDomain;
+		vector&lt;Range&lt;Dim&gt; &gt;             LDomain;
+		vector&lt;Range&lt;Dim&gt; &gt;             RightEdgeNgbr;
+		vector&lt;Range&lt;Dim&gt; &gt;             LeftEdgeNgbr;
+		vector&lt;Range&lt;Dim&gt; &gt;             CoarseEdges;
+		vector&lt;Range&lt;Dim&gt; &gt;             FineEdges;
+		vector&lt;Range&lt;Dim&gt; &gt;             EdgeNgbr;
+		vector&lt;Range&lt;Dim&gt; &gt;             UpperVert;
+		vector&lt;Range&lt;Dim&gt; &gt;             LowerVert;
+   };      // end class QRelations
+}          // end namespace conejo
+
+#ifndef TEC_INCLUDE_T_HH_FILE
+#include &quot;Demo_src/Model/CompatibleHydro/QRelations.t.hh&quot;
+#endif
+
+#endif     // end shroud __conejo_QRelations_hh
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000278.html">Status Reports
+</A></li>
+	<LI>Next message: <A HREF="000280.html">DynamicArray destroy methods
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#279">[ date ]</a>
+              <a href="thread.html#279">[ thread ]</a>
+              <a href="subject.html#279">[ subject ]</a>
+              <a href="author.html#279">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

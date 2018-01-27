@@ -1,0 +1,286 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [PATCH] Extend ScalarCode to allow writing to guards
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20Extend%20ScalarCode%20to%20allow%20writing%20to%20guards&In-Reply-To=%3CPine.LNX.4.44.0302142259210.816-100000%40goofy%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001200.html">
+   <LINK REL="Next"  HREF="001202.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[PATCH] Extend ScalarCode to allow writing to guards</H1>
+    <B>Richard Guenther</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20Extend%20ScalarCode%20to%20allow%20writing%20to%20guards&In-Reply-To=%3CPine.LNX.4.44.0302142259210.816-100000%40goofy%3E"
+       TITLE="[PATCH] Extend ScalarCode to allow writing to guards">rguenth at tat.physik.uni-tuebingen.de
+       </A><BR>
+    <I>Fri Feb 14 22:07:46 UTC 2003</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001200.html">[PATCH] Fix ScalarCode wrt Field Relations
+</A></li>
+        <LI>Next message: <A HREF="001202.html">Warnings when compiling Pooma
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1201">[ date ]</a>
+              <a href="thread.html#1201">[ thread ]</a>
+              <a href="subject.html#1201">[ subject ]</a>
+              <a href="author.html#1201">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Hi!
+
+The following patch adds write-to-(external)-guards capability to
+ScalarCode. This allows one to use the same functor for ScalarCode
+and the external guards filler. Ideally this would allow for n-stage
+computation without internal guards update for n*m sized internal guards,
+too, but this needs prevention of internal guards fill (working on it).
+The problem remains, that ScalarCodeInfo::lower_m/upper_m are not per
+argument, and such prevent from storing into full 1-guard-layer field
+with reading from 2-guard-layer field (cannot take the neccesarry view
+of the 1-guard-layer field).
+
+The extension comes with a new test.
+
+Ok?
+
+Richard.
+
+===== MultiArgEvaluator.h 1.5 vs edited =====
+--- 1.5/r2/src/Evaluator/MultiArgEvaluator.h	Fri Feb 14 21:39:39 2003
++++ edited/MultiArgEvaluator.h	Fri Feb 14 23:05:22 2003
+@@ -173,6 +173,8 @@
+
+     Pooma::beginExpression();
+
++    // Should use info.readers() here - but readers/writers are mutually
++    // exclusive so this (or the latter) seems not to be a great idea.
+     applyMultiArg(multiArg, UpdateNotifier());
+
+     MultiArgEvaluator&lt;Evaluator_t&gt;::evaluate(multiArg, function,
+===== ScalarCodeInfo.h 1.1 vs edited =====
+--- 1.1/r2/src/Evaluator/ScalarCodeInfo.h	Mon May 13 17:47:34 2002
++++ edited/ScalarCodeInfo.h	Fri Feb 14 22:56:48 2003
+@@ -105,12 +105,16 @@
+     dimensions_m = n;
+     lower_m.resize(n);
+     upper_m.resize(n);
++    wlower_m.resize(n);
++    wupper_m.resize(n);
+
+     int i;
+     for (i = 0; i &lt; n; ++i)
+     {
+       lower_m[i] = 0;
+       upper_m[i] = 0;
++      wlower_m[i] = 0;
++      wupper_m[i] = 0;
+     }
+   }
+
+@@ -123,6 +127,21 @@
+   {
+     return upper_m[i];
+   }
++
++  // Extend the evaluation domain into the guard layers by the amount
++  // specified with g. Needs to be less or equal the guard layer specification
++  // with lowerExtent() and upperExtent().
++
++  template &lt;int Dim&gt;
++  void evaluationExtent(const GuardLayers&lt;Dim&gt; &amp;g)
++  {
++    PAssert(dimensions_m == Dim);
++    for (int i = 0; i &lt; Dim; ++i)
++    {
++      wlower_m[i] = g.lower(i);
++      wupper_m[i] = g.upper(i);
++    }
++  }
+
+   void write(int i, bool f)
+   {
+@@ -175,8 +194,8 @@
+     {
+       ret[d] =
+ 	Interval&lt;1&gt;(
+-		    lower_m[d],
+-		    domain[d].last() - domain[d].first()  + lower_m[d]
++		    lower_m[d]-wlower_m[d],
++		    domain[d].last() - domain[d].first()  + lower_m[d] + wupper_m[d]
+ 		    );
+     }
+     return ret;
+@@ -194,6 +213,8 @@
+   int       dimensions_m;
+   Extents_t upper_m;
+   Extents_t lower_m;
++  Extents_t wupper_m;
++  Extents_t wlower_m;
+   BoolVector_t useGuards_m;
+   BoolVector_t writers_m;
+   BoolVector_t readers_m;
+===== tests/makefile 1.7 vs edited =====
+--- 1.7/r2/src/Evaluator/tests/makefile	Fri Feb 14 21:39:39 2003
++++ edited/tests/makefile	Fri Feb 14 21:57:09 2003
+@@ -36,7 +36,7 @@
+
+ TESTS = compressibleTest1 \
+ 	evaluatorTest1 evaluatorTest2 evaluatorTest3 evaluatorTest4 \
+-	evaluatorTest5 \
++	evaluatorTest5 evaluatorTest6 \
+ 	ReductionTest1 ReductionTest2 ReductionTest3 ReductionTest4
+
+ default:: build
+
+// -*- C++ -*-
+// ACL:license
+// ----------------------------------------------------------------------
+// This software and ancillary information (herein called &quot;SOFTWARE&quot;)
+// called POOMA (Parallel Object-Oriented Methods and Applications) is
+// made available under the terms described here.  The SOFTWARE has been
+// approved for release with associated LA-CC Number LA-CC-98-65.
+//
+// Unless otherwise indicated, this SOFTWARE has been authored by an
+// employee or employees of the University of California, operator of the
+// Los Alamos National Laboratory under Contract No. W-7405-ENG-36 with
+// the U.S. Department of Energy.  The U.S. Government has rights to use,
+// reproduce, and distribute this SOFTWARE. The public may copy, distribute,
+// prepare derivative works and publicly display this SOFTWARE without
+// charge, provided that this Notice and any statement of authorship are
+// reproduced on all copies.  Neither the Government nor the University
+// makes any warranty, express or implied, or assumes any liability or
+// responsibility for the use of this SOFTWARE.
+//
+// If SOFTWARE is modified to produce derivative works, such modified
+// SOFTWARE should be clearly marked, so as not to confuse it with the
+// version available from LANL.
+//
+// For more information about POOMA, send e-mail to <A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">pooma at acl.lanl.gov</A>,
+// or visit the POOMA web page at <A HREF="http://www.acl.lanl.gov/pooma/.">http://www.acl.lanl.gov/pooma/.</A>
+// ----------------------------------------------------------------------
+// ACL:license
+
+//-----------------------------------------------------------------------------
+// evaluatorTest5 - testing ScalarCode and direct external bounds computation
+//-----------------------------------------------------------------------------
+
+#include &quot;Pooma/Pooma.h&quot;
+#include &quot;Pooma/Arrays.h&quot;
+#include &quot;Pooma/Fields.h&quot; // for PerformUpdateTag() only!
+#include &quot;Evaluator/ScalarCode.h&quot;
+#include &quot;Utilities/Tester.h&quot;
+#include &lt;iostream&gt;
+
+
+// dummy operation
+
+template &lt;int extent&gt;
+struct Store
+{
+  Store(int val) : val_m(val) {}
+
+  template&lt;class A&gt;
+  inline void operator()(const A &amp;a, const Loc&lt;1&gt; &amp;i) const
+  {
+	  a(i) = val_m;
+  }
+
+  void scalarCodeInfo(ScalarCodeInfo&amp; i) const
+  {
+    i.arguments(1);
+    i.dimensions(1);
+    i.lowerExtent(0) = 2;
+    i.upperExtent(0) = 2;
+    i.evaluationExtent(GuardLayers&lt;1&gt;(extent));
+    i.write(0, true);
+    i.useGuards(0, true);
+  }
+
+  const int val_m;
+};
+
+
+int main(int argc, char *argv[])
+{
+  // Initialize POOMA and output stream, using Tester class
+  Pooma::initialize(argc, argv);
+  Pooma::Tester tester(argc, argv);
+
+  Pooma::blockingExpressions(true);
+
+  Interval&lt;1&gt; domain(0, 7);
+  DomainLayout&lt;1&gt; layout(domain, GuardLayers&lt;1&gt;(2));
+  UniformRectilinearMesh&lt;1&gt; mesh(layout);
+  Centering&lt;1&gt; cell = canonicalCentering&lt;1&gt;(VertexType, Continuous);
+
+  Field&lt;UniformRectilinearMesh&lt;1&gt;, int, Brick&gt;
+     a(cell, layout, mesh);
+
+  // init all of a
+  a.all() = 0;
+  tester.out() &lt;&lt; a.all() &lt;&lt; std::endl;
+  tester.check(&quot;guard init&quot;, a(-2) == 0 &amp;&amp; a(-1) == 0
+		  	     &amp;&amp; a(8) == 0 &amp;&amp; a(9) == 0);
+
+  // zero-extent Store into a
+  (ScalarCode&lt;Store&lt;0&gt; &gt;(1))(a);
+  tester.out() &lt;&lt; a.all() &lt;&lt; std::endl;
+  tester.check(&quot;guard init&quot;, a(-2) == 0 &amp;&amp; a(-1) == 0
+		  	     &amp;&amp; a(8) == 0 &amp;&amp; a(9) == 0);
+
+  // one-extent Store into a
+  (ScalarCode&lt;Store&lt;1&gt; &gt;(2))(a);
+  tester.out() &lt;&lt; a.all() &lt;&lt; std::endl;
+  tester.check(&quot;guard init&quot;, a(-2) == 0 &amp;&amp; a(-1) == 2
+		  	     &amp;&amp; a(8) == 2 &amp;&amp; a(9) == 0);
+
+  // two-extent Store into a
+  (ScalarCode&lt;Store&lt;2&gt; &gt;(3))(a);
+  tester.out() &lt;&lt; a.all() &lt;&lt; std::endl;
+  tester.check(&quot;guard init&quot;, a(-2) == 3 &amp;&amp; a(-1) == 3
+		  	     &amp;&amp; a(8) == 3 &amp;&amp; a(9) == 3);
+
+  int retval = tester.results(&quot;evaluatorTest6 (ScalarCode)&quot;);
+  Pooma::finalize();
+  return retval;
+}
+
+// ACL:rcsinfo
+// ----------------------------------------------------------------------
+// $RCSfile: evaluatorTest2.cpp,v $   $Author: pooma $
+// $Revision: 1.7 $   $Date: 2003/01/29 19:32:07 $
+// ----------------------------------------------------------------------
+// ACL:rcsinfo
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001200.html">[PATCH] Fix ScalarCode wrt Field Relations
+</A></li>
+	<LI>Next message: <A HREF="001202.html">Warnings when compiling Pooma
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1201">[ date ]</a>
+              <a href="thread.html#1201">[ thread ]</a>
+              <a href="subject.html#1201">[ subject ]</a>
+              <a href="author.html#1201">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

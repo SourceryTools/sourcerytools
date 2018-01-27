@@ -1,0 +1,4707 @@
+From jules at codesourcery.com  Tue Oct  3 14:24:12 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Tue, 03 Oct 2006 10:24:12 -0400
+Subject: Missing file for PAS
+Message-ID: <4522728C.4080800@codesourcery.com>
+
+Patch applied.  -- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: offset.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20061003/6f159f7a/attachment.ksh>
+
+From stefan at codesourcery.com  Thu Oct  5 01:45:27 2006
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Wed, 04 Oct 2006 21:45:27 -0400
+Subject: patch: python bindings prototype
+Message-ID: <452463B7.6020906@codesourcery.com>
+
+I just checked in the attached patch, which provides a prototype
+for python bindings for VSIPL++, using boost.python.
+This is really more a proof-of-concept than a complete binding,
+since most functions are still missing.
+However, I'm able to use it to create vectors and run simple
+functions, as well as ffts and convolutions on them.
+
+Regards,
+		Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: scripting.patch
+Type: text/x-patch
+Size: 16936 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20061004/314d134e/attachment.bin>
+
+From jules at codesourcery.com  Thu Oct  5 04:57:26 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Thu, 05 Oct 2006 00:57:26 -0400
+Subject: [vsipl++] patch: python bindings prototype
+In-Reply-To: <452463B7.6020906@codesourcery.com>
+References: <452463B7.6020906@codesourcery.com>
+Message-ID: <452490B6.9060304@codesourcery.com>
+
+Stefan,
+
+How does this behave when python isn't present on the system?  It looks 
+like configure will run python even if scripting isn't enabled.
+
+Can you gate the python bindings with --enable-scripting?  If the user 
+doesn't explicitly '--enable-scripting', then configure shouldn't try to 
+run python.
+
+Also, what is the story with shared libraries?  That is only for the 
+scripting, right?
+
+				-- Jules
+
+
+
+Stefan Seefeld wrote:
+> I just checked in the attached patch, which provides a prototype
+> for python bindings for VSIPL++, using boost.python.
+> This is really more a proof-of-concept than a complete binding,
+> since most functions are still missing.
+> However, I'm able to use it to create vectors and run simple
+> functions, as well as ffts and convolutions on them.
+> 
+> Regards,
+> 		Stefan
+> 
+> 
+> 
+> ------------------------------------------------------------------------
+> 
+
+> +}
+> Index: configure.ac
+> ===================================================================
+> --- configure.ac	(revision 150667)
+> +++ configure.ac	(working copy)
+> @@ -333,6 +333,28 @@
+>  
+>  AC_SUBST(QMTEST, $with_qmtest)
+>   
+> +AC_ARG_ENABLE(scripting,
+> +  [  --enable-scripting         Specify whether or not to build the python bindings.],,
+> +  [enable_scripting="no"])
+> +
+> +AC_ARG_WITH(python, 
+> +  [  --with-python=PATH      Specify the Python interpreter.],
+> +  PYTHON="$with_python",
+> +  PYTHON="python"
+> +)
+> +
+> +AC_ARG_WITH(boost-prefix,
+> +  [  --with-boost-prefix=PATH      Specify the boost installation prefix.],
+> +  BOOST_PREFIX="$with_boost_prefix",
+> +  BOOST_PREFIX="/usr"
+> +)
+> +
+> +AC_ARG_WITH(boost-version,
+> +  [  --with-boost-version=VERSION      Specify the boost version.],
+> +  BOOST_VERSION="$with_boost_version",
+> +  BOOST_VERSION="1.33"
+> +)
+> +
+>  #
+>  # Put libs directory int INT_LDFLAGS:
+>  #
+> @@ -1329,7 +1351,6 @@
+>  # Copy libg2c into libdir, if requested.
+>  #
+>  if test "x$with_g2c_copy" != "x"; then
+> -  mkdir -p lib
+>    cp $with_g2c_copy lib
+>    curdir=`pwd`
+>    G2C_LDFLAGS="-L$curdir/lib"
+> @@ -2009,6 +2030,76 @@
+>  AC_SUBST(INT_CPPFLAGS)
+>  
+>  #
+> +# Python frontend
+> +#
+> +echo "PYTHON $PYTHON"
+> +if test -n "$PYTHON" -a "$PYTHON" != yes; then
+
+Why is this code comment out?  Either explain why it is commented out, 
+our delete it.
+
+> +dnl  AC_CHECK_FILE($PYTHON,,AC_MSG_ERROR([Cannot find Python interpreter]))
+> +dnl else
+
+
+> +  AC_PATH_PROG(PYTHON, python2 python, python)
+> +fi
+> +PYTHON_INCLUDE=`$PYTHON -c "from distutils import sysconfig; print sysconfig.get_python_inc()"`
+> +PYTHON_EXT=`$PYTHON -c "from distutils import sysconfig; print sysconfig.get_config_var('SO')"`
+> +
+> +case $build in
+> +CYGWIN*)
+> +  if test `$PYTHON -c "import os; print os.name"` = posix; then
+> +    PYTHON_PREFIX=`$PYTHON -c "import sys; print sys.prefix"`
+> +    PYTHON_VERSION=`$PYTHON -c "import sys; print '%d.%d'%(sys.version_info[[0]],sys.version_info[[1]])"`
+> +    PYTHON_LIBS="-L $PYTHON_PREFIX/lib/python$PYTHON_VERSION/config -lpython$PYTHON_VERSION"
+
+This sounds like a FIXME.
+
+Let's just document what we do:
+
+"Cygwin doesn't have a -lutil, but some version of distutils tell us to 
+use it anyway.  This has been tested for cygwin versions UMPTY-UMP."
+
+and add an issue for the check each library thing if it is important to 
+fix later.
+
+> +dnl Cygwin doesn't have an -lutil, but some versions of distutils tell us to use it anyway.
+> +dnl It would be better to check for each library it tells us to use with AC_CHECK_LIB, but
+> +dnl to do that, we need the name of a function in each one, so we'll just hack -lutil out 
+> +dnl of the list.
+> +    PYTHON_DEP_LIBS=`$PYTHON -c "from distutils import sysconfig; import re; print re.sub(r'\\s*-lutil', '', sysconfig.get_config_var('LIBS') or '')"`
+> +  else dnl this is 'nt'
+> +    if test "$CXX" = "g++"; then
+> +      CFLAGS="-mno-cygwin $CFLAGS"
+> +      CXXFLAGS="-mno-cygwin $CXXFLAGS"
+> +      LDFLAGS="-mno-cygwin $LDFLAGS"
+> +      PYTHON_PREFIX=`$PYTHON -c "import sys; print sys.prefix"`
+> +      PYTHON_VERSION=`$PYTHON -c "import sys; print '%d%d'%(sys.version_info[[0]],sys.version_info[[1]])"`
+> +      PYTHON_LIBS="-L `cygpath -a $PYTHON_PREFIX`/Libs -lpython$PYTHON_VERSION"
+> +    fi
+> +    PYTHON_INCLUDE=`cygpath -a $PYTHON_INCLUDE`
+> +    PYTHON_DEP_LIBS=`$PYTHON -c "from distutils import sysconfig; print sysconfig.get_config_var('LIBS') or ''"`
+> +  fi
+> +  LDSHARED="$CXX -shared"
+> +  PYTHON_LIBS="$PYTHON_LIBS $PYTHON_DEP_LIBS"
+> +  ;;
+> +*)
+> +  LDSHARED="$CXX -shared"
+> +  ;;
+> +esac
+> +
+> +PYTHON_LIBS="$PYTHON_LIBS $PYTHON_DEP_LIBS"
+> +
+> +AC_SUBST(PYTHON)
+> +AC_SUBST(PYTHON_CPP, "-I $PYTHON_INCLUDE")
+> +AC_SUBST(PYTHON_LIBS)
+> +AC_SUBST(PYTHON_EXT)
+> +
+> +AC_SUBST(LDSHARED)
+> +
+
+
+Whats the AC_LANG(C++) for?  We should have set it to C++ at the top of 
+configure.
+
+> +AC_LANG(C++)
+> +if test "$enable_scripting" == "yes"; then
+> +  AC_SUBST(enable_scripting, 1)
+> +  if test -n "$with_boost_prefix"; then
+> +    BOOST_CPPFLAGS="-I$with_boost_prefix/include"
+> +    BOOST_LDFLAGS="-L$with_boost_prefix/lib"
+> +  fi
+> +  save_CPPFLAGS=$CPPFLAGS
+> +  CPPFLAGS="$CPPFLAGS $BOOST_CPPFLAGS $PYTHON_CPP"
+> +  AC_CHECK_HEADER([boost/python.hpp], [], 
+> +    [AC_MSG_ERROR([boost.python could not be found])])
+> +  CPPFLAGS="$save_CPPFLAGS"
+
+Likewise, why is this dnl?
+
+> +dnl save_LIBS=$LIBS
+> +dnl LIBS="$LIBS $BOOST_LDFLAGS -lboost_wave"
+> +dnl AC_CHECK_LIB(boost_wave, boost::wave::wave_init)
+
+> +  AC_SUBST(BOOST_CPPFLAGS)
+> +  AC_SUBST(BOOST_LDFLAGS)
+> +fi
+> +#
+>  # Print summary.
+>  #
+>  AC_MSG_NOTICE(Summary)
+> @@ -2032,10 +2123,14 @@
+>    AC_MSG_RESULT([Complex storage format:                  interleaved])
+>  fi
+>  AC_MSG_RESULT([Timer:                                   ${enable_timer}])
+> +AC_MSG_RESULT([With Python bindings:                    ${enable_scripting}])
+>  
+>  #
+>  # Done.
+>  #
+> +mkdir -p bin
+> +mkdir -p lib
+> +mkdir -p lib/python/site-packages/vsip
+>  mkdir -p src/vsip/impl/sal
+>  mkdir -p src/vsip/impl/ipp
+>  mkdir -p src/vsip/impl/fftw3
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From jules at codesourcery.com  Thu Oct  5 05:01:05 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Thu, 05 Oct 2006 01:01:05 -0400
+Subject: Document --with-{obj,lib,exe}-ext configure opts
+Message-ID: <45249191.8010402@codesourcery.com>
+
+Patch applied.
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: doc.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20061005/609a727c/attachment.ksh>
+
+From jules at codesourcery.com  Thu Oct  5 06:32:14 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Thu, 05 Oct 2006 02:32:14 -0400
+Subject: PAS Updates
+Message-ID: <4524A6EE.1020708@codesourcery.com>
+
+This patch fixes several issues in the 1.2 release when using PAS:
+
+  - Fix configure to work without a pkg-config file for PAS
+    (tested for both Linux cluster PAS and MCOE PAS),
+
+  - Fix to install PAS headers,
+
+  - copy benchmark attempted to measure MPI parallel assign,
+    even when configured for PAS,
+
+It also:
+
+  - adds an early-binding PAS parallel assignment.
+
+  - dispatches SIMD greater-than routine for less-than expressions.
+
+  - adds heuristic to configure to determine correct LIBEXT
+    for Mercury systems.
+
+  - Fixes benchmarks attempting to copy communicators by value.
+
+  - provides a function (library_config) that returns important ifdefs
+    used to build library.
+
+  - Makes portions of fft_be test conditional to reduce the compilation
+    effort.
+
+				-- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: pas.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20061005/f0412162/attachment.ksh>
+
+From stefan at codesourcery.com  Thu Oct  5 11:40:43 2006
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Thu, 05 Oct 2006 07:40:43 -0400
+Subject: [vsipl++] patch: python bindings prototype
+In-Reply-To: <452490B6.9060304@codesourcery.com>
+References: <452463B7.6020906@codesourcery.com> <452490B6.9060304@codesourcery.com>
+Message-ID: <4524EF3B.1000609@codesourcery.com>
+
+Jules Bergmann wrote:
+> Stefan,
+> 
+> How does this behave when python isn't present on the system?  It looks
+> like configure will run python even if scripting isn't enabled.
+> 
+> Can you gate the python bindings with --enable-scripting?  If the user
+> doesn't explicitly '--enable-scripting', then configure shouldn't try to
+> run python.
+
+You are right. The attached patch moves the python checks into the
+block that is only executed if scripting is enabled. (Patch is checked in.)
+
+> Also, what is the story with shared libraries?  That is only for the
+> scripting, right?
+
+Yes. Python extension modules are built as DSOs, so I had to add some
+harness to support that. Nothing else is affected by that.
+
+Regards,
+		Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: patch
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20061005/321e1d4a/attachment.ksh>
+
+From assem at codesourcery.com  Mon Oct  9 15:27:03 2006
+From: assem at codesourcery.com (Assem Salama)
+Date: Mon, 09 Oct 2006 11:27:03 -0400
+Subject: Lu Solver
+Message-ID: <452A6A47.60003@codesourcery.com>
+
+Everyone,
+  This is the new lu solver that uses the cvsipl backend.
+
+Thanks,
+Assem
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: svn.diff.10092006.1.log
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20061009/13688a58/attachment.ksh>
+
+From jules at codesourcery.com  Mon Oct  9 19:51:49 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Mon, 09 Oct 2006 15:51:49 -0400
+Subject: [vsipl++] Lu Solver
+In-Reply-To: <452A6A47.60003@codesourcery.com>
+References: <452A6A47.60003@codesourcery.com>
+Message-ID: <452AA855.3040801@codesourcery.com>
+
+Assem Salama wrote:
+ > Everyone,
+ >  This is the new lu solver that uses the cvsipl backend.
+
+Assem,
+
+Thanks, this looks good overall.  I have several comments on
+specifics below.
+
+Did you run the test suite against this yet?
+
+				-- Jules
+
+ > ------------------------------------------------------------------------
+ >
+ > Index: ref_impl/vsipl/solver_lu.hpp
+
+First, I would like to use another name besides 'ref_impl' because
+that implies the directory files are reference-implementation only.
+
+Second, I would like to use the subdirectory name 'cvsip' instead of
+'vsipl' to avoid confusion between VSIPL (the C API) and VSIPL++.
+Also, we should use the name 'cvsip' instead of 'cvsipl' for
+consistency.  We use the directory and namespace names 'vsip'.
+C-VSIPL uses 'vsip_' as a prefix, etc.  If we use the name 'cvsipl' it
+will be a source of confusion.  Please make sure all your uses in code
+of the name vsip/csvip (i.e. especially in namespaces, class names,
+and function names, but also in variable names, etc) avoid the 'l'.
+Using the names "VSIPL" "C-VSIPL", etc is OK in comments.
+
+
+ > ===================================================================
+ > --- ref_impl/vsipl/solver_lu.hpp	(revision 0)
+ > +++ ref_impl/vsipl/solver_lu.hpp	(revision 0)
+ > @@ -0,0 +1,230 @@
+ > +/* Copyright (c) 2005, 2006 by CodeSourcery, LLC.  All rights 
+reserved. */
+
+Update copyright, it should be 2006 and it should be "CodeSourcery" instead
+of "CodeSourcery, LLC".
+
+ > +
+ > +/** @file    vsip/impl/lapack/solver_lu.hpp
+
+[1] Update subdirectory name
+
+ > +    @author  Assem Salama
+ > +    @date    2006-04-13
+
+[2] Update the date.
+
+ > +    @brief   VSIPL++ Library: LU linear system solver using lapack.
+
+[3] using cvsipl.
+
+ > +
+ > +*/
+ > +
+ > +#ifndef VSIP_REF_IMPL_SOLVER_LU_HPP
+ > +#define VSIP_REF_IMPL_SOLVER_LU_HPP
+
+[4] The ifdef guard should include the path.  If we were going to
+keep this file in 'ref_impl/vsipl' the guard should be:
+
+#ifndef VSIP_REF_IMPL_VSIPL_SOLVER_LU_HPP
+
+ > +
+ > +/***********************************************************************
+ > +  Included Files
+ > +***********************************************************************/
+ > +
+ > +#include <algorithm>
+ > +
+ > +#include <vsip/support.hpp>
+ > +#include <vsip/matrix.hpp>
+ > +#include <vsip/impl/math-enum.hpp>
+ > +#include <vsip/impl/lapack.hpp>
+ > +#include <vsip/impl/temp_buffer.hpp>
+ > +#include <vsip/impl/solver_common.hpp>
+ > +
+ > +#include <vsip/ref_impl/vsipl/cvsipl_matrix.hpp>
+ > +#include <vsip/ref_impl/vsipl/cvsipl_lu.hpp>
+ > +
+ > +
+ > +
+ > +/***********************************************************************
+ > +  Declarations
+ > +***********************************************************************/
+ > +
+ > +namespace vsip
+ > +{
+ > +
+ > +namespace impl
+ > +{
+ > +
+ > +/// LU factorization implementation class.  Common functionality
+ > +/// for lud by-value and by-reference classes.
+ > +
+ > +template <typename T>
+ > +class Lud_impl<T, Ref_impl_tag>
+ > +  : Compile_time_assert<blas::Blas_traits<T>::valid>
+
+[5] We need a Cvsip_traits equivalent of Blas_traits to determine of
+C-VSIPL supports a value type.
+
+ > +{
+ > +  // BLAS/LAPACK require complex data to be in interleaved format.
+ > +  typedef Layout<2, col2_type, Stride_unit_dense, Cmplx_inter_fmt> 
+data_LP;
+ > +  typedef Fast_block<2, T, data_LP> data_block_type;
+
+[6] C-VSIPL supports both split and interleaved complex.  We should
+take advantage of that.
+
+If the split/interleave type used by C-VSIPL for solve and decompose
+has to be consistent, we should determine split/interleave based on
+the default for Dense.
+
+If not, let's just pass split/interleave directly through.
+
+[7] Although its not mentioned in the comment, BLAS/LAPACK also
+requires data to be column-major.  That shouldn't be necessary for
+C-VSIPL.  If possible, we should pass both row-major and column-major
+data directly to C-VSIPL and let it sort it out.
+
+ > +
+ > +  // Constructors, copies, assignments, and destructors.
+ > +public:
+ > +  Lud_impl(length_type)
+ > +    VSIP_THROW((std::bad_alloc));
+ > +  Lud_impl(Lud_impl const&)
+ > +    VSIP_THROW((std::bad_alloc));
+ > +
+ > +  Lud_impl& operator=(Lud_impl const&) VSIP_NOTHROW;
+ > +  ~Lud_impl() VSIP_NOTHROW;
+ > +
+ > +  // Accessors.
+ > +public:
+ > +  length_type length()const VSIP_NOTHROW { return length_; }
+ > +
+ > +  // Solve systems.
+ > +public:
+ > +  template <typename Block>
+ > +  bool decompose(Matrix<T, Block>) VSIP_NOTHROW;
+ > +
+ > +protected:
+ > +  template <mat_op_type tr,
+ > +	    typename    Block0,
+ > +	    typename    Block1>
+ > +  bool impl_solve(const_Matrix<T, Block0>, Matrix<T, Block1>)
+ > +    VSIP_NOTHROW;
+ > +
+ > +  // Member data.
+ > +private:
+ > +  typedef std::vector<int, Aligned_allocator<int> > vector_type;
+ > +
+ > +  length_type  length_;			// Order of A.
+ > +  vector_type  ipiv_;			// Additional info on Q
+ > +
+ > +  Matrix<T, data_block_type> data_;	// Factorized Cholesky matrix (A)
+ > +  vsip::ref_impl::cvsipl::CVSIPL_Matrix<T>           cvsipl_data_;
+ > +  vsip::ref_impl::cvsipl::CVSIPL_Lud<T>              cvsipl_lud_;
+ > +};
+ > +
+ > +} // namespace vsip::impl
+ > +
+ > +
+ > +/***********************************************************************
+ > +  Definitions
+ > +***********************************************************************/
+ > +
+ > +namespace impl
+ > +{
+ > +
+ > +template <typename T>
+ > +Lud_impl<T, Ref_impl_tag>::Lud_impl(
+ > +  length_type length
+ > +  )
+ > +VSIP_THROW((std::bad_alloc))
+ > +  : length_      (length),
+ > +    ipiv_        (length_),
+ > +    data_        (length_, length_),
+ > +    cvsipl_data_ (data_.block().impl_data(), length_, length_),
+ > +    cvsipl_lud_  (length_)
+ > +{
+ > +  assert(length_ > 0);
+ > +}
+ > +
+ > +
+ > +
+ > +template <typename T>
+ > +Lud_impl<T, Ref_impl_tag>::Lud_impl(Lud_impl const& lu)
+ > +VSIP_THROW((std::bad_alloc))
+ > +  : length_      (lu.length_),
+ > +    ipiv_        (length_),
+ > +    data_        (length_, length_),
+ > +    cvsipl_data_ (data_.block().impl_data(), length_, length_),
+ > +    cvsipl_lud_  (length_)
+ > +{
+ > +  data_ = lu.data_;
+ > +  for (index_type i=0; i<length_; ++i)
+ > +    ipiv_[i] = lu.ipiv_[i];
+ > +}
+ > +
+ > +
+ > +
+ > +template <typename T>
+ > +Lud_impl<T, Ref_impl_tag>::~Lud_impl()
+ > +  VSIP_NOTHROW
+ > +{
+ > +}
+ > +
+ > +
+ > +
+ > +/// Form LU factorization of matrix A
+ > +///
+ > +/// Requires
+ > +///   A to be a square matrix, either
+ > +///
+ > +/// FLOPS:
+ > +///   real   : UPDATE
+ > +///   complex: UPDATE
+ > +
+ > +template <typename T>
+ > +template <typename Block>
+ > +bool
+ > +Lud_impl<T, Ref_impl_tag>::decompose(Matrix<T, Block> m)
+ > +  VSIP_NOTHROW
+ > +{
+ > +  assert(m.size(0) == length_ && m.size(1) == length_);
+ > +
+ > +  assign_local(data_, m);
+ > +
+ > +  Ext_data<data_block_type> ext(data_.block());
+
+[8] 'ext' isn't being used.
+
+ > +
+ > +  bool success = cvsipl_lud_.decompose(cvsipl_data_);
+ > +
+ > +
+ > +  return success;
+ > +}
+ > +
+ > +
+ > +
+ > +/// Solve Op(A) x = b (where A previously given to decompose)
+ > +///
+ > +/// Op(A) is
+ > +///   A   if tr == mat_ntrans
+ > +///   A^T if tr == mat_trans
+ > +///   A'  if tr == mat_herm (valid for T complex only)
+ > +///
+ > +/// Requires
+ > +///   B to be a (length, P) matrix
+ > +///   X to be a (length, P) matrix
+ > +///
+ > +/// Effects:
+ > +///   X contains solution to Op(A) X = B
+ > +
+ > +template <typename T>
+ > +template <mat_op_type tr,
+ > +	  typename    Block0,
+ > +	  typename    Block1>
+ > +bool
+ > +Lud_impl<T, Ref_impl_tag>::impl_solve(
+ > +  const_Matrix<T, Block0> b,
+ > +  Matrix<T, Block1>       x)
+ > +  VSIP_NOTHROW
+ > +{
+ > +  assert(b.size(0) == length_);
+ > +  assert(b.size(0) == x.size(0) && b.size(1) == x.size(1));
+ > +
+ > +  vsip_mat_op trans;
+ > +
+ > +  Matrix<T, data_block_type> b_int(b.size(0), b.size(1));
+ > +  assign_local(b_int, b);
+ > +
+ > +  if (tr == mat_ntrans)
+ > +    trans = VSIP_MAT_NTRANS;
+ > +  else if (tr == mat_trans)
+ > +    trans = VSIP_MAT_TRANS;
+ > +  else if (tr == mat_herm)
+ > +  {
+ > +    assert(Is_complex<T>::value);
+ > +    trans = VSIP_MAT_HERM;
+ > +  }
+ > +
+ > +  {
+ > +    Ext_data<data_block_type> b_ext(b_int.block());
+ > +
+ > +    vsip::ref_impl::cvsipl::CVSIPL_Matrix<T>
+ > +	      cvsipl_b_int(b_ext.data(), b.size(0),b.size(1));
+ > +
+ > +    cvsipl_lud_.solve(trans,cvsipl_b_int);
+ > +
+ > +  }
+ > +  assign_local(x, b_int);
+ > +
+ > +  return true;
+ > +}
+ > +
+ > +} // namespace vsip::impl
+ > +
+ > +} // namespace vsip
+ > +
+ > +
+ > +#endif // VSIP_IMPL_LAPACK_SOLVER_LU_HPP
+
+[9] Update guard name in comment.
+
+ > Index: ref_impl/vsipl/cvsipl_support.hpp
+
+[10] This file looks like it will have the core traits and function
+definitions for using the C-VSIPL backend.  Similar to the ipp.hpp,
+sal.hpp, and lapack.hpp files we use for those backends, I would
+recommend calling it 'impl/vsip/cvsip/cvsip.hpp'
+
+ > ===================================================================
+ > --- ref_impl/vsipl/cvsipl_support.hpp	(revision 0)
+ > +++ ref_impl/vsipl/cvsipl_support.hpp	(revision 0)
+
+[11] All files should have the library header.
+
+ > @@ -0,0 +1,195 @@
+ > +#ifndef CVSIPL_SUPPORT_HPP
+ > +#define CVSIPL_SUPPORT_HPP
+
+[12] The guard should include the path VSIP_IMPL_CVSIP_CVSIP_SUPPORT_HPP
+
+
+ > +
+ > +extern "C" {
+ > +#include <vsip.h>
+ > +}
+ > +#include <complex>
+ > +
+ > +namespace vsip
+ > +{
+ > +
+ > +namespace ref_impl
+ > +{
+
+[13] The implementation namespace should always be 'impl', regardless of
+whether the code is shared or optimization only.
+
+ > +
+ > +namespace cvsipl
+ > +{
+ > +
+
+[14] Let's add a comment to describe what the class is doing:
+
+// Traits class to define the C-VSIPL view type for a given
+// value type T.
+
+ > +  template <typename T>
+ > +  struct CVSIPL_mview;
+
+[15] To follow our class name convention, this should be: 'Cvsip_mview'.
+
+ > +
+ > +  template<> struct CVSIPL_mview<float>      { typedef vsip_mview_f 
+  type; };
+ > +  template<> struct CVSIPL_mview<double>     { typedef vsip_mview_d 
+  type; };
+ > +  template<> struct CVSIPL_mview<std::complex<float> >
+ > +    { typedef vsip_cmview_f type; };
+ > +  template<> struct CVSIPL_mview<std::complex<double> >
+ > +    { typedef vsip_cmview_d type; };
+ > +
+
+[16] Add comment to this trait too
+
+ > +  template <typename T>
+ > +  struct CVSIPL_block;
+ > +
+ > +  template<> struct CVSIPL_block<float>      { typedef vsip_block_f 
+  type; };
+ > +  template<> struct CVSIPL_block<double>     { typedef vsip_block_d 
+  type; };
+ > +  template<> struct CVSIPL_block<std::complex<float> >
+ > +    { typedef vsip_cblock_f type; };
+ > +  template<> struct CVSIPL_block<std::complex<double> >
+ > +    { typedef vsip_cblock_d type; };
+ > +
+ > +
+ > +  template <typename T>
+ > +  struct CVSIPL_Lud_object;
+ > +
+ > +  template <> struct CVSIPL_Lud_object<float>  { typedef vsip_lu_f 
+type; };
+ > +  template <> struct CVSIPL_Lud_object<double> { typedef vsip_lu_d 
+type; };
+ > +  template <> struct CVSIPL_Lud_object<std::complex<float> >
+ > +    { typedef vsip_clu_f type; };
+ > +  template <> struct CVSIPL_Lud_object<std::complex<double> >
+ > +    { typedef vsip_clu_d type; };
+
+
+[17] First, the 'Cvsip_mview', 'Cvsip_block', and 'Cvsip_lud_object'
+classes above all look good.
+
+However, they represent one approach to creating traits: one trait per
+class.
+
+Another approach is multiple traits per class.
+
+Here such a class might look like:
+
+	template <typename T>
+	struct Cvsip_traits;
+
+	template <>
+	struct Cvsip_traits<float>
+	{
+	  typedef vsip_mview_f mview_type;
+	  typedef vsip_block_f block_type;
+           typedef vsip_lu_f    lu_solver_type;
+	  ...
+	};
+
+The general tradeoffs are:
+  - One trait per class gives you finer grain control, while multiple
+    traits per class forces you to define all traits even if only one
+    trait is unique.
+  - One trait per class is more verbose to define.
+
+In this particular usage, the first tradeoff doesn't by the one-trait
+-per-class approach much because all the traits need to be uniquely
+defined for each value type (i.e. C-VSIPL doesn't share the same types
+between float and double data structures).
+
+The approach you've taken is fine, but since there will be more traits
+to add, I would consider changing over to a multiple-traits per class
+approach.
+
+ > +
+ > +
+ > +#define CVSIPL_BLOCKBIND(BT, T, ST, VF) \
+ > +inline BT *vsip_blockbind(T *data, vsip_length N, vsip_memory_hint 
+hint) \
+ > +{ \
+ > +  return VF((ST*)data, N, hint); \
+ > +}
+
+[18] I would remove the 'vsip_' prefix for these function names.  You
+don't have to worry about name conflicts since the functions are
+already part of the vsip::impl::cvsip namespace.  It just makes using
+them more verbose than necessary.
+
+If you want to maintain verbosity, you can use the 'vsip::impl' namespace
+but not the 'vsip::impl::csvip' namespace.  Then refer to them as
+
+	cvsip::blockbind(...)
+
+[19] Macro names in the library need to start with VSIP_IMPL_ to avoid
+conflicts with user code.  I.e. this should be VSIP_IMPL_..._BLOCKBIND
+
+...
+
+ > +
+ > +CVSIPL_LUSOL(vsip_lu_f,  vsip_mview_f,  vsip_lusol_f)
+ > +CVSIPL_LUSOL(vsip_lu_d,  vsip_mview_d,  vsip_lusol_d)
+ > +CVSIPL_LUSOL(vsip_clu_f, vsip_cmview_f, vsip_clusol_f)
+ > +CVSIPL_LUSOL(vsip_clu_d, vsip_cmview_d, vsip_clusol_d)
+
+[20] If you're done with these macros, it is a good idea to undefine them.
+
+#undef VISP_IMPL_...LUSOL
+etc.
+
+ > +
+ > +}  // namespace cvsipl
+ > +
+ > +}  // namespace ref_impl
+ > +
+ > +}  // namespace vsip
+ > +
+ > +#endif // CVSIPL_SUPPORT_HPP
+ > Index: ref_impl/vsipl/cvsipl_lu.hpp
+ > ===================================================================
+ > --- ref_impl/vsipl/cvsipl_lu.hpp	(revision 0)
+ > +++ ref_impl/vsipl/cvsipl_lu.hpp	(revision 0)
+ > @@ -0,0 +1,72 @@
+ > +#ifndef CVSIPL_LU_HPP
+ > +#define CVSIPL_LU_HPP
+ > +
+ > +#include <vsip/ref_impl/vsipl/cvsipl_support.hpp>
+ > +#include <vsip/ref_impl/vsipl/cvsipl_matrix.hpp>
+ > +
+ > +namespace vsip
+ > +{
+ > +
+ > +namespace ref_impl
+ > +{
+ > +
+ > +namespace cvsipl
+ > +{
+ > +
+ > +template <typename T>
+ > +class CVSIPL_Lud;
+ > +
+ > +template <typename T>
+ > +class CVSIPL_Lud
+
+[21] This should be 'Non_copyable'.  If a copy was made, 
+vsip_lud_destroy(lu_)
+would get called twice.
+
+ > +{
+ > +  typedef typename CVSIPL_Lud_object<T>::type     lud_object_type;
+ > +
+ > +  public:
+ > +    CVSIPL_Lud(int n);
+ > +    ~CVSIPL_Lud();
+ > +
+ > +    int decompose(CVSIPL_Matrix<T> &a);
+ > +    int solve(vsip_mat_op op, CVSIPL_Matrix<T> &xb);
+ > +
+ > +  private:
+ > +    lud_object_type       *lu_;
+ > +};
+ > +
+ > +template <typename T>
+ > +CVSIPL_Lud<T>::CVSIPL_Lud(int n)
+ > +{
+ > +  vsip_lud_create(n, &lu_);
+ > +}
+ > +
+ > +template <typename T>
+ > +CVSIPL_Lud<T>::~CVSIPL_Lud()
+ > +{
+ > +  vsip_lud_destroy(lu_);
+ > +}
+ > +
+ > +template <typename T>
+ > +int CVSIPL_Lud<T>::decompose(CVSIPL_Matrix<T> &a)
+ > +{
+ > +  a.admit();
+
+[22] Here's a case where you want to admit with update true:
+This should be:
+
+	a.admit(true);
+
+(Assuming you add an update flag to Cvsip_matrix, as suggested below).
+
+ > +  int ret = vsip_lud(lu_, a.get_view());
+ > +  a.release();
+
+[23] If vsip_lud did not modify 'a', this would also be a case where the
+update flag should also be true.  Since you don't know what the user
+will do with 'a' next, it would be bad form to scramble the values.
+
+But, vsip_lud is allowed to modify 'a' and then later uses those
+values while solving.  This make me doubt whether it is correct to
+immediately release 'a' at this point.
+
+Can you check the C-VSIPL spec on this?
+
+
+ > +  return ret;
+ > +}
+ > +
+ > +template <typename T>
+ > +int CVSIPL_Lud<T>::solve(vsip_mat_op op, CVSIPL_Matrix<T> &xb)
+ > +{
+
+[24] Here update should be true for admit and release.
+
+ > +  xb.admit();
+ > +  int ret = vsip_lusol(lu_, op, xb.get_view());
+ > +  xb.release();
+ > +  return ret;
+ > +}
+ > +
+ > +
+ > +} // namespace cvsipl
+ > +
+ > +} // namespace ref_impl
+ > +
+ > +} // namespace vsip
+ > +
+ > +#endif // CVSIPL_LU_HPP
+ > Index: ref_impl/vsipl/cvsipl_matrix.hpp
+ > ===================================================================
+ > --- ref_impl/vsipl/cvsipl_matrix.hpp	(revision 0)
+ > +++ ref_impl/vsipl/cvsipl_matrix.hpp	(revision 0)
+ > @@ -0,0 +1,81 @@
+ > +#ifndef CVSIPL_MATRIX_HPP
+ > +#define CVSIPL_MATRIX_HPP
+ > +
+ > +#include <vsip/ref_impl/vsipl/cvsipl_support.hpp>
+ > +
+ > +namespace vsip
+ > +{
+ > +
+ > +namespace ref_impl
+ > +{
+ > +
+ > +namespace cvsipl
+ > +{
+ > +
+ > +template <typename T>
+ > +class CVSIPL_Matrix;
+ > +
+ > +template <typename T>
+ > +class CVSIPL_Matrix
+
+[25] Should be Non_copyable.
+
+ > +{
+ > +  typedef typename CVSIPL_mview<T>::type       mview_type;
+ > +  typedef typename CVSIPL_block<T>::type       block_type;
+ > +
+ > +  public:
+ > +    CVSIPL_Matrix<T>(T *block, int m, int n);
+ > +    CVSIPL_Matrix<T>(int m, int n);
+ > +    ~CVSIPL_Matrix<T>();
+ > +
+ > +    mview_type *get_view() { return mview_; }
+ > +    void admit() { vsip_blockadmit(mblock_, false); }
+ > +    void release() { vsip_blockrelease(mblock_,false); }
+
+[26] Always setting the update flags to false is most definitely
+wrong.  If you don't care about what values you pass to C-VSIPL,
+and you don't care about what values you get back, why bother
+with the computation?
+
+Always setting the update flags to true would be correct, but it would
+cause unnecessary data copies in some situations.
+
+You should pass update as an argument, with a default value of true.
+
+
+ > +
+ > +  private:
+ > +    mview_type         *mview_;
+ > +    block_type         *mblock_;
+ > +    bool               local_data_;
+ > +
+ > +
+ > +};
+ > +
+ > +
+ > +template <typename T>
+ > +CVSIPL_Matrix<T>::CVSIPL_Matrix(T *block, int m, int n)
+ > +{
+ > +  // block is allocated, just bind to it.
+ > +  mblock_ = vsip_blockbind(block, m*n, VSIP_MEM_NONE);
+ > +
+ > +  // block must be dense
+ > +  mview_ = vsip_mbind(mblock_, 0, 1, n, n, m);
+ > +
+ > +  local_data_ = false;
+ > +}
+ > +
+ > +template <typename T>
+ > +CVSIPL_Matrix<T>::CVSIPL_Matrix(int m, int n)
+ > +{
+
+[27] How/where is dimension-ordering handled?  The VSIPL++ LU solver object
+creates a Cvsip_matrix for column-major VSIPL++ matrices.  Is Cvsip_matrix
+implicitly column-major?
+
+It would be better to pass dimensionality to Cvsip_matrix explicitly,
+probably as a template parameter.
+
+ > +  // create block
+ > +  vsip_blockcreate(m*n, VSIP_MEM_NONE, &mblock_);
+ > +
+ > +  // block must be dense
+ > +  mview_ = vsip_mbind(mblock_, 0, 1, n, n, m);
+ > +
+ > +  local_data_ = true;
+ > +}
+ > +
+ > +template <typename T>
+ > +CVSIPL_Matrix<T>::~CVSIPL_Matrix()
+ > +{
+ > +  // destroy everything!
+ > +  if(local_data_) vsip_blockdestroy(mblock_);
+ > +
+ > +  vsip_mdestroy(mview_);
+ > +}
+ > +
+ > +} // namespace cvsipl
+ > +
+ > +} // namespace ref_impl
+ > +
+ > +} // namespace vsip
+ > +
+ > +#endif // CVSIPL_MATRIX_HPP
+ > Index: impl/solver-lu.hpp
+ > ===================================================================
+ > --- impl/solver-lu.hpp	(revision 151073)
+ > +++ impl/solver-lu.hpp	(working copy)
+ > @@ -28,6 +28,9 @@
+ >  #ifdef VSIP_IMPL_HAVE_LAPACK
+ >  #  include <vsip/impl/lapack/solver_lu.hpp>
+ >  #endif
+
+[28] We need to distinguish between the presence of C-VSIPL backends and
+building the library in reference mode.  It's possible to use the
+C-VSIPL backend with the optimized library.
+
+
+[29] This guard should be:
+
+#ifdef VSIP_IMPL_HAVE_CVSIP
+
+ > +#ifdef VSIP_IMPL_HAVE_REF
+ > +#  include <vsip/ref_impl/vsipl/solver_lu.hpp>
+ > +#endif
+
+ >
+ >
+ >
+ > @@ -62,6 +65,10 @@
+ >  template <typename T>
+ >  struct Choose_lud_impl
+ >  {
+
+[30] This guard should be:
+
+#ifdef VSIP_IMPL_IS_REF_IMPL
+
+ > +#ifdef VSIP_IMPL_HAVE_REF
+ > +  typedef Ref_impl_tag use_type;
+ > +
+ > +#else
+ >    typedef typename Choose_solver_impl<
+ >      Is_lud_impl_avail,
+ >      T,
+ > @@ -71,6 +78,8 @@
+ >      Type_equal<type, None_type>::value,
+ >      As_type<Error_no_solver_for_this_type>,
+ >      As_type<type> >::type use_type;
+ > +#endif
+ > +
+ >  };
+ >
+ >  } // namespace impl
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From stefan at codesourcery.com  Mon Oct  9 20:15:15 2006
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Mon, 09 Oct 2006 16:15:15 -0400
+Subject: [vsipl++] Lu Solver
+In-Reply-To: <452AA855.3040801@codesourcery.com>
+References: <452A6A47.60003@codesourcery.com> <452AA855.3040801@codesourcery.com>
+Message-ID: <452AADD3.3040108@codesourcery.com>
+
+Jules Bergmann wrote:
+
+> Second, I would like to use the subdirectory name 'cvsip' instead of
+> 'vsipl' to avoid confusion between VSIPL (the C API) and VSIPL++.
+> Also, we should use the name 'cvsip' instead of 'cvsipl' for
+> consistency.  We use the directory and namespace names 'vsip'.
+> C-VSIPL uses 'vsip_' as a prefix, etc.  If we use the name 'cvsipl' it
+> will be a source of confusion.  Please make sure all your uses in code
+> of the name vsip/csvip (i.e. especially in namespaces, class names,
+> and function names, but also in variable names, etc) avoid the 'l'.
+> Using the names "VSIPL" "C-VSIPL", etc is OK in comments.
+
+So, just to be totally clear: the new C-VSIPL bindings will be contained
+in the directory src/vsip/core/cvsip/, and the associated namespace will
+be vsip::impl::cvsip, right ?
+
+Thanks,
+		Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+
+
+From jules at codesourcery.com  Mon Oct  9 20:21:57 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Mon, 09 Oct 2006 16:21:57 -0400
+Subject: [vsipl++] Lu Solver
+In-Reply-To: <452AADD3.3040108@codesourcery.com>
+References: <452A6A47.60003@codesourcery.com> <452AA855.3040801@codesourcery.com> <452AADD3.3040108@codesourcery.com>
+Message-ID: <452AAF65.8010308@codesourcery.com>
+
+
+> So, just to be totally clear: the new C-VSIPL bindings will be contained
+> in the directory src/vsip/core/cvsip/, and the associated namespace will
+> be vsip::impl::cvsip, right ?
+
+Yes, that's right.
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From jules at codesourcery.com  Wed Oct 11 01:56:04 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Tue, 10 Oct 2006 21:56:04 -0400
+Subject: [patch] Fix for matrix-matrix subviews
+Message-ID: <452C4F34.1030505@codesourcery.com>
+
+This patch fixes several problems with distributed matrix-matrix subviews:
+
+  - the get_local_block() overload for Subblock was not handling
+    the case where the local processor has no subblock.
+
+  - the Replicated_map and Global_map maps were missing several
+    impl_ functions necessary to translate domains from global
+    to local indices.
+
+Distributed matrix-matrix subviews get limited use because they are 
+restricted to cases where the matrix dimensions are not distributed.
+
+This patch also includes a test case.
+
+Patch applied.
+
+				-- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: mmsv.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20061010/675e138f/attachment.ksh>
+
+From jules at codesourcery.com  Wed Oct 11 02:33:58 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Tue, 10 Oct 2006 22:33:58 -0400
+Subject: [patch] Fix mcoe-setup.sh to work with solaris /bin/sh
+Message-ID: <452C5816.2010407@codesourcery.com>
+
+Patch applied. -- Jules
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: ex.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20061010/122afc81/attachment.ksh>
+
+From jules at codesourcery.com  Thu Oct 12 15:50:30 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Thu, 12 Oct 2006 11:50:30 -0400
+Subject: [patch] Fix tests to use length_type for a number of processors
+Message-ID: <452E6446.1000402@codesourcery.com>
+
+Patch applied.  -- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: fix-test.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20061012/01f2f4e7/attachment.ksh>
+
+From jules at codesourcery.com  Fri Oct 13 12:19:33 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Fri, 13 Oct 2006 08:19:33 -0400
+Subject: [Patch] fix for Re: [vsipl++-csl] Questions falling out from 'Scalable
+ SAR' application
+In-Reply-To: <452F827C.2050609@codesourcery.com>
+References: <452F301A.9020901@codesourcery.com> <452F827C.2050609@codesourcery.com>
+Message-ID: <452F8455.2040407@codesourcery.com>
+
+This patch move the vmmul evaluator off of the Loop_fusion_tag to a new 
+Op_expr_tag.  This way, if the vmmul evaluator cannot handle a vmmul 
+expression, loop fusion will be a backstop.
+
+In the future, other special operations similar to vmmul could be placed 
+on this tag.
+
+Patch applied.
+
+				-- Jules
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: vmmul.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20061013/922977b7/attachment.ksh>
+
+From assem at codesourcery.com  Mon Oct 16 12:24:56 2006
+From: assem at codesourcery.com (Assem Salama)
+Date: Mon, 16 Oct 2006 08:24:56 -0400
+Subject: New file reordering
+Message-ID: <45337A18.3010702@codesourcery.com>
+
+I noticed that the GNUmakefiles still have impl stuff and no core and 
+opt stuff. Did anyone test a make install?
+
+Thanks,
+Assem
+
+
+From jules at codesourcery.com  Mon Oct 16 12:42:41 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Mon, 16 Oct 2006 08:42:41 -0400
+Subject: [patch] More include updates
+Message-ID: <45337E41.8010508@codesourcery.com>
+
+Patch applied.
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: simd.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20061016/62bee7ed/attachment.ksh>
+
+From assem at codesourcery.com  Tue Oct 17 17:49:07 2006
+From: assem at codesourcery.com (Assem Salama)
+Date: Tue, 17 Oct 2006 13:49:07 -0400
+Subject: LU
+Message-ID: <45351793.3050506@codesourcery.com>
+
+Everyone,
+  This is the patch that adds support for CVSIP Lu backend. I'm still 
+having some trouble with LU test but will fix that shortly. The basic 
+CVSIP stuff should be ok.
+
+Thanks,
+Assem
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: svn.diff.10172006.1.log
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20061017/c387b5f0/attachment.ksh>
+
+From jules at codesourcery.com  Tue Oct 17 18:58:40 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Tue, 17 Oct 2006 14:58:40 -0400
+Subject: [vsipl++] LU
+In-Reply-To: <45351793.3050506@codesourcery.com>
+References: <45351793.3050506@codesourcery.com>
+Message-ID: <453527E0.2020303@codesourcery.com>
+
+Assem,
+
+This is looking good.
+
+For priority, can you first address the items in core/vsip/vsip.hpp
+(5-9)?  Once those are done, you can check in core/cvsip/cvsip.hpp.
+That way Stefan can merge in the bindings he needs for FFT.
+
+Next, can you address the items in core/cvsip/cvsip_matrix.hpp
+(11-15), and then check that file in?
+
+Let me know if the comments make sense,
+
+				thanks,
+				-- Jules
+
+Assem Salama wrote:
+ > Everyone,
+ >  This is the patch that adds support for CVSIP Lu backend. I'm still
+ > having some trouble with LU test but will fix that shortly. The basic
+ > CVSIP stuff should be ok.
+ >
+ > Thanks,
+ > Assem
+ >
+ >
+ > ------------------------------------------------------------------------
+ >
+ > Index: cvsip/solver_lu.hpp
+ > ===================================================================
+ > --- cvsip/solver_lu.hpp	(revision 0)
+ > +++ cvsip/solver_lu.hpp	(revision 0)
+ > @@ -0,0 +1,232 @@
+ > +/* Copyright (c) 2005, 2006 by CodeSourcery, LLC.  All rights 
+reserved. */
+ > +
+ > +/** @file    vsip/impl/lapack/solver_lu.hpp
+ > +    @author  Assem Salama
+ > +    @date    2006-04-13
+ > +    @brief   VSIPL++ Library: LU linear system solver using lapack.
+ > +
+ > +*/
+ > +
+ > +#ifndef VSIP_REF_IMPL_SOLVER_LU_HPP
+ > +#define VSIP_REF_IMPL_SOLVER_LU_HPP
+
+[1*] fix header and guard names
+
+ > +
+ > +/***********************************************************************
+ > +  Included Files
+ > +***********************************************************************/
+ > +
+ > +#include <algorithm>
+ > +
+ > +#include <vsip/support.hpp>
+ > +#include <vsip/matrix.hpp>
+ > +#include <vsip/core/math_enum.hpp>
+ > +#include <vsip/core/temp_buffer.hpp>
+ > +#include <vsip/core/solver/common.hpp>
+ > +
+ > +#include <vsip/core/cvsip/cvsip_matrix.hpp>
+ > +#include <vsip/core/cvsip/cvsip_lu.hpp>
+ > +
+ > +
+ > +
+ > +/***********************************************************************
+ > +  Declarations
+ > +***********************************************************************/
+ > +
+ > +namespace vsip
+ > +{
+ > +
+ > +namespace impl
+ > +{
+ > +
+ > +/// LU factorization implementation class.  Common functionality
+ > +/// for lud by-value and by-reference classes.
+ > +
+ > +template <typename T>
+ > +class Lud_impl<T, Cvsip_tag>
+ > +  : Compile_time_assert<cvsip::Cvsip_traits<T>::valid>
+ > +{
+ > +  typedef Layout<2, col2_type, Stride_unit_dense, Cmplx_inter_fmt> 
+data_LP;
+ > +  typedef Fast_block<2, T, data_LP> data_block_type;
+
+[2] For now: change layout to row2_type.
+
+ > +
+ > +  // Constructors, copies, assignments, and destructors.
+ > +public:
+ > +  Lud_impl(length_type)
+ > +    VSIP_THROW((std::bad_alloc));
+ > +  Lud_impl(Lud_impl const&)
+ > +    VSIP_THROW((std::bad_alloc));
+ > +
+ > +  Lud_impl& operator=(Lud_impl const&) VSIP_NOTHROW;
+ > +  ~Lud_impl() VSIP_NOTHROW;
+ > +
+ > +  // Accessors.
+ > +public:
+ > +  length_type length()const VSIP_NOTHROW { return length_; }
+ > +
+ > +  // Solve systems.
+ > +public:
+ > +  template <typename Block>
+ > +  bool decompose(Matrix<T, Block>) VSIP_NOTHROW;
+ > +
+ > +protected:
+ > +  template <mat_op_type tr,
+ > +	    typename    Block0,
+ > +	    typename    Block1>
+ > +  bool impl_solve(const_Matrix<T, Block0>, Matrix<T, Block1>)
+ > +    VSIP_NOTHROW;
+ > +
+ > +  // Member data.
+ > +private:
+ > +  typedef std::vector<int, Aligned_allocator<int> > vector_type;
+ > +
+ > +  length_type  length_;			// Order of A.
+ > +  vector_type  ipiv_;			// Additional info on Q
+
+[3] don't need ipiv_ for C-VSIPL
+
+ > +
+ > +  Matrix<T, data_block_type> data_;	// Factorized Cholesky matrix (A)
+ > +  cvsip::Cvsip_matrix<T>     cvsip_data_;
+ > +  cvsip::Cvsip_lud<T>        cvsip_lud_;
+ > +};
+ > +
+ > +} // namespace vsip::impl
+ > +
+ > +
+ > +/***********************************************************************
+ > +  Definitions
+ > +***********************************************************************/
+ > +
+ > +namespace impl
+ > +{
+ > +
+ > +template <typename T>
+ > +Lud_impl<T, Cvsip_tag>::Lud_impl(
+ > +  length_type length
+ > +  )
+ > +VSIP_THROW((std::bad_alloc))
+ > +  : length_      (length),
+ > +    ipiv_        (length_),
+ > +    data_        (length_, length_),
+ > +    cvsip_data_  (data_.block().impl_data(), length_, length_),
+ > +    cvsip_lud_   (length_)
+ > +{
+ > +  assert(length_ > 0);
+ > +}
+ > +
+ > +
+ > +
+ > +template <typename T>
+ > +Lud_impl<T, Cvsip_tag>::Lud_impl(Lud_impl const& lu)
+ > +VSIP_THROW((std::bad_alloc))
+ > +  : length_      (lu.length_),
+ > +    ipiv_        (length_),
+ > +    data_        (length_, length_),
+ > +    cvsip_data_  (data_.block().impl_data(), length_, length_),
+ > +    cvsip_lud_   (length_)
+ > +{
+ > +  data_ = lu.data_;
+ > +  for (index_type i=0; i<length_; ++i)
+ > +    ipiv_[i] = lu.ipiv_[i];
+ > +}
+ > +
+ > +
+ > +
+ > +template <typename T>
+ > +Lud_impl<T, Cvsip_tag>::~Lud_impl()
+ > +  VSIP_NOTHROW
+ > +{
+ > +}
+ > +
+ > +
+ > +
+ > +/// Form LU factorization of matrix A
+ > +///
+ > +/// Requires
+ > +///   A to be a square matrix, either
+ > +///
+ > +/// FLOPS:
+ > +///   real   : UPDATE
+ > +///   complex: UPDATE
+ > +
+ > +template <typename T>
+ > +template <typename Block>
+ > +bool
+ > +Lud_impl<T, Cvsip_tag>::decompose(Matrix<T, Block> m)
+ > +  VSIP_NOTHROW
+ > +{
+ > +  assert(m.size(0) == length_ && m.size(1) == length_);
+
+[4] See [10] below.  Basically, we need to manage admit/release here,
+not inside the cvsip_lud_ object.
+
+before the assignment, release the cvsip_data_ matrix so we can overwrite it
+(update is false, because we don't care about the values, we're going to
+overwrite them):
+
+   cvsip_data_.release(false);
+
+ > +
+ > +  assign_local(data_, m);
+
+Admit the data before decomposing it:
+
+   cvsip_data_.admit(true);
+
+ > +
+ > +  bool success = cvsip_lud_.decompose(cvsip_data_);
+ > +
+ > +
+ > +  return success;
+ > +}
+ > +
+ > +
+ > +
+ > +/// Solve Op(A) x = b (where A previously given to decompose)
+ > +///
+ > +/// Op(A) is
+ > +///   A   if tr == mat_ntrans
+ > +///   A^T if tr == mat_trans
+ > +///   A'  if tr == mat_herm (valid for T complex only)
+ > +///
+ > +/// Requires
+ > +///   B to be a (length, P) matrix
+ > +///   X to be a (length, P) matrix
+ > +///
+ > +/// Effects:
+ > +///   X contains solution to Op(A) X = B
+ > +
+ > +template <typename T>
+ > +template <mat_op_type tr,
+ > +	  typename    Block0,
+ > +	  typename    Block1>
+ > +bool
+ > +Lud_impl<T, Cvsip_tag>::impl_solve(
+ > +  const_Matrix<T, Block0> b,
+ > +  Matrix<T, Block1>       x)
+ > +  VSIP_NOTHROW
+ > +{
+ > +  typedef typename Block_layout<Block0>::order_type order_type;
+ > +  typedef typename Block_layout<Block0>::complex_type complex_type;
+ > +  typedef Layout<2, order_type, Stride_unit_dense, complex_type> 
+data_LP;
+ > +  typedef Fast_block<2, T, data_LP, Local_map> block_type;
+ > +
+ > +  assert(b.size(0) == length_);
+ > +  assert(b.size(0) == x.size(0) && b.size(1) == x.size(1));
+ > +
+ > +  vsip_mat_op trans;
+ > +
+ > +  Matrix<T, block_type> b_int(b.size(0), b.size(1));
+ > +  assign_local(b_int, b);
+ > +
+ > +  if (tr == mat_ntrans)
+ > +    trans = VSIP_MAT_NTRANS;
+ > +  else if (tr == mat_trans)
+ > +    trans = VSIP_MAT_TRANS;
+ > +  else if (tr == mat_herm)
+ > +  {
+ > +    assert(Is_complex<T>::value);
+ > +    trans = VSIP_MAT_HERM;
+ > +  }
+ > +
+ > +  {
+ > +    Ext_data<block_type> b_ext(b_int.block());
+ > +
+ > +    cvsip::Cvsip_matrix<T>
+ > +	      cvsip_b_int(b_ext.data(),b_ext.size(0),b_ext.size(1),
+ > +			               b_ext.stride(0),b_ext.stride(1));
+ > +
+ > +    cvsip_lud_.solve(trans,cvsip_b_int);
+ > +
+ > +  }
+ > +  assign_local(x, b_int);
+ > +
+ > +  return true;
+ > +}
+ > +
+ > +} // namespace vsip::impl
+ > +
+ > +} // namespace vsip
+ > +
+ > +
+ > +#endif // VSIP_IMPL_LAPACK_SOLVER_LU_HPP
+ > Index: cvsip/cvsip.hpp
+ > ===================================================================
+ > --- cvsip/cvsip.hpp	(revision 0)
+ > +++ cvsip/cvsip.hpp	(revision 0)
+ > @@ -0,0 +1,208 @@
+ > +/* Copyright (c) 2006 by CodeSourcery.  All rights reserved. */
+ > +
+ > +/** @file    vsip/core/cvsip/cvsip.hpp
+ > +    @author  Assem Salama
+ > +    @date    2006-10-12
+ > +    @brief   VSIPL++ Library: CVSIP support wrappers.
+ > +
+ > +*/
+ > +
+ > +#ifndef VSIP_CORE_CVSIP_CVSIPL_HPP
+ > +#define VSIP_CORE_CVSIP_CVSIPL_HPP
+
+[5] s/CVSIPL/CVSIP/
+
+ > +
+ > +extern "C" {
+ > +#include <vsip.h>
+ > +}
+ > +#include <complex>
+ > +
+ > +namespace vsip
+ > +{
+ > +
+ > +namespace impl
+ > +{
+ > +
+ > +namespace cvsip
+ > +{
+ > +
+ > +  template <typename T>
+ > +  struct Cvsip_traits;
+
+[6] Add the following body for the general case:
+
+	{
+	  static bool const valid = false;
+	};
+
+This way checks for Cvsip_traits<T>::valid will compile even if the
+type is not supported.
+
+ > +
+
+[7] I asked stefan to define VSIP_IMPL_CVSIP_HAVE_FLOAT and
+..._HAVE_DOUBLE in configure.ac, dpeneding on whether the C-VSIP
+library supports float and double (and correspondingly complex<float>
+and complex<double>).
+
+Let's use those to guard these traits:
+
+#if VSIP_IMPL_CVSIP_HAVE_FLOAT
+
+ > +  template<> struct Cvsip_traits<float>
+ > +  {
+ > +    typedef vsip_mview_f        mview_type;
+ > +    typedef vsip_block_f        block_type;
+ > +    typedef vsip_lu_f           lud_object_type;
+ > +    static bool const valid = true;
+ > +  };
+ > +
+
+#endif
+
+#if VSIP_IMPL_CVSIP_HAVE_DOUBLE
+
+ > +  template<> struct Cvsip_traits<double>
+ > +  {
+ > +    typedef vsip_mview_d        mview_type;
+ > +    typedef vsip_block_d        block_type;
+ > +    typedef vsip_lu_d           lud_object_type;
+ > +    static bool const valid = true;
+ > +  };
+
+#endif
+
+#if VSIP_IMPL_CVSIP_HAVE_FLOAT
+
+ > +
+ > +  template<> struct Cvsip_traits<std::complex<float> >
+ > +  {
+ > +    typedef vsip_cmview_f        mview_type;
+ > +    typedef vsip_cblock_f        block_type;
+ > +    typedef vsip_clu_f           lud_object_type;
+ > +    static bool const valid = true;
+ > +  };
+
+#endif
+
+#if VSIP_IMPL_CVSIP_HAVE_DOUBLE
+
+ > +
+ > +  template<> struct Cvsip_traits<std::complex<double> >
+ > +  {
+ > +    typedef vsip_cmview_d        mview_type;
+ > +    typedef vsip_cblock_d        block_type;
+ > +    typedef vsip_clu_d           lud_object_type;
+ > +    static bool const valid = true;
+ > +  };
+
+#endif
+
+ > +
+ > +
+
+[8*] change macro names from CVSIPL_ to VSIP_IMPL_CVSIP_
+
+ > +#define CVSIPL_BLOCKBIND(BT, T, ST, VF) \
+ > +inline BT *blockbind(T *data, vsip_length N, vsip_memory_hint hint) \
+ > +{ \
+ > +  return VF((ST*)data, N, hint); \
+ > +}
+ > +
+ > +#define CVSIPL_CBLOCKBIND(BT, T, ST, VF) \
+ > +inline BT *blockbind(complex<T> *data, \
+ > +                    vsip_length N, vsip_memory_hint hint) \
+ > +{ \
+ > +  return VF((ST*)data, NULL, N, hint); \
+ > +}
+ > +
+ > +#define CVSIPL_MBIND(VT, BT, VF) \
+ > +inline VT *mbind(const BT *b, vsip_offset o, \
+ > +  vsip_stride cs, vsip_length cl, vsip_stride rs, vsip_length rl) \
+ > +{ \
+ > +  return VF(b, o, cs, cl, rs, rl); \
+ > +}
+ > +
+ > +#define CVSIPL_BLOCKCREATE(BT, VF) \
+ > +inline void blockcreate(vsip_length N, vsip_memory_hint hint, BT 
+**block) \
+ > +{ \
+ > +  *block = VF(N,hint); \
+ > +}
+ > +
+ > +#define CVSIPL_BLOCKDESTROY(BT, VF) \
+ > +inline void blockdestroy(BT *block) \
+ > +{ \
+ > +  VF(block); \
+ > +}
+ > +
+ > +#define CVSIPL_BLOCKADMIT(BT, VF) \
+ > +inline void blockadmit(BT *block, vsip_scalar_bl flag) \
+ > +{ \
+ > +  VF(block,flag); \
+ > +}
+ > +
+ > +#define CVSIPL_BLOCKRELEASE(BT, VF) \
+ > +inline void blockrelease(BT *block, vsip_scalar_bl flag) \
+ > +{ \
+ > +  VF(block,flag); \
+ > +}
+ > +
+ > +#define CVSIPL_CBLOCKRELEASE(BT, VF, ST) \
+ > +inline void blockrelease(BT *block, vsip_scalar_bl flag) \
+ > +{ \
+ > +  ST *a1,*a2; \
+ > +  VF(block,flag,&a1,&a2); \
+ > +}
+ > +
+ > +#define CVSIPL_MDESTROY(VT, VF) \
+ > +inline void mdestroy(VT *view) \
+ > +{ \
+ > +  VF(view); \
+ > +}
+ > +
+ > +#define CVSIPL_LUD_CREATE(LT, VF) \
+ > +inline void lud_create(vsip_length N, LT **lu_obj) \
+ > +{ \
+ > +  *lu_obj = VF(N); \
+ > +}
+ > +
+ > +#define CVSIPL_LUD_DESTROY(LT, VF) \
+ > +inline void lud_destroy(LT *lu_obj) \
+ > +{ \
+ > +  VF(lu_obj); \
+ > +}
+ > +
+ > +#define CVSIPL_LUD(LT, VT, VF) \
+ > +inline int lud(LT *lu_obj, VT *view) \
+ > +{ \
+ > +  return VF(lu_obj, view); \
+ > +}
+ > +
+ > +#define CVSIPL_LUSOL(LT, VT, VF) \
+ > +inline int lusol(LT *lu_obj, vsip_mat_op op, VT *view) \
+ > +{ \
+ > +  return VF(lu_obj, op, view); \
+ > +}
+ > 
++/******************************************************************************
+ > + * Function declarations
+ > 
++******************************************************************************/
+
+[9] Similar to the traits above, let's also guard these with
+VSIP_IMPL_CVSIP_HAVE_FLOAT and ..._HAVE_DOUBLE:
+
+ > +
+ > +CVSIPL_BLOCKBIND(vsip_block_f,  float, vsip_scalar_f,  vsip_blockbind_f)
+ > +CVSIPL_BLOCKBIND(vsip_block_d,  double, vsip_scalar_d, 
+vsip_blockbind_d)
+ > +CVSIPL_CBLOCKBIND(vsip_cblock_f, float, 
+vsip_scalar_f,vsip_cblockbind_f)
+ > +CVSIPL_CBLOCKBIND(vsip_cblock_d, double, 
+vsip_scalar_d,vsip_cblockbind_d)
+ > +
+ > +CVSIPL_MBIND(vsip_mview_f,  vsip_block_f,  vsip_mbind_f)
+ > +CVSIPL_MBIND(vsip_mview_d,  vsip_block_d,  vsip_mbind_d)
+ > +CVSIPL_MBIND(vsip_cmview_f, vsip_cblock_f, vsip_cmbind_f)
+ > +CVSIPL_MBIND(vsip_cmview_d, vsip_cblock_d, vsip_cmbind_d)
+ > +
+ > +CVSIPL_BLOCKCREATE(vsip_block_f,  vsip_blockcreate_f)
+ > +CVSIPL_BLOCKCREATE(vsip_block_d,  vsip_blockcreate_d)
+ > +CVSIPL_BLOCKCREATE(vsip_cblock_f, vsip_cblockcreate_f)
+ > +CVSIPL_BLOCKCREATE(vsip_cblock_d, vsip_cblockcreate_d)
+ > +
+ > +CVSIPL_BLOCKDESTROY(vsip_block_f,  vsip_blockdestroy_f)
+ > +CVSIPL_BLOCKDESTROY(vsip_block_d,  vsip_blockdestroy_d)
+ > +CVSIPL_BLOCKDESTROY(vsip_cblock_f, vsip_cblockdestroy_f)
+ > +CVSIPL_BLOCKDESTROY(vsip_cblock_d, vsip_cblockdestroy_d)
+ > +
+ > +CVSIPL_BLOCKADMIT(vsip_block_f,  vsip_blockadmit_f)
+ > +CVSIPL_BLOCKADMIT(vsip_block_d,  vsip_blockadmit_d)
+ > +CVSIPL_BLOCKADMIT(vsip_cblock_f, vsip_cblockadmit_f)
+ > +CVSIPL_BLOCKADMIT(vsip_cblock_d, vsip_cblockadmit_d)
+ > +
+ > +CVSIPL_BLOCKRELEASE(vsip_block_f,  vsip_blockrelease_f)
+ > +CVSIPL_BLOCKRELEASE(vsip_block_d,  vsip_blockrelease_d)
+ > +CVSIPL_CBLOCKRELEASE(vsip_cblock_f, vsip_cblockrelease_f,vsip_scalar_f)
+ > +CVSIPL_CBLOCKRELEASE(vsip_cblock_d, vsip_cblockrelease_d,vsip_scalar_d)
+ > +
+ > +CVSIPL_MDESTROY(vsip_mview_f,  vsip_mdestroy_f)
+ > +CVSIPL_MDESTROY(vsip_mview_d,  vsip_mdestroy_d)
+ > +CVSIPL_MDESTROY(vsip_cmview_f, vsip_cmdestroy_f)
+ > +CVSIPL_MDESTROY(vsip_cmview_d, vsip_cmdestroy_d)
+ > +
+ > +CVSIPL_LUD_CREATE(vsip_lu_f,  vsip_lud_create_f)
+ > +CVSIPL_LUD_CREATE(vsip_lu_d,  vsip_lud_create_d)
+ > +CVSIPL_LUD_CREATE(vsip_clu_f, vsip_clud_create_f)
+ > +CVSIPL_LUD_CREATE(vsip_clu_d, vsip_clud_create_d)
+ > +
+ > +CVSIPL_LUD_DESTROY(vsip_lu_f,  vsip_lud_destroy_f)
+ > +CVSIPL_LUD_DESTROY(vsip_lu_d,  vsip_lud_destroy_d)
+ > +CVSIPL_LUD_DESTROY(vsip_clu_f, vsip_clud_destroy_f)
+ > +CVSIPL_LUD_DESTROY(vsip_clu_d, vsip_clud_destroy_d)
+ > +
+ > +CVSIPL_LUD(vsip_lu_f,  vsip_mview_f,  vsip_lud_f)
+ > +CVSIPL_LUD(vsip_lu_d,  vsip_mview_d,  vsip_lud_d)
+ > +CVSIPL_LUD(vsip_clu_f, vsip_cmview_f, vsip_clud_f)
+ > +CVSIPL_LUD(vsip_clu_d, vsip_cmview_d, vsip_clud_d)
+ > +
+ > +CVSIPL_LUSOL(vsip_lu_f,  vsip_mview_f,  vsip_lusol_f)
+ > +CVSIPL_LUSOL(vsip_lu_d,  vsip_mview_d,  vsip_lusol_d)
+ > +CVSIPL_LUSOL(vsip_clu_f, vsip_cmview_f, vsip_clusol_f)
+ > +CVSIPL_LUSOL(vsip_clu_d, vsip_cmview_d, vsip_clusol_d)
+ > +
+ > +}  // namespace cvsip
+ > +
+ > +}  // namespace impl
+ > +
+ > +}  // namespace vsip
+ > +
+ > +#endif // VSIP_CORE_CVSIP_CVSIPL_HPP
+ > Index: cvsip/cvsip_lu.hpp
+ > ===================================================================
+ > --- cvsip/cvsip_lu.hpp	(revision 0)
+ > +++ cvsip/cvsip_lu.hpp	(revision 0)
+ > @@ -0,0 +1,81 @@
+ > +/* Copyright (c) 2005, 2006 by CodeSourcery, LLC.  All rights 
+reserved. */
+ > +
+ > +/** @file    vsip/core/cvsip/cvsip_lu.hpp
+ > +    @author  Assem Salama
+ > +    @date    2006-10-12
+ > +    @brief   VSIPL++ Library: CVSIP wrapper for LU object
+ > +
+ > +*/
+ > +
+ > +#ifndef VSIP_CORE_CVSIP_CVSIP_LU_HPP
+ > +#define VSIP_CORE_CVSIP_CVSIP_LU_HPP
+ > +
+ > +#include <vsip/core/cvsip/cvsip.hpp>
+ > +#include <vsip/core/cvsip/cvsip_matrix.hpp>
+ > +
+ > +namespace vsip
+ > +{
+ > +
+ > +namespace impl
+ > +{
+ > +
+ > +namespace cvsip
+ > +{
+ > +
+ > +template <typename T>
+ > +class Cvsip_lud;
+ > +
+ > +template <typename T>
+ > +class Cvsip_lud : Non_copyable
+ > +{
+ > +  typedef typename Cvsip_traits<T>::lud_object_type     lud_object_type;
+ > +
+ > +  public:
+ > +    Cvsip_lud(int n);
+ > +    ~Cvsip_lud();
+ > +
+ > +    int decompose(Cvsip_matrix<T> &a);
+ > +    int solve(vsip_mat_op op, Cvsip_matrix<T> &xb);
+ > +
+ > +  private:
+ > +    lud_object_type       *lu_;
+ > +};
+ > +
+ > +template <typename T>
+ > +Cvsip_lud<T>::Cvsip_lud(int n)
+ > +{
+ > +  lud_create(n, &lu_);
+ > +}
+ > +
+ > +template <typename T>
+ > +Cvsip_lud<T>::~Cvsip_lud()
+ > +{
+ > +  lud_destroy(lu_);
+ > +}
+ > +
+ > +template <typename T>
+ > +int Cvsip_lud<T>::decompose(Cvsip_matrix<T> &a)
+ > +{
+ > +  a.admit(true);
+ > +  int ret = lud(lu_, a.get_view());
+ > +  a.release(true);
+
+[10] According to the C-VSIPL spec, the decomposition is allowed to
+overwrite 'a'.  We can't modify 'a' "as long as the factorization is
+required".  This includes releasing it.
+
+To handle this, let's move the admit/release out of Cvsip_lud::decompose
+and up into Lud_impl::decompose (see [4]).
+
+ > +  return ret;
+ > +}
+ > +
+ > +template <typename T>
+ > +int Cvsip_lud<T>::solve(vsip_mat_op op, Cvsip_matrix<T> &xb)
+ > +{
+ > +  xb.admit(true);
+ > +  int ret = lusol(lu_, op, xb.get_view());
+ > +  xb.release(true);
+ > +  return ret;
+ > +}
+ > +
+ > +
+ > +} // namespace cvsip
+ > +
+ > +} // namespace impl
+ > +
+ > +} // namespace vsip
+ > +
+ > +#endif // VSIP_CORE_CVSIP_CVSIP_LU_HPP
+ > Index: cvsip/cvsip_matrix.hpp
+ > ===================================================================
+ > --- cvsip/cvsip_matrix.hpp	(revision 0)
+ > +++ cvsip/cvsip_matrix.hpp	(revision 0)
+ > @@ -0,0 +1,115 @@
+ > +/* Copyright (c) 2006 by CodeSourcery.  All rights reserved. */
+ > +
+ > +/** @file    vsip/core/cvsip/cvsip_matrix.hpp
+ > +    @author  Assem Salama
+ > +    @date    2006-10-12
+ > +    @brief   VSIPL++ Library: CVSIP wrapper for Matrix views.
+ > +
+ > +*/
+ > +
+ > +#ifndef VSIP_CORE_CVSIP_CVSIP_MATRIX_HPP
+ > +#define VSIP_CORE_CVSIP_CVSIP_MATRIX_HPP
+ > +
+ > +#include <vsip/core/cvsip/cvsip.hpp>
+ > +
+ > +namespace vsip
+ > +{
+ > +
+ > +namespace impl
+ > +{
+ > +
+ > +namespace cvsip
+ > +{
+ > +
+ > +template <typename T>
+ > +class Cvsip_matrix;
+ > +
+ > +template <typename T>
+ > +class Cvsip_matrix : Non_copyable
+ > +{
+ > +  typedef typename Cvsip_traits<T>::mview_type       mview_type;
+ > +  typedef typename Cvsip_traits<T>::block_type       block_type;
+ > +
+ > +  public:
+ > +    Cvsip_matrix<T>(T *block, int m, int n, int s1, int s2);
+ > +    Cvsip_matrix<T>(int m, int n, int s1, int s2);
+ > +    Cvsip_matrix<T>(T *block, int m, int n);
+ > +    Cvsip_matrix<T>(int m, int n);
+ > +    ~Cvsip_matrix<T>();
+ > +
+ > +    mview_type *get_view() { return mview_; }
+ > +    void admit(bool flag) { blockadmit(mblock_, flag); }
+ > +    void release(bool flag) { blockrelease(mblock_, flag); }
+ > +
+ > +  private:
+ > +    mview_type         *mview_;
+ > +    block_type         *mblock_;
+
+[11] Our coding standard prefers 'mview_type*' to 'mview_type *'.
+
+ > +    bool               local_data_;
+ > +
+ > +
+ > +};
+ > +
+ > +template <typename T>
+ > +Cvsip_matrix<T>::Cvsip_matrix(T *block, int m, int n, int s1, int s2)
+ > +{
+
+This interface is OK.  You call it with values from a Ext_data object.
+
+
+ > +  // block is allocated, just bind to it.
+ > +  mblock_ = blockbind(block, m*n, VSIP_MEM_NONE);
+
+[12] Unfortunately, size != m*n if the block is not dense.
+
+I think the right size should be (n-1)*s1 + (m-1)*s2 + 1
+
+ > +
+ > +  // block must be dense
+ > +  mview_ = mbind(mblock_, 0, s1, n, s2, m);
+ > +
+ > +  local_data_ = false;
+ > +}
+ > +
+ > +template <typename T>
+ > +Cvsip_matrix<T>::Cvsip_matrix(int m, int n, int s1, int s2)
+
+[13] Does this interface get used?  I don't think it is a good one
+because it requires the user to specify the strides.  There are only
+two correct values (1, n) and (m, 1), but many wrong ones.
+
+ > +{
+ > +  // create block
+ > +  blockcreate(m*n, VSIP_MEM_NONE, &mblock_);
+ > +
+ > +  // block must be dense
+ > +  mview_ = mbind(mblock_, 0, s1, n, s2, m);
+ > +
+ > +  local_data_ = true;
+ > +}
+
+It would be better to do something like this:
+
+   template <typename T>
+   template <typename OrderT>
+   Cvsip_matrix<T>::Cvsip_matrix(T *block, int m, int n,
+                                 OrderT const& = row2_type())
+   {
+     // create block
+     blockcreate(m*n, VSIP_MEM_NONE, &mblock_);
+
+     // block must be dense
+     if (Type_equal<OrderT, row2_type>::value)
+       mview_ = mbind(mblock_, 0, m, n, 1, m);
+     else
+       mview_ = mbind(mblock_, 0, 1, n, n, m);
+
+     local_data_ = true;
+   }
+
+
+
+
+ > +
+ > +template <typename T>
+ > +Cvsip_matrix<T>::Cvsip_matrix(T *block, int m, int n)
+
+[14] This could also take an OrderT template parameter
+
+ > +{
+ > +  // block is allocated, just bind to it.
+ > +  mblock_ = blockbind(block, m*n, VSIP_MEM_NONE);
+ > +
+ > +  // block must be dense
+ > +  mview_ = mbind(mblock_, 0, 1, n, n, m);
+ > +
+ > +  local_data_ = false;
+ > +}
+ > +
+
+
+ > +template <typename T>
+ > +Cvsip_matrix<T>::Cvsip_matrix(int m, int n)
+
+[15] this would go away
+
+ > +{
+ > +  // create block
+ > +  blockcreate(m*n, VSIP_MEM_NONE, &mblock_);
+ > +
+ > +  // block must be dense
+ > +  mview_ = mbind(mblock_, 0, 1, n, n, m);
+ > +
+ > +  local_data_ = true;
+ > +}
+ > +
+ > +template <typename T>
+ > +Cvsip_matrix<T>::~Cvsip_matrix()
+ > +{
+ > +  // destroy everything!
+ > +  if(local_data_) blockdestroy(mblock_);
+ > +
+ > +  mdestroy(mview_);
+ > +}
+ > +
+ > +} // namespace cvsip
+ > +
+ > +} // namespace impl
+ > +
+ > +} // namespace vsip
+ > +
+ > +#endif // VSIP_CORE_CVSIP_CVSIP_MATRIX_HPP
+ > Index: solver/lu.hpp
+ > ===================================================================
+ > --- solver/lu.hpp	(revision 151692)
+ > +++ solver/lu.hpp	(working copy)
+ > @@ -28,6 +28,12 @@
+ >  #ifdef VSIP_IMPL_HAVE_LAPACK
+ >  #  include <vsip/opt/lapack/lu.hpp>
+ >  #endif
+ > +#ifdef VSIP_IMPL_HAVE_LAPACK
+ > +#  include <vsip/opt/lapack/lu.hpp>
+ > +#endif
+ > +#ifdef VSIP_IMPL_HAVE_CVSIP
+ > +#  include <vsip/core/cvsip/solver_lu.hpp>
+ > +#endif
+ >
+ >
+ >
+ > @@ -62,6 +68,10 @@
+ >  template <typename T>
+ >  struct Choose_lud_impl
+ >  {
+
+[16*] This guard should be (HAVE_CVSIP does not imply IS_REF_IMPL, we
+want to be able to use the C-VSIP backend with the optimized
+implementation):
+
+#ifdef VSIP_IMPL_IS_REF_IMPL
+
+ > +#ifdef VSIP_IMPL_HAVE_CVSIP
+ > +  typedef Cvsip_tag use_type;
+ > +  typedef Cvsip_tag type;
+ > +#else
+ >    typedef typename Choose_solver_impl<
+ >      Is_lud_impl_avail,
+ >      T,
+ > @@ -71,6 +81,7 @@
+ >      Type_equal<type, None_type>::value,
+ >      As_type<Error_no_solver_for_this_type>,
+ >      As_type<type> >::type use_type;
+ > +#endif
+ >  };
+ >
+ >  } // namespace impl
+ > Index: solver/common.hpp
+ > ===================================================================
+ > --- solver/common.hpp	(revision 151692)
+ > +++ solver/common.hpp	(working copy)
+ > @@ -71,6 +71,7 @@
+ >
+ >  // Implementation tags
+ >  struct Lapack_tag;
+ > +struct Cvsip_tag;
+ >
+ >  // Error tags
+ >  struct Error_no_solver_for_this_type;
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From assem at codesourcery.com  Wed Oct 18 13:35:44 2006
+From: assem at codesourcery.com (Assem Salama)
+Date: Wed, 18 Oct 2006 09:35:44 -0400
+Subject: [vsipl++] LU
+In-Reply-To: <453527E0.2020303@codesourcery.com>
+References: <45351793.3050506@codesourcery.com> <453527E0.2020303@codesourcery.com>
+Message-ID: <45362DB0.80109@codesourcery.com>
+
+
+> [13] Does this interface get used?  I don't think it is a good one
+> because it requires the user to specify the strides.  There are only
+> two correct values (1, n) and (m, 1), but many wrong ones.
+Why are there only two possible strides here? What if someone has an 
+arbitray col stride, like for example 3 for an rgb image?
+
+
+
+From jules at codesourcery.com  Wed Oct 18 13:55:51 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Wed, 18 Oct 2006 09:55:51 -0400
+Subject: [vsipl++] LU
+In-Reply-To: <45362DB0.80109@codesourcery.com>
+References: <45351793.3050506@codesourcery.com> <453527E0.2020303@codesourcery.com> <45362DB0.80109@codesourcery.com>
+Message-ID: <45363267.4010804@codesourcery.com>
+
+Assem Salama wrote:
+> 
+>> [13] Does this interface get used?  I don't think it is a good one
+>> because it requires the user to specify the strides.  There are only
+>> two correct values (1, n) and (m, 1), but many wrong ones.
+> Why are there only two possible strides here? What if someone has an 
+> arbitray col stride, like for example 3 for an rgb image?
+> 
+
+For a dense, 2-dim block (which is what is being constructed by 
+blockcreate()), there are only two sets of valid strides, corresponding 
+to row-major and column-major.
+
+				-- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From assem at codesourcery.com  Wed Oct 18 13:59:47 2006
+From: assem at codesourcery.com (Assem Salama)
+Date: Wed, 18 Oct 2006 09:59:47 -0400
+Subject: [vsipl++] LU
+In-Reply-To: <45363267.4010804@codesourcery.com>
+References: <45351793.3050506@codesourcery.com> <453527E0.2020303@codesourcery.com> <45362DB0.80109@codesourcery.com> <45363267.4010804@codesourcery.com>
+Message-ID: <45363353.1050908@codesourcery.com>
+
+Oh, I see. I didn't realize this was the constructor calling 
+blockcreate! Thanks for pointing that out.
+
+--Assem
+
+Jules Bergmann wrote:
+> Assem Salama wrote:
+>>
+>>> [13] Does this interface get used?  I don't think it is a good one
+>>> because it requires the user to specify the strides.  There are only
+>>> two correct values (1, n) and (m, 1), but many wrong ones.
+>> Why are there only two possible strides here? What if someone has an 
+>> arbitray col stride, like for example 3 for an rgb image?
+>>
+>
+> For a dense, 2-dim block (which is what is being constructed by 
+> blockcreate()), there are only two sets of valid strides, 
+> corresponding to row-major and column-major.
+>
+>                 -- Jules
+>
+
+
+
+From jules at codesourcery.com  Thu Oct 19 02:12:24 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Wed, 18 Oct 2006 22:12:24 -0400
+Subject: [patch] Parallel assignment algorithm and PAS fixes.
+Message-ID: <4536DF08.2000307@codesourcery.com>
+
+Fix dispatch to use non-early-binding version of PAS Par_assign for 
+normal parallel assignments (i.e. non-Setup_assign).
+
+Fix bug in non-early-binding PAS Par_assign where PAS_WAIT was not 
+always being set, creating a race condition (thanks to John Watson for 
+catching this!)
+
+Patch applied.
+
+				-- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: pas.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20061018/a3489196/attachment.ksh>
+
+From jules at codesourcery.com  Thu Oct 19 15:47:17 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Thu, 19 Oct 2006 11:47:17 -0400
+Subject: [patch] Add dispatch to SAL vthresx and vthrx routines
+Message-ID: <45379E05.3010408@codesourcery.com>
+
+Plus fix a few headers and guards for files moved in the reorg.
+
+				-- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From jules at codesourcery.com  Thu Oct 19 15:48:09 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Thu, 19 Oct 2006 11:48:09 -0400
+Subject: [vsipl++] [patch] Add dispatch to SAL vthresx and vthrx routines
+In-Reply-To: <45379E05.3010408@codesourcery.com>
+References: <45379E05.3010408@codesourcery.com>
+Message-ID: <45379E39.3070703@codesourcery.com>
+
+Oops!  Patch attached.
+
+Jules Bergmann wrote:
+> Plus fix a few headers and guards for files moved in the reorg.
+> 
+>                 -- Jules
+> 
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: vthresh.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20061019/3c44cbd1/attachment.ksh>
+
+From jules at codesourcery.com  Mon Oct 23 19:02:26 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Mon, 23 Oct 2006 15:02:26 -0400
+Subject: [patch] Fix sarsim to compile
+Message-ID: <453D11C2.70509@codesourcery.com>
+
+This patch fixes sarsim to compile with the current library.  It also 
+adds support for parallel sarsim.
+
+Patch applied.
+
+				-- Jules
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: sarsim.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20061023/70a071b5/attachment.ksh>
+
+From assem at codesourcery.com  Wed Oct 25 14:29:37 2006
+From: assem at codesourcery.com (Assem Salama)
+Date: Wed, 25 Oct 2006 10:29:37 -0400
+Subject: lu solver
+Message-ID: <453F74D1.5030805@codesourcery.com>
+
+Everone,
+  This is the LU solver using CVSIP. This is still using Cvsip_matrix 
+and Cvsip_lu.
+
+Thanks,
+Assem
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: svn.diff.10252006.1.log
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20061025/d1967a24/attachment.ksh>
+
+From stefan at codesourcery.com  Wed Oct 25 15:00:40 2006
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Wed, 25 Oct 2006 11:00:40 -0400
+Subject: [vsipl++] lu solver
+In-Reply-To: <453F74D1.5030805@codesourcery.com>
+References: <453F74D1.5030805@codesourcery.com>
+Message-ID: <453F7C18.9050607@codesourcery.com>
+
+Assem,
+
+it would be best to generate patches from the toplevel source tree, as 
+opposed some subdirectory
+therein. That makes it clear which files are being talked about. (This 
+gets particularly confusing if
+the @file key on top of a given file is wrong, as below. :-) )
+
+
+Assem Salama wrote:
+
+> Everone,
+>  This is the LU solver using CVSIP. This is still using Cvsip_matrix 
+> and Cvsip_lu.
+>
+> Thanks,
+> Assem
+>
+>------------------------------------------------------------------------
+>
+>Index: solver_lu.hpp
+>===================================================================
+>--- solver_lu.hpp	(revision 151855)
+>+++ solver_lu.hpp	(working copy)
+>@@ -3,12 +3,12 @@
+> /** @file    vsip/impl/lapack/solver_lu.hpp
+>  
+>
+I suspect that should be vsip/core/cvsip/solver_lu.hpp, right ?
+
+>     @author  Assem Salama
+>     @date    2006-04-13
+>  
+>
+
+Some nit-picking: If we insist on having a @date key in the files, they 
+should contain some real value, not just
+a copy of a file this originally was a copy of. (Note that I'm indeed 
+not sure about the need for @date, nor
+most of the other keys. But that's for another discussion...)
+
+>-    @brief   VSIPL++ Library: LU linear system solver using lapack.
+>+    @brief   VSIPL++ Library: LU linear system solver using cvsip.
+> 
+> */
+> 
+>-#ifndef VSIP_REF_IMPL_SOLVER_LU_HPP
+>-#define VSIP_REF_IMPL_SOLVER_LU_HPP
+>+#ifndef VSIP_CORE_CVSIP_SOLVER_LU_HPP
+>+#define VSIP_CORE_CVSIP_SOLVER_LU_HPP
+> 
+> /***********************************************************************
+>   Included Files
+>@@ -25,6 +25,7 @@
+> #include <vsip/core/cvsip/cvsip_matrix.hpp>
+> #include <vsip/core/cvsip/cvsip_lu.hpp>
+> 
+>+#include <vsip_csl/output.hpp>
+>  
+>
+
+This file shouldn't depend on vsip_csl code.
+
+> 
+> 
+> /***********************************************************************
+>@@ -78,7 +79,6 @@
+>   typedef std::vector<int, Aligned_allocator<int> > vector_type;
+> 
+>   length_type  length_;			// Order of A.
+>-  vector_type  ipiv_;			// Additional info on Q
+> 
+>   Matrix<T, data_block_type> data_;	// Factorized Cholesky matrix (A)
+>   cvsip::Cvsip_matrix<T>     cvsip_data_;
+>@@ -101,9 +101,8 @@
+>   )
+> VSIP_THROW((std::bad_alloc))
+>   : length_      (length),
+>-    ipiv_        (length_),
+>     data_        (length_, length_),
+>-    cvsip_data_  (data_.block().impl_data(), length_, length_),
+>+    cvsip_data_  (data_.block().impl_data(), length_, length_, col2_type()),
+>     cvsip_lud_   (length_)
+> {
+>   assert(length_ > 0);
+>@@ -115,14 +114,11 @@
+> Lud_impl<T, Cvsip_tag>::Lud_impl(Lud_impl const& lu)
+> VSIP_THROW((std::bad_alloc))
+>   : length_      (lu.length_),
+>-    ipiv_        (length_),
+>     data_        (length_, length_),
+>     cvsip_data_  (data_.block().impl_data(), length_, length_),
+>     cvsip_lud_   (length_)
+> {
+>   data_ = lu.data_;
+>-  for (index_type i=0; i<length_; ++i)
+>-    ipiv_[i] = lu.ipiv_[i];
+> }
+> 
+> 
+>@@ -143,6 +139,7 @@
+> /// FLOPS:
+> ///   real   : UPDATE
+> ///   complex: UPDATE
+>+//
+> 
+> template <typename T>
+> template <typename Block>
+>@@ -152,16 +149,15 @@
+> {
+>   assert(m.size(0) == length_ && m.size(1) == length_);
+> 
+>+  cvsip_data_.release(false);
+>   assign_local(data_, m);
+>+  cvsip_data_.admit(true);
+> 
+>   bool success = cvsip_lud_.decompose(cvsip_data_);
+> 
+>-
+>   return success;
+> }
+> 
+>-
+>-
+> /// Solve Op(A) x = b (where A previously given to decompose)
+> ///
+> /// Op(A) is
+>@@ -201,12 +197,13 @@
+> 
+>   if (tr == mat_ntrans)
+>     trans = VSIP_MAT_NTRANS;
+>-  else if (tr == mat_trans)
+>+  else if (tr == mat_trans && ! Is_complex<T>::value)
+>     trans = VSIP_MAT_TRANS;
+>-  else if (tr == mat_herm)
+>-  {
+>-    assert(Is_complex<T>::value);
+>+  else if (tr == mat_herm && Is_complex<T>::value)
+>     trans = VSIP_MAT_HERM;
+>+  else {
+>+    VSIP_IMPL_THROW(unimplemented(
+>+      "Lud_impl cvsip solver doesn't support this transformation"));
+>   }
+> 
+>  
+>
+
+Since the above exception would percolate up to the public API, I don't 
+think "Lud_impl cvsip solver" is the best
+name to give to the actual code. May be "cvsip LU solver backend" ?
+
+>   {
+>@@ -215,7 +212,6 @@
+>     cvsip::Cvsip_matrix<T>
+> 	      cvsip_b_int(b_ext.data(),b_ext.size(0),b_ext.size(1),
+> 			               b_ext.stride(0),b_ext.stride(1));
+>-
+>     cvsip_lud_.solve(trans,cvsip_b_int);
+> 
+>   }
+>@@ -229,4 +225,4 @@
+> } // namespace vsip
+> 
+> 
+>-#endif // VSIP_IMPL_LAPACK_SOLVER_LU_HPP
+>+#endif // VSIP_CORE_CVSIP_SOLVER_LU_HPP
+>Index: cvsip.hpp
+>===================================================================
+>--- cvsip.hpp	(revision 151857)
+>+++ cvsip.hpp	(working copy)
+>@@ -147,6 +147,8 @@
+> { \
+>   return VF(lu_obj, op, view); \
+> }
+>+
+>+
+> /******************************************************************************
+>  * Function declarations
+> ******************************************************************************/
+>  
+>
+
+Please make sure only real changes make their way into a patch.
+
+>Index: cvsip_lu.hpp
+>===================================================================
+>--- cvsip_lu.hpp	(revision 151855)
+>+++ cvsip_lu.hpp	(working copy)
+>@@ -31,8 +31,8 @@
+>   typedef typename Cvsip_traits<T>::lud_object_type     lud_object_type;
+> 
+>   public:
+>-    Cvsip_lud(int n);
+>-    ~Cvsip_lud();
+>+    Cvsip_lud<T>(int n);
+>+    ~Cvsip_lud<T>();
+>  
+>
+
+The original 'Cvsip_lud' declarator should be fine.
+
+> 
+>     int decompose(Cvsip_matrix<T> &a);
+>     int solve(vsip_mat_op op, Cvsip_matrix<T> &xb);
+>@@ -56,10 +56,9 @@
+> template <typename T>
+> int Cvsip_lud<T>::decompose(Cvsip_matrix<T> &a)
+> {
+>-  a.admit(false);
+>+
+>   int ret = lud(lu_, a.get_view());
+>-  a.release(true);
+>-  return ret;
+>+  return !ret;
+> }
+> 
+> template <typename T>
+>@@ -67,7 +66,6 @@
+> {
+>   xb.admit(true);
+>   int ret = lusol(lu_, op, xb.get_view());
+>-  printf("RET: %d\n", ret);
+>   xb.release(true);
+>   return ret;
+> }
+>Index: cvsip_matrix.hpp
+>===================================================================
+>--- cvsip_matrix.hpp	(revision 151855)
+>+++ cvsip_matrix.hpp	(working copy)
+>@@ -32,9 +32,10 @@
+> 
+>   public:
+>     Cvsip_matrix<T>(T *block, int m, int n, int s1, int s2);
+>-    Cvsip_matrix<T>(int m, int n, int s1, int s2);
+>-    Cvsip_matrix<T>(T *block, int m, int n);
+>-    Cvsip_matrix<T>(int m, int n);
+>+    template <typename OrderT>
+>+    Cvsip_matrix<T>(int m, int n, OrderT const&);
+>+    template <typename OrderT>
+>+    Cvsip_matrix<T>(T *block, int m, int n, OrderT const&);
+>     ~Cvsip_matrix<T>();
+> 
+>     mview_type *get_view() { return mview_; }
+>@@ -42,8 +43,8 @@
+>     void release(bool flag) { blockrelease(mblock_, flag); }
+>     
+>   private:
+>-    mview_type         *mview_;
+>-    block_type         *mblock_;
+>+    mview_type*        mview_;
+>+    block_type*        mblock_;
+>     bool               local_data_;
+>     
+>     
+>@@ -53,51 +54,47 @@
+> Cvsip_matrix<T>::Cvsip_matrix(T *block, int m, int n, int s1, int s2)
+> {
+>   // block is allocated, just bind to it.
+>-  mblock_ = blockbind(block, m*n, VSIP_MEM_NONE);
+>+  mblock_ = blockbind(block, (n-1)*s2 + (m-1)*s1 + 1, VSIP_MEM_NONE);
+> 
+>-  // block must be dense
+>-  mview_ = mbind(mblock_, 0, s1, n, s2, m);
+>+  mview_ = mbind(mblock_, 0, s1, m, s2, n);
+> 
+>   local_data_ = false;
+> }
+> 
+> template <typename T>
+>-Cvsip_matrix<T>::Cvsip_matrix(int m, int n, int s1, int s2)
+>+template <typename OrderT>
+>+Cvsip_matrix<T>::Cvsip_matrix(int m, int n, OrderT const& = row2_type())
+> {
+>   // create block
+>   blockcreate(m*n, VSIP_MEM_NONE, &mblock_);
+> 
+>   // block must be dense
+>-  mview_ = mbind(mblock_, 0, s1, n, s2, m);
+>+  if(Type_equal<OrderT, row2_type>::value)
+>+    mview_ = mbind(mblock_, 0, m, n, 1, m);
+>+  else
+>+    mview_ = mbind(mblock_, 0, 1, n, n, m);
+> 
+>   local_data_ = true;
+> }
+> 
+> template <typename T>
+>-Cvsip_matrix<T>::Cvsip_matrix(T *block, int m, int n)
+>+template <typename OrderT>
+>+Cvsip_matrix<T>::Cvsip_matrix(T *block, int m, int n,
+>+		              OrderT const& = row2_type())
+> {
+>   // block is allocated, just bind to it.
+>   mblock_ = blockbind(block, m*n, VSIP_MEM_NONE);
+> 
+>   // block must be dense
+>-  mview_ = mbind(mblock_, 0, 1, n, n, m);
+>+  if(Type_equal<OrderT, row2_type>::value)
+>+    mview_ = mbind(mblock_, 0, m, n, 1, m);
+>+  else
+>+    mview_ = mbind(mblock_, 0, 1, n, n, m);
+> 
+>   local_data_ = false;
+> }
+> 
+> template <typename T>
+>-Cvsip_matrix<T>::Cvsip_matrix(int m, int n)
+>-{
+>-  // create block
+>-  blockcreate(m*n, VSIP_MEM_NONE, &mblock_);
+>-
+>-  // block must be dense
+>-  mview_ = mbind(mblock_, 0, 1, n, n, m);
+>-
+>-  local_data_ = true;
+>-}
+>-
+>-template <typename T>
+> Cvsip_matrix<T>::~Cvsip_matrix()
+> {
+>   // destroy everything!
+>Index: solver-lu.cpp
+>  
+>
+
+As we just relocated and renamed most files, please make sure to follow 
+the naming
+conventions. Use '_' instead of '-', and use lu.hpp, instead of 
+solver_hpp (and likewise
+for the cpp).
+
+
+>===================================================================
+>--- solver-lu.cpp	(revision 151693)
+>+++ solver-lu.cpp	(working copy)
+>@@ -26,6 +26,12 @@
+> #include "test-random.hpp"
+> #include "solver-common.hpp"
+> 
+>+#ifdef VSIP_IMPL_HAVE_CVSIP
+>+#define TEST_TRANSPOSE_SOLVE      0
+>+#else
+>+#define TEST_TRANSPOSE_SOLVE      1
+>+#endif
+>+
+> #define VERBOSE       0
+>  
+>
+
+This looks like debug code. Should that really go into the repository ?
+
+> #define DO_ASSERT     1
+>  
+>
+
+Same here. Additionally, why don't you use <cassert> instead
+(i.e. a noop in release mode, and a real test with potential abort()
+otherwise) ?
+
+> #define DO_SWEEP      0
+>  
+>
+Likewise.
+
+
+>@@ -100,7 +106,9 @@
+> 
+>     // 2. Solve A X = B.
+>     lu.template solve<mat_ntrans>(b, x1);
+>+#if TEST_TRANSPOSE_SOLVE == 1
+>     lu.template solve<mat_trans>(b, x2);
+>+#endif
+>     lu.template solve<Test_traits<T>::trans>(b, x3); // mat_herm if T complex
+>   }
+>   if (rtm == by_value)
+>@@ -114,7 +122,9 @@
+> 
+>     // 2. Solve A X = B.
+>     x1 = lu.template solve<mat_ntrans>(b);
+>+#if TEST_TRANSPOSE_SOLVE == 1
+>     x2 = lu.template solve<mat_trans>(b);
+>+#endif
+>     x3 = lu.template solve<Test_traits<T>::trans>(b); // mat_herm if T complex
+>   }
+> 
+>@@ -126,7 +136,9 @@
+>   Matrix<T> chk3(n, p);
+> 
+>   prod(a, x1, chk1);
+>+#if TEST_TRANSPOSE_SOLVE == 1
+>   prod(trans(a), x2, chk2);
+>+#endif
+>   prod(trans_or_herm(a), x3, chk3);
+> 
+>   typedef typename vsip::impl::Scalar_of<T>::type scalar_type;
+>@@ -169,8 +181,13 @@
+>   {
+>     scalar_type residual_1 = norm_2((b - chk1).col(i));
+>     scalar_type err1       = residual_1 / (a_norm_2 * norm_2(x1.col(i)) * eps);
+>+#if TEST_TRANSPOSE_SOLVE == 1
+>     scalar_type residual_2 = norm_2((b - chk2).col(i));
+>     scalar_type err2       = residual_2 / (a_norm_2 * norm_2(x2.col(i)) * eps);
+>+#else
+>+    scalar_type residual_2 = 0;
+>+    scalar_type err2       = 0;
+>+#endif
+>     scalar_type residual_3 = norm_2((b - chk3).col(i));
+>     scalar_type err3       = residual_3 / (a_norm_2 * norm_2(x3.col(i)) * eps);
+> 
+>@@ -192,7 +209,9 @@
+> 
+> #if DO_ASSERT
+>     test_assert(err1 < p_limit);
+>+#if TEST_TRANSPOSE_SOLVE == 1
+>     test_assert(err2 < p_limit);
+>+#endif
+>     test_assert(err3 < p_limit);
+> #endif
+> 
+>@@ -247,7 +266,9 @@
+> 
+>     // 2. Solve A X = B.
+>     lu.template solve<mat_ntrans>(b, x1);
+>+#if TEST_TRANSPOSE_SOLVE == 1
+>     lu.template solve<mat_trans>(b, x2);
+>+#endif
+>     lu.template solve<Test_traits<T>::trans>(b, x3); // mat_herm if T complex
+>   }
+>   if (rtm == by_value)
+>@@ -261,7 +282,9 @@
+> 
+>     // 2. Solve A X = B.
+>     impl::assign_local(x1, lu.template solve<mat_ntrans>(b));
+>+#if TEST_TRANSPOSE_SOLVE == 1
+>     impl::assign_local(x2, lu.template solve<mat_trans>(b));
+>+#endif
+>     impl::assign_local(x3, lu.template solve<Test_traits<T>::trans>(b));
+>   }
+> 
+>@@ -273,7 +296,9 @@
+>   Matrix<T, block_type> chk3(n, p);
+> 
+>   prod(a, x1, chk1);
+>+#if TEST_TRANSPOSE_SOLVE == 1
+>   prod(trans(a), x2, chk2);
+>+#endif
+>   prod(trans_or_herm(a), x3, chk3);
+> 
+>   typedef typename vsip::impl::Scalar_of<T>::type scalar_type;
+>@@ -317,8 +342,13 @@
+>   {
+>     scalar_type residual_1 = norm_2((b - chk1).col(i));
+>     scalar_type err1       = residual_1 / (a_norm_2 * norm_2(x1.col(i)) * eps);
+>+#if TEST_TRANSPOSE_SOLVE == 1
+>     scalar_type residual_2 = norm_2((b - chk2).col(i));
+>     scalar_type err2       = residual_2 / (a_norm_2 * norm_2(x2.col(i)) * eps);
+>+#else
+>+    scalar_type residual_2 = 0;
+>+    scalar_type err2       = 0;
+>+#endif
+>     scalar_type residual_3 = norm_2((b - chk3).col(i));
+>     scalar_type err3       = residual_3 / (a_norm_2 * norm_2(x3.col(i)) * eps);
+> 
+>@@ -339,7 +369,9 @@
+> #endif
+> 
+>     test_assert(err1 < p_limit);
+>+#if TEST_TRANSPOSE_SOLVE == 1
+>     test_assert(err2 < p_limit);
+>+#endif
+>     test_assert(err3 < p_limit);
+> 
+>     if (err1 > max_err1) max_err1 = err1;
+>  
+>
+
+Thanks,
+       Stefan
+
+
+
+From jules at codesourcery.com  Wed Oct 25 15:54:31 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Wed, 25 Oct 2006 11:54:31 -0400
+Subject: [vsipl++] lu solver
+In-Reply-To: <453F7C18.9050607@codesourcery.com>
+References: <453F74D1.5030805@codesourcery.com> <453F7C18.9050607@codesourcery.com>
+Message-ID: <453F88B7.2050207@codesourcery.com>
+
+
+> 
+> Some nit-picking: If we insist on having a @date key in the files, they 
+> should contain some real value, not just
+> a copy of a file this originally was a copy of. (Note that I'm indeed 
+> not sure about the need for @date, nor
+> most of the other keys. But that's for another discussion...)
+> 
+
+Right.  Let's make the keys be valid.
+
+(Changing/removing the keys is not open for discussion :)
+
+
+>> +    VSIP_IMPL_THROW(unimplemented(
+>> +      "Lud_impl cvsip solver doesn't support this transformation"));
+>>   }
+>>
+>>  
+>>
+> 
+> Since the above exception would percolate up to the public API, I don't 
+> think "Lud_impl cvsip solver" is the best
+> name to give to the actual code. May be "cvsip LU solver backend" ?
+> 
+
+I agree.  How about "LU solver (CVSIP backend) does not implement this 
+transformation".  Start with the user-level VSIPL++ object that failed, 
+give some extra info that might be useful (the backend in this case), 
+then give the error.
+
+
+>> Index: solver-lu.cpp
+>>  
+>>
+> 
+> As we just relocated and renamed most files, please make sure to follow 
+> the naming
+> conventions. Use '_' instead of '-', and use lu.hpp, instead of 
+> solver_hpp (and likewise
+> for the cpp).
+
+This file is an existing unit test in the tests subdirectory (which 
+would be more obvious if the diff was taken from the top-level)  -- i.e. 
+we can't beat up on Assem too much for the name I gave it way back when :)
+
+>> +
+>> #define VERBOSE       0
+>>  
+>>
+> 
+> This looks like debug code. Should that really go into the repository ?
+> 
+>> #define DO_ASSERT     1
+>>  
+>>
+> 
+> Same here. Additionally, why don't you use <cassert> instead
+> (i.e. a noop in release mode, and a real test with potential abort()
+> otherwise) ?
+
+This is in a unit test, so debug code like this is OK.  That way when we 
+write a new backend, debugging test failures is marginally easier.
+
+The DO_ASSERT flag lets assertions be turned off, which IIRC was useful 
+in debugging for getting passed the first error to see other errors.
+
+Just to be clear, in unit tests, we should use 'test_assert', not 
+'assert' from <cassert>.  This lets us run the test cases with the 
+release mode flags (which include -DNDEBUG, which disables asserts). 
+Inside the library, we should use 'assert' for the same reason.
+
+					-- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From jules at codesourcery.com  Wed Oct 25 20:12:36 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Wed, 25 Oct 2006 16:12:36 -0400
+Subject: [patch] Add functions for isfinite, isnan, and isnormal; use them
+ from error_db
+Message-ID: <453FC534.2020308@codesourcery.com>
+
+This patch adds view functions for isfinite, isnan, and isnormal that 
+take a view of floating point type values (including complex) and return 
+a view of bools.
+
+To check if a view contains NaNs:
+
+	if (anytrue(isnan(view)))
+	  ...
+
+To count the number of NaNs in a view:
+
+	int count = sumval(isnan(view));
+
+etc etc
+
+This patch extends error_db to return 201 if either input view contains 
+a NaN.  (Note that the largest value that error_db can return for two 
+views that contain only finite numbers is 0).
+
+The reason that error_db was not propagating the NaN value is that 
+reductions like maxval do not reliably propagate NaNs.
+
+Deep inside maxval there is a loop:
+
+	maxval = X.get(0);
+	for (i= 1 .. size)
+	  if (X.get(i) > maxval)
+	    maxval = X.get(i)
+
+If X.get(i) is a NaN, the comparison is false and the value is skipped 
+over.  If X.get(0) is NaN, this would be propagated.
+
+We could change maxval to check for NaN:
+
+	for (i = ...
+	  if (X.get(i) > maxval || isnan(X.get(i)))
+	    ..
+
+but that is going down a murky path.  Primarily it would degrade 
+performance.  It would also create differences when another library is 
+used to perform maxval (such as SAL) that doesn't check for NaNs.
+
+C-VSIPL has the concept of development and release modes for the 
+libraries, with the idea that in development mode the library might do 
+additional checks (such as check for NaNs) that aren't done in release 
+mode.  At some future point we could do something along those lines, 
+perhaps taking advantage of C++ capabilities, such as passing maxval a 
+policy for NaN checking, the default being no NaN checking.
+
+				-- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: nan.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20061025/5c26c902/attachment.ksh>
+
+From mark at codesourcery.com  Wed Oct 25 20:29:54 2006
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Wed, 25 Oct 2006 13:29:54 -0700
+Subject: [vsipl++] [patch] Add functions for isfinite, isnan, and isnormal;
+ use them from error_db
+In-Reply-To: <453FC534.2020308@codesourcery.com>
+References: <453FC534.2020308@codesourcery.com>
+Message-ID: <453FC942.8050305@codesourcery.com>
+
+Jules Bergmann wrote:
+
+> Deep inside maxval there is a loop:
+> 
+>     maxval = X.get(0);
+>     for (i= 1 .. size)
+>       if (X.get(i) > maxval)
+>         maxval = X.get(i)
+> 
+> If X.get(i) is a NaN, the comparison is false and the value is skipped 
+> over.
+
+I agree that this is the right behavior by default.  As you say, 
+checking for this case would be too expensive.
+
+-- 
+Mark Mitchell
+CodeSourcery
+mark at codesourcery.com
+(650) 331-3385 x713
+
+
+From jules at codesourcery.com  Thu Oct 26 16:22:44 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Thu, 26 Oct 2006 12:22:44 -0400
+Subject: [patch] Test for threshold dispatch to SAL
+Message-ID: <4540E0D4.50003@codesourcery.com>
+
+These tests go along with the earlier SAL dispatch patch to vthresx and 
+vthrx.
+
+Patch applied. -- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: threshold-test.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20061026/61ba3713/attachment.ksh>
+
+From jules at codesourcery.com  Fri Oct 27 13:19:57 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Fri, 27 Oct 2006 09:19:57 -0400
+Subject: [patch] Add evaluators for SAL vector comparison functions.
+Message-ID: <4542077D.10005@codesourcery.com>
+
+This patch adds dispatch to the SAL vector comparison functions (lvgtx, 
+etc).
+
+It also extends the load_view and save_view functions in vsip_csl to 
+work with distributed data (this was used for the fast convolution demo).
+
+Finally, it fixes a few miscellanea:
+
+  - Fix the new assign() function in dispatch_assign to not strip
+    the top-level 'const' from expression templates.  This was
+    preventing the math library evaluators from applying.
+
+  - Fix tests using fast_block's to use the right include path.
+
+Patch applied.
+
+				-- Jules
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: sal-lvgt.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20061027/68a74b53/attachment.ksh>
+
+From jules at codesourcery.com  Fri Oct 27 19:25:51 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Fri, 27 Oct 2006 15:25:51 -0400
+Subject: [patch] Use QMtest CommandHost
+Message-ID: <45425D3F.2050200@codesourcery.com>
+
+This patch adds support for using QMTest's CommandHost target to run 
+tests with a proxy command.
+
+This is currently used for PAS on Linux cluster testing.  It could be 
+used for general MCOE testing.
+
+Stefan, is this ok to commit?
+
+					-- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: qm-cmd.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20061027/df408272/attachment.ksh>
+
+From stefan at codesourcery.com  Fri Oct 27 19:59:37 2006
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Fri, 27 Oct 2006 15:59:37 -0400
+Subject: [vsipl++] [patch] Use QMtest CommandHost
+In-Reply-To: <45425D3F.2050200@codesourcery.com>
+References: <45425D3F.2050200@codesourcery.com>
+Message-ID: <45426529.2090202@codesourcery.com>
+
+Jules Bergmann wrote:
+> This patch adds support for using QMTest's CommandHost target to run
+> tests with a proxy command.
+> 
+> This is currently used for PAS on Linux cluster testing.  It could be
+> used for general MCOE testing.
+> 
+> Stefan, is this ok to commit?
+
+Yes, this looks good. (I find --with-qmtest-command not very descriptive --
+as it sounds like the command to invoke qmtest itself -- but a) I don't have
+anything other to suggest and b) chances are that the group of potential
+users for this particular option is rather limitted :-) )
+
+>      case "$host_cpu" in
+> -      (ia32|i686|x86_64) fftw3_f_simd="--enable-sse"
+> +      ia32|i686|x86_64) fftw3_f_simd="--enable-sse"
+>  	                 fftw3_d_simd="--enable-sse2" 
+>  	                 ;;
+> -      (ppc*)             fftw3_f_simd="--enable-altivec" ;;
+> +      ppc*)             fftw3_f_simd="--enable-altivec" ;;
+>      esac
+>      AC_MSG_NOTICE([fftw3 config options: $fftw3_opts $fftw3_simd.])
+
+I remember Nathan (ncm) introducing this '(a)' syntax, with some explanation
+about broken shells. How exactly did this fail ?
+
+
+> Index: tests/GNUmakefile.inc.in
+> ===================================================================
+> --- tests/GNUmakefile.inc.in	(revision 152549)
+> +++ tests/GNUmakefile.inc.in	(working copy)
+> @@ -49,6 +49,7 @@
+>  	  sed -e "s|@CPPFLAGS_@|`$(tests_pkgconfig) --variable=cppflags`|" | \
+>            sed -e "s|@CXXFLAGS_@|`$(tests_pkgconfig) --variable=cxxflags`|" | \
+>            sed -e "s|@LIBS_@|`$(tests_pkgconfig) --libs`|" | \
+> +          sed -e "s|@QMTEST_TARGET_@|`$(tests_pkgconfig) --variable=qmtest_target`|" | \
+>            sed -e "s|@PAR_SERVICE_@|`$(tests_pkgconfig) --variable=par_service`|" \
+>            > tests/context-installed
+>  	cd tests; \
+
+Doesn't this require that you define the 'qmtest_target' variable in the vsipl++.pc.in
+template, too ?
+
+
+Thanks,
+		Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+
+
+From jules at codesourcery.com  Fri Oct 27 20:39:53 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Fri, 27 Oct 2006 16:39:53 -0400
+Subject: [vsipl++] [patch] Use QMtest CommandHost
+In-Reply-To: <45426529.2090202@codesourcery.com>
+References: <45425D3F.2050200@codesourcery.com> <45426529.2090202@codesourcery.com>
+Message-ID: <45426E99.6000900@codesourcery.com>
+
+
+> Yes, this looks good. (I find --with-qmtest-command not very descriptive --
+> as it sounds like the command to invoke qmtest itself -- but a) I don't have
+> anything other to suggest and b) chances are that the group of potential
+> users for this particular option is rather limitted :-) )
+
+I agree, it does seem to imply it is the qmtest executable (but we have 
+'--with-qmtest=QMTEST' for the qmtest executable).
+
+Since the QMtest target class is called CommandHost, how about 
+--with-qmtest-commandhost=XXX?
+
+
+
+> 
+>>      case "$host_cpu" in
+>> -      (ia32|i686|x86_64) fftw3_f_simd="--enable-sse"
+>> +      ia32|i686|x86_64) fftw3_f_simd="--enable-sse"
+>>  	                 fftw3_d_simd="--enable-sse2" 
+>>  	                 ;;
+>> -      (ppc*)             fftw3_f_simd="--enable-altivec" ;;
+>> +      ppc*)             fftw3_f_simd="--enable-altivec" ;;
+>>      esac
+>>      AC_MSG_NOTICE([fftw3 config options: $fftw3_opts $fftw3_simd.])
+> 
+> I remember Nathan (ncm) introducing this '(a)' syntax, with some explanation
+> about broken shells. How exactly did this fail ?
+
+It fails on solaris.
+
+It doesn't fail when I run configure directly, but it does fail when 
+configure is run by the Makefile, if it detects that configure is out of 
+data w.r.t. configure.ac.
+
+I noticed similar problems with the atlas configure on gannon a while 
+back.  Running atlas configure directly was OK, but running atlas 
+configure via the top-level configure made it very picky about syntax.
+
+There must be a flag to enable/disable this ultra-picky mode for 
+solaris /bin/sh, but I don't know what it is.
+
+> 
+> 
+>> Index: tests/GNUmakefile.inc.in
+>> ===================================================================
+>> --- tests/GNUmakefile.inc.in	(revision 152549)
+>> +++ tests/GNUmakefile.inc.in	(working copy)
+>> @@ -49,6 +49,7 @@
+>>  	  sed -e "s|@CPPFLAGS_@|`$(tests_pkgconfig) --variable=cppflags`|" | \
+>>            sed -e "s|@CXXFLAGS_@|`$(tests_pkgconfig) --variable=cxxflags`|" | \
+>>            sed -e "s|@LIBS_@|`$(tests_pkgconfig) --libs`|" | \
+>> +          sed -e "s|@QMTEST_TARGET_@|`$(tests_pkgconfig) --variable=qmtest_target`|" | \
+>>            sed -e "s|@PAR_SERVICE_@|`$(tests_pkgconfig) --variable=par_service`|" \
+>>            > tests/context-installed
+>>  	cd tests; \
+> 
+> Doesn't this require that you define the 'qmtest_target' variable in the vsipl++.pc.in
+> template, too ?
+
+Yes, good catch.  I forgot to include that file in the patch.  Attached.
+
+					-- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: qm-cmd.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20061027/54058486/attachment.ksh>
+
+From stefan at codesourcery.com  Fri Oct 27 21:09:12 2006
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Fri, 27 Oct 2006 17:09:12 -0400
+Subject: [vsipl++] [patch] Use QMtest CommandHost
+In-Reply-To: <45426E99.6000900@codesourcery.com>
+References: <45425D3F.2050200@codesourcery.com> <45426529.2090202@codesourcery.com> <45426E99.6000900@codesourcery.com>
+Message-ID: <45427578.6040406@codesourcery.com>
+
+Jules Bergmann wrote:
+> 
+>> Yes, this looks good. (I find --with-qmtest-command not very
+>> descriptive --
+>> as it sounds like the command to invoke qmtest itself -- but a) I
+>> don't have
+>> anything other to suggest and b) chances are that the group of potential
+>> users for this particular option is rather limitted :-) )
+> 
+> I agree, it does seem to imply it is the qmtest executable (but we have
+> '--with-qmtest=QMTEST' for the qmtest executable).
+> 
+> Since the QMtest target class is called CommandHost, how about
+> --with-qmtest-commandhost=XXX?
+
+Good !
+
+>>>      case "$host_cpu" in
+>>> -      (ia32|i686|x86_64) fftw3_f_simd="--enable-sse"
+>>> +      ia32|i686|x86_64) fftw3_f_simd="--enable-sse"
+>>>                       fftw3_d_simd="--enable-sse2"
+>>>                       ;;
+>>> -      (ppc*)             fftw3_f_simd="--enable-altivec" ;;
+>>> +      ppc*)             fftw3_f_simd="--enable-altivec" ;;
+>>>      esac
+>>>      AC_MSG_NOTICE([fftw3 config options: $fftw3_opts $fftw3_simd.])
+>>
+>> I remember Nathan (ncm) introducing this '(a)' syntax, with some
+>> explanation
+>> about broken shells. How exactly did this fail ?
+> 
+> It fails on solaris.
+> 
+> It doesn't fail when I run configure directly, but it does fail when
+> configure is run by the Makefile, if it detects that configure is out of
+> data w.r.t. configure.ac.
+> 
+> I noticed similar problems with the atlas configure on gannon a while
+> back.  Running atlas configure directly was OK, but running atlas
+> configure via the top-level configure made it very picky about syntax.
+> 
+> There must be a flag to enable/disable this ultra-picky mode for solaris
+> /bin/sh, but I don't know what it is.
+
+Typically, Makefiles define the SHELL variable explicitely. Ours doesn't.
+May be it should ? (I don't have experience with Solaris, but I have heared
+bad things about its default shell.)
+
+>>> Index: tests/GNUmakefile.inc.in
+>>> ===================================================================
+>>> --- tests/GNUmakefile.inc.in    (revision 152549)
+>>> +++ tests/GNUmakefile.inc.in    (working copy)
+>>> @@ -49,6 +49,7 @@
+>>>        sed -e "s|@CPPFLAGS_@|`$(tests_pkgconfig)
+>>> --variable=cppflags`|" | \
+>>>            sed -e "s|@CXXFLAGS_@|`$(tests_pkgconfig)
+>>> --variable=cxxflags`|" | \
+>>>            sed -e "s|@LIBS_@|`$(tests_pkgconfig) --libs`|" | \
+>>> +          sed -e "s|@QMTEST_TARGET_@|`$(tests_pkgconfig)
+>>> --variable=qmtest_target`|" | \
+>>>            sed -e "s|@PAR_SERVICE_@|`$(tests_pkgconfig)
+>>> --variable=par_service`|" \
+>>>            > tests/context-installed
+>>>      cd tests; \
+>>
+>> Doesn't this require that you define the 'qmtest_target' variable in
+>> the vsipl++.pc.in
+>> template, too ?
+> 
+> Yes, good catch.  I forgot to include that file in the patch.  Attached.
+
+OK, that looks good.
+
+Thanks,
+		Stefan
+
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+
+
+From don at codesourcery.com  Mon Oct 30 10:14:41 2006
+From: don at codesourcery.com (Don McCoy)
+Date: Mon, 30 Oct 2006 03:14:41 -0700
+Subject: [patch] Scalable SAR benchmark
+Message-ID: <4545D091.1040307@codesourcery.com>
+
+The attached patch adds a new application -- a portion of the third 
+Scalable Synthetic Compact Application (SSCA) Benchmark, SAR Sensor 
+Processing, Knowledge Formation, and File IO.  More information may be 
+found on the HPCS website:
+
+    http://www.highproductivity.org/SSCABmks.htm
+
+This implements Kernel 1, which produces images from raw radar data.  
+Note that this code follows the Matlab example code obtained through the 
+above site and is not optimized (beyond simple things such as creating 
+all FFT objects and views at initialization time when the dimensions are 
+known at compile time).
+
+At present, the makefile depends on having an installed version of 
+VSIPL++ (in the default location, /usr/local).  The install path should 
+be updated along with the package suffix in order to run on different 
+platforms.  Build and run the application using 'make; make check'.  For 
+verification, the computed image is compared against the 
+Matlab-generated image (which is of a regularly spaced grid of corner 
+reflectors).
+
+All testing (so far) was performed using the serial-builtin-32 
+configuration, with version 1.2 of VSIPL++.
+
+Regards,
+
+-- 
+Don McCoy
+don (at) CodeSourcery 
+(888) 776-0262 / (650) 331-3385, x712
+
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: ssar.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20061030/c9df8e74/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: ssar.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20061030/c9df8e74/attachment-0001.ksh>
+
+From stefan at codesourcery.com  Mon Oct 30 15:01:49 2006
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Mon, 30 Oct 2006 10:01:49 -0500
+Subject: [vsipl++] [patch] Scalable SAR benchmark
+In-Reply-To: <4545D091.1040307@codesourcery.com>
+References: <4545D091.1040307@codesourcery.com>
+Message-ID: <454613DD.50602@codesourcery.com>
+
+Don,
+
+This looks good. I like the heavily commented / documented code.
+That helps a lot in understanding what the code is doing !
+
+I have some high-level / stylistic comments:
+
+Don McCoy wrote:
+
+> Index: apps/ssar/load_save.hpp
+> ===================================================================
+> --- apps/ssar/load_save.hpp	(revision 0)
+> +++ apps/ssar/load_save.hpp	(revision 0)
+> @@ -0,0 +1,114 @@
+> +/* Copyright (c) 2006 by CodeSourcery.  All rights reserved. */
+> +
+> +/** @file    load_save.hpp
+> +    @author  Don McCoy
+> +    @date    2006-10-26
+> +    @brief   Extensions to allow type double to be used as the view
+> +             data type while using float as the storage type on disk.
+
+I think it would be best to follow the same idiom we agreed on for view I/O
+(and which we now use for our matlab reader / writer), e.g.
+
+input_stream >> Decoder<Vector<double>, float>(view);
+
+This would help us promote this idiom, and make documentation easier.
+
+
+
+> +*/
+> +
+> +#ifndef LOAD_SAVE_HPP
+> +#define LOAD_SAVE_HPP
+> +
+> +#include <vsip_csl/load_view.hpp>
+> +#include <vsip_csl/save_view.hpp>
+> +
+> +using namespace vsip_csl;
+> +
+> +template <typename Block>
+> +void
+> +save_view(
+> +  char* filename,
+
+This should be 'char const *'.
+
+
+> +  vsip::const_Matrix<complex<double>, Block> view)
+> +{
+> +  vsip::Matrix<complex<float> > sp_view(view.size(0), view.size(1));
+> +
+> +  for (index_type i = 0; i < view.size(0); ++i)
+> +    for (index_type j = 0; j < view.size(1); ++j)
+> +      sp_view.put(i, j, static_cast<complex<float> >(view.get(i, j)));
+> +  
+> +  Save_view<2, complex<float> >::save(filename, sp_view);
+
+Where is the Save_view template defined ? I couldn't find it anywhere.
+(I'm wondering whether this could be generalized to do the type cast
+during the streaming, to avoid the above extra copy.)
+
+> +vsip::Matrix<complex<double> >
+> +load_view(
+> +  char* filename,
+> +  vsip::Domain<2> const& dom)
+> +{
+> +  vsip::Matrix<complex<float> > sp_view(dom[0].size(), dom[1].size());
+> +  sp_view = Load_view<2, complex<float> >(filename, dom).view();
+> +
+> +  vsip::Matrix<complex<double> > view(dom[0].size(), dom[1].size());
+> +
+> +  for (index_type i = 0; i < dom[0].size(); ++i)
+> +    for (index_type j = 0; j < dom[1].size(); ++j)
+> +      view.put(i, j, static_cast<complex<double> >(sp_view.get(i, j)));
+
+Same comment here. There must be a way to load the view without this extra
+copy. I believe the matlab formatter allows that, too, IIRC.
+
+
+> Index: apps/ssar/diffview.cpp
+> ===================================================================
+> --- apps/ssar/diffview.cpp	(revision 0)
+> +++ apps/ssar/diffview.cpp	(revision 0)
+> @@ -0,0 +1,110 @@
+> +/* Copyright (c) 2006 by CodeSourcery.  All rights reserved. */
+> +
+> +/** @file    diffview.cpp
+> +    @author  Don McCoy
+> +    @date    2006-10-29
+> +    @brief   Utility to compare VSIPL++ views to determine equality
+> +*/
+> +
+> +#include <iostream>
+> +#include <stdlib.h>
+> +
+> +#include <vsip/initfin.hpp>
+> +#include <vsip/math.hpp>
+> +
+> +#include <vsip_csl/load_view.hpp>
+> +#include <vsip_csl/save_view.hpp>
+> +#include <vsip_csl/error_db.hpp>
+> +
+> +
+> +using namespace vsip;
+> +using namespace vsip_csl;
+> +using namespace std;
+> +
+> +
+> +typedef enum 
+> +{
+> +  COMPLEX_VIEW = 0,
+> +  REAL_VIEW,
+> +  INTEGER_VIEW
+> +} data_format_type;
+
+What's the reason this is a typedef, as opposed to
+
+enum data_format_type {...};
+
+? (This looks like C-style programming :-) )
+
+
+
+> +
+> +static void compare(data_format_type format, 
+> +  char* infile, char* ref, length_type rows, length_type cols);
+
+Shouldn't these be 'char const *' (infile, ref) ?
+
+
+Replace this use of 'static' with an unnamed namespace to get the
+same effect. Though I'm not sure what the desired effect is, since
+this is the main source file anyway...
+
+
+> Index: apps/ssar/kernel1.hpp
+> ===================================================================
+> --- apps/ssar/kernel1.hpp	(revision 0)
+> +++ apps/ssar/kernel1.hpp	(revision 0)
+> @@ -0,0 +1,537 @@
+> +/* Copyright (c) 2006 by CodeSourcery.  All rights reserved. */
+> +
+> +/** @file    kernel.hpp
+> +    @author  Don McCoy
+> +    @date    2006-10-26
+> +    @brief   VSIPL++ implementation of SSCA #3: Kernel 1, Image Formation
+> +*/
+> +
+> +#include <vsip/impl/profile.hpp>
+> +
+> +#include "load_save.hpp"
+> +
+> +#if 0
+> +#define VERBOSE
+> +#define SAVE_VIEW(a, b)    save_view(a, b)
+> +#else
+> +#define SAVE_VIEW(a, b)
+> +#endif
+> +
+> +// Files required to be in the data directory:
+> +#define SAR_DIMENSIONS                          "dims.txt"
+> +#define RAW_SAR_DATA                            "sar.view"
+> +#define FAST_TIME_FILTER                        "ftfilt.view"
+> +#define SLOW_TIME_WAVENUMBER                    "k.view"
+> +#define SLOW_TIME_COMPRESSED_APERTURE_POSITION  "uc.view"
+> +#define SLOW_TIME_APERTURE_POSITION             "u.view"
+> +#define SLOW_TIME_SPATIAL_FREQUENCY             "ku.view"
+
+Can these become
+
+char const *SAR_DIMENSIONS = "dims.txt";
+
+etc., instead ? (Let's not use macros more than necessary !)
+
+> Index: apps/ssar/viewtoraw.cpp
+> ===================================================================
+> --- apps/ssar/viewtoraw.cpp	(revision 0)
+> +++ apps/ssar/viewtoraw.cpp	(revision 0)
+> @@ -0,0 +1,121 @@
+> +/* Copyright (c) 2006 by CodeSourcery.  All rights reserved. */
+> +
+> +/** @file    viewtoraw.cpp
+> +    @author  Don McCoy
+> +    @date    2006-10-28
+> +    @brief   Utility to convert VSIPL++ views to raw greyscale
+> +*/
+> +
+> +#include <iostream>
+> +#include <stdlib.h>
+> +
+> +#include <vsip/initfin.hpp>
+> +#include <vsip/math.hpp>
+> +
+> +#include <vsip_csl/load_view.hpp>
+> +#include <vsip_csl/save_view.hpp>
+> +
+> +
+> +using namespace vsip;
+> +using namespace vsip_csl;
+> +using namespace std;
+> +
+> +
+> +typedef enum 
+> +{
+> +  COMPLEX_MAG = 0,
+> +  COMPLEX_REAL,
+> +  COMPLEX_IMAG,
+> +  SCALAR_FLOAT,
+> +  SCALAR_INTEGER
+> +} data_format_type;
+
+Same comment as above.
+
+> +
+> +static void convert_to_greyscale(data_format_type format, 
+> +  char* infile, char* outfile, length_type rows, length_type cols);
+
+Same comment(s) as above.
+
+> Index: apps/ssar/ssar.cpp
+> ===================================================================
+> --- apps/ssar/ssar.cpp	(revision 0)
+> +++ apps/ssar/ssar.cpp	(revision 0)
+> @@ -0,0 +1,93 @@
+> +/* Copyright (c) 2006 by CodeSourcery.  All rights reserved. */
+> +
+> +/** @file    ssar.cpp
+> +    @author  Don McCoy
+> +    @date    2006-10-26
+> +    @brief   VSIPL++ implementation of HPCS Challenge Benchmarks 
+> +               Scalable Synthetic Compact Applications - 
+> +             SSCA #3: Sensor Processing and Knowledge Formation
+> +*/
+> +
+> +#include <iostream>
+> +#include <fstream>
+> +#include <errno.h>
+
+This should be <cerrno>.
+
+
+Thanks,
+		Stefan
+
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+
+
+From mark at codesourcery.com  Mon Oct 30 17:23:50 2006
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Mon, 30 Oct 2006 09:23:50 -0800
+Subject: [vsipl++] [patch] Scalable SAR benchmark
+In-Reply-To: <4545D091.1040307@codesourcery.com>
+References: <4545D091.1040307@codesourcery.com>
+Message-ID: <45463526.7040507@codesourcery.com>
+
+Don McCoy wrote:
+> The attached patch adds a new application -- a portion of the third 
+> Scalable Synthetic Compact Application (SSCA) Benchmark, SAR Sensor 
+> Processing, Knowledge Formation, and File IO. 
+
+Very exciting.
+
+Jules, when this is checked in, make sure we fire off a message to Rich, 
+Jeremy, etc.  (You might also mention to Rich that lots of progress is 
+being made on the reference implementation, since this has been one of 
+his hot buttons.)
+
+Thanks,
+
+-- 
+Mark Mitchell
+CodeSourcery
+mark at codesourcery.com
+(650) 331-3385 x713
+
+
+From don at codesourcery.com  Mon Oct 30 19:53:25 2006
+From: don at codesourcery.com (Don McCoy)
+Date: Mon, 30 Oct 2006 12:53:25 -0700
+Subject: [vsipl++] [patch] Scalable SAR benchmark
+In-Reply-To: <454613DD.50602@codesourcery.com>
+References: <4545D091.1040307@codesourcery.com> <454613DD.50602@codesourcery.com>
+Message-ID: <45465835.5050701@codesourcery.com>
+
+Stefan Seefeld wrote:
+> Don,
+>
+> This looks good. I like the heavily commented / documented code.
+> That helps a lot in understanding what the code is doing !
+>
+>   
+Thank you.  I should have mentioned that the comments come verbatim from 
+the Matlab code.  That, along with the other documentation from HPCS, 
+made this project much easier.
+
+
+>
+> I think it would be best to follow the same idiom we agreed on for view I/O
+> (and which we now use for our matlab reader / writer), e.g.
+>
+> input_stream >> Decoder<Vector<double>, float>(view);
+>
+> This would help us promote this idiom, and make documentation easier.
+>   
+Good idea.  I will look into this for the next revision.
+
+
+>> +template <typename Block>
+>> +void
+>> +save_view(
+>> +  char* filename,
+>>     
+>
+> This should be 'char const *'.
+>
+>   
+Agreed.  I recall now why it is not -- because the templates in 
+vsip_csl/save_view.hpp (but not load_view.hpp) use char*.  I fixed it 
+for the present time using const_cast in order to avoid having to modify 
+save_view.hpp.  My reason for this is that I suspect I'll replace all of 
+this code very soon in favor of something like you propose above.
+
+
+>> +typedef enum 
+>> +{
+>> +  COMPLEX_VIEW = 0,
+>> +  REAL_VIEW,
+>> +  INTEGER_VIEW
+>> +} data_format_type;
+>>     
+>
+> What's the reason this is a typedef, as opposed to
+>
+> enum data_format_type {...};
+>
+> ? (This looks like C-style programming :-) )
+>   
+Old habits are hard to break?  ;-)
+
+
+>> +
+>> +static void compare(data_format_type format, 
+>> +  char* infile, char* ref, length_type rows, length_type cols);
+>>     
+>
+> Shouldn't these be 'char const *' (infile, ref) ?
+>
+>
+> Replace this use of 'static' with an unnamed namespace to get the
+> same effect. Though I'm not sure what the desired effect is, since
+> this is the main source file anyway...
+>   
+See above re: 'old habits'.  In my former life as a C programmer, I told 
+myself to do this, even in top-level source because it may not always be 
+the main source file.   Thanks for the C++-y suggestion.  I didn't know 
+you could have an unnamed namespace -- sounds a bit paradoxical.  :)
+
+
+>> +// Files required to be in the data directory:
+>> +#define SAR_DIMENSIONS                          "dims.txt"
+>> +#define RAW_SAR_DATA                            "sar.view"
+>> +#define FAST_TIME_FILTER                        "ftfilt.view"
+>> +#define SLOW_TIME_WAVENUMBER                    "k.view"
+>> +#define SLOW_TIME_COMPRESSED_APERTURE_POSITION  "uc.view"
+>> +#define SLOW_TIME_APERTURE_POSITION             "u.view"
+>> +#define SLOW_TIME_SPATIAL_FREQUENCY             "ku.view"
+>>     
+>
+> Can these become
+>
+> char const *SAR_DIMENSIONS = "dims.txt";
+>
+> etc., instead ? (Let's not use macros more than necessary !)
+>
+>   
+Sure.  Done.  Do our coding standards allow all-cap names in this case?
+
+
+>> +#include <errno.h>
+>>     
+>
+> This should be <cerrno>.
+>
+>   
+Done.
+
+
+> Thanks,
+> 		Stefan
+>   
+Thanks for the feedback!
+
+
+Regards,
+
+-- 
+Don McCoy
+don (at) CodeSourcery 
+(888) 776-0262 / (650) 331-3385, x712
+
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: ssar2.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20061030/90f8a243/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: ssar2.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20061030/90f8a243/attachment-0001.ksh>
+
+From jules at codesourcery.com  Mon Oct 30 20:00:34 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Mon, 30 Oct 2006 15:00:34 -0500
+Subject: [vsipl++] [patch] Scalable SAR benchmark
+In-Reply-To: <4545D091.1040307@codesourcery.com>
+References: <4545D091.1040307@codesourcery.com>
+Message-ID: <454659E2.3090902@codesourcery.com>
+
+Don McCoy wrote:
+ > The attached patch adds a new application -- a portion of the third
+ > Scalable Synthetic Compact Application (SSCA) Benchmark, SAR Sensor
+ > Processing, Knowledge Formation, and File IO.  More information may be
+ > found on the HPCS website:
+ >
+ >    http://www.highproductivity.org/SSCABmks.htm
+ >
+ > This implements Kernel 1, which produces images from raw radar data.
+ > Note that this code follows the Matlab example code obtained through the
+ > above site and is not optimized (beyond simple things such as creating
+ > all FFT objects and views at initialization time when the dimensions are
+ > known at compile time).
+ >
+ > At present, the makefile depends on having an installed version of
+ > VSIPL++ (in the default location, /usr/local).  The install path should
+ > be updated along with the package suffix in order to run on different
+ > platforms.  Build and run the application using 'make; make check'.  For
+ > verification, the computed image is compared against the
+ > Matlab-generated image (which is of a regularly spaced grid of corner
+ > reflectors).
+ >
+ > All testing (so far) was performed using the serial-builtin-32
+ > configuration, with version 1.2 of VSIPL++.
+
+Don,
+
+This looks good.  I have several comments below, plus some general
+comments.
+
+Since this code isn't going into the core library, and since this is
+going to be in a flux as we optimize, let's do the following:
+
+  - address the easy comments:
+     - Definitely 1, 5, 8
+     - Perhaps 4, 6, 7
+     - Later: 2, 3, 9.
+
+  - check in code as a baseline,
+
+  - address the remaining comments as you perform optimizations.
+
+Does that sound OK?
+
+Also, I haven't looked at this in detail from a performance
+perspective yet.  I suspect a big optimization will be to change from
+processing an entire matrix at time to processing a row or column at a
+time.  Definitely for the fast time filter, bandwidth expansion, and
+the application of fs_ref.  I'm not sure about the interpolation part
+though.
+
+				-- Jules
+
+
+
+General comments:
+
+  - Avoid returning views by value (both for builtin operations, like
+    Fftm, and for user defined functions, like fft_shift, load_view,
+    and ...).
+
+    Do you think the by-value notation is easier to read?  If so, let
+    me know.  I have a partially finished patch for return-block
+    optimization that can make the by-value forms as efficient as
+    by-reference.  However, this would be for builtin operations only,
+    not user defined ones.
+
+  - Continue to move intermediate views out of Kernel1 member functions
+    and replace them with Kernel1 member variables.
+
+  - To avoid confusion, I think it would be better to have Kernel1
+    member functions work directly on member variables, instead of
+    passing them as arguments.
+
+    For example, digital_spotlighting should just use s_filt_ instead
+    of having it passed in as a parameter.
+
+
+ > ------------------------------------------------------------------------
+ >
+ > Index: apps/ssar/load_save.hpp
+ > ===================================================================
+ > --- apps/ssar/load_save.hpp	(revision 0)
+ > +++ apps/ssar/load_save.hpp	(revision 0)
+ > @@ -0,0 +1,114 @@
+ > +/* Copyright (c) 2006 by CodeSourcery.  All rights reserved. */
+ > +
+ > +/** @file    load_save.hpp
+ > +    @author  Don McCoy
+ > +    @date    2006-10-26
+ > +    @brief   Extensions to allow type double to be used as the view
+ > +             data type while using float as the storage type on disk.
+ > +*/
+ > +
+ > +#ifndef LOAD_SAVE_HPP
+ > +#define LOAD_SAVE_HPP
+ > +
+ > +#include <vsip_csl/load_view.hpp>
+ > +#include <vsip_csl/save_view.hpp>
+ > +
+ > +using namespace vsip_csl;
+
+[1] In general, putting 'using namespace' decls in a header is
+considered bad form.  Its effect depends on the current state of the
+vsip_csl namespace, which can cause subtle bugs.
+
+This is definitely forbidden in library headers.
+
+We should avoid it in the SSAR to set a good example (and potentially
+to save ourselves debugging time later).
+
+ > +
+ > +template <typename Block>
+ > +void
+ > +save_view(
+ > +  char* filename,
+ > +  vsip::const_Matrix<complex<double>, Block> view)
+ > +{
+ > +  vsip::Matrix<complex<float> > sp_view(view.size(0), view.size(1));
+ > +
+ > +  for (index_type i = 0; i < view.size(0); ++i)
+ > +    for (index_type j = 0; j < view.size(1); ++j)
+ > +      sp_view.put(i, j, static_cast<complex<float> >(view.get(i, j)));
+ > +
+ > +  Save_view<2, complex<float> >::save(filename, sp_view);
+ > +}
+
+[2] For saving intermediate views for debugging, this is fine.  It
+would be more general purpose to pass the disk value type as a
+template parameter.  Then you could (almost) replace these three
+functions with a single function:
+
+	template <typename T,
+	          typename ViewT>
+	void
+	save_view_as(
+	  char* filename,
+	  ViewT view)
+	{
+	  typedef
+	    typename View_of_dim<ViewT::dim, T, Dense<ViewT::dim, T> >::type
+	    view_type;
+
+	  view_type disk_view = impl::clone_view<view_type>(view);
+
+	  disk_view = view_cast<T>(view);
+	
+	  Save_view<ViewT::dim, T>::save(filename, disk_view);
+	}
+
+I say "almost" because we don't have have view_cast in a convenient
+place yet (it is currently in apps/sarsim and called cast_view).  I'll
+fix that!
+
+However, eventually we need to set things up so that no memory
+allocations are necessary during "steady state" operation.  All memory
+allocations that are necessary should done when constructing a Kernel1
+object.
+
+A simple way to do this is to pre-allocate views for staging data
+for load/store that have the right precision for the file on disk.
+In the case where we're processing double, but the file on disk is
+float, this does exactly what we want, with no overhead.  However,
+if the file on disk is float, and we're processing float, this
+creates unnecessary overhead for the storage and unnecessary copy.
+
+	template <typename ViewT,
+	          typename IoT,
+	          typename ViewValueT = typename ViewT::value_type>
+	class Save_view_as
+	{
+	  Save_view_as(Domain<ViewT::dim> const& dom)
+	    ...
+
+	  void operator()(
+	    char* filename,
+	    ViewT view)
+	  {
+	    io_view_ = view;
+	    save_file(filename, io_view_);
+	  }
+
+	  View_of_dim<ViewT::dim, IoT> io_view_;
+	};
+
+	// specialization for case where IoT and ViewValueT are the
+   	// same type and no intermediate view is required.
+	template <typename ViewT,
+	          typename IoT,
+	          typename ViewValueT = typename ViewT::value_type>
+	class Save_view_as
+	{
+	  Save_view_as(Domain<ViewT::dim> const&)
+	    ...
+
+	  void operator()(
+	    char* filename,
+	    ViewT view)
+	  {
+	    save_file(filename, view);
+	  }
+	}
+
+
+ > +vsip::Matrix<complex<double> >
+ > +load_view(
+ > +  char* filename,
+ > +  vsip::Domain<2> const& dom)
+ > +{
+ > +  vsip::Matrix<complex<float> > sp_view(dom[0].size(), dom[1].size());
+ > +  sp_view = Load_view<2, complex<float> >(filename, dom).view();
+ > +
+ > +  vsip::Matrix<complex<double> > view(dom[0].size(), dom[1].size());
+ > +
+ > +  for (index_type i = 0; i < dom[0].size(); ++i)
+ > +    for (index_type j = 0; j < dom[1].size(); ++j)
+ > +      view.put(i, j, static_cast<complex<double> >(sp_view.get(i, j)));
+ > +
+ > +  return view;
+ > +}
+
+[3] Similar comments as for save_view.
+
+Also, it would be more efficient to return the result by-reference
+in a view passed as an argument.
+
+	template <typename ViewT>
+	void
+	load_view(
+	  char* filename,
+	  ViewT view)
+
+Also, vsip_csl/load_view.hpp now has a load_view function with this
+signature.  This wasn't there for the 1.2 release.
+
+Finally, in its current form as a non-template function, this should
+be in a .cpp files.  If we use load_save.hpp in multiple compilation
+units, we would get object defined multiple times errors.  Changing to
+template function "avoids" this (however, that by itself should not
+be a sufficient reason to convert to a template function).
+
+
+
+ > Index: apps/ssar/diffview.cpp
+ > ===================================================================
+
+ > +    data_format_type format = COMPLEX_VIEW;
+ > +    if (argc == 6)
+ > +    {
+
+[4] For orthogonality, why not also accept "-c" to set format = 
+COMPLEX_VIEW?
+
+ > +      if (0 == strncmp("-r", argv[1], 2))
+ > +        format = REAL_VIEW;
+ > +      else if (0 == strncmp("-n", argv[1], 2))
+ > +        format = INTEGER_VIEW;
+ > +      argv++;
+ > +    }
+ > +
+ > +    compare(format, argv[1], argv[2], atoi(argv[3]), atoi(argv[4]));
+ > +  }
+ > +
+ > +  return 0;
+ > +}
+ > +
+ > +
+ > +void
+ > +compare(data_format_type format,
+ > +  char* infile, char* ref, length_type rows, length_type cols)
+ > +{
+ > +  if (format == REAL_VIEW)
+ > +  {
+ > +    typedef Matrix<scalar_f> matrix_type;
+ > +    Domain<2> dom(rows, cols);
+ > +
+ > +    matrix_type in(rows, cols);
+ > +    in = Load_view<2, scalar_f>(infile, dom).view();
+ > +
+ > +    matrix_type refv(rows, cols);
+ > +    refv = Load_view<2, scalar_f>(ref, dom).view();
+ > +
+ > +    cout << error_db(in, refv) << endl;
+ > +  }
+ > +  else if (format == INTEGER_VIEW)
+ > +  {
+ > +    typedef Matrix<scalar_i> matrix_type;
+ > +    Domain<2> dom(rows, cols);
+ > +
+ > +    matrix_type in(rows, cols);
+ > +    in = Load_view<2, scalar_i>(infile, dom).view();
+ > +
+ > +    matrix_type refv(rows, cols);
+ > +    refv = Load_view<2, scalar_i>(ref, dom).view();
+ > +
+ > +    cout << error_db(in, refv) << endl;
+ > +  }
+ > +  else          // Using complex views.
+ > +  {
+ > +    typedef Matrix<cscalar_f> matrix_type;
+ > +    Domain<2> dom(rows, cols);
+ > +
+ > +    matrix_type in(rows, cols);
+ > +    in = Load_view<2, cscalar_f>(infile, dom).view();
+ > +
+ > +    matrix_type refv(rows, cols);
+ > +    refv = Load_view<2, cscalar_f>(ref, dom).view();
+ > +
+ > +    cout << error_db(in, refv) << endl;
+ > +  }
+ > +}
+
+You can cut down on duplicated code by making compare() a template
+function:
+
+    template <typename T>
+    void
+    compare(char* infile, char* ref, length_type rows, length_type cols)
+    {
+      typedef Matrix<T> matrix_type;
+      Domain<2> dom(rows, cols);
+
+      matrix_type in(rows, cols);
+      in = Load_view<2, T>(infile, dom).view();
+
+      matrix_type refv(rows, cols);
+      refv = Load_view<2, T>(ref, dom).view();
+
+      cout << error_db(in, refv) << endl;
+    }
+
+Then from main you can call it like so:
+
+   if (format == REAL_VIEW)
+     compare<float>(argv[1], argv[2], atoi(argv[3]), atoi(argv[4]));
+   else if (format == INTEGER_VIEW)
+     compare<int>(argv[1], argv[2], atoi(argv[3]), atoi(argv[4]));
+   else
+     compare<complex<float> >(argv[1], argv[2], atoi(argv[3]), 
+atoi(argv[4]));
+
+ > +
+
+
+ > Index: apps/ssar/kernel1.hpp
+ > ===================================================================
+
+ > +// Files required to be in the data directory:
+ > +#define SAR_DIMENSIONS                          "dims.txt"
+ > +#define RAW_SAR_DATA                            "sar.view"
+ > +#define FAST_TIME_FILTER                        "ftfilt.view"
+ > +#define SLOW_TIME_WAVENUMBER                    "k.view"
+ > +#define SLOW_TIME_COMPRESSED_APERTURE_POSITION  "uc.view"
+ > +#define SLOW_TIME_APERTURE_POSITION             "u.view"
+ > +#define SLOW_TIME_SPATIAL_FREQUENCY             "ku.view"
+
+I agree with Stefan's comments here.  In C++ it is good practice to
+use const variables instead of macros in cases like this.  Eventually
+these could be 'char*' variables inside of main, so they can be set
+from the command line options.
+
+ > +
+ > +
+ > +class Kernel1
+
+Now is probably a good time to make Kernel1 a template class, with 'T'
+as a template parameter.  That will make it easier to experiment with
+converting the precision back to float.
+
+ > +{
+ > +public:
+ > +  typedef double T;
+ > +  typedef Matrix<complex<T> > complex_matrix_type;
+ > +  typedef Vector<complex<T> > complex_vector_type;
+ > +  typedef Matrix<T> real_matrix_type;
+ > +  typedef Vector<T> real_vector_type;
+ > +  typedef Fftm<complex<T>, complex<T>, col> col_fftm_type;
+ > +  typedef Fftm<complex<T>, complex<T>, row> row_fftm_type;
+ > +  typedef Fftm<complex<T>, complex<T>, row, fft_inv> ifftm_type;
+ > +
+ > +  Kernel1(length_type scale, length_type n, length_type mc, 
+length_type m);
+ > +  ~Kernel1() {}
+ > +
+ > +  void process_image();
+ > +
+ > +private:
+ > +  void
+ > +  fast_time_filtering(complex_matrix_type s_raw,
+ > +    complex_vector_type fast_time_filter);
+
+[5] Does this function exist?
+
+ > +
+ > +  void
+ > +  digital_spotlighting(complex_matrix_type s_filt,
+ > +    real_vector_type k, real_vector_type uc, real_vector_type u );
+ > +
+ > +  real_matrix_type
+ > +  interpolation(complex_matrix_type fs_spotlit, real_vector_type k,
+ > +    real_vector_type ku0);
+
+[6] return result by-reference in parameter.
+
+ > +
+ > +  complex_matrix_type
+ > +  fft_shift(complex_matrix_type in);
+ > +
+ > +  real_vector_type
+ > +  fft_shift(real_vector_type in);
+
+[7] First, fft_shift would be useful for other matlab conversion
+projects.  Instead of being a member of Kernel1, they would be more
+useful as free functions.  Why don't you put them into vsip_csl in a
+matlab_utils.hpp file.
+
+Second, it would be better to define these as template functions for
+several reasons:
+
+  a) It is not guarenteed that they will always be called with a
+     real_vector_type or a complex_matrix_type.  For example, because
+     it is implemented defined, there is no guarentee what block type a
+     by-value Fftm object will return.  If it returned a Matrix<T,
+     Fast_block<...> > then initializing fft_shift's arguments would
+     require a temporary and a copy to initialize it.
+
+     Similarly, once you start optimizing this to process data a
+     row at time, you'll want to apply fft_shift to subviews, which
+     also have implementation defined block type.
+
+  b) There's no reason to limit fft_shift to just complex matrices
+     and real vectors, esp. if we want to reuse it in the future.
+
+Finally, it would be more efficient to return the result by-reference
+into an argument.  I.e.
+
+	fft_shift(in, out);
+
+instead of
+
+	out = fft_shift(in);
+
+Because returning the result by-value requires a temporary and extra
+copy.
+
+
+Since you currently use fft_shift for out-of-place shifts, I would
+recommend an interface like that of signal-processing objects such as
+Fft:
+
+	template <typename T,
+		  typename Block1,
+		  typename Block2>
+	Vector<T, Block2>
+	fft_shift(
+	  const_Vector<T, Block1> in,
+	  Vector<T, Block2>       out)
+	{
+	  ...
+	}
+
+Where the return value is the 'out' parameter for convenience.
+
+Later, you might find an in-place version useful too.
+	
+ > +
+ > +private:
+ > +  length_type scale_;
+ > +  length_type n_;
+ > +  length_type mc_;
+ > +  length_type m_;
+ > +  length_type nx_;
+ > +  length_type interp_sidelobes_;
+ > +  T range_factor_;
+ > +  T aspect_ratio_;
+ > +  T L_;
+ > +  T Y0_;
+ > +  T X0_;
+ > +  T Xc_;
+ > +
+ > +  complex_matrix_type s_raw_;
+ > +  complex_vector_type fast_time_filter_;
+ > +
+ > +  real_vector_type slow_time_wavenumber_;
+ > +  real_vector_type slow_time_compressed_aperture_position_;
+ > +  real_vector_type slow_time_aperture_position_;
+ > +  real_vector_type slow_time_spatial_frequency_;
+ > +  complex_matrix_type s_filt_;
+ > +  complex_matrix_type fs_spotlit_;
+ > +  real_vector_type ks_;
+ > +  real_vector_type ucs_;
+ > +  complex_matrix_type s_compr_;
+ > +  complex_matrix_type fs_;
+ > +  complex_matrix_type fs_padded_;
+ > +  complex_matrix_type s_padded_;
+ > +  real_vector_type us_;
+ > +  complex_matrix_type s_decompr_;
+ > +  real_matrix_type ku_;
+ > +  real_matrix_type k1_;
+ > +  real_matrix_type kx0_;
+ > +  real_matrix_type kx_;
+ > +  complex_matrix_type fs_ref_;
+ > +  complex_matrix_type fsm_;
+ > +  Vector<index_type> icKX_;
+ > +
+ > +  col_fftm_type col_fftm;
+ > +  row_fftm_type row_fftm;
+ > +  row_fftm_type row_fftm2;
+ > +  ifftm_type ifftm;
+
+[8] don't forget '_' suffix for these member variables.
+
+ > +};
+
+
+
+ > +Kernel1::Kernel1(length_type scale, length_type n, length_type mc,
+ > +  length_type m)
+
+ > +void
+ > +Kernel1::process_image()
+
+ > +void
+ > +Kernel1::digital_spotlighting(complex_matrix_type s_filt,
+ > +  real_vector_type k, real_vector_type uc, real_vector_type u )
+
+ > +Kernel1::real_matrix_type
+ > +Kernel1::interpolation(complex_matrix_type fs_spotlit, 
+real_vector_type k,
+ > +  real_vector_type ku0)
+
+At the moment, these are all non-inline, non-template functions.
+These shouldn't be in a header file, they might end up in multiple
+object files, leading to link errors.
+
+Making Kernel1 a tempalate class circumvents this problem.
+
+
+
+ > Index: apps/ssar/viewtoraw.cpp
+ > ===================================================================
+
+
+ > +void
+ > +convert_to_greyscale(data_format_type format,
+ > +  char* infile, char* outfile, length_type rows, length_type cols)
+ > +{
+ > +  typedef Matrix<scalar_f> matrix_type;
+ > +  Domain<2> dom(rows, cols);
+ > +
+ > +  matrix_type in(rows, cols);
+ > +
+ > +  if (format == COMPLEX_MAG)
+ > +    in = mag(Load_view<2, cscalar_f>(infile, dom).view());
+ > +  else if (format == COMPLEX_REAL)
+ > +    in = real(Load_view<2, cscalar_f>(infile, dom).view());
+ > +  else if (format == COMPLEX_IMAG)
+ > +    in = imag(Load_view<2, cscalar_f>(infile, dom).view());
+ > +  else if (format == SCALAR_FLOAT)
+ > +    in = Load_view<2, scalar_f>(infile, dom).view();
+ > +  else if (format == SCALAR_INTEGER)
+ > +    in = Load_view<2, scalar_i>(infile, dom).view();
+ > +  else
+ > +    cerr << "Error: format type " << format << " not supported." << 
+endl;
+ > +
+ > +
+ > +  Index<2> idx;
+ > +  scalar_f minv = minval(in, idx);
+ > +  scalar_f maxv = maxval(in, idx);
+ > +  scalar_f scale = (maxv - minv ? maxv - minv : 1.f);
+ > +
+ > +  Matrix<scalar_f> outf(rows, cols);
+ > +  outf = (in - minv) * 255.f / scale;
+ > +
+ > +  Matrix<char> out(rows, cols);
+ > +  for (index_type i = 0; i < rows; ++i)
+ > +    for (index_type j = 0; j < cols; ++j)
+ > +      out.put(i, j, static_cast<char>(outf.get(i, j)));
+
+[9] If we had view_cast in vsip or vsip_csl (currently it is part of
+sarsim), we could write a single line:
+
+	out = view_cast<unsigned char>((in - minv) * 255.f / scale);
+
+I'll move that somethime this week.
+
+ > +
+ > +  save_view(outfile, out);
+ > +
+ > +  // The min and max values are displayed to reveal the scale
+ > +  cout << infile << " [" << rows << " x " << cols << "] : "
+ > +       << "min " << minv << ", max " << maxv << endl;
+ > +}
+ > +
+ > Index: apps/ssar/ssar.cpp
+ > ===================================================================
+
+ > +void
+ > +process_ssar_options(int argc, char** argv, ssar_options& options)
+ > +{
+ > +  if (argc != 2)
+ > +  {
+ > +    cerr << "Usage: " << argv[0] << " <data dir>" << endl;
+ > +    exit(-1);
+ > +  }
+ > +
+ > +  if (chdir(argv[1]) < 0)
+ > +  {
+ > +    perror(argv[1]);
+ > +    exit(-1);
+ > +  }
+
+[10] I'm probably just being cranky, but I think it would be better to
+manually prepend the directory path to the filename, or to pass the
+filenames in as command line arguments.  Those would make it easier to
+put the output files in another directory (which makes it slightly
+easier to clean up) and give us flexibility in the future.
+
+But, if it works, it works!  I don't see a compelling reason to change
+this.
+
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From don at codesourcery.com  Tue Oct 31 00:23:49 2006
+From: don at codesourcery.com (Don McCoy)
+Date: Mon, 30 Oct 2006 17:23:49 -0700
+Subject: [vsipl++] [patch] Scalable SAR benchmark
+In-Reply-To: <454659E2.3090902@codesourcery.com>
+References: <4545D091.1040307@codesourcery.com> <454659E2.3090902@codesourcery.com>
+Message-ID: <45469795.8020207@codesourcery.com>
+
+Jules Bergmann wrote:
+> This looks good.  I have several comments below, plus some general
+> comments.
+>
+> Since this code isn't going into the core library, and since this is
+> going to be in a flux as we optimize, let's do the following:
+>
+>  - address the easy comments:
+>     - Definitely 1, 5, 8
+>     - Perhaps 4, 6, 7
+>     - Later: 2, 3, 9.
+>
+I did 1, 5 and 8.  Also, I converted it to a template class (back to a 
+template class, that is) and eliminated the passing of member views.
+
+Ok to check in?
+
+
+
+>  - Avoid returning views by value (both for builtin operations, like
+>    Fftm, and for user defined functions, like fft_shift, load_view,
+>    and ...).
+>
+>    Do you think the by-value notation is easier to read?  If so, let
+>    me know.  I have a partially finished patch for return-block
+>    optimization that can make the by-value forms as efficient as
+>    by-reference.  However, this would be for builtin operations only,
+>    not user defined ones.
+>
+I blithely followed the matlab code here.  It is easier just in the 
+sense that it can be combined into expressions more easily, but passing 
+(in, out) and returning 'out' will be almost as good. 
+
+
+>  - Continue to move intermediate views out of Kernel1 member functions
+>    and replace them with Kernel1 member variables.
+>
+I believe there are no more views to handle this way, specifically 
+because the number of columns in the final image is not known until the 
+interpolation phase (member nx_).  I have an idea for how to fix this:
+
+If the bits to compute nx_ can be factored out, putting them into a 
+separate class (sort of a SAR imaging pre-processor), it would allow the 
+remaining views to be member variables, in addition to the last two 
+inverse FFT's.  I'll let you know if I run into a problem doing this.  
+But if you know a better way...
+
+
+>  - To avoid confusion, I think it would be better to have Kernel1
+>    member functions work directly on member variables, instead of
+>    passing them as arguments.
+>
+>    For example, digital_spotlighting should just use s_filt_ instead
+>    of having it passed in as a parameter.
+>
+I'd debated this.  I think I've changed my mind (and now agree with your 
+suggestion).
+
+
+Thanks for the comments!
+
+
+
+-- 
+Don McCoy
+don (at) CodeSourcery 
+(888) 776-0262 / (650) 331-3385, x712
+
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: ssar3.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20061030/412d5edb/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: ssar3.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20061030/412d5edb/attachment-0001.ksh>
+
+From jules at codesourcery.com  Tue Oct 31 12:56:52 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Tue, 31 Oct 2006 07:56:52 -0500
+Subject: [vsipl++] [patch] Scalable SAR benchmark
+In-Reply-To: <45469795.8020207@codesourcery.com>
+References: <4545D091.1040307@codesourcery.com> <454659E2.3090902@codesourcery.com> <45469795.8020207@codesourcery.com>
+Message-ID: <45474814.1040503@codesourcery.com>
+
+
+> I did 1, 5 and 8.  Also, I converted it to a template class (back to a 
+> template class, that is) and eliminated the passing of member views.
+> 
+> Ok to check in?
+
+Yes, please do!  thanks, -- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From jules at codesourcery.com  Tue Oct 31 16:30:41 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Tue, 31 Oct 2006 11:30:41 -0500
+Subject: [patch] PAS binary-package
+Message-ID: <45477A31.9070108@codesourcery.com>
+
+Changes for building a PAS for Linux binary-package.  This binary 
+package automates testing that source packages will build with PAS for MCOE.
+
+Patch applied.
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: pas-bin-pkg.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20061031/28c08d5e/attachment.ksh>
+
+From jules at codesourcery.com  Tue Oct 31 16:53:31 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Tue, 31 Oct 2006 11:53:31 -0500
+Subject: [patch] view_cast function for type conversions; rename is_nan; misc
+Message-ID: <45477F8B.30604@codesourcery.com>
+
+This patch adds a view_cast function to perform type conversions on 
+views.  For example, to convert a floating point matrix into a char 
+matrix (suitable for grayscale display), you could:
+
+	Matrix<float> data(rows, cols);
+	Matrix<char>  img (rows, cols);
+
+	float minv  = minval(data, idx);
+	float maxv  = maxval(data, idx);
+	float scale = 255.f / (maxv - minv);
+	
+	img = view_cast<char>((data - minv) * scale);
+
+It also renames the isnan functions to is_nan since isnan from 
+math.h/cmath will typically be a macro.  The previous version worked 
+with GCC, whose cmath captures the isnan macro into a function.  However 
+it was broken with GreenHills.  The new version works with both compilers.
+
+Finally, it includes some misc fixes.
+
+				-- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: misc.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20061031/6e40adce/attachment.ksh>
+
+From assem at codesourcery.com  Tue Oct 31 21:25:31 2006
+From: assem at codesourcery.com (Assem Salama)
+Date: Tue, 31 Oct 2006 16:25:31 -0500
+Subject: QR Solver
+Message-ID: <4547BF4B.8050607@codesourcery.com>
+
+Everyone,
+  This patch implements the QR backend using Cvsipl.
+
+Thanks,
+Assem
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: svn.diff.10312006.1.log
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20061031/34547454/attachment.ksh>
+

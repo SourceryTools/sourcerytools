@@ -1,0 +1,359 @@
+From haluongvn at gmail.com  Fri May  2 04:46:28 2008
+From: haluongvn at gmail.com (Ha Luong)
+Date: Fri, 2 May 2008 11:46:28 +0700
+Subject: Does gcc version 4.2.1 (Sourcery G++ Lite 4.2-50) support zen?
+Message-ID: <61577c8f0805012146x5be3258bkcd476d3a8743e25d@mail.gmail.com>
+
+Dear Sir,
+
+I couldn't use -mcpu=e200v2 and I didn't find the zen supporting information
+with gcc --target_version. Could you please tell me gcc version 4.2.1
+(Sourcery G++ Lite 4.2-50) support zen?
+
+Thanks,
+Ha Luong
+-------------- next part --------------
+An HTML attachment was scrubbed...
+URL: <http://sourcerytools.com/pipermail/power-gnu-discuss/attachments/20080502/caa698a2/attachment.html>
+
+From muscou at sympatico.ca  Wed May  7 03:50:48 2008
+From: muscou at sympatico.ca (S. Couture & K. Musgrove)
+Date: Tue, 06 May 2008 23:50:48 -0400
+Subject: -te500v2 and packed attribute
+Message-ID: <48212718.50000@sympatico.ca>
+
+This seem to be a bug, the code generated is byte access only.
+
+# cat test.c
+
+
+
+# cat test.c
+struct a_packed{
+    int data;
+} __attribute__((packed));
+struct a_unpacked{
+    int data;
+};
+void test_packed(int in)
+{  
+    struct a_packed * ptr;
+    ptr->data = in;
+}
+void test_unpacked(int in)
+{  
+    struct a_unpacked * ptr;
+    ptr->data = in;
+}
+
+
+# powerpc-linux-gnu-gcc -O2  -te500v2 test.c -c -o test
+# powerpc-linux-gnu-objdump -d test
+
+test:     file format elf32-powerpc
+
+Disassembly of section .text:
+
+00000000 <test_packed>:
+   0:    54 69 86 3e     rlwinm  r9,r3,16,24,31
+   4:    54 60 46 3e     rlwinm  r0,r3,8,24,31
+   8:    54 6b c6 3e     rlwinm  r11,r3,24,24,31
+   c:    98 69 00 03     stb     r3,3(r9)
+  10:    98 09 00 00     stb     r0,0(r9)
+  14:    99 29 00 01     stb     r9,1(r9)
+  18:    99 69 00 02     stb     r11,2(r9)
+  1c:    4e 80 00 20     blr
+
+00000020 <test_unpacked>:
+  20:    90 69 00 00     stw     r3,0(r9)
+  24:    4e 80 00 20     blr
+
+# powerpc-linux-gnu-gcc -O2  test.c -c -o test
+# powerpc-linux-gnu-objdump -d test
+
+test:     file format elf32-powerpc
+
+Disassembly of section .text:
+
+00000000 <test_packed>:
+   0:    90 69 00 00     stw     r3,0(r9)
+   4:    4e 80 00 20     blr
+
+00000008 <test_unpacked>:
+   8:    90 69 00 00     stw     r3,0(r9)
+   c:    4e 80 00 20     blr
+
+I had to align the structure to make it work :
+
+struct a_packed{
+    int data;
+} __attribute__((packed,aligned(4)));
+
+
+I would consider this a bug.  Is there a better way to fix this then us 
+having to go trough all the packed structure definitions in our code?
+
+Thanks/
+
+
+From mark at codesourcery.com  Wed May  7 23:37:41 2008
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Wed, 07 May 2008 16:37:41 -0700
+Subject: [power-gnu-discuss] -te500v2 and packed attribute
+In-Reply-To: <48212718.50000@sympatico.ca>
+References: <48212718.50000@sympatico.ca>
+Message-ID: <48223D45.4010008@codesourcery.com>
+
+S. Couture & K. Musgrove wrote:
+> This seem to be a bug, the code generated is byte access only.
+
+> # cat test.c
+> struct a_packed{
+>    int data;
+> } __attribute__((packed));
+> struct a_unpacked{
+>    int data;
+> };
+> void test_packed(int in)
+> {     struct a_packed * ptr;
+>    ptr->data = in;
+> }
+> void test_unpacked(int in)
+> {     struct a_unpacked * ptr;
+>    ptr->data = in;
+> }
+
+The compiler cannot assume anything about alignment of a packed 
+structure and therefore cannot assume that "ptr->data" as at a 
+byte-aligned address.
+
+-- 
+Mark Mitchell
+CodeSourcery
+mark at codesourcery.com
+(650) 331-3385 x713
+
+
+From muscou at sympatico.ca  Thu May  8 00:45:28 2008
+From: muscou at sympatico.ca (S. Couture & K. Musgrove)
+Date: Wed, 07 May 2008 20:45:28 -0400
+Subject: [power-gnu-discuss] -te500v2 and packed attribute
+In-Reply-To: <48223D45.4010008@codesourcery.com>
+References: <48212718.50000@sympatico.ca> <48223D45.4010008@codesourcery.com>
+Message-ID: <48224D28.70607@sympatico.ca>
+
+Mark Mitchell wrote:
+> S. Couture & K. Musgrove wrote:
+>> This seem to be a bug, the code generated is byte access only.
+>
+>> # cat test.c
+>> struct a_packed{
+>>    int data;
+>> } __attribute__((packed));
+>> struct a_unpacked{
+>>    int data;
+>> };
+>> void test_packed(int in)
+>> {     struct a_packed * ptr;
+>>    ptr->data = in;
+>> }
+>> void test_unpacked(int in)
+>> {     struct a_unpacked * ptr;
+>>    ptr->data = in;
+>> }
+>
+> The compiler cannot assume anything about alignment of a packed 
+> structure and therefore cannot assume that "ptr->data" as at a 
+> byte-aligned address.
+>
+Thanks altough the same compiler using -te600 generates dword access for 
+both packed and unpacked and I am not aware of any limitation in the 
+e500 architecture wrt to unaligned access.  This has serious performance 
+implications for e500 users.
+
+
+From mark at codesourcery.com  Thu May  8 17:35:50 2008
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Thu, 08 May 2008 10:35:50 -0700
+Subject: 2008q1 Release Available
+Message-ID: <482339F6.5070001@codesourcery.com>
+
+CodeSourcery is pleased to announce the availability of the 2008q1
+Sourcery G++ Lite Edition release for Power processors.  This is
+available for download from:
+
+	http://www.codesourcery.com/gnu_toolchains/power
+
+New features in this release include:
+
+* When compiling with -Os, function prologues and epilogues are 
+considerably smaller.
+
+* A variety of E500 code-generation defects have been corrected.
+
+* GCC has been upgraded to GCC 4.2.3.
+
+Enjoy!
+
+-- 
+Mark Mitchell
+CodeSourcery
+mark at codesourcery.com
+(650) 331-3385 x713
+
+
+From sjhill1 at rockwellcollins.com  Thu May 15 19:45:04 2008
+From: sjhill1 at rockwellcollins.com (sjhill1 at rockwellcollins.com)
+Date: Thu, 15 May 2008 14:45:04 -0500
+Subject: Build errors and fixes for building binutils-4.2-138 on Solaris.
+Message-ID: <OFDBD148CA.DF2083BF-ON8625744A.006C033E-8625744A.006C7EF9@rockwellcollins.com>
+
+Greetings.
+
+I was asked by Daniel to submit my build problems and patches when
+using your latest 4.2-138 PowerPC public source release. I am building
+a cross toolchain hosted on Solaris. Below is the information picked
+up by the configure scripts for binutils and the versions of the tools
+hosted on my Solaris box:
+
+        build='sparc-sun-solaris2.8'
+        host='sparc-sun-solaris2.8'
+        target='powerpc-elf-eabi'
+
+        bash-2.03$ gcc -dumpversion
+        2.95.2
+
+        bash-2.03$ gcc -dumpmachine
+        sparc-sun-solaris2.5.1
+
+        bash-2.03$ objdump --version
+        GNU objdump 2.9.1
+        Copyright 1997 Free Software Foundation, Inc.
+
+Attached are four errors with corresponding patches needed to fix
+building on Solaris. I will be building GCC tomorrow and may have
+some patches for that also. My apologies if the attachments and
+formatting suck. I have to use Lotus Notes at work. Thanks.
+
+-Steve
+
+-------------- next part --------------
+An HTML attachment was scrubbed...
+URL: <http://sourcerytools.com/pipermail/power-gnu-discuss/attachments/20080515/d226f3e8/attachment.html>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: patch1.txt
+URL: <http://sourcerytools.com/pipermail/power-gnu-discuss/attachments/20080515/d226f3e8/attachment.txt>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: patch2.txt
+URL: <http://sourcerytools.com/pipermail/power-gnu-discuss/attachments/20080515/d226f3e8/attachment-0001.txt>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: patch3.txt
+URL: <http://sourcerytools.com/pipermail/power-gnu-discuss/attachments/20080515/d226f3e8/attachment-0002.txt>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: patch4.txt
+URL: <http://sourcerytools.com/pipermail/power-gnu-discuss/attachments/20080515/d226f3e8/attachment-0003.txt>
+
+From Dirk.Opfer at bitGate.de  Tue May 20 12:05:32 2008
+From: Dirk.Opfer at bitGate.de (Dirk Opfer)
+Date: Tue, 20 May 2008 14:05:32 +0200
+Subject: internal compiler error using the 2008q1 toolchain
+Message-ID: <4832BE8C.2030401@bitGate.de>
+
+The 2008q1 toolchain fails with an intern compiler error if I compile 
+for an e500 core:
+
+powerpc-linux-gnu-g++ -Os -fpic -shared -te500v2 -o ctest.o ctest.cpp
+
+ctest.cpp: In function 'int socktest()':
+ctest.cpp:15: internal compiler error: in dwarf2out_frame_debug_expr, at 
+dwarf2out.c:1813
+Please submit a full bug report,
+with preprocessed source if appropriate.
+See <URL:https://support.codesourcery.com/GNUToolchain/> for instructions.
+
+This only occurs if the flags -Os and -fpic are used.
+
+
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+
+#include <stdio.h>
+#include <string.h>
+
+int socktest()
+{
+     struct sockaddr_in sockName;
+     memset(&sockName, 0x00, sizeof(sockaddr_in));
+     printf("ok");
+     return 0;
+}
+
+
+Thanks,
+Dirk
+
+
+
+
+From mark at codesourcery.com  Wed May 21 00:39:57 2008
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Tue, 20 May 2008 17:39:57 -0700
+Subject: [power-gnu-discuss] internal compiler error using the 2008q1
+ toolchain
+In-Reply-To: <4832BE8C.2030401@bitGate.de>
+References: <4832BE8C.2030401@bitGate.de>
+Message-ID: <48336F5D.4080001@codesourcery.com>
+
+Dirk Opfer wrote:
+> The 2008q1 toolchain fails with an intern compiler error if I compile 
+> for an e500 core:
+> 
+> powerpc-linux-gnu-g++ -Os -fpic -shared -te500v2 -o ctest.o ctest.cpp
+> 
+> ctest.cpp: In function 'int socktest()':
+> ctest.cpp:15: internal compiler error: in dwarf2out_frame_debug_expr, at 
+> dwarf2out.c:1813
+
+Nathan, would you please comment on this?  If I recall correctly, this 
+defect was reported by another user, and we are already working on 
+fixing it -- but if you could confirm for Dirk, that would be terrific. 
+  If not, we should get this into our issue database.
+
+Thanks,
+
+-- 
+Mark Mitchell
+CodeSourcery
+mark at codesourcery.com
+(650) 331-3385 x713
+
+
+From froydnj at codesourcery.com  Wed May 21 02:08:57 2008
+From: froydnj at codesourcery.com (Nathan Froyd)
+Date: Tue, 20 May 2008 19:08:57 -0700
+Subject: [power-gnu-discuss] internal compiler error using the 2008q1 toolchain
+In-Reply-To: <48336F5D.4080001@codesourcery.com>
+References: <4832BE8C.2030401@bitGate.de> <48336F5D.4080001@codesourcery.com>
+Message-ID: <20080521020855.GJ20616@codesourcery.com>
+
+On Tue, May 20, 2008 at 05:39:57PM -0700, Mark Mitchell wrote:
+> Dirk Opfer wrote:
+> >The 2008q1 toolchain fails with an intern compiler error if I compile 
+> >for an e500 core:
+> 
+> Nathan, would you please comment on this?  If I recall correctly, this 
+> defect was reported by another user, and we are already working on 
+> fixing it -- but if you could confirm for Dirk, that would be terrific. 
+>  If not, we should get this into our issue database.
+
+That's correct; another user reported this error and we are already
+working on a fix.
+
+-Nathan
+
+

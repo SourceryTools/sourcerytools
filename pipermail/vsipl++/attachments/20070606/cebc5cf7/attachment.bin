@@ -1,0 +1,318 @@
+Index: src/vsip/opt/simd/expr_evaluator.hpp
+===================================================================
+--- src/vsip/opt/simd/expr_evaluator.hpp	(revision 173068)
++++ src/vsip/opt/simd/expr_evaluator.hpp	(working copy)
+@@ -43,6 +43,9 @@
+ namespace simd
+ {
+ 
++int
++alignment_of(int b1, int b2);
++
+ template <typename BlockT, bool A>
+ struct Proxy_factory
+ {
+@@ -64,6 +67,13 @@
+        !Simd_traits<typename BlockT::value_type>::alignment_of(dda.data()));
+   }
+ 
++  static int
++  alignment(BlockT const &b)
++  {
++    Ext_data<BlockT, layout_type> dda(b, SYNC_IN);
++    return Simd_traits<typename BlockT::value_type>::alignment_of(dda.data());
++  }
++
+   static proxy_type
+   create(BlockT const &b) 
+   {
+@@ -82,6 +92,10 @@
+   static bool 
+   rt_valid(Scalar_block<1, T> const &) {return true;}
+ 
++  // A return value of -1 means that we don't care about alignment
++  static int
++  alignment(Scalar_block<1, T> const &) {return -1;}
++
+   static proxy_type
+   create(Scalar_block<1, T> const &b) 
+   {
+@@ -108,6 +122,12 @@
+     return Proxy_factory<B, A>::rt_valid(b.op());
+   }
+ 
++  static int
++  alignment(Unary_expr_block<D, O, B, T> const &b)
++  {
++    return Proxy_factory<B, A>::alignment(b.op());
++  }
++
+   static proxy_type
+   create(Unary_expr_block<D, O, B, T> const &b)
+   {
+@@ -134,12 +154,19 @@
+     return Proxy_factory<B, false>::rt_valid(b.op());
+   }
+ 
++  static int
++  alignment(Unary_expr_block<D, unaligned_functor, B, T> const &b)
++  {
++    return Proxy_factory<B, false>::alignment(b.op());
++  }
++
+   static proxy_type
+   create(Unary_expr_block<D, unaligned_functor, B, T> const &b)
+   {
+     return proxy_type(Proxy_factory<B, false>::create(b.op()));
+   }
+ };
++
+ template <dimension_type                D,
+ 	  template <typename, typename> class O,
+ 	  typename                      LB,
+@@ -169,6 +196,15 @@
+       Proxy_factory<RB, A>::rt_valid(b.right());
+   }
+ 
++  // A return value of -2 means operand are not aligned to the same value
++  static int 
++  alignment(Binary_expr_block<D, O, LB, LT, RB, RT> const &b)
++  {
++    int left_a  = Proxy_factory<LB, A>::alignment(b.left());
++    int right_a = Proxy_factory<RB, A>::alignment(b.right());
++    return alignment_of(left_a, right_a);
++  }
++
+   static proxy_type
+   create(Binary_expr_block<D, O, LB, LT, RB, RT> const &b)
+   {
+@@ -214,6 +250,27 @@
+            Proxy_factory<Block3, A>::rt_valid(b.third());
+   }
+ 
++  static int 
++  alignment(SrcBlock const &b)
++  {
++
++    int first_a  = Proxy_factory<Block1, A>::alignment(b.first());
++    int second_a = Proxy_factory<Block2, A>::alignment(b.second());
++    int third_a  = Proxy_factory<Block3, A>::alignment(b.third());
++
++    if(first_a == -1)
++      return alignment_of(second_a, third_a);
++    else if(second_a == -1)
++      return alignment_of(first_a, third_a);
++    else if(third_a == -1)
++      return alignment_of(first_a, second_a);
++    else if(first_a == second_a == third_a)
++      return first_a;
++    else
++      return -2;
++       
++  }
++
+   static proxy_type
+   create(SrcBlock const &b)
+   {
+@@ -228,6 +285,26 @@
+   }
+ };
+ 
++// This helper function makes determining alignment easier.
++// Basically, if B1 == -1, return B2
++//            if B2 == -1, return B1
++//            if B1 == B2, return B1
++//            else return -2
++int
++alignment_of(int b1_a, int b2_a)
++{
++  if(b1_a == -1)
++    return b2_a;
++  else if(b2_a == -1)
++    return b1_a;
++  else if(b1_a == b2_a)
++    return b1_a;
++  else
++    return -2;
++
++}
++
++
+ } // namespace vsip::impl::simd
+ 
+ 
+@@ -331,7 +408,87 @@
+   }
+ };
+ 
++// This evaluator is for operations where all vectors are unaligned
++// Look at Simd_unaligned_loop_fusion_tag for mixed unaligned data.
++template <typename LB,
++	  typename RB>
++struct Serial_expr_evaluator<1, LB, RB, Simd_all_unaligned_loop_fusion_tag>
++{
++  typedef typename Adjust_layout_dim<
++                     1, typename Block_layout<LB>::layout_type>::type
++		layout_type;
+ 
++  static char const* name() { return "Expr_SIMD_All_Unaligned_Loop"; }
++  
++  static bool const ct_valid =
++    // Is SIMD supported at all ?
++    simd::Simd_traits<typename LB::value_type>::is_accel &&
++    // Check that direct access is possible.
++    Ext_data_cost<LB>::value == 0 &&
++    simd::Proxy_factory<RB, true>::ct_valid &&
++    // Only allow float, double, complex<float>, and complex<double> at this time.
++    (Type_equal<typename Scalar_of<typename LB::value_type>::type, float>::value ||
++     Type_equal<typename Scalar_of<typename LB::value_type>::type, double>::value) &&
++    // Make sure both sides have the same type.
++    Type_equal<typename LB::value_type, typename RB::value_type>::value &&
++    // Make sure the left side is not a complex split block.
++    !Is_split_block<LB>::value;
++
++
++  static bool rt_valid(LB& lhs, RB const& rhs)
++  {
++    Ext_data<LB, layout_type> dda(lhs, SYNC_OUT);
++    int lhs_a = simd::Proxy_factory<LB,       true>::alignment(lhs);
++    int rhs_a = simd::Proxy_factory<RB const, true>::alignment(rhs);
++    return (dda.stride(0) == 1 &&
++            simd::alignment_of(lhs_a, rhs_a) != -2);
++    
++    
++  }
++
++  static void exec(LB& lhs, RB const& rhs)
++  {
++    typedef typename simd::LValue_access_traits<typename LB::value_type> WAT;
++    typedef typename simd::Proxy_factory<RB, true>::access_traits EAT;
++    typedef typename simd::Proxy_factory<RB, true>::proxy_type proxy_type;
++
++    length_type const vec_size =
++      simd::Simd_traits<typename LB::value_type>::vec_size;
++    Ext_data<LB, layout_type> dda(lhs, SYNC_OUT);
++
++    simd::Proxy<WAT,true> lp(dda.data());
++    proxy_type rp(simd::Proxy_factory<RB,true>::create(rhs));
++
++    length_type const size = dda.size(0);
++    length_type n = size;
++
++    // loop using proxy interface. This generates the best code
++    // with gcc 3.4 (with gcc 4.1 the difference to the first case
++    // above is negligible).
++
++    // First, deal with unaligned pointers
++    typename Ext_data<LB, layout_type>::raw_ptr_type  raw_ptr = dda.data();
++    while(simd::Simd_traits<typename LB::value_type>::alignment_of(raw_ptr) &&
++          n > 0)
++    {
++      lhs.put(size-n, rhs.get(size-n));
++      n--;
++      raw_ptr++;
++    }
++
++    while (n >= vec_size)
++    {
++      lp.store(rp.load());
++      n -= vec_size;
++      lp.increment();
++      rp.increment();
++    }
++
++    // Process the remainder, using simple loop fusion.
++    for (index_type i = size - n; i != size; ++i) lhs.put(i, rhs.get(i));
++  }
++};
++
+ // This evaluator is for unaligned data. Any time any of the blocks are
+ // unaligned, we use this evalutator. Basically, in the evaluator list, this
+ // evaluator is right after the aligned evaluator and rt_valid determines
+Index: src/vsip/opt/simd/eval_generic.hpp
+===================================================================
+--- src/vsip/opt/simd/eval_generic.hpp	(revision 173067)
++++ src/vsip/opt/simd/eval_generic.hpp	(working copy)
+@@ -658,6 +658,8 @@
+   
+   static bool rt_valid(DstBlock& dst, SrcBlock const& src)
+   {
++    typedef simd::Simd_traits<typename SrcBlock::value_type> simd;
++
+     // check if all data is unit stride
+     Ext_data<DstBlock, dst_lp>     ext_dst(dst,              SYNC_OUT);
+     Ext_data<Block1,   a_lp>       ext_a(src.first().left(), SYNC_IN);
+@@ -666,7 +668,11 @@
+            ext_a.stride(0) == 1 &&
+ 	   ext_b.stride(0) == 1 &&
+ 	   // make sure (A op B, A, k)
+-	   (&(src.first().left()) == &(src.second())));
++	   (&(src.first().left()) == &(src.second())) &&
++	   // make sure everyting is aligned!
++	   !simd::alignment_of(ext_dst.data()) &&
++	   !simd::alignment_of(ext_a.data()) &&
++	   !simd::alignment_of(ext_b.data()));
+   }
+ 
+   static void exec(DstBlock& dst, SrcBlock const& src)
+Index: src/vsip/opt/simd/expr_iterator.hpp
+===================================================================
+--- src/vsip/opt/simd/expr_iterator.hpp	(revision 173069)
++++ src/vsip/opt/simd/expr_iterator.hpp	(working copy)
+@@ -316,7 +316,13 @@
+   typedef T value_type;
+   typedef typename Simd_traits<value_type>::simd_type simd_type;
+ 
+-  Proxy(value_type const *ptr) : ptr_(ptr) {}
++  Proxy(value_type const *ptr) : ptr_(ptr)
++  {
++    // Force alignment of pointer.
++    intptr_t int_ptr = (intptr_t)ptr_;
++    int_ptr &= ~(Simd_traits<value_type>::alignment-1);
++    ptr_ = (value_type*) int_ptr;
++  }
+ 
+   simd_type load() const { return Simd_traits<value_type>::load(ptr_);}
+ 
+@@ -357,7 +363,14 @@
+   typedef T value_type;
+   typedef typename Simd_traits<value_type>::simd_type simd_type;
+ 
+-  Proxy(value_type *ptr) : ptr_(ptr) {}
++  Proxy(value_type *ptr) : ptr_(ptr)
++  {
++    // Force alignment of pointer.
++    intptr_t int_ptr = (intptr_t)ptr_;
++    int_ptr &= ~(Simd_traits<value_type>::alignment-1);
++    ptr_ = (value_type*) int_ptr;
++  }
++
+   template <typename T1>
+   Proxy operator = (Proxy<T1,IsAligned> const &o) 
+   {
+Index: src/vsip/opt/expr/serial_dispatch_fwd.hpp
+===================================================================
+--- src/vsip/opt/expr/serial_dispatch_fwd.hpp	(revision 165174)
++++ src/vsip/opt/expr/serial_dispatch_fwd.hpp	(working copy)
+@@ -50,6 +50,8 @@
+ 		       Copy_tag,
+ 		       Op_expr_tag,
+ 		       Simd_loop_fusion_tag,
++		       Simd_all_unaligned_loop_fusion_tag,
++		       Simd_unaligned_loop_fusion_tag,
+ 		       Loop_fusion_tag>::type LibraryTagList;
+ 
+ 
+Index: src/vsip/core/impl_tags.hpp
+===================================================================
+--- src/vsip/core/impl_tags.hpp	(revision 165174)
++++ src/vsip/core/impl_tags.hpp	(working copy)
+@@ -41,6 +41,8 @@
+ struct Copy_tag {};		// Optimized Copy
+ struct Op_expr_tag {};		// Special expr handling (vmmul, etc)
+ struct Simd_loop_fusion_tag {};	// SIMD Loop Fusion.
++struct Simd_all_unaligned_loop_fusion_tag {};// SIMD all unaligned Loop Fusion.
++struct Simd_unaligned_loop_fusion_tag {};    // SIMD unaligned Loop Fusion.
+ struct Loop_fusion_tag {};	// Generic Loop Fusion (base case).
+ 
+ struct Blas_tag {};		// BLAS implementation (ATLAS, MKL, etc)

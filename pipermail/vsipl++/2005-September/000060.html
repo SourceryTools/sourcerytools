@@ -1,0 +1,1195 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [PATCH] fix IPP 2D FFT, complete FFT tests
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20fix%20IPP%202D%20FFT%2C%20complete%20FFT%20tests&In-Reply-To=%3C20050929021258.GA24272%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000058.html">
+   <LINK REL="Next"  HREF="000061.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[PATCH] fix IPP 2D FFT, complete FFT tests</H1>
+    <B>Nathan (Jasper) Myers</B> 
+    <A HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20fix%20IPP%202D%20FFT%2C%20complete%20FFT%20tests&In-Reply-To=%3C20050929021258.GA24272%40codesourcery.com%3E"
+       TITLE="[PATCH] fix IPP 2D FFT, complete FFT tests">ncm at codesourcery.com
+       </A><BR>
+    <I>Thu Sep 29 02:12:58 UTC 2005</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000058.html">[vsipl++] [patch] enable use of refcount policy for ext_data
+</A></li>
+        <LI>Next message: <A HREF="000061.html">[patch] Toeplitz system solver
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#60">[ date ]</a>
+              <a href="thread.html#60">[ thread ]</a>
+              <a href="subject.html#60">[ subject ]</a>
+              <a href="author.html#60">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>I have checked in the patch below. 
+
+It adds (nearly) exhaustive testing on Fft features, and fixes 
+failures in IPP FFT support the testing reveals.  It also adds 
+tests for real-&gt;complex and complex -&gt; real Fftm.
+
+Don't be surprised when fft.cpp takes one or two minutes to compile, 
+now, and spends most of that time producing 40MB of assembly code.
+
+Nathan Myers
+ncm
+
+Index: ChangeLog
+===================================================================
+RCS file: /home/cvs/Repository/vpp/ChangeLog,v
+retrieving revision 1.280
+retrieving revision 1.281
+diff -u -p -r1.280 -r1.281
+--- ChangeLog	28 Sep 2005 19:07:26 -0000	1.280
++++ ChangeLog	29 Sep 2005 02:01:09 -0000	1.281
+@@ -1,3 +1,17 @@
++2005-09-28  Nathan Myers  &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">ncm at codesourcery.com</A>&gt;
++
++	* src/vsip/fft-core.hpp: Make IPP FFT work for 2D FFT. 
++	  Make unimplemented IPP driver functions report failure.
++	* src/vsip/signal-fft.hpp: Initialize scale member early enough 
++	  for IPP create_plan use.
++	* tests/fftm.cpp: Enable tests for complex-&gt;real, real-&gt;complex.
++	* tests/fft.cpp: Add comprehensive testing:
++	   (2D, 3D) x ((cx-&gt;cx fwd, inv), ((re-&gt;cx, cx-&gt;re) x (all axes))) 
++	   x (Dense/row-major, Dense/column-major, Fast_block)
++	   x (single,double) x (in-place, by_reference, by_value) 
++	   x (unscaled, arbitrary-scaled, scaled by N)
++	Tested with gcc-3.4/em64t/IPP and gcc-4.0.1/x86/FFTW3.
++
+ 2005-09-28  Jules Bergmann  &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">jules at codesourcery.com</A>&gt;
+ 
+ 	* src/vsip/impl/block-traits.hpp (View_block_storage):
+Index: src/vsip/impl/fft-core.hpp
+===================================================================
+RCS file: /home/cvs/Repository/vpp/src/vsip/impl/fft-core.hpp,v
+retrieving revision 1.17
+retrieving revision 1.18
+diff -u -p -r1.17 -r1.18
+--- src/vsip/impl/fft-core.hpp	28 Sep 2005 00:34:11 -0000	1.17
++++ src/vsip/impl/fft-core.hpp	29 Sep 2005 02:01:09 -0000	1.18
+@@ -997,17 +997,19 @@ struct Ipp_DFT_base
+   }
+ 
+   static void
+-  forward2(void* plan, void const* in, void* out, void* buffer, bool f)
++  forward2(
++    void* plan, void const* in, unsigned in_row_step, 
++    void* out, unsigned out_row_step, void* buffer, bool f)
+     VSIP_NOTHROW
+   {
+     IppStatus result = (f ?
+       (*forwardFFun2)(
+-	reinterpret_cast&lt;T const*&gt;(in), sizeof(T),
+-	reinterpret_cast&lt;T*&gt;(out), sizeof(T),
++	reinterpret_cast&lt;T const*&gt;(in), in_row_step,
++	reinterpret_cast&lt;T*&gt;(out), out_row_step,
+ 	reinterpret_cast&lt;planFT*&gt;(plan), reinterpret_cast&lt;Ipp8u*&gt;(buffer)) :
+       (*forwardDFun2)(
+-	reinterpret_cast&lt;T const*&gt;(in), sizeof(T),
+-	reinterpret_cast&lt;T*&gt;(out), sizeof(T),
++	reinterpret_cast&lt;T const*&gt;(in), in_row_step,
++	reinterpret_cast&lt;T*&gt;(out), out_row_step,
+ 	reinterpret_cast&lt;planDT*&gt;(plan), reinterpret_cast&lt;Ipp8u*&gt;(buffer)));
+     assert(result == ippStsNoErr);
+   }
+@@ -1029,17 +1031,19 @@ struct Ipp_DFT_base
+   }
+ 
+   static void
+-  inverse2(void* plan, void const* in, void* out, void* buffer, bool f)
++  inverse2(
++    void* plan, void const* in, unsigned in_row_step,
++    void* out, unsigned out_row_step, void* buffer, bool f)
+     VSIP_NOTHROW
+   {
+     IppStatus result = (f ?
+       (*inverseFFun2)(
+-	reinterpret_cast&lt;T const*&gt;(in), sizeof(T),
+-	reinterpret_cast&lt;T*&gt;(out), sizeof(T),
++	reinterpret_cast&lt;T const*&gt;(in), in_row_step,
++        reinterpret_cast&lt;T*&gt;(out), out_row_step,
+ 	reinterpret_cast&lt;planFT*&gt;(plan), reinterpret_cast&lt;Ipp8u*&gt;(buffer)) :
+       (*inverseDFun2)(
+-	reinterpret_cast&lt;T const*&gt;(in), sizeof(T),
+-	reinterpret_cast&lt;T*&gt;(out), sizeof(T),
++	reinterpret_cast&lt;T const*&gt;(in), in_row_step,
++	reinterpret_cast&lt;T*&gt;(out), out_row_step,
+ 	reinterpret_cast&lt;planDT*&gt;(plan), reinterpret_cast&lt;Ipp8u*&gt;(buffer)));
+     assert(result == ippStsNoErr);
+   }
+@@ -1049,21 +1053,21 @@ struct Ipp_DFT_base
+ // template Ipp_DFT_base&lt;&gt;.
+ 
+ template &lt;typename P&gt; inline IppStatus dum(P**, int, int, IppHintAlgorithm)
+-  { return ippStsNoErr; }
++  { return ippStsErr; }
+ template &lt;typename P&gt; inline IppStatus dum(P**, int, int, int, IppHintAlgorithm)
+-  { return ippStsNoErr; }
++  { return ippStsErr; }
+ template &lt;typename P&gt; inline IppStatus dum(P**, IppiSize, int, IppHintAlgorithm)
+-  { return ippStsNoErr; }
++  { return ippStsErr; }
+ template &lt;typename P&gt; inline IppStatus dum(P*)
+-  { return ippStsNoErr; }
++  { return ippStsErr; }
+ template &lt;typename P&gt; inline IppStatus dum(P const*, int*)
+-  { return ippStsNoErr; }
++  { return ippStsErr; }
+ template &lt;typename P, typename T&gt; inline IppStatus dum(
+   T const*, T*, P const*, Ipp8u*)
+-  { return ippStsNoErr; }
++  { return ippStsErr; }
+ template &lt;typename P, typename T&gt; inline IppStatus dum(
+   T const*, int, T*, int, P const*, Ipp8u*)
+-  { return ippStsNoErr; }
++  { return ippStsErr; }
+ 
+ 
+ // Specializations of Ipp_DFT create the mappings from argument
+@@ -1255,10 +1259,15 @@ create_ipp_plan(
+   typedef typename Time_domain&lt;inT,outT&gt;::type time_domain_type;
+   typedef Ipp_DFT&lt; (Dim-doFFTM),time_domain_type&gt;  fft_type;
+ 
+-  self.plan_from_to_ = ((Dim - doFFTM == 1) ?
+-     fft_type::create_plan(sizex, flags, self.use_fft_) :
+-     fft_type::create_plan2(sizex, sizey, flags, self.use_fft_));
+-
++  if (Dim - doFFTM == 1)
++    self.plan_from_to_ = fft_type::create_plan(sizex, flags, self.use_fft_);
++  else
++  {
++    self.plan_from_to_ = 
++      fft_type::create_plan2(sizex, sizey, flags, self.use_fft_);
++    self.row_step_ = sizeof(outT) * dom[0].size();
++  }
++  
+   self.p_buffer_ = impl::alloc_align(
+     16, fft_type::bufsize(self.plan_from_to_, self.use_fft_));
+   if (self.p_buffer_ == 0)
+@@ -1373,11 +1382,11 @@ from_to(
+ // IPP doesn't implement 2D double FFT.  Spec allows that.
+ #if ! defined(VSIP_IMPL_DOUBLE)
+   if (self.is_forward_)
+-    Ipp_DFT&lt;2,std::complex&lt;SCALAR_TYPE&gt; &gt;::forward(
+-      self.plan_from_to_, in, out, self.p_buffer_, self.use_fft_) ;
++    Ipp_DFT&lt;2,std::complex&lt;SCALAR_TYPE&gt; &gt;::forward2(self.plan_from_to_,
++      in, self.row_step_, out, self.row_step_, self.p_buffer_, self.use_fft_) ;
+   else
+-    Ipp_DFT&lt;2,std::complex&lt;SCALAR_TYPE&gt; &gt;::inverse(
+-      self.plan_from_to_, in, out, self.p_buffer_, self.use_fft_);
++    Ipp_DFT&lt;2,std::complex&lt;SCALAR_TYPE&gt; &gt;::inverse2(self.plan_from_to_,
++      in, self.row_step_, out, self.row_step_, self.p_buffer_, self.use_fft_);
+ 
+   if (self.doing_scaling_)
+     self.scale_ = 1.0;
+@@ -1421,8 +1430,8 @@ from_to(
+   VSIP_IMPL_THROW(impl::unimplemented(
+ 		    &quot;IPP FFT-2D real-&gt;complex not implemented&quot;));
+ #if 0  
+-  Ipp_DFT&lt;1,SCALAR_TYPE&gt;::forward2(
+-    self.plan_from_to_, in, out, self.p_buffer_, self.use_fft_) ;
++  Ipp_DFT&lt;1,SCALAR_TYPE&gt;::forward2(self.plan_from_to_,
++    in, self.row_step_, out, self.row_step_, self.p_buffer_, self.use_fft_) ;
+   // unpack in place
+   if (self.doing_scaling_)
+     self.scale_ = 1.0;
+@@ -1463,8 +1472,8 @@ from_to(
+ #if 0  
+   // pack in place; maybe this must happen in
+   //   fft_by_ref, where _in_, just copied into, is writeable.
+-  Ipp_DFT&lt;1,SCALAR_TYPE&gt;::inverse2(
+-    self.plan_from_to_, in, out, self.p_buffer_, self.use_fft_) ;
++  Ipp_DFT&lt;1,SCALAR_TYPE&gt;::inverse2(self.plan_from_to_,
++    in, self.row_step_, out, self.row_step_, self.p_buffer_, self.use_fft_) ;
+   if (self.doing_scaling_)
+     self.scale_ = 1.0;
+ #endif
+Index: src/vsip/impl/signal-fft.hpp
+===================================================================
+RCS file: /home/cvs/Repository/vpp/src/vsip/impl/signal-fft.hpp,v
+retrieving revision 1.27
+retrieving revision 1.28
+diff -u -p -r1.27 -r1.28
+--- src/vsip/impl/signal-fft.hpp	28 Sep 2005 00:34:11 -0000	1.27
++++ src/vsip/impl/signal-fft.hpp	29 Sep 2005 02:01:10 -0000	1.28
+@@ -80,6 +80,7 @@ struct Fft_core : impl::Ref_count&lt;impl::
+   bool doing_scaling_;  // scaling is performed in the driver.
+   bool is_forward_;
+   void* p_buffer_;      // temporary storage not allocated in the plan
++  unsigned row_step_;    // length in bytes of 2D row.
+ # endif
+ 
+ #endif
+@@ -328,6 +329,7 @@ protected:
+     , in_temp_(this-&gt;input_size_)
+     , out_temp_(this-&gt;output_size_)
+     {
++      core_-&gt;scale_ = scale;  // IPP needs this.
+       impl::Ext_data&lt;in_block_type&gt;  raw_in(this-&gt;in_temp_);
+       impl::Ext_data&lt;out_block_type&gt;  raw_out(this-&gt;out_temp_);
+       this-&gt;core_-&gt;create_plan(
+Index: tests/fftm.cpp
+===================================================================
+RCS file: /home/cvs/Repository/vpp/tests/fftm.cpp,v
+retrieving revision 1.7
+retrieving revision 1.8
+diff -u -p -r1.7 -r1.8
+--- tests/fftm.cpp	28 Sep 2005 04:32:55 -0000	1.7
++++ tests/fftm.cpp	29 Sep 2005 02:01:10 -0000	1.8
+@@ -107,6 +107,32 @@ void dft_y(
+ }
+ 
+ 
++template &lt;typename T,
++	  typename Block1,
++	  typename Block2&gt;
++void dft_y_real(
++  vsip::Matrix&lt;T, Block1&gt; in,
++  vsip::Matrix&lt;vsip::complex&lt;T&gt;, Block2&gt; out)
++{
++  length_type const xsize = in.size(1);
++  length_type const ysize = in.size(0);
++  assert(in.size(0)/2 + 1 == out.size(0));
++  assert(in.size(1) == out.size(1));
++  typedef long double AccT;
++
++  AccT const phi = -2.0 * M_PI/ysize;
++
++  for (index_type v=0; v &lt; xsize; ++v)
++    for (index_type w=0; w &lt; ysize / 2 + 1; ++w)
++    {
++      vsip::complex&lt;AccT&gt; sum = vsip::complex&lt;AccT&gt;();
++      for (index_type k=0; k&lt;ysize; ++k)
++	sum += vsip::complex&lt;AccT&gt;(in(k,v)) * sin_cos&lt;AccT&gt;(phi*k*w);
++      out(w,v) = vsip::complex&lt;T&gt;(sum);
++    }
++}
++
++
+ // Error metric between two vectors.
+ 
+ template &lt;typename T1,
+@@ -412,64 +438,47 @@ test_by_val_y(length_type N)
+ }
+ 
+ 
+-#if 0
+ 
+ /// Test r-&gt;c and c-&gt;r by-value Fft.
+ 
+ template &lt;typename T&gt;
+ void
+-test_real(const int set, const length_type N)
++test_real(const length_type N)
+ {
+-  typedef Fftm&lt;T, std::complex&lt;T&gt;, col, 0, by_value, 1, alg_space&gt;
++  typedef Fftm&lt;T, std::complex&lt;T&gt;, col, fft_fwd, by_value, 1, alg_space&gt;
+ 	f_fftm_type;
+-  typedef Fftm&lt;std::complex&lt;T&gt;, T, col, 0, by_value, 1, alg_space&gt;
++  typedef Fftm&lt;std::complex&lt;T&gt;, T, col, fft_inv, by_value, 1, alg_space&gt;
+ 	i_fftm_type;
+   const length_type N2 = N/2 + 1;
+ 
+-  f_fftm_type f_fftm(Domain&lt;1&gt;(N), 1.0);
+-  i_fftm_type i_fftm(Domain&lt;1&gt;(N), 1.0/(N));
++  f_fftm_type f_fftm(Domain&lt;2&gt;(Domain&lt;1&gt;(N),Domain&lt;1&gt;(5)), 1.0);
++  i_fftm_type i_fftm(Domain&lt;2&gt;(Domain&lt;1&gt;(N),Domain&lt;1&gt;(5)), 1.0/N);
+ 
+-  assert(f_fftm.input_size().size() == N);
+-  assert(f_fftm.output_size().size() == N2);
++  assert(f_fftm.input_size().size() == 5*N);
++  assert(f_fftm.output_size().size() == 5*N2);
+ 
+-  assert(i_fftm.input_size().size() == N2);
+-  assert(i_fftm.output_size().size() == N);
++  assert(i_fftm.input_size().size() == 5*N2);
++  assert(i_fftm.output_size().size() == 5*N);
+ 
+   assert(f_fftm.scale() == 1.0);  // can represent exactly
+   assert(i_fftm.scale() &gt; 1.0/(N + 1) &amp;&amp; i_fftm.scale() &lt; 1.0/(N - 1));
+   assert(f_fftm.forward() == true);
+   assert(i_fftm.forward() == false);
+ 
+-  Matrix&lt;T&gt; in(N, T());
+-  Matrix&lt;std::complex&lt;T&gt; &gt; out(N2);
+-  Matrix&lt;std::complex&lt;T&gt; &gt; ref(N2);
+-  Matrix&lt;T&gt; inv(N);
+-  Matrix&lt;T&gt; inv2(N);
++  Matrix&lt;T&gt; in(N, 5, T());
++  Matrix&lt;std::complex&lt;T&gt; &gt; out(N2, 5);
++  Matrix&lt;std::complex&lt;T&gt; &gt; ref(N2, 5);
++  Matrix&lt;T&gt; inv(N, 5);
+ 
+-  setup_data(set, in, 3.0);
++  setup_data_y(in);
++  dft_y_real(in, ref);
+   out = f_fftm(in);
+-
+-  if (set == 1)
+-  {
+-    setup_data(3, ref, 3.0);
+-    assert(error_db(ref, out) &lt; -100);
+-  }
+-  if (set == 3)
+-  {
+-    setup_data(1, ref, 3.0 * N);
+-    assert(error_db(ref, out) &lt; -100);
+-  }
+-
+-  ref = out;
+   inv = i_fftm(out);
+ 
++  assert(error_db(ref, out) &lt; -100);
+   assert(error_db(inv, in) &lt; -100);
+-
+-  // make sure out has not been scribbled in during the conversion.
+-  assert(error_db(ref,out) &lt; -100);
+ }
+ 
+-#endif
+ 
+ 
+ int
+@@ -494,12 +503,10 @@ main()
+   test_by_val_y&lt;complex&lt;float&gt; &gt;(18);
+   test_by_val_y&lt;complex&lt;float&gt; &gt;(256);
+ 
+-# if 0
+   // Tests for test r-&gt;c, c-&gt;r.
+   test_real&lt;float&gt;(128);
+   test_real&lt;float&gt;(242);
+   test_real&lt;float&gt;(16);
+-# endif
+ #endif
+ 
+ #if defined(VSIP_IMPL_FFT_USE_DOUBLE)
+@@ -519,12 +526,10 @@ main()
+   test_by_val_y&lt;complex&lt;double&gt; &gt;(18);
+   test_by_val_y&lt;complex&lt;double&gt; &gt;(256);
+ 
+-# if 0
+   // Tests for test r-&gt;c, c-&gt;r.
+   test_real&lt;double&gt;(128);
+   test_real&lt;double&gt;(242);
+   test_real&lt;double&gt;(16);
+-# endif
+ #endif
+ 
+   return 0;
+Index: tests/fft.cpp
+===================================================================
+RCS file: /home/cvs/Repository/vpp/tests/fft.cpp,v
+retrieving revision 1.7
+retrieving revision 1.8
+diff -u -p -r1.7 -r1.8
+--- tests/fft.cpp	28 Sep 2005 04:32:54 -0000	1.7
++++ tests/fft.cpp	29 Sep 2005 02:01:10 -0000	1.8
+@@ -17,6 +17,7 @@
+ #include &lt;vsip/support.hpp&gt;
+ #include &lt;vsip/signal.hpp&gt;
+ #include &lt;vsip/math.hpp&gt;
++#include &lt;vsip/random.hpp&gt;
+ 
+ #include &quot;test.hpp&quot;
+ #include &quot;output.hpp&quot;
+@@ -134,6 +135,52 @@ error_db(
+   return maxsum;
+ }
+ 
++// Error metric between two Matrices.
++
++template &lt;typename T1,
++	  typename T2,
++	  typename Block1,
++	  typename Block2&gt;
++double
++error_db(
++  const_Matrix&lt;T1, Block1&gt; v1,
++  const_Matrix&lt;T2, Block2&gt; v2)
++{
++  double maxsum = -250;
++  for (unsigned i = 0; i &lt; v1.size(0); ++i)
++  {
++    double sum = error_db(v1.row(i), v2.row(i));
++    if (sum &gt; maxsum)
++      maxsum = sum;
++  }
++  return maxsum;
++}
++
++
++
++// Error metric between two Tensors.
++
++template &lt;typename T1,
++	  typename T2,
++	  typename Block1,
++	  typename Block2&gt;
++double
++error_db(
++  const_Tensor&lt;T1, Block1&gt; v1,
++  const_Tensor&lt;T2, Block2&gt; v2)
++{
++  double maxsum = -250;
++  for (unsigned i = 0; i &lt; v1.size(0); ++i)
++  {
++    vsip::Domain&lt;1&gt; y(v1.size(1));
++    vsip::Domain&lt;1&gt; x(v1.size(2));
++    double sum = error_db(v1(i,y,x), v2(i,y,x));
++    if (sum &gt; maxsum)
++      maxsum = sum;
++  }
++  return maxsum;
++}
++
+ 
+ 
+ // Setup input data for Fft.
+@@ -307,12 +354,573 @@ test_real(const int set, const length_ty
+   assert(error_db(ref,out) &lt; -100);
+ }
+ 
++/////////////////////////////////////////////////////////////////////
++//
++// Comprehensive 2D, 3D test
++//
++
++// Elt: unsigned -&gt; element type
++
++template &lt;typename T, bool realV&gt; struct Elt;
++template &lt;typename T&gt; struct Elt&lt;T,true&gt;
++{
++  typedef T in_type;
++  typedef std::complex&lt;T&gt; out_type;
++};
++template &lt;typename T&gt; struct Elt&lt;T,false&gt;
++{
++  typedef std::complex&lt;T&gt; in_type;
++  typedef std::complex&lt;T&gt; out_type;
++};
++
++template &lt;unsigned Dim, typename T, unsigned L&gt; struct Arg;
++
++template &lt;unsigned Dim, typename T&gt; 
++struct Arg&lt;Dim,T,0&gt;
++{
++  typedef typename vsip::impl::View_of_dim&lt;Dim,T,
++    vsip::Dense&lt;Dim,T,typename vsip::impl::Row_major&lt;Dim&gt;::type&gt; &gt;::type type;
++};
++
++template &lt;unsigned Dim, typename T&gt; 
++struct Arg&lt;Dim,T,1&gt;
++{
++  typedef typename vsip::impl::View_of_dim&lt;Dim,T,
++    vsip::Dense&lt;Dim,T,typename vsip::impl::Col_major&lt;Dim&gt;::type&gt; &gt;::type type;
++};
++
++template &lt;unsigned Dim, typename T&gt; 
++struct Arg&lt;Dim,T,2&gt;
++{
++  typedef typename vsip::impl::View_of_dim&lt;Dim,T,
++    vsip::impl::Fast_block&lt;Dim,T,
++      vsip::impl::Layout&lt;Dim,
++        typename vsip::impl::Row_major&lt;Dim&gt;::type,
++        vsip::impl::Stride_unit_dense
++  &gt; &gt; &gt;::type type;
++};
++
++inline unsigned 
++adjust_size(unsigned size, bool is_short, bool is_short_dim, bool no_odds)
++{ 
++  // no odd sizes along axis for real-&gt;complex
++  if ((size &amp; 1) &amp;&amp; no_odds &amp;&amp; is_short_dim)
++    ++size;
++  return (is_short &amp;&amp; is_short_dim) ? size / 2 + 1 : size;
++}
++
++template &lt;unsigned Dim&gt; vsip::Domain&lt;Dim&gt; make_dom(unsigned*, bool, int, bool);
++template &lt;&gt; vsip::Domain&lt;2&gt; make_dom&lt;2&gt;(
++  unsigned* d, bool is_short, int sd, bool no_odds)
++{
++  return  vsip::Domain&lt;2&gt;(
++    vsip::Domain&lt;1&gt;(adjust_size(d[1], is_short, sd == 0, no_odds)),
++    vsip::Domain&lt;1&gt;(adjust_size(d[2], is_short, sd == 1, no_odds)));
++} 
++template &lt;&gt; vsip::Domain&lt;3&gt; make_dom&lt;3&gt;(
++  unsigned* d, bool is_short, int sd, bool no_odds)
++{
++  return vsip::Domain&lt;3&gt;(
++    vsip::Domain&lt;1&gt;(adjust_size(d[0], is_short, sd == 0, no_odds)),
++    vsip::Domain&lt;1&gt;(adjust_size(d[1], is_short, sd == 1, no_odds)),
++    vsip::Domain&lt;1&gt;(adjust_size(d[2], is_short, sd == 2, no_odds)));
++} 
++
++template &lt;typename T, typename BlockT&gt;
++vsip::Domain&lt;2&gt;
++domain_of(vsip::Matrix&lt;T,BlockT&gt; const&amp; src)
++{
++  return vsip::Domain&lt;2&gt;(vsip::Domain&lt;1&gt;(src.size(0)),
++                         vsip::Domain&lt;1&gt;(src.size(1)));
++} 
++ 
++
++template &lt;typename T, typename BlockT&gt;
++vsip::Domain&lt;3&gt;
++domain_of(vsip::Tensor&lt;T,BlockT&gt; const&amp; src)
++{
++  return vsip::Domain&lt;2&gt;(vsip::Domain&lt;1&gt;(src.size(0)),
++                         vsip::Domain&lt;1&gt;(src.size(1)),
++                         vsip::Domain&lt;1&gt;(src.size(2)));
++} 
++
++//
++
++template &lt;typename T, typename BlockT&gt;
++vsip::Matrix&lt;T,BlockT&gt;
++force_copy_init(vsip::Matrix&lt;T,BlockT&gt; const&amp; src)
++{ 
++  vsip::Matrix&lt;T,BlockT&gt; tmp(src.size(0), src.size(1));
++  tmp = src;
++  return tmp;
++}
++
++template &lt;typename T, typename BlockT&gt;
++vsip::Tensor&lt;T,BlockT&gt;
++force_copy_init(vsip::Tensor&lt;T,BlockT&gt; const&amp; src)
++{ 
++  vsip::Tensor&lt;T,BlockT&gt; tmp(src.size(0), src.size(1), src.size(2));
++  tmp = src;
++  return tmp;
++}
++
++//
++
++template &lt;typename T&gt; void set_values(T&amp; v1, T&amp; v2)
++{ v1 = T(10); v2 = T(20); }
++
++template &lt;typename T&gt; void set_values(std::complex&lt;T&gt;&amp; z1, std::complex&lt;T&gt;&amp; z2)
++{
++  z1 = std::complex&lt;T&gt;(T(10), T(10));
++  z2 = std::complex&lt;T&gt;(T(20), T(20));
++}
++
++#if 1
++
++// 2D 
++
++template &lt;typename BlockT, typename T&gt;
++void fill_random(
++  vsip::Matrix&lt;T,BlockT&gt; in, vsip::Rand&lt;T&gt;&amp; rander)
++{
++  in = (rander.randu(in.size(0), in.size(1)) * 20.0) - 10.0;
++}
++
++template &lt;typename BlockT, typename T&gt;
++void fill_random(
++  vsip::Matrix&lt;std::complex&lt;T&gt;,BlockT&gt; in,
++  vsip::Rand&lt;std::complex&lt;T&gt; &gt;&amp; rander)
++{
++  in = rander.randu(in.size(0), in.size(1)) * std::complex&lt;T&gt;(20.0) -
++         std::complex&lt;T&gt;(10.0, 10.0);
++}
++
++// 3D 
++
++template &lt;typename BlockT, typename T&gt;
++void fill_random(
++  vsip::Tensor&lt;T,BlockT&gt;&amp; in, vsip::Rand&lt;T&gt;&amp; rander)
++{
++  vsip::Domain&lt;2&gt; sub(vsip::Domain&lt;1&gt;(in.size(1)),
++                      vsip::Domain&lt;1&gt;(in.size(2))); 
++  for (unsigned i = in.size(0); i-- &gt; 0;)
++    fill_random(in(i, vsip::Domain&lt;1&gt;(in.size(1)),
++                      vsip::Domain&lt;1&gt;(in.size(2))), rander);
++}
++
++#else
++// debug -- keep this.
++
++// 2D 
++
++template &lt;typename BlockT, typename T&gt;
++void fill_random(
++  vsip::Matrix&lt;T,BlockT&gt; in, vsip::Rand&lt;T&gt;&amp; rander)
++{
++  in = T(0);
++  in.block().put(0, 0, T(1.0));
++}
++
++// 3D 
++
++template &lt;typename BlockT, typename T&gt;
++void fill_random(
++  vsip::Tensor&lt;T,BlockT&gt;&amp; in, vsip::Rand&lt;T&gt;&amp; rander)
++{
++  in = T(0);
++  in.block().put(0, 0, 0, T(1.0));
++}
++
++#endif
++
++//////
++
++// 2D, cc
++
++template &lt;typename T, typename inBlock, typename outBlock&gt;
++void 
++compute_ref(
++  vsip::Matrix&lt;std::complex&lt;T&gt;,inBlock&gt; const&amp; in,
++  vsip::Domain&lt;2&gt; const&amp; in_dom, 
++  vsip::Matrix&lt;std::complex&lt;T&gt;,outBlock&gt;&amp; ref,
++  vsip::Domain&lt;2&gt; const&amp; out_dom,
++  int (&amp; /* dum */)[1])
++{
++  vsip::Fftm&lt;std::complex&lt;T&gt;,std::complex&lt;T&gt;,0,
++             vsip::fft_fwd,vsip::by_reference,1&gt;  fftm_across(in_dom, 1.0);
++  fftm_across(in, ref);
++
++  vsip::Fftm&lt;std::complex&lt;T&gt;,std::complex&lt;T&gt;,1,
++             vsip::fft_fwd,vsip::by_reference,1&gt;  fftm_down(out_dom, 1.0);
++  fftm_down(ref);
++}
++
++// 2D, rc
++
++template &lt;typename T, typename inBlock, typename outBlock&gt;
++void 
++compute_ref(
++  vsip::Matrix&lt;T,inBlock&gt; const&amp; in,
++  vsip::Domain&lt;2&gt; const&amp; in_dom, 
++  vsip::Matrix&lt;std::complex&lt;T&gt;,outBlock&gt;&amp; ref,
++  vsip::Domain&lt;2&gt; const&amp; out_dom,
++  int (&amp; /* dum */)[1])
++{
++  vsip::Fftm&lt;T,std::complex&lt;T&gt;,1,
++    vsip::fft_fwd,vsip::by_reference,1&gt;  fftm_across(in_dom, 1.0);
++  fftm_across(in, ref);
++
++  typedef std::complex&lt;T&gt; CT;
++  vsip::Fftm&lt;CT,CT,0,
++    vsip::fft_fwd,vsip::by_reference,1&gt;  fftm_down(out_dom, 1.0);
++  fftm_down(ref);
++}
++
++// 2D, rc
++
++template &lt;typename T, typename inBlock, typename outBlock&gt;
++void 
++compute_ref(
++  vsip::Matrix&lt;T,inBlock&gt; const&amp; in,
++  vsip::Domain&lt;2&gt; const&amp; in_dom, 
++  vsip::Matrix&lt;std::complex&lt;T&gt;,outBlock&gt;&amp; ref,
++  vsip::Domain&lt;2&gt; const&amp; out_dom,
++  int (&amp; /* dum */)[2])
++{
++  vsip::Fftm&lt;T,std::complex&lt;T&gt;,0,
++    vsip::fft_fwd,vsip::by_reference,1&gt;  fftm_across(in_dom, 1.0);
++  fftm_across(in, ref);
++
++  typedef std::complex&lt;T&gt; CT;
++  vsip::Fftm&lt;CT,CT,1,
++    vsip::fft_fwd,vsip::by_reference,1&gt;  fftm_down(out_dom, 1.0);
++  fftm_down(ref);
++}
++
++// 3D, cc
++
++template &lt;typename T, typename inBlock, typename outBlock&gt;
++void 
++compute_ref(
++  vsip::Tensor&lt;std::complex&lt;T&gt;,inBlock&gt; const&amp; in,
++  vsip::Domain&lt;3&gt; const&amp; in_dom, 
++  vsip::Tensor&lt;std::complex&lt;T&gt;,outBlock&gt;&amp; ref,
++  vsip::Domain&lt;3&gt; const&amp; out_dom, 
++  int (&amp; /* dum */)[1]) 
++{
++  typedef std::complex&lt;T&gt; CT;
++
++  vsip::Fft&lt;vsip::const_Matrix,CT,CT,vsip::fft_fwd,vsip::by_reference,1&gt;  fft_across(
++    vsip::Domain&lt;2&gt;(in_dom[1], in_dom[2]), 1.0);
++  for (unsigned i = in_dom[0].size(); i-- &gt; 0; )
++    fft_across(in(i, in_dom[1], in_dom[2]),
++              ref(i, out_dom[1], out_dom[2]));
++
++  // note: axis ---v--- here is reverse of notation used otherwise.
++  vsip::Fftm&lt;CT,CT,1,vsip::fft_fwd,vsip::by_reference,1&gt;  fftm_down(
++    vsip::Domain&lt;2&gt;(in_dom[0], in_dom[1]), 1.0);
++  for (unsigned k = in_dom[2].size(); k-- &gt; 0; )
++    fftm_down(ref(out_dom[0], out_dom[1], k));
++}
++
++// 3D, rc, shorten bottom-top
++
++template &lt;typename T, typename inBlock, typename outBlock&gt;
++void 
++compute_ref(
++  vsip::Tensor&lt;T,inBlock&gt; const&amp; in,
++  vsip::Domain&lt;3&gt; const&amp; in_dom, 
++  vsip::Tensor&lt;std::complex&lt;T&gt;,outBlock&gt;&amp; ref,
++  vsip::Domain&lt;3&gt; const&amp; out_dom,
++  int (&amp; /* dum */)[1]) 
++{
++  typedef std::complex&lt;T&gt; CT;
++
++  // first, planes left-right, squeeze top-bottom
++  vsip::Fft&lt;vsip::const_Matrix,T,CT,0,vsip::by_reference,1&gt;   fft_across(
++    vsip::Domain&lt;2&gt;(in_dom[0], in_dom[1]), 1.0);
++  for (unsigned k = in_dom[2].size(); k-- &gt; 0; )
++    fft_across(in(in_dom[0], in_dom[1], k),
++            ref(out_dom[0], out_dom[1], k));
++
++  // planes top-bottom, running left-right
++  // note: axis ---v--- here is reverse of notation used otherwise.
++  vsip::Fftm&lt;CT,CT,0,vsip::fft_fwd,vsip::by_reference,1&gt;   fftm_down(
++    vsip::Domain&lt;2&gt;(in_dom[1], in_dom[2]), 1.0);
++  for (unsigned i = out_dom[0].size(); i-- &gt; 0; )
++    fftm_down(ref(i, out_dom[1], out_dom[2]));
++}
++
++// 3D, rc, shorten front-&gt;back
++
++template &lt;typename T, typename inBlock, typename outBlock&gt;
++void 
++compute_ref(
++  vsip::Tensor&lt;T,inBlock&gt; const&amp; in,
++  vsip::Domain&lt;3&gt; const&amp; in_dom, 
++  vsip::Tensor&lt;std::complex&lt;T&gt;,outBlock&gt;&amp; ref,
++  vsip::Domain&lt;3&gt; const&amp; out_dom, 
++  int (&amp; /* dum */)[2]) 
++{
++  typedef std::complex&lt;T&gt; CT;
++
++  // planes top-bottom, squeeze front-back
++  vsip::Fft&lt;vsip::const_Matrix,T,CT,0,vsip::by_reference,1&gt;   fft_across(
++    vsip::Domain&lt;2&gt;(in_dom[1], in_dom[2]), 1.0);
++  for (unsigned i = in_dom[0].size(); i-- &gt; 0; )
++    fft_across(in(i, in_dom[1], in_dom[2]),
++              ref(i, out_dom[1], out_dom[2]));
++
++  // planes front-back, running bottom-top
++  // note: axis ---v--- here is reverse of notation used otherwise.
++  vsip::Fftm&lt;CT,CT,1,vsip::fft_fwd,vsip::by_reference,1&gt;   fftm_down(
++    vsip::Domain&lt;2&gt;(in_dom[0], in_dom[2]), 1.0);
++  for (unsigned j = out_dom[1].size(); j-- &gt; 0; )
++    fftm_down(ref(out_dom[0], j, out_dom[2]));
++}
++
++// 3D, rc, shorten left-right
++
++template &lt;typename T, typename inBlock, typename outBlock&gt;
++void 
++compute_ref(
++  vsip::Tensor&lt;T,inBlock&gt; const&amp; in,
++  vsip::Domain&lt;3&gt; const&amp; in_dom, 
++  vsip::Tensor&lt;std::complex&lt;T&gt;,outBlock&gt;&amp; ref,
++  vsip::Domain&lt;3&gt; const&amp; out_dom, 
++  int (&amp; /* dum */)[3])
++{
++  typedef std::complex&lt;T&gt; CT;
++
++  // planes top-bottom, squeeze left-right
++  vsip::Fft&lt;vsip::const_Matrix,T,CT,1,vsip::by_reference,1&gt;   fft_across(
++    vsip::Domain&lt;2&gt;(in_dom[1], in_dom[2]), 1.0);
++  for (unsigned i = in_dom[0].size(); i-- &gt; 0; )
++    fft_across(in(i, in_dom[1], in_dom[2]),
++              ref(i, out_dom[1], out_dom[2]));
++
++  // planes left-right, running bottom-top
++  // note: axis ---v--- here is reverse of notation used otherwise.
++  vsip::Fftm&lt;CT,CT,1,vsip::fft_fwd,vsip::by_reference,1&gt;   fftm_down(
++    vsip::Domain&lt;2&gt;(in_dom[0], in_dom[1]), 1.0);
++  for (unsigned k = out_dom[2].size(); k-- &gt; 0; )
++    fftm_down(ref(out_dom[0], out_dom[1], k));
++}
++
++template &lt;unsigned Dim, typename T1, typename T2,
++	  int sD, vsip::return_mechanism_type How&gt;
++struct Test_fft;
++
++template &lt;typename T1, typename T2, int sD, vsip::return_mechanism_type How&gt;
++struct Test_fft&lt;2,T1,T2,sD,How&gt;
++{ typedef vsip::Fft&lt;vsip::const_Matrix,T1,T2,sD,How,1,vsip::alg_time&gt;  type; };
++
++template &lt;typename T1, typename T2, int sD, vsip::return_mechanism_type How&gt;
++struct Test_fft&lt;3,T1,T2,sD,How&gt;
++{ typedef vsip::Fft&lt;vsip::const_Tensor,T1,T2,sD,How,1,vsip::alg_time&gt;  type; };
++
++// check_in_place
++//
++
++// there is no in-place for real-&gt;complex
++
++template &lt;template &lt;typename,typename&gt; class ViewT1,
++          template &lt;typename,typename&gt; class ViewT2,
++          template &lt;typename,typename&gt; class ViewT3,
++	  typename T, typename Block1, typename Block2, int sDf, int sDi&gt;
++void
++check_in_place(
++  vsip::Fft&lt;ViewT1,T,std::complex&lt;T&gt;,sDf,vsip::by_reference,1,vsip::alg_time&gt;&amp;,
++  vsip::Fft&lt;ViewT1,std::complex&lt;T&gt;,T,sDi,vsip::by_reference,1,vsip::alg_time&gt;&amp;,
++  ViewT2&lt;T,Block1&gt;&amp;, ViewT3&lt;std::complex&lt;T&gt;,Block2&gt;&amp;, double)
++{ }
++
++template &lt;template &lt;typename,typename&gt; class ViewT1,
++          template &lt;typename,typename&gt; class ViewT2,
++          template &lt;typename,typename&gt; class ViewT3,
++	  typename T, typename Block1, typename Block2&gt;
++void
++check_in_place(
++  vsip::Fft&lt;ViewT1,T,T,vsip::fft_fwd,vsip::by_reference,1,vsip::alg_time&gt;&amp;  fwd,
++  vsip::Fft&lt;ViewT1,T,T,vsip::fft_inv,vsip::by_reference,1,vsip::alg_time&gt;&amp;  inv,
++  ViewT2&lt;T,Block1&gt; const&amp;  in,
++  ViewT3&lt;T,Block2&gt; const&amp;  ref,
++  double scalei)
++{
++  typename vsip::impl::View_of_dim&lt;Block1::dim,T,Block1&gt;::type  inout(
++    force_copy_init(in));
++
++  fwd(inout);
++  assert(error_db(inout, ref) &lt; -100); 
++
++  inv(inout);
++  inout *= T(scalei);
++  assert(error_db(inout, in) &lt; -100); 
++}
++
++// when testing matrices, will use latter two values
++
++unsigned  sizes[][3] =
++{
++  { 2, 2, 2 },
++  { 8, 8, 8 },
++  { 1, 1, 1 },
++  { 2, 2, 1 },
++  { 2, 8, 128 },
++  { 3, 5, 7 },
++  { 2, 24, 48 },
++  { 24, 1, 5 },
++};
++
++//   the generic test
++
++template &lt;unsigned inL, unsigned outL, typename F, bool isReal,
++          unsigned Dim, int sD&gt;
++void 
++test_fft()
++{
++  typedef typename Elt&lt;F,isReal&gt;::in_type in_elt_type;
++  typedef typename Elt&lt;F,false&gt;::out_type out_elt_type;
++
++  static const int sdf = (sD &lt; 0) ? vsip::fft_fwd : sD;
++  static const int sdi = (sD &lt; 0) ? vsip::fft_inv : sD;
++  typedef typename Test_fft&lt;Dim,in_elt_type,out_elt_type,
++                    sdf,vsip::by_reference&gt;::type         fwd_by_ref_type;
++  typedef typename Test_fft&lt;Dim,in_elt_type,out_elt_type,
++                    sdf,vsip::by_value&gt;::type             fwd_by_value_type;
++  typedef typename Test_fft&lt;Dim,out_elt_type,in_elt_type,
++                    sdi,vsip::by_reference&gt;::type         inv_by_ref_type;
++  typedef typename Test_fft&lt;Dim,out_elt_type,in_elt_type,
++                    sdi,vsip::by_value&gt;::type             inv_by_value_type;
++
++  typedef typename Arg&lt;Dim,in_elt_type,inL&gt;::type    in_type;
++  typedef typename Arg&lt;Dim,out_elt_type,outL&gt;::type  out_type;
++
++  for (unsigned i = 0; i &lt; sizeof(sizes)/(sizeof(*sizes)*3); ++i)
++  {
++    vsip::Rand&lt;in_elt_type&gt; rander(
++      sizes[i][0] * sizes[i][1] * sizes[i][2] * Dim * (sD+5) * (isReal+1));
++
++    Domain&lt;Dim&gt;  in_dom(make_dom&lt;Dim&gt;(sizes[i], false, sD, isReal)); 
++    Domain&lt;Dim&gt;  out_dom(make_dom&lt;Dim&gt;(sizes[i], isReal, sD, isReal)); 
++
++    typedef typename in_type::block_type   in_block_type;
++    typedef typename out_type::block_type  out_block_type;
++
++    in_block_type  in_block(in_dom);
++    in_type  in(in_block);
++    fill_random(in, rander);
++    in_type  in_copy(force_copy_init(in));
++
++    out_block_type  ref1_block(out_dom);
++    out_type  ref1(ref1_block);
++    int dum[(sD &lt; 0) ? 1 : sD + 1];
++    compute_ref(in, in_dom, ref1, out_dom, dum);
++
++    out_type  ref4(force_copy_init(ref1));
++    ref4 *= out_elt_type(0.25);
++
++    out_type  refN(force_copy_init(ref1));
++    refN /= out_elt_type(in_dom.size());
++
++    assert(error_db(in, in_copy) &lt; -200);  // not clobbered
++
++    { fwd_by_ref_type  fft_ref1(in_dom, 1.0);
++      out_block_type  out_block(out_dom);
++      out_type  out(out_block);
++      out_type  other = fft_ref1(in, out);
++      assert(&amp;out.block() == &amp;other.block());
++      assert(error_db(in, in_copy) &lt; -200);  // not clobbered
++      assert(error_db(out, ref1) &lt; -100); 
++
++      inv_by_ref_type  inv_refN(in_dom, 1.0/in_dom.size());
++      in_block_type  in2_block(in_dom);
++      in_type  in2(in2_block);
++      inv_refN(out, in2);
++      assert(error_db(out, ref1) &lt; -100);  // not clobbered
++      assert(error_db(in2, in) &lt; -100); 
++
++      check_in_place(fft_ref1, inv_refN, in, ref1, 1.0);
++    }
++    { fwd_by_ref_type  fft_ref4(in_dom, 0.25);
++      out_block_type  out_block(out_dom);
++      out_type  out(out_block);
++      out_type  other = fft_ref4(in, out);
++      assert(&amp;out.block() == &amp;other.block());
++      assert(error_db(in, in_copy) &lt; -200);  // not clobbered
++      assert(error_db(out, ref4) &lt; -100); 
++
++      inv_by_ref_type  inv_ref8(in_dom, .125);
++      in_block_type  in2_block(in_dom);
++      in_type  in2(in2_block);
++      inv_ref8(out, in2);
++      assert(error_db(out, ref4) &lt; -100);  // not clobbered
++      in2 /= in_elt_type(in_dom.size() / 32.0);
++      assert(error_db(in2, in) &lt; -100); 
++
++      check_in_place(fft_ref4, inv_ref8, in, ref4, 32.0/in_dom.size());
++    }
++    { fwd_by_ref_type  fft_refN(in_dom, 1.0/in_dom.size());
++      out_block_type  out_block(out_dom);
++      out_type  out(out_block);
++      out_type  other = fft_refN(in, out);
++      assert(&amp;out.block() == &amp;other.block());
++      assert(error_db(in, in_copy) &lt; -200);  // not clobbered
++      assert(error_db(out, refN) &lt; -100); 
++
++      inv_by_ref_type  inv_ref1(in_dom, 1.0);
++      in_block_type  in2_block(in_dom);
++      in_type  in2(in2_block);
++      inv_ref1(out, in2);
++      assert(error_db(out, refN) &lt; -100);  // not clobbered
++      assert(error_db(in2, in) &lt; -100); 
++
++      check_in_place(fft_refN, inv_ref1, in, refN, 1.0);
++    }
++    
++
++    { fwd_by_value_type  fwd_val1(in_dom, 1.0);
++      out_type  out(fwd_val1(in));
++      assert(error_db(in, in_copy) &lt; -200);  // not clobbered
++      assert(error_db(out, ref1) &lt; -100); 
++
++      inv_by_value_type  inv_valN(in_dom, 1.0/in_dom.size());
++      in_type  in2(inv_valN(out));
++      assert(error_db(out, ref1) &lt; -100);    // not clobbered
++      assert(error_db(in2, in) &lt; -100); 
++    }
++    { fwd_by_value_type  fwd_val4(in_dom, 0.25);
++      out_type  out(fwd_val4(in));
++      assert(error_db(in, in_copy) &lt; -200);  // not clobbered
++      assert(error_db(out, ref4) &lt; -100); 
++
++      inv_by_value_type  inv_val8(in_dom, 0.125);
++      in_type  in2(inv_val8(out));
++      assert(error_db(out, ref4) &lt; -100);    // not clobbered
++      in2 /= in_elt_type(in_dom.size() / 32.0);
++      assert(error_db(in2, in) &lt; -100); 
++    }
++    { fwd_by_value_type  fwd_valN(in_dom, 1.0/in_dom.size());
++      out_type  out(fwd_valN(in));
++      assert(error_db(in, in_copy) &lt; -200);  // not clobbered
++      assert(error_db(out, refN) &lt; -100); 
++
++      inv_by_value_type  inv_val1(in_dom, 1.0);
++      in_type  in2(inv_val1(out));
++      assert(error_db(out, refN) &lt; -100);    // not clobbered
++      assert(error_db(in2, in) &lt; -100); 
++    }
++  }
++};
+ 
+ int
+ main()
+ {
+   vsipl init;
+ 
++//
++// First check 1D 
++//
+ #if defined(VSIP_IMPL_FFT_USE_FLOAT)
+ 
+   test_by_ref&lt;complex&lt;float&gt; &gt;(2, 64);
+@@ -329,7 +937,7 @@ main()
+   test_real&lt;float&gt;(2, 242);
+   test_real&lt;float&gt;(3, 16);
+ 
+-#endif
++#endif 
+ 
+ #if defined(VSIP_IMPL_FFT_USE_DOUBLE)
+ 
+@@ -347,6 +955,126 @@ main()
+   test_real&lt;double&gt;(2, 242);
+   test_real&lt;double&gt;(3, 16);
+ 
++#endif 
++
++
++//
++// check 2D, 3D
++//
++
++#if defined(VSIP_IMPL_FFT_USE_FLOAT)
++
++  test_fft&lt;0,0,float,false,2,vsip::fft_fwd&gt;();
++
++#if ! defined(VSIP_IMPL_IPP_FFT)
++  test_fft&lt;0,0,float,false,3,vsip::fft_fwd&gt;();
++
++  test_fft&lt;0,0,float,true,2,1&gt;();
++  test_fft&lt;0,0,float,true,2,0&gt;();
++
++  test_fft&lt;0,0,float,true,3,2&gt;();
++  test_fft&lt;0,0,float,true,3,1&gt;();
++  test_fft&lt;0,0,float,true,3,0&gt;();
++#endif   /* VSIP_IMPL_IPP_FFT */
++
++#endif 
++
++#if defined(VSIP_IMPL_FFT_USE_DOUBLE)
++
++#if ! defined(VSIP_IMPL_IPP_FFT)
++  test_fft&lt;0,0,double,false,2,vsip::fft_fwd&gt;();
++  test_fft&lt;0,0,double,false,3,vsip::fft_fwd&gt;();
++
++  test_fft&lt;0,0,double,true,2,1&gt;();
++  test_fft&lt;0,0,double,true,2,0&gt;();
++
++  test_fft&lt;0,0,double,true,3,2&gt;();
++  test_fft&lt;0,0,double,true,3,1&gt;();
++  test_fft&lt;0,0,double,true,3,0&gt;();
++#endif  /* VSIP_IMPL_IPP_FFT */
++
++#endif
++
++//
++// check with different block types
++//
++
++#if defined(VSIP_IMPL_FFT_USE_FLOAT)
++# define SCALAR float
++#elif defined(VSIP_IMPL_FFT_USE_FLOAT)
++# define SCALAR double
++#endif
++
++#if defined(SCALAR)
++
++  test_fft&lt;0,1,SCALAR,false,2,vsip::fft_fwd&gt;();
++  test_fft&lt;0,2,SCALAR,false,2,vsip::fft_fwd&gt;();
++  test_fft&lt;1,0,SCALAR,false,2,vsip::fft_fwd&gt;();
++  test_fft&lt;1,1,SCALAR,false,2,vsip::fft_fwd&gt;();
++  test_fft&lt;1,2,SCALAR,false,2,vsip::fft_fwd&gt;();
++  test_fft&lt;2,0,SCALAR,false,2,vsip::fft_fwd&gt;();
++  test_fft&lt;2,1,SCALAR,false,2,vsip::fft_fwd&gt;();
++  test_fft&lt;2,2,SCALAR,false,2,vsip::fft_fwd&gt;();
++
++#if ! defined(VSIP_IMPL_IPP_FFT)
++  test_fft&lt;0,1,SCALAR,true,2,1&gt;();
++  test_fft&lt;0,1,SCALAR,true,2,0&gt;();
++  test_fft&lt;0,2,SCALAR,true,2,1&gt;();
++  test_fft&lt;0,2,SCALAR,true,2,0&gt;();
++
++  test_fft&lt;1,0,SCALAR,true,2,1&gt;();
++  test_fft&lt;1,0,SCALAR,true,2,0&gt;();
++  test_fft&lt;1,1,SCALAR,true,2,1&gt;();
++  test_fft&lt;1,1,SCALAR,true,2,0&gt;();
++  test_fft&lt;1,2,SCALAR,true,2,1&gt;();
++  test_fft&lt;1,2,SCALAR,true,2,0&gt;();
++
++  test_fft&lt;2,0,SCALAR,true,2,1&gt;();
++  test_fft&lt;2,0,SCALAR,true,2,0&gt;();
++  test_fft&lt;2,1,SCALAR,true,2,1&gt;();
++  test_fft&lt;2,1,SCALAR,true,2,0&gt;();
++  test_fft&lt;2,2,SCALAR,true,2,1&gt;();
++  test_fft&lt;2,2,SCALAR,true,2,0&gt;();
++
++
++  test_fft&lt;0,1,SCALAR,false,3,vsip::fft_fwd&gt;();
++  test_fft&lt;0,2,SCALAR,false,3,vsip::fft_fwd&gt;();
++  test_fft&lt;1,0,SCALAR,false,3,vsip::fft_fwd&gt;();
++  test_fft&lt;1,1,SCALAR,false,3,vsip::fft_fwd&gt;();
++  test_fft&lt;1,2,SCALAR,false,3,vsip::fft_fwd&gt;();
++  test_fft&lt;2,0,SCALAR,false,3,vsip::fft_fwd&gt;();
++  test_fft&lt;2,1,SCALAR,false,3,vsip::fft_fwd&gt;();
++  test_fft&lt;2,2,SCALAR,false,3,vsip::fft_fwd&gt;();
++
++  test_fft&lt;0,1,SCALAR,true,3,2&gt;();
++  test_fft&lt;0,1,SCALAR,true,3,1&gt;();
++  test_fft&lt;0,1,SCALAR,true,3,0&gt;();
++  test_fft&lt;0,2,SCALAR,true,3,2&gt;();
++  test_fft&lt;0,2,SCALAR,true,3,1&gt;();
++  test_fft&lt;0,2,SCALAR,true,3,0&gt;();
++
++  test_fft&lt;1,0,SCALAR,true,3,2&gt;();
++  test_fft&lt;1,0,SCALAR,true,3,1&gt;();
++  test_fft&lt;1,0,SCALAR,true,3,0&gt;();
++  test_fft&lt;1,1,SCALAR,true,3,2&gt;();
++  test_fft&lt;1,1,SCALAR,true,3,1&gt;();
++  test_fft&lt;1,1,SCALAR,true,3,0&gt;();
++  test_fft&lt;1,2,SCALAR,true,3,2&gt;();
++  test_fft&lt;1,2,SCALAR,true,3,1&gt;();
++  test_fft&lt;1,2,SCALAR,true,3,0&gt;();
++
++  test_fft&lt;2,0,SCALAR,true,3,2&gt;();
++  test_fft&lt;2,0,SCALAR,true,3,1&gt;();
++  test_fft&lt;2,0,SCALAR,true,3,0&gt;();
++  test_fft&lt;2,1,SCALAR,true,3,2&gt;();
++  test_fft&lt;2,1,SCALAR,true,3,1&gt;();
++  test_fft&lt;2,1,SCALAR,true,3,0&gt;();
++  test_fft&lt;2,2,SCALAR,true,3,2&gt;();
++  test_fft&lt;2,2,SCALAR,true,3,1&gt;();
++  test_fft&lt;2,2,SCALAR,true,3,0&gt;();
++
++#endif  /* VSIP_IMPL_IPP_FFT */
++
+ #endif
+ 
+   return 0;
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000058.html">[vsipl++] [patch] enable use of refcount policy for ext_data
+</A></li>
+	<LI>Next message: <A HREF="000061.html">[patch] Toeplitz system solver
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#60">[ date ]</a>
+              <a href="thread.html#60">[ thread ]</a>
+              <a href="subject.html#60">[ subject ]</a>
+              <a href="author.html#60">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">More information about the vsipl++
+mailing list</a><br>
+</body></html>

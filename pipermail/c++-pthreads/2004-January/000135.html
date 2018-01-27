@@ -1,0 +1,250 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [c++-pthreads] What are the real issues?
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:c%2B%2B-pthreads%40codesourcery.com?Subject=Re%3A%20%5Bc%2B%2B-pthreads%5D%20What%20are%20the%20real%20issues%3F&In-Reply-To=%3C20040107193223.GA2884%40diablo.name%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000118.html">
+   <LINK REL="Next"  HREF="000139.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[c++-pthreads] What are the real issues?</H1>
+    <B>Ted Baker</B> 
+    <A HREF="mailto:c%2B%2B-pthreads%40codesourcery.com?Subject=Re%3A%20%5Bc%2B%2B-pthreads%5D%20What%20are%20the%20real%20issues%3F&In-Reply-To=%3C20040107193223.GA2884%40diablo.name%3E"
+       TITLE="[c++-pthreads] What are the real issues?">baker at cs.fsu.edu
+       </A><BR>
+    <I>Wed Jan  7 19:32:23 UTC 2004</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000118.html">[c++-pthreads] Re: What are the real issues?
+</A></li>
+        <LI>Next message: <A HREF="000139.html">[c++-pthreads] What are the real issues?
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#135">[ date ]</a>
+              <a href="thread.html#135">[ thread ]</a>
+              <a href="subject.html#135">[ subject ]</a>
+              <a href="author.html#135">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>&gt;<i> The Itanium C++ ABI, which gcc adopted, made cancellation a special 
+</I>&gt;<i> kind of exception, &quot;forced unwinding&quot;, so that a thread can't just 
+</I>&gt;<i> catch the cancellation exception and swallow it.  The idea was that a 
+</I>
+This &quot;forced unwinding&quot; sounds different from normal exception
+processing, since you cannot catch the exception.  How deeply is
+this embedded in the gcc C++ implementation?  e.g., is the
+unwinding done by different code (maybe even by a proxy thread?)
+for cancellation than for normal exception propagation?
+
+For example, with GNAT, the task abort exception is processed
+exactly like other exceptions.  The difference is pretty
+superficial in that tha parser does not allow handlers for abort
+in user code.  This is easily overridden (a GNAT-specific language
+extension) when one is writing system support code, so it is not a
+problem for critical libraries.
+
+&gt;<i> thread may disable cancellation tempoarily, but that once a 
+</I>&gt;<i> cancellation has begun it can't be thrown away.  This was a slightly 
+</I>&gt;<i> controversial decision at the time, and maybe it's at the heart of the 
+</I>&gt;<i> real issue.
+</I>
+&gt;<i> Second: the immediate issue was that some people saw a contradiction 
+</I>&gt;<i> between this model and the C++ library specification.  For example, 
+</I>&gt;<i> POSIX says that read() is a cancellation point.  But it's reasonable to 
+</I>&gt;<i> assume that std::istream:;read() invokes POSIX's read() system call, 
+</I>&gt;<i> and the C++ standard says that (under ordinary circumstances) 
+</I>&gt;<i> std::istream doesn't throw.  If the cancellation exception were an 
+</I>&gt;<i> ordinary exception instead of special forced unwinding, what would 
+</I>&gt;<i> happen would be that istream would invoke its streambuf, the streambuf 
+</I>&gt;<i> would call read(), read would throw a cancellation exception, then 
+</I>&gt;<i> istream would catch the exception, swallow it, and set and error flag.  
+</I>&gt;<i> Forced unwinding means that the cancellation exception will propagate 
+</I>&gt;<i> even though istream tries to swallow it.  This means that an exception 
+</I>&gt;<i> will propagate from istream when the C++ standard says it's not 
+</I>&gt;<i> supposed to.
+</I>
+See question above.  Is this normal propagation?  If so, then
+shouldn't it be possible to catch it?
+
+&gt;<i> Third, some people simply object to having cancellation be an exception 
+</I>&gt;<i> (or anything that looks like an exception): it means there are some 
+</I>&gt;<i> functions that can throw exceptions in the presence of threads that 
+</I>&gt;<i> wouldn't throw in a single-threaded program.
+</I>
+There seems to be no way around this, short of requiring that
+cancellation be disabled over all suspect library calls.  As Dave
+explained so well, if a system supports thread cancellation it can
+happen and it behaves virtually like an exception, regardless of
+what you call it.  To ask the pthread library implementors to
+change this would be a fundamental change to the pthread
+semantics.
+
+&gt;<i> cancellation that's very different from the POSIX.  Anything that 
+</I>&gt;<i> doesn't involve thread execution stopping sounds more like a 
+</I>&gt;<i> communication mechanism than a cancellation mechanism.  Seems to me 
+</I>&gt;<i> that the only real issues for debate are which functions are 
+</I>&gt;<i> cancellation points, how a thread can enable and disable cancellation, 
+</I>&gt;<i> whether a thread should be allowed to disregard a cancellation request 
+</I>&gt;<i> once it has been received, and what kind of cleanup a thread performs 
+</I>&gt;<i> before it stops.
+</I>
+POSIX and the Single Unix Specification cover these.  In the SUS,
+much of the relevant text is in the Base Definitions part, which
+are intended to be language-independent.
+
+---&gt; whether a thread should be allowed to disregard a cancellation
+request once it has been received
+
+SUS'98, which subsumes the POSIX standards, says:
+
+&quot;Whenever a thread has cancelability enabled and a cancellation
+request has been made with that thread as the target, and the
+thread then calls any function that is a cancellation point (such
+as pthread_testcancel() or read()), the cancellation request shall
+be acted upon before the function returns.&quot;
+
+[The &quot;shall&quot; means cancellation cannot be ignored at this point.]
+
+&quot;... If cancelability is disabled ... all cancellation
+requests are held pending...&quot;.
+
+[So, cancellation must be ignored at this point.]
+
+This seems to be language-independent semantics.
+
+---&gt; how a thread can enable and disable cancellation
+
+The C API defines pthread_setcanceltype() and
+pthread_setcancelstate().  A C++ API could define additional
+functions or points at which the above functions are implicitly
+(virtually) called.
+
+---&gt; what kind of cleanup a thread performs before it stops:
+
+SUS'98 says:
+                                 
+&quot;When a cancellation request is acted upon, the routines in the
+list are invoked one by one in LIFO sequence; that is, the last
+routine pushed onto the list (Last In) is the first to be invoked
+(First Out). The thread invokes the cancellation cleanup handler
+with cancellation disabled until the last cancellation cleanup
+handler returns. When the cancellation cleanup handler for a scope
+is invoked, the storage for that scope remains valid. If the last
+cancellation cleanup handler returns, thread execution is
+terminated and a status of PTHREAD_CANCELED is made available to
+any threads joining with the target. The symbolic constant
+PTHREAD_CANCELED expands to a constant expression of type ( void
+*) whose value matches no pointer to an object in memory nor the
+value NULL.
+
+&quot;The cancellation cleanup handlers are also invoked when the thread
+calls pthread_exit().&quot;
+
+&quot;...When the cancellation is acted on, the cancellation cleanup
+handlers for thread shall be called. When the last cancellation
+cleanup handler returns, the thread-specific data destructor
+functions shall be called for thread. When the last destructor
+function returns, thread shall be terminated. ...&quot;
+
+---&gt; which functions are cancellation points:
+
+SUS'98 (and POSIX) define a raft of functions for
+which cancellation points &quot;shall&quot; occur, and some more for
+which cancellation points &quot;may&quot; occur.  A C++ binding
+could define other names for functions with similar
+effects that are shall *not* be cancellation points.
+
+&gt;<i> My feeling: it's just plain inevitable that a multithreaded program has 
+</I>&gt;<i> more functions that might throw than a single-thread program.  Dealing 
+</I>&gt;<i> with this is part of what it means to make a program thread-safe.  We 
+</I>&gt;<i> might argue that POSIX defines too many cancellation points, and that 
+</I>&gt;<i> cutting it down to a smaller number (and, especially, getting rid of 
+</I>&gt;<i> the functions that POSIX says may or may not be cancellation points) 
+</I>&gt;<i> would make it easier to write correct code.
+</I>
+Yes.
+
+&gt;<i> But as I said, I think the really fundamental issue is whether a thread 
+</I>&gt;<i> should be allowed to receive a cancellation request, start to do some 
+</I>&gt;<i> work as a result of the request, and then decide that it doesn't want 
+</I>&gt;<i> to be cancelled.  If we think that's reasonable then I think what we 
+</I>
+POSIX and the SUS do not define this.  I believe it would be an
+upward-compatible extension to define it.  That is, no existing
+UNIX/POSIX conformant application could be broken by an extension
+that extends the API to allow a thread to regain control and
+&quot;revoke&quot; a cancellation, since no conformant application could
+presently include such an API call
+
+However, the debate will be over one *wants* to export such
+functionality.
+
+&gt;<i> should probably do is abandon the notion of forced unwinding and make 
+</I>&gt;<i> cancellation into an ordinary exception.  If we do that then the 
+</I>&gt;<i> std::istream contradiction goes away.  The cost, of course, is that it 
+</I>&gt;<i> might become surprisingly hard to cancel some threads.
+</I>
+From what I've read here, and my own experience, it seems this is
+the right thing to do, provided:
+
+1) The only way to handle this new cancellation exception is via a
+new syntax.
+
+2) You can agree on new C++ API function names for whichever
+POSIX/Unix cancellation-point system calls you don't think should
+ever propagate a cancellation exception.
+
+To do the latter, you have several choices:
+
+(a) Have the wrapper (e.g., for read()) just disable cancellation
+(and not reenable it).
+
+(b) Work with your friendly pthread implementor (the one who
+manages the code of the library functions that are cancellation
+points) to develop alternate entry points (e.g., read_nocancel())
+or a settable flag (e.g., that a C++ thread or process
+can call to make read() *not* serve as a cancellation point)
+for all the cancellation-point system calls that you don't think
+should really be cancellation points.
+
+--Ted
+
+
+
+
+
+
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000118.html">[c++-pthreads] Re: What are the real issues?
+</A></li>
+	<LI>Next message: <A HREF="000139.html">[c++-pthreads] What are the real issues?
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#135">[ date ]</a>
+              <a href="thread.html#135">[ thread ]</a>
+              <a href="subject.html#135">[ subject ]</a>
+              <a href="author.html#135">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/c++-pthreads">More information about the c++-pthreads
+mailing list</a><br>
+</body></html>

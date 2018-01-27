@@ -1,0 +1,128 @@
+From wmat at naoi.ca  Mon Jan  4 20:56:44 2010
+From: wmat at naoi.ca (Bill Traynor)
+Date: Mon, 4 Jan 2010 15:56:44 -0500
+Subject: [superh-gnu-discuss] mplayer argument parsing segfault with 
+	4.4-45
+In-Reply-To: <4B3A2CA3.3020202@codesourcery.com>
+References: <aec7e5c30912272102i83c36b3ydc7cfea3a684ebd6@mail.gmail.com> 
+	<4B38EBB7.40603@codesourcery.com> <aec7e5c30912290032x1ecf7616w6beec077ab8cda71@mail.gmail.com> 
+	<4B3A2CA3.3020202@codesourcery.com>
+Message-ID: <e71f4bea1001041256t1355c245x7ffd149322a4c351@mail.gmail.com>
+
+On Tue, Dec 29, 2009 at 11:21, Mark Mitchell <mark at codesourcery.com> wrote:
+
+> Magnus Damm wrote:
+>
+> > The mplayer source is fairly large so I suspect that the issue needs
+> > to be tracked down further. Do you have any pointer to a more fine
+> > grained step by step document that can be followed to produce these
+> > things for you? I'm quite busy though so I'm afraid I'll just add this
+> > to my TODO list for now.
+>
+> The first technique is to mix object files between the good and bad
+> builds.  Build the whole thing with both compilers, but then link half
+> of the object files from the good build with the other half from the bad
+> build.  Continue to bisect things until you have a bad object file.  If
+> you're lucky, that's a small object file with just one or two functions
+> in it, and it will be obvious what's been miscompiled -- or what's buggy
+>  in the source code.
+>
+>
+This was posted to mplayer-dev-eng.  I'm posting here to complete the
+thread.  This is not a compiler bug, but a mplayer bug.  Matt Fleming and I
+figured this out, here's the explanation and patch authored by Matt:
+
+Attached is a patch that changes the snippet of code that tests for the
+presence of vsscanf() during configure.
+
+The current test assumes that the type of va_list (as defined by the ABI
+of the target we're compiling for) is a pointer type, and therefore that
+0 is a valid argument. This is not the case for the SH4 ABI where
+va_list happens to be a struct type and even though vsscanf() is
+provided by libc the test fails to compile,
+
+/tmp/mplayer-conf-9882-6741.c: In function 'main':
+/tmp/mplayer-conf-9882-6741.c:4: error: incompatible type for argument 3 of
+'vsscanf'
+/home/wmat/CodeSourcery/Sourcery_G++_Lite_4.4-45/bin/../sh-linux-gnu/libc/usr/include/stdio.h:484:
+note: expected '__gnuc_va_list' but argument is of type 'int'
+
+The solution is to provide a properly typed argument to vsscanf() so
+that it will compile for any ABI.
+
+Index: configure
+===================================================================
+--- configure   (revision 30208)
++++ configure   (working copy)
+@@ -3745,7 +3745,7 @@
+ #define _ISOC99_SOURCE
+ #include <stdarg.h>
+ #include <stdio.h>
+-int main(void) { vsscanf(0, 0, 0); return 0; }
++int main(void) { va_list ap; vsscanf(0, 0, ap); return 0; }
+ EOF
+ _vsscanf=no
+ cc_check && _vsscanf=yes
+
+
+--
+> Mark Mitchell
+> CodeSourcery
+> mark at codesourcery.com
+> (650) 331-3385 x713
+>
+-------------- next part --------------
+An HTML attachment was scrubbed...
+URL: <http://sourcerytools.com/pipermail/superh-gnu-discuss/attachments/20100104/80a8cded/attachment.html>
+
+From magnus.damm at gmail.com  Tue Jan  5 03:58:02 2010
+From: magnus.damm at gmail.com (Magnus Damm)
+Date: Tue, 5 Jan 2010 12:58:02 +0900
+Subject: [superh-gnu-discuss] mplayer argument parsing segfault with 
+	4.4-45
+In-Reply-To: <e71f4bea1001041256t1355c245x7ffd149322a4c351@mail.gmail.com>
+References: <aec7e5c30912272102i83c36b3ydc7cfea3a684ebd6@mail.gmail.com>
+	 <4B38EBB7.40603@codesourcery.com>
+	 <aec7e5c30912290032x1ecf7616w6beec077ab8cda71@mail.gmail.com>
+	 <4B3A2CA3.3020202@codesourcery.com>
+	 <e71f4bea1001041256t1355c245x7ffd149322a4c351@mail.gmail.com>
+Message-ID: <aec7e5c31001041958g29bc21ecu7c55252fa6411aef@mail.gmail.com>
+
+Hi everyone,
+
+[CC Matt]
+
+On Tue, Jan 5, 2010 at 5:56 AM, Bill Traynor <wmat at naoi.ca> wrote:
+> On Tue, Dec 29, 2009 at 11:21, Mark Mitchell <mark at codesourcery.com> wrote:
+>>
+>> Magnus Damm wrote:
+>>
+>> > The mplayer source is fairly large so I suspect that the issue needs
+>> > to be tracked down further. Do you have any pointer to a more fine
+>> > grained step by step document that can be followed to produce these
+>> > things for you? I'm quite busy though so I'm afraid I'll just add this
+>> > to my TODO list for now.
+>>
+>> The first technique is to mix object files between the good and bad
+>> builds. ?Build the whole thing with both compilers, but then link half
+>> of the object files from the good build with the other half from the bad
+>> build. ?Continue to bisect things until you have a bad object file. ?If
+>> you're lucky, that's a small object file with just one or two functions
+>> in it, and it will be obvious what's been miscompiled -- or what's buggy
+>> ?in the source code.
+>
+> This was posted to mplayer-dev-eng. ?I'm posting here to complete the
+> thread. ?This is not a compiler bug, but a mplayer bug. ?Matt Fleming and I
+> figured this out, here's the explanation and patch authored by Matt:
+> Attached is a patch that changes the snippet of code that tests for the
+> presence of vsscanf() during configure.
+
+I just tested mplayer svn r30223 and it compiles and runs as expected
+with 4.4-45. Many thanks to you all for tracking down and fixing this
+issue!
+
+Cheers,
+
+/ magnus
+
+

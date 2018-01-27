@@ -1,0 +1,128 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [pooma-dev] Parallel File I/O
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bpooma-dev%5D%20Parallel%20File%20I/O&In-Reply-To=%3C3D6E3DEB.4000201%40itp.phys.ethz.ch%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001042.html">
+   <LINK REL="Next"  HREF="001045.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[pooma-dev] Parallel File I/O</H1>
+    <B>Arno Candel</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bpooma-dev%5D%20Parallel%20File%20I/O&In-Reply-To=%3C3D6E3DEB.4000201%40itp.phys.ethz.ch%3E"
+       TITLE="[pooma-dev] Parallel File I/O">candel at itp.phys.ethz.ch
+       </A><BR>
+    <I>Thu Aug 29 15:29:47 UTC 2002</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001042.html">[pooma-dev] Parallel File I/O
+</A></li>
+        <LI>Next message: <A HREF="001045.html">[pooma-dev] Parallel File I/O
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1044">[ date ]</a>
+              <a href="thread.html#1044">[ thread ]</a>
+              <a href="subject.html#1044">[ subject ]</a>
+              <a href="author.html#1044">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Many thanks!
+
+I just implemented a serial writer. Can you give me a hint how to 
+structure a reader which reads a file from NFS into a distributed array?
+
+Thanks in advance,
+Arno
+
+Richard Guenther wrote:
+
+&gt;<i>On Wed, 28 Aug 2002, Arno Candel wrote:
+</I>&gt;<i>
+</I>&gt;<i>  
+</I>&gt;<i>
+</I>&gt;&gt;<i>Hi,
+</I>&gt;&gt;<i>
+</I>&gt;&gt;<i>Is there a clever way to handle large distributed Array I/O to disk? I
+</I>&gt;&gt;<i>don't want all contexts to block each other while reading/writing.
+</I>&gt;&gt;<i>
+</I>&gt;&gt;<i>A straight-forward reader implementation like
+</I>&gt;&gt;<i>
+</I>&gt;&gt;<i>Array&lt;3, double, MultiPatch&lt;GridTag,Remote&lt;Brick&gt; &gt;  A;
+</I>&gt;&gt;<i>A.initialize(Domain, Partition, DistributedTag());
+</I>&gt;&gt;<i>
+</I>&gt;&gt;<i>for i=A.domain()[0].first() to A.domain()[0].last()
+</I>&gt;&gt;<i> for j=A.domain()[1].first() to A.domain()[1].last()
+</I>&gt;&gt;<i>  for k=A.domain()[2].first() to A.domain()[2].last()
+</I>&gt;&gt;<i>    {
+</I>&gt;&gt;<i>      my_ifstream &gt;&gt; value;
+</I>&gt;&gt;<i>      A(i,j,k) = value;
+</I>&gt;&gt;<i>    }
+</I>&gt;&gt;<i>    
+</I>&gt;&gt;<i>
+</I>&gt;<i>
+</I>&gt;<i>You are effectively doing all work n times here ;)
+</I>&gt;<i>
+</I>&gt;<i>I use something like the following (which does I/O on one node only - the
+</I>&gt;<i>only way to work reliably with something like NFS):
+</I>&gt;<i>
+</I>&gt;<i>  for (Layout_t::const_iterator domain = A.layout().beginGlobal(); domain
+</I>&gt;<i>!= A.layout().endGlobal(); domain++) {
+</I>&gt;<i>     Interval&lt;Dim&gt; d = intersect((*domain).domain(), totalDomain);
+</I>&gt;<i>     // make local copy of remote data
+</I>&gt;<i>     Array&lt;Dim, TypeofA::Element_t, Remote&lt;Brick&gt; &gt; a;
+</I>&gt;<i>     a.engine() = Engine&lt;Dim, TypeofA::Element_t, Remote&lt;Brick&gt; &gt;(0, d);
+</I>&gt;<i>     a = A(d);
+</I>&gt;<i>     Pooma::blockAndEvaluate();
+</I>&gt;<i>     // do I/O - on node 0 only
+</I>&gt;<i>     if (Pooma::context() != 0)
+</I>&gt;<i>       continue;
+</I>&gt;<i>     // from here on, use a.engine().localEngine() for all access to a!
+</I>&gt;<i>  }
+</I>&gt;<i>
+</I>&gt;<i>An equivalent loop for distributed I/O would loop through the layouts
+</I>&gt;<i>local patch list and use the localEngine() of A directly.
+</I>&gt;<i>
+</I>&gt;<i>Hope this helps, Richard.
+</I>&gt;<i>
+</I>&gt;<i>--
+</I>&gt;<i>Richard Guenther &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">richard.guenther at uni-tuebingen.de</A>&gt;
+</I>&gt;<i>WWW: <A HREF="http://www.tat.physik.uni-tuebingen.de/~rguenth/">http://www.tat.physik.uni-tuebingen.de/~rguenth/</A>
+</I>&gt;<i>The GLAME Project: <A HREF="http://www.glame.de/">http://www.glame.de/</A>
+</I>&gt;<i>  
+</I>&gt;<i>
+</I>
+-------------- next part --------------
+An HTML attachment was scrubbed...
+URL: &lt;<A HREF="http://sourcerytools.com/pipermail/pooma-dev/attachments/20020829/c1502ec6/attachment.html">http://sourcerytools.com/pipermail/pooma-dev/attachments/20020829/c1502ec6/attachment.html</A>&gt;
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001042.html">[pooma-dev] Parallel File I/O
+</A></li>
+	<LI>Next message: <A HREF="001045.html">[pooma-dev] Parallel File I/O
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1044">[ date ]</a>
+              <a href="thread.html#1044">[ thread ]</a>
+              <a href="subject.html#1044">[ subject ]</a>
+              <a href="author.html#1044">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

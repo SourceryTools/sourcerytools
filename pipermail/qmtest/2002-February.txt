@@ -1,0 +1,291 @@
+From ghost at cs.msu.su  Tue Feb  5 13:57:24 2002
+From: ghost at cs.msu.su (Vladimir Prus)
+Date: Tue, 5 Feb 2002 16:57:24 +0300
+Subject: [Patch] qmtest crashes for integer attribute values
+Message-ID: <E16Y668-0005Ou-00@zigzag.lvk.cs.msu.su>
+
+
+Hi,
+There currently two problems in QMTest with handling integer attribute values:
+(I'm using release-1-1-branch in CVS)
+1. Storing int values in result file crashes qmtest (program return value is int)
+2. Examining details for failed test crashes GUI when int annotations need to be displayed. 
+
+The following patch fixes both problems:
+
+Index: qm/test/result.py
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/test/result.py,v
+retrieving revision 1.8.2.4
+diff -u -r1.8.2.4 result.py
+--- qm/test/result.py	2002/01/30 01:59:56	1.8.2.4
++++ qm/test/result.py	2002/02/05 13:47:10
+@@ -278,7 +278,7 @@
+             property_element = document.createElement("property")
+             # The property name is an attribute.
+             property_element.setAttribute("name", str(key))
+-            if type(value) == types.StringType:
++            if type(value) == types.StringType or type(value) == types.IntType:
+                 # The property value is contained in a text mode.
+                 node = document.createTextNode(str(value))
+                 property_element.appendChild(node)
+Index: qm/test/classes/command.py
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/test/classes/command.py,v
+retrieving revision 1.25.2.2
+diff -u -r1.25.2.2 command.py
+--- qm/test/classes/command.py	2002/01/17 07:25:48	1.25.2.2
++++ qm/test/classes/command.py	2002/02/05 13:47:10
+@@ -391,7 +391,7 @@
+                 if exit_code != self.exit_code:
+                     causes.append("exit_code")
+                     result["ExecTest.expected_exit_code"] = self.exit_code
+-                    result["ExecTest.exit_code"] = str(exit_code)
++                    result["ExecTest.exit_code"] = exit_code
+                 # Check to see if the standard output matches.
+                 if stdout != self.stdout:
+                     causes.append("standard output")
+Index: qm/test/share/dtml/result.dtml
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/test/share/dtml/result.dtml,v
+retrieving revision 1.1.2.1
+diff -u -r1.1.2.1 result.dtml
+--- qm/test/share/dtml/result.dtml	2002/01/17 07:25:48	1.1.2.1
++++ qm/test/share/dtml/result.dtml	2002/02/05 13:47:10
+@@ -42,7 +42,7 @@
+     <dtml-if expr="annotation != result.CAUSE">
+      <tr class="field">
+       <td><dtml-var annotation></td>
+-      <td><dtml-var expr="web.format_structured_text(result[annotation])"></td>
++      <td><dtml-var expr="web.format_structured_text(`result[annotation]`)"></td>
+      </tr>
+     </dtml-if>
+    </dtml-let>
+
+Actually, the use of `` makes strings looks a little bit strange ( "'string'" ), but unfortunately, 'str' can't be used 
+inside expression. Maybe, dtml handling is better changed to allow 'str', I'm not sure.
+
+
+- Volodya
+
+
+From ghost at cs.msu.su  Wed Feb  6 08:42:22 2002
+From: ghost at cs.msu.su (Vladimir Prus)
+Date: Wed, 6 Feb 2002 11:42:22 +0300
+Subject: [qmtest] [Patch] qmtest crashes for integer attribute values
+In-Reply-To: <E16Y668-0005Ou-00@zigzag.lvk.cs.msu.su>
+References: <E16Y668-0005Ou-00@zigzag.lvk.cs.msu.su>
+Message-ID: <E16YNep-0003hl-00@zigzag.lvk.cs.msu.su>
+
+
+
+> -      <td><dtml-var
+> expr="web.format_structured_text(result[annotation])"></td> 
++        <td><dtml-var 
+> expr="web.format_structured_text(`result[annotation]`)"></td>
+
+> Actually, the use of `` makes strings looks a little bit strange (
+> "'string'" ), but unfortunately, 'str' can't be used inside expression.
+> Maybe, dtml handling is better changed to allow 'str', I'm not sure.
+
+A better way is to replace 
+	
+	result[annotation]
+
+with
+
+	'%s' % (result[annotation],)
+
+This will produce nicer output.
+
+- Volodya
+
+
+From ghost at cs.msu.su  Wed Feb  6 10:27:40 2002
+From: ghost at cs.msu.su (Vladimir Prus)
+Date: Wed, 6 Feb 2002 13:27:40 +0300
+Subject: [PATCH] Crash on new suite creation
+Message-ID: <E16YPIi-00080v-00@zigzag.lvk.cs.msu.su>
+
+
+Starting with tdb in tutorial, this command sequence leads to crash:
+
+Create test a.b of class Python.ExecTest with 'pass' as expression.
+Choose File->New Suite
+Set "functional" as suite name.
+Click "Next"
+Watch crash. 
+
+The patch below seems to fix the problem:
+
+Index: qm/test/file_database.py
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/test/file_database.py,v
+retrieving revision 1.4
+diff -u -r1.4 file_database.py
+--- qm/test/file_database.py	2002/01/02 18:49:14	1.4
++++ qm/test/file_database.py	2002/02/06 10:23:12
+@@ -521,7 +521,7 @@
+                 and self._IsSuiteFile(entry_path)):
+                 labels.extend(self._GetLabels(entry_path,
+                                               scan_subdirs,
+-                                              as_absolute(root),
++                                              qm.label.join(label, root),
+                                               predicate))
+ 
+         return labels
+
+
+There's yet another problem: using tutorial tdb, attempt to create suite 
+named "c.d" will show a screen for selecting tests, when no tests are shown. 
+Is this a reasonable behaviour? Further, EditSuite functionality seems to not 
+work. Am I missing something?
+
+- Volodya
+
+
+From ghost at cs.msu.su  Wed Feb  6 10:54:47 2002
+From: ghost at cs.msu.su (Vladimir Prus)
+Date: Wed, 6 Feb 2002 13:54:47 +0300
+Subject: [PATCH] Edit suite problem
+In-Reply-To: <E16YPIi-00080v-00@zigzag.lvk.cs.msu.su>
+References: <E16YPIi-00080v-00@zigzag.lvk.cs.msu.su>
+Message-ID: <E16YPiy-0007p9-00@zigzag.lvk.cs.msu.su>
+
+Vladimir Prus wrote:
+
+> Further, EditSuite functionality seems to not work. 
+
+There was a typo:
+
+Index: qm/test/web/web.py
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/test/web/web.py,v
+retrieving revision 1.42.2.2
+diff -u -r1.42.2.2 web.py
+--- qm/test/web/web.py	2002/01/17 07:25:48	1.42.2.2
++++ qm/test/web/web.py	2002/02/06 10:50:32
+@@ -722,7 +722,7 @@
+         self.edit = edit
+ 
+         if not suite.IsImplicit():
+-            self.edit_menu_items.append(("Edit Suite", "edit_isuite();"))
++            self.edit_menu_items.append(("Edit Suite", "edit_suite();"))
+             self.edit_menu_items.append(("Delete Suite", "delete_suite();"))
+ 
+         if not edit:
+
+- Volodya
+
+
+
+From mark at codesourcery.com  Thu Feb 14 07:26:04 2002
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Wed, 13 Feb 2002 23:26:04 -0800
+Subject: [qmtest] Re: [PATCH] Edit suite problem
+In-Reply-To: <E16YPiy-0007p9-00@zigzag.lvk.cs.msu.su>
+Message-ID: <8220000.1013671564@warlock.codesourcery.com>
+
+
+
+--On Wednesday, February 06, 2002 01:54:47 PM +0300 Vladimir Prus 
+<ghost at cs.msu.su> wrote:
+
+> Vladimir Prus wrote:
+>
+>> Further, EditSuite functionality seems to not work.
+>
+> There was a typo:
+>
+> Index: qm/test/web/web.py
+> ===================================================================
+> RCS file: /home/qm/Repository/qm/qm/test/web/web.py,v
+> retrieving revision 1.42.2.2
+> diff -u -r1.42.2.2 web.py
+> --- qm/test/web/web.py	2002/01/17 07:25:48	1.42.2.2
+> +++ qm/test/web/web.py	2002/02/06 10:50:32
+> @@ -722,7 +722,7 @@
+>          self.edit = edit
+>
+>          if not suite.IsImplicit():
+> -            self.edit_menu_items.append(("Edit Suite", "edit_isuite();"))
+> +            self.edit_menu_items.append(("Edit Suite", "edit_suite();"))
+>              self.edit_menu_items.append(("Delete Suite",
+> "delete_suite();"))
+>          if not edit:
+
+I've applied this patch for QMTest 1.1.1, which should be ready very
+soon.
+
+Thanks,
+
+-- 
+Mark Mitchell                mark at codesourcery.com
+CodeSourcery, LLC            http://www.codesourcery.com
+
+
+From mark at codesourcery.com  Thu Feb 14 07:28:14 2002
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Wed, 13 Feb 2002 23:28:14 -0800
+Subject: [qmtest] [Patch] qmtest crashes for integer attribute values
+In-Reply-To: <E16Y668-0005Ou-00@zigzag.lvk.cs.msu.su>
+Message-ID: <9270000.1013671694@warlock.codesourcery.com>
+
+
+
+--On Tuesday, February 05, 2002 04:57:24 PM +0300 Vladimir Prus 
+<ghost at cs.msu.su> wrote:
+
+>
+> Hi,
+> There currently two problems in QMTest with handling integer attribute
+> values: (I'm using release-1-1-branch in CVS)
+> 1. Storing int values in result file crashes qmtest (program return value
+> is int) 2. Examining details for failed test crashes GUI when int
+> annotations need to be displayed.
+
+Annotation value can only be strings.  The integers should be created
+to strings by the test class.  Are you using a test class that comes
+with QMTest, or one of your own?
+
+If you can, send me a complete test database that causes this problem.
+
+Thanks,
+
+-- 
+Mark Mitchell                mark at codesourcery.com
+CodeSourcery, LLC            http://www.codesourcery.com
+
+
+From mark at codesourcery.com  Thu Feb 14 07:31:55 2002
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Wed, 13 Feb 2002 23:31:55 -0800
+Subject: [qmtest] [PATCH] Crash on new suite creation
+In-Reply-To: <E16YPIi-00080v-00@zigzag.lvk.cs.msu.su>
+Message-ID: <9920000.1013671915@warlock.codesourcery.com>
+
+
+
+--On Wednesday, February 06, 2002 01:27:40 PM +0300 Vladimir Prus 
+<ghost at cs.msu.su> wrote:
+
+>
+> Starting with tdb in tutorial, this command sequence leads to crash:
+>
+> Create test a.b of class Python.ExecTest with 'pass' as expression.
+> Choose File->New Suite
+> Set "functional" as suite name.
+> Click "Next"
+> Watch crash.
+>
+> The patch below seems to fix the problem:
+
+I've applied this patch for QMTest 1.1.1.
+
+Thanks,
+
+-- 
+Mark Mitchell                mark at codesourcery.com
+CodeSourcery, LLC            http://www.codesourcery.com
+
+

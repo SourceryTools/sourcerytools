@@ -1,0 +1,130 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [c++-pthreads] Re: thread-safety definition
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:c%2B%2B-pthreads%40codesourcery.com?Subject=Re%3A%20%5Bc%2B%2B-pthreads%5D%20Re%3A%20thread-safety%20definition&In-Reply-To=%3C40010755.30702%40bogo.xs4all.nl%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000195.html">
+   <LINK REL="Next"  HREF="000203.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[c++-pthreads] Re: thread-safety definition</H1>
+    <B>Wil Evers</B> 
+    <A HREF="mailto:c%2B%2B-pthreads%40codesourcery.com?Subject=Re%3A%20%5Bc%2B%2B-pthreads%5D%20Re%3A%20thread-safety%20definition&In-Reply-To=%3C40010755.30702%40bogo.xs4all.nl%3E"
+       TITLE="[c++-pthreads] Re: thread-safety definition">wil at bogo.xs4all.nl
+       </A><BR>
+    <I>Sun Jan 11 08:20:37 UTC 2004</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000195.html">[c++-pthreads] Re: thread-safety definition
+</A></li>
+        <LI>Next message: <A HREF="000203.html">[c++-pthreads] Re: thread-safety definition
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#196">[ date ]</a>
+              <a href="thread.html#196">[ thread ]</a>
+              <a href="subject.html#196">[ subject ]</a>
+              <a href="author.html#196">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Ted Baker wrote:
+
+&gt;&gt;<i>Instead, this example serves to show how dangerous it is to let 
+</I>&gt;&gt;<i>exceptions escape from destructors.  Especially when we don't now which 
+</I>&gt;&gt;<i>exceptions may be thrown from remote_resource-&gt;release(), about the only 
+</I>&gt;&gt;<i>reasonable implementation of this destructor is:
+</I>&gt;&gt;<i>
+</I>&gt;&gt;<i>remote_resource_holder::~remote_resource_holder()
+</I>&gt;&gt;<i>{
+</I>&gt;&gt;<i>  try {
+</I>&gt;&gt;<i>    remote_resource-&gt;release();
+</I>&gt;&gt;<i>  } catch (...) {
+</I>&gt;&gt;<i>    // We may try to log what happened,
+</I>&gt;&gt;<i>    // but can't let the exception escape!
+</I>&gt;&gt;<i>  }
+</I>&gt;&gt;<i>}
+</I>&gt;&gt;<i>
+</I>&gt;&gt;<i>I've noticed that some people on this list object to this design, but so 
+</I>&gt;&gt;<i>far, I haven't seen an alternative.  In other words, I think we should 
+</I>&gt;&gt;<i>be prepared for threads that discard cancellation exceptions - which is 
+</I>&gt;&gt;<i>why Nathan's 'sticky cancellation' makes sense to me.
+</I>&gt;<i> 
+</I>&gt;<i> 
+</I>&gt;<i> There is no real problem here. 
+</I>&gt;<i> 
+</I>&gt;<i> 1) Yes, you want to be able to catch all *local* exceptions, and
+</I>&gt;<i> not rethrow them, in destructors and cancellation cleanup routines.
+</I>&gt;<i> 
+</I>&gt;<i> If you disable cancellation during the execution of such routines
+</I>&gt;<i> you will never have a cancellation exception that would be caught
+</I>&gt;<i> by the &quot;catch&quot; of your destructor example above.
+</I>&gt;<i> 
+</I>&gt;<i> 2) This does not mean you can't disable the *generation* of a (new)
+</I>&gt;<i> cancellation exception during execution of such a destructor or
+</I>&gt;<i> cleanup routine.
+</I>&gt;<i> 
+</I>&gt;<i> 3) This does not mean you will lose an old cancellation exception,
+</I>&gt;<i> if that is what caused you to execute the destructor or cleanup
+</I>&gt;<i> routine.  On return from this routine, execution will continue
+</I>&gt;<i> along the path that took you into this routine, i.e., the
+</I>&gt;<i> processing of the old cancellation exception.
+</I>&gt;<i> 
+</I>&gt;<i> 4) This does not mean you will lose a new cancellation exception, if
+</I>&gt;<i> you were executing the destructor or cleanup routine for some other
+</I>&gt;<i> reason. Whenever you next get to a point where cancellation is
+</I>&gt;<i> enabled again, the cancellation processing will begin.
+</I>&gt;<i> 
+</I>&gt;<i> It does mean that you need to be able to keep track of nested
+</I>&gt;<i> cancellation-disabled sections, so that you can disable
+</I>&gt;<i> cancellation during the entire exception processing sequence, up
+</I>&gt;<i> until you are in the &quot;catch&quot;, and you can *also* (nestedly)
+</I>&gt;<i> disable cancellation during destructors.
+</I>
+Please note that the example destructor above is also called on a 
+regular (non-exceptional) exit from the block in which the 
+remote_resource_holder lives.
+
+Since, in that case, there is no exception 'in flight', a cancellation 
+exception thrown from remote_source-&gt;release() *will* be discarded, 
+unless - in *all* such destructors - the code is changed to explictly 
+disable cancellation.
+
+In other words, non-sticky cancellation will break existing code, and 
+the replacement code will not be pretty.  IMHO, this is highly 
+undesirable - writing robust destructors is hard enough without these 
+complications.
+
+- Wil
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000195.html">[c++-pthreads] Re: thread-safety definition
+</A></li>
+	<LI>Next message: <A HREF="000203.html">[c++-pthreads] Re: thread-safety definition
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#196">[ date ]</a>
+              <a href="thread.html#196">[ thread ]</a>
+              <a href="subject.html#196">[ subject ]</a>
+              <a href="author.html#196">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/c++-pthreads">More information about the c++-pthreads
+mailing list</a><br>
+</body></html>

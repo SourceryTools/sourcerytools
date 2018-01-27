@@ -1,0 +1,1349 @@
+Index: src/vsip/impl/layout.hpp
+===================================================================
+RCS file: /home/cvs/Repository/vpp/src/vsip/impl/layout.hpp,v
+retrieving revision 1.21
+diff -u -r1.21 layout.hpp
+--- src/vsip/impl/layout.hpp	6 May 2006 21:27:06 -0000	1.21
++++ src/vsip/impl/layout.hpp	8 May 2006 20:32:19 -0000
+@@ -53,6 +53,7 @@
+ 
+   // Accessors.
+ public:
++  T*               as_real() { return ptr_; }
+   T*               as_inter() { return ptr_; }
+   std::pair<T*,T*> as_split() { assert(0); return std::pair<T*,T*>(0,0); }
+ 
+@@ -88,6 +89,7 @@
+ 
+   // Acccessors
+ public:
++  T*               as_real() { assert(0); return 0; }
+   complex<T>*       as_inter() { return reinterpret_cast<complex<T>*>(ptr0_); }
+   std::pair<T*, T*> as_split() { return std::pair<T*,T*>(ptr0_, ptr1_); }
+ 
+Index: src/vsip/impl/fft/backend.hpp
+===================================================================
+RCS file: /home/cvs/Repository/vpp/src/vsip/impl/fft/backend.hpp,v
+retrieving revision 1.1
+diff -u -r1.1 backend.hpp
+--- src/vsip/impl/fft/backend.hpp	1 May 2006 19:12:03 -0000	1.1
++++ src/vsip/impl/fft/backend.hpp	8 May 2006 20:32:19 -0000
+@@ -17,6 +17,7 @@
+ ***********************************************************************/
+ 
+ #include <vsip/support.hpp>
++#include <vsip/impl/layout.hpp>
+ #include <vsip/impl/metaprogramming.hpp>
+ 
+ namespace vsip
+@@ -47,7 +48,15 @@
+ public:
+   virtual ~backend() {}
+   virtual bool supports_scale() { return false;}
+-//   virtual bool require_copy(in_stride, out_stride);
++  virtual void query_layout(Rt_layout<1> &rtl_in, Rt_layout<1> &rtl_out)
++  {
++    // By default use unit_stride, tuple<0, 1, 2>, cmplx_inter_fmt
++    rtl_in.pack = stride_unit_dense;
++    rtl_in.order = tuple<0, 1, 2>();
++    rtl_in.complex = cmplx_inter_fmt;
++    rtl_out = rtl_in;
++  }
++  virtual bool requires_copy(Rt_layout<1> &) { return false;}
+   /// real -> complex (interleaved)
+   virtual void by_reference(T *in, stride_type in_stride,
+ 			    std::complex<T> *out, stride_type out_stride,
+@@ -66,6 +75,15 @@
+ public:
+   virtual ~backend() {}
+   virtual bool supports_scale() { return false;}
++  virtual void query_layout(Rt_layout<1> &rtl_in, Rt_layout<1> &rtl_out)
++  {
++    // By default use unit_stride, tuple<0, 1, 2>, cmplx_inter_fmt
++    rtl_in.pack = stride_unit_dense;
++    rtl_in.order = tuple<0, 1, 2>();
++    rtl_in.complex = cmplx_inter_fmt;
++    rtl_out = rtl_in;
++  }
++  virtual bool requires_copy(Rt_layout<1> &) { return false;}
+   /// complex (interleaved) -> real
+   virtual void by_reference(std::complex<T> *in, stride_type in_stride,
+ 			    T *out, stride_type out_stride,
+@@ -84,6 +102,22 @@
+ public:
+   virtual ~backend() {}
+   virtual bool supports_scale() { return false;}
++  virtual void query_layout(Rt_layout<1> &rtl_inout)
++  {
++    // By default use unit_stride, tuple<0, 1, 2>, cmplx_inter_fmt
++    rtl_inout.pack = stride_unit_dense;
++    rtl_inout.order = tuple<0, 1, 2>();
++    rtl_inout.complex = cmplx_inter_fmt;
++  }
++  virtual void query_layout(Rt_layout<1> &rtl_in, Rt_layout<1> &rtl_out)
++  {
++    // By default use unit_stride, tuple<0, 1, 2>, cmplx_inter_fmt
++    rtl_in.pack = stride_unit_dense;
++    rtl_in.order = tuple<0, 1, 2>();
++    rtl_in.complex = cmplx_inter_fmt;
++    rtl_out = rtl_in;
++  }
++  virtual bool requires_copy(Rt_layout<1> &) { return false;}
+   /// complex (interleaved) in-place
+   virtual void in_place(std::complex<T> *, stride_type, length_type) = 0;
+   /// complex (split) in-place
+@@ -106,6 +140,15 @@
+ public:
+   virtual ~backend() {}
+   virtual bool supports_scale() { return false;}
++  virtual void query_layout(Rt_layout<2> &rtl_in, Rt_layout<2> &rtl_out)
++  {
++    // By default use unit_stride, tuple<0, 1, 2>, cmplx_inter_fmt
++    rtl_in.pack = stride_unit_dense;
++    rtl_in.order = tuple<0, 1, 2>();
++    rtl_in.complex = cmplx_inter_fmt;
++    rtl_out = rtl_in;
++  }
++  virtual bool requires_copy(Rt_layout<2> &) { return false;}
+   /// real -> complex (interleaved) by-reference
+   virtual void by_reference(T *in,
+ 			    stride_type in_r_stride, stride_type in_c_stride,
+@@ -128,6 +171,15 @@
+ public:
+   virtual ~backend() {}
+   virtual bool supports_scale() { return false;}
++  virtual void query_layout(Rt_layout<2> &rtl_in, Rt_layout<2> &rtl_out)
++  {
++    // By default use unit_stride, tuple<0, 1, 2>, cmplx_inter_fmt
++    rtl_in.pack = stride_unit_dense;
++    rtl_in.order = tuple<0, 1, 2>();
++    rtl_in.complex = cmplx_inter_fmt;
++    rtl_out = rtl_in;
++  }
++  virtual bool requires_copy(Rt_layout<2> &) { return false;}
+   /// complex (interleaved) -> real by-reference
+   virtual void by_reference(std::complex<T> *in,
+ 			    stride_type in_r_stride, stride_type in_c_stride,
+@@ -150,6 +202,22 @@
+ public:
+   virtual ~backend() {}
+   virtual bool supports_scale() { return false;}
++  virtual void query_layout(Rt_layout<2> &rtl_inout)
++  {
++    // By default use unit_stride, tuple<0, 1, 2>, cmplx_inter_fmt
++    rtl_inout.pack = stride_unit_dense;
++    rtl_inout.order = tuple<0, 1, 2>();
++    rtl_inout.complex = cmplx_inter_fmt;
++  }
++  virtual void query_layout(Rt_layout<2> &rtl_in, Rt_layout<2> &rtl_out)
++  {
++    // By default use unit_stride, tuple<0, 1, 2>, cmplx_inter_fmt
++    rtl_in.pack = stride_unit_dense;
++    rtl_in.order = tuple<0, 1, 2>();
++    rtl_in.complex = cmplx_inter_fmt;
++    rtl_out = rtl_in;
++  }
++  virtual bool requires_copy(Rt_layout<2> &) { return false;}
+   /// complex (interleaved) in-place
+   virtual void in_place(std::complex<T> *inout,
+ 			stride_type r_stride, stride_type c_stride,
+@@ -180,6 +248,15 @@
+ public:
+   virtual ~backend() {}
+   virtual bool supports_scale() { return false;}
++  virtual void query_layout(Rt_layout<3> &rtl_in, Rt_layout<3> &rtl_out)
++  {
++    // By default use unit_stride, tuple<0, 1, 2>, cmplx_inter_fmt
++    rtl_in.pack = stride_unit_dense;
++    rtl_in.order = tuple<0, 1, 2>();
++    rtl_in.complex = cmplx_inter_fmt;
++    rtl_out = rtl_in;
++  }
++  virtual bool requires_copy(Rt_layout<3> &) { return false;}
+   /// real -> complex (interleaved) by-reference
+   virtual void by_reference(T *in,
+ 			    stride_type in_x_stride,
+@@ -214,6 +291,15 @@
+ public:
+   virtual ~backend() {}
+   virtual bool supports_scale() { return false;}
++  virtual void query_layout(Rt_layout<3> &rtl_in, Rt_layout<3> &rtl_out)
++  {
++    // By default use unit_stride, tuple<0, 1, 2>, cmplx_inter_fmt
++    rtl_in.pack = stride_unit_dense;
++    rtl_in.order = tuple<0, 1, 2>();
++    rtl_in.complex = cmplx_inter_fmt;
++    rtl_out = rtl_in;
++  }
++  virtual bool requires_copy(Rt_layout<3> &) { return false;}
+   /// complex (interleaved) -> real by-reference
+   virtual void by_reference(std::complex<T> *in,
+ 			    stride_type in_x_stride,
+@@ -248,6 +334,22 @@
+ public:
+   virtual ~backend() {}
+   virtual bool supports_scale() { return false;}
++  virtual void query_layout(Rt_layout<3> &rtl_inout)
++  {
++    // By default use unit_stride, tuple<0, 1, 2>, cmplx_inter_fmt
++    rtl_inout.pack = stride_unit_dense;
++    rtl_inout.order = tuple<0, 1, 2>();
++    rtl_inout.complex = cmplx_inter_fmt;
++  }
++  virtual void query_layout(Rt_layout<3> &rtl_in, Rt_layout<3> &rtl_out)
++  {
++    // By default use unit_stride, tuple<0, 1, 2>, cmplx_inter_fmt
++    rtl_in.pack = stride_unit_dense;
++    rtl_in.order = tuple<0, 1, 2>();
++    rtl_in.complex = cmplx_inter_fmt;
++    rtl_out = rtl_in;
++  }
++  virtual bool requires_copy(Rt_layout<3> &) { return false;}
+   /// complex (interleaved) in-place
+   virtual void in_place(std::complex<T> *inout,
+ 			stride_type x_stride,
+@@ -301,6 +403,18 @@
+ public:
+   virtual ~fftm() {}
+   virtual bool supports_scale() { return false;}
++  virtual void query_layout(Rt_layout<2> &rtl_in, Rt_layout<2> &rtl_out)
++  {
++    // By default use unit_stride,
++    rtl_in.pack = stride_unit_dense;
++    // an ordering that gives unit strides on the axis perpendicular to A,
++    if (A == 0) rtl_in.order = tuple<1, 0, 2>();
++    else rtl_in.order = tuple<0, 1, 2>();
++    // and interleaved complex.
++    rtl_in.complex = cmplx_inter_fmt;
++    rtl_out = rtl_in;
++  }
++  virtual bool requires_copy(Rt_layout<2> &) { return false;}
+   /// real -> complex (interleaved) by-reference
+   virtual void by_reference(T *in,
+ 			    stride_type in_r_stride, stride_type in_c_stride,
+@@ -323,6 +437,18 @@
+ public:
+   virtual ~fftm() {}
+   virtual bool supports_scale() { return false;}
++  virtual void query_layout(Rt_layout<2> &rtl_in, Rt_layout<2> &rtl_out)
++  {
++    // By default use unit_stride,
++    rtl_in.pack = stride_unit_dense;
++    // an ordering that gives unit strides on the axis perpendicular to A,
++    if (A == 0) rtl_in.order = tuple<1, 0, 2>();
++    else rtl_in.order = tuple<0, 1, 2>();
++    // and interleaved complex.
++    rtl_in.complex = cmplx_inter_fmt;
++    rtl_out = rtl_in;
++  }
++  virtual bool requires_copy(Rt_layout<2> &) { return false;}
+   /// complex (interleaved) -> real by-reference
+   virtual void by_reference(std::complex<T> *in,
+ 			    stride_type in_r_stride, stride_type in_c_stride,
+@@ -345,6 +471,28 @@
+ public:
+   virtual ~fftm() {}
+   virtual bool supports_scale() { return false;}
++  virtual void query_layout(Rt_layout<2> &rtl_inout)
++  {
++    // By default use unit_stride,
++    rtl_inout.pack = stride_unit_dense;
++    // an ordering that gives unit strides on the axis perpendicular to A,
++    if (A == 0) rtl_inout.order = tuple<1, 0, 2>();
++    else rtl_inout.order = tuple<0, 1, 2>();
++    // and interleaved complex.
++    rtl_inout.complex = cmplx_inter_fmt;
++  }
++  virtual void query_layout(Rt_layout<2> &rtl_in, Rt_layout<2> &rtl_out)
++  {
++    // By default use unit_stride,
++    rtl_in.pack = stride_unit_dense;
++    // an ordering that gives unit strides on the axis perpendicular to A,
++    if (A == 0) rtl_in.order = tuple<1, 0, 2>();
++    else rtl_in.order = tuple<0, 1, 2>();
++    // and interleaved complex.
++    rtl_in.complex = cmplx_inter_fmt;
++    rtl_out = rtl_in;
++  }
++  virtual bool requires_copy(Rt_layout<2> &) { return false;}
+   /// complex (interleaved) in-place
+   virtual void in_place(std::complex<T> *inout,
+ 			stride_type r_stride, stride_type c_stride,
+Index: src/vsip/impl/fft/dft.hpp
+===================================================================
+RCS file: /home/cvs/Repository/vpp/src/vsip/impl/fft/dft.hpp,v
+retrieving revision 1.1
+diff -u -r1.1 dft.hpp
+--- src/vsip/impl/fft/dft.hpp	6 May 2006 22:09:27 -0000	1.1
++++ src/vsip/impl/fft/dft.hpp	8 May 2006 20:32:19 -0000
+@@ -48,6 +48,17 @@
+   typedef std::pair<rtype*, rtype*> ztype;
+ 
+ public:
++  virtual void query_layout(Rt_layout<1> &rtl_inout)
++  {
++    rtl_inout.pack = stride_unit_dense;
++    rtl_inout.order = tuple<0, 1, 2>();
++  }
++  virtual void query_layout(Rt_layout<1> &rtl_in, Rt_layout<1> &rtl_out)
++  {
++    rtl_in.pack = stride_unit_dense;
++    rtl_in.order = tuple<0, 1, 2>();
++    rtl_out = rtl_in;
++  }
+   virtual void in_place(ctype *inout, stride_type s, length_type l)
+   {
+     aligned_array<std::complex<T> > tmp(l);
+@@ -123,6 +134,12 @@
+   typedef std::pair<rtype*, rtype*> ztype;
+ 
+ public:
++  virtual void query_layout(Rt_layout<1> &rtl_in, Rt_layout<1> &rtl_out)
++  {
++    rtl_in.pack = stride_unit_dense;
++    rtl_in.order = tuple<0, 1, 2>();
++    rtl_out = rtl_in;
++  }
+   virtual void by_reference(rtype *in, stride_type in_s,
+ 			    ctype *out, stride_type out_s,
+ 			    length_type l)
+@@ -164,6 +181,12 @@
+   typedef std::pair<rtype*, rtype*> ztype;
+ 
+ public:
++  virtual void query_layout(Rt_layout<1> &rtl_in, Rt_layout<1> &rtl_out)
++  {
++    rtl_in.pack = stride_unit_dense;
++    rtl_in.order = tuple<0, 1, 2>();
++    rtl_out = rtl_in;
++  }
+   virtual void by_reference(ctype *in, stride_type in_s,
+ 			    rtype *out, stride_type out_s,
+ 			    length_type l)
+@@ -189,11 +212,13 @@
+     for (index_type w = 0; w < l; ++w)
+     {
+       complex<T> sum;
+-      for (index_type k = 0; k < l; ++k)
+-	sum += vsip::complex<T>(in.first[k * in_s], in.second[k * in_s])
++      for (index_type k = 0; k < l/2 + 1; ++k)
++	sum += complex<T>(in.first[k * in_s], in.second[k * in_s])
+ 	  * sin_cos<T>(phi * k * w);
++      for (index_type k = l/2 + 1; k < l; ++k)
++	sum += complex<T>(in.first[(l - k) * in_s], -in.second[(l - k) * in_s])
++	  * sin_cos<T>(phi * (l - k) * w);
+       out[w * out_s] = sum.real();
+-      //     out.second[w * out_s] = sum.imag();
+     }
+   }
+ };
+@@ -209,6 +234,17 @@
+   typedef std::pair<rtype*, rtype*> ztype;
+ 
+ public:
++  virtual void query_layout(Rt_layout<2> &rtl_inout)
++  {
++    rtl_inout.pack = stride_unit_dense;
++    rtl_inout.order = tuple<0, 1, 2>();
++  }
++  virtual void query_layout(Rt_layout<2> &rtl_in, Rt_layout<2> &rtl_out)
++  {
++    rtl_in.pack = stride_unit_dense;
++    rtl_in.order = tuple<0, 1, 2>();
++    rtl_out = rtl_in;
++  }
+   virtual void in_place(ctype *inout,
+ 			stride_type r_stride, stride_type c_stride,
+ 			length_type rows, length_type cols)
+@@ -256,6 +292,12 @@
+   typedef std::pair<rtype*, rtype*> ztype;
+ 
+ public:
++  virtual void query_layout(Rt_layout<2> &rtl_in, Rt_layout<2> &rtl_out)
++  {
++    rtl_in.pack = stride_unit_dense;
++    rtl_in.order = tuple<0, 1, 2>();
++    rtl_out = rtl_in;
++  }
+   virtual void by_reference(rtype *in,
+ 			    stride_type in_r_stride, stride_type in_c_stride,
+ 			    ctype *out,
+@@ -301,6 +343,12 @@
+   typedef std::pair<rtype*, rtype*> ztype;
+ 
+ public:
++  virtual void query_layout(Rt_layout<2> &rtl_in, Rt_layout<2> &rtl_out)
++  {
++    rtl_in.pack = stride_unit_dense;
++    rtl_in.order = tuple<0, 1, 2>();
++    rtl_out = rtl_in;
++  }
+   virtual void by_reference(ctype *in,
+ 			    stride_type in_r_stride, stride_type in_c_stride,
+ 			    rtype *out,
+@@ -357,6 +405,17 @@
+   typedef std::pair<rtype*, rtype*> ztype;
+ 
+ public:
++  virtual void query_layout(Rt_layout<3> &rtl_inout)
++  {
++    rtl_inout.pack = stride_unit_dense;
++    rtl_inout.order = tuple<0, 1, 2>();
++  }
++  virtual void query_layout(Rt_layout<3> &rtl_in, Rt_layout<3> &rtl_out)
++  {
++    rtl_in.pack = stride_unit_dense;
++    rtl_in.order = tuple<0, 1, 2>();
++    rtl_out = rtl_in;
++  }
+   virtual void in_place(ctype *inout,
+ 			stride_type x_stride,
+ 			stride_type y_stride,
+@@ -413,6 +472,12 @@
+   typedef std::pair<rtype*, rtype*> ztype;
+ 
+ public:
++  virtual void query_layout(Rt_layout<3> &rtl_in, Rt_layout<3> &rtl_out)
++  {
++    rtl_in.pack = stride_unit_dense;
++    rtl_in.order = tuple<0, 1, 2>();
++    rtl_out = rtl_in;
++  }
+   virtual void by_reference(rtype *in,
+ 			    stride_type in_x_stride,
+ 			    stride_type in_y_stride,
+@@ -452,6 +517,12 @@
+   typedef std::pair<rtype*, rtype*> ztype;
+ 
+ public:
++  virtual void query_layout(Rt_layout<3> &rtl_in, Rt_layout<3> &rtl_out)
++  {
++    rtl_in.pack = stride_unit_dense;
++    rtl_in.order = tuple<0, 1, 2>();
++    rtl_out = rtl_in;
++  }
+   virtual void by_reference(ctype *in,
+ 			    stride_type in_x_stride,
+ 			    stride_type in_y_stride,
+@@ -493,6 +564,12 @@
+   typedef std::pair<rtype*, rtype*> ztype;
+ 
+ public:
++  virtual void query_layout(Rt_layout<2> &rtl_in, Rt_layout<2> &rtl_out)
++  {
++    rtl_in.pack = stride_unit_dense;
++    rtl_in.order = tuple<0, 1, 2>();
++    rtl_out = rtl_in;
++  }
+   virtual void by_reference(rtype *in,
+ 			    stride_type in_r_stride, stride_type in_c_stride,
+ 			    ctype *out,
+@@ -528,6 +605,12 @@
+   typedef std::pair<rtype*, rtype*> ztype;
+ 
+ public:
++  virtual void query_layout(Rt_layout<2> &rtl_in, Rt_layout<2> &rtl_out)
++  {
++    rtl_in.pack = stride_unit_dense;
++    rtl_in.order = tuple<0, 1, 2>();
++    rtl_out = rtl_in;
++  }
+   virtual void by_reference(ctype *in,
+ 			    stride_type in_r_stride, stride_type in_c_stride,
+ 			    rtype *out,
+@@ -567,6 +650,17 @@
+   typedef std::pair<rtype*, rtype*> ztype;
+ 
+ public:
++  virtual void query_layout(Rt_layout<2> &rtl_inout)
++  {
++    rtl_inout.pack = stride_unit_dense;
++    rtl_inout.order = tuple<0, 1, 2>();
++  }
++  virtual void query_layout(Rt_layout<2> &rtl_in, Rt_layout<2> &rtl_out)
++  {
++    rtl_in.pack = stride_unit_dense;
++    rtl_in.order = tuple<0, 1, 2>();
++    rtl_out = rtl_in;
++  }
+   virtual void in_place(ctype *inout,
+ 			stride_type r_stride, stride_type c_stride,
+ 			length_type rows, length_type cols)
+@@ -584,6 +678,21 @@
+ 			stride_type r_stride, stride_type c_stride,
+ 			length_type rows, length_type cols)
+   {
++    dft<1, ctype, ctype, 0, E> dft_1d;
++    if (A == 0)
++      for (length_type c = 0; c != cols; ++c)
++      {
++	ztype line = std::make_pair(inout.first + c * c_stride,
++				    inout.second + c * c_stride);
++	dft_1d.in_place(line, r_stride, rows);
++      }
++    else
++      for (length_type r = 0; r != rows; ++r)
++      {
++	ztype line = std::make_pair(inout.first + r * r_stride,
++				    inout.second + r * r_stride);
++	dft_1d.in_place(line, c_stride, cols);
++      }
+   }
+ 
+   virtual void by_reference(ctype *in,
+Index: src/vsip/impl/fft/workspace.hpp
+===================================================================
+RCS file: /home/cvs/Repository/vpp/src/vsip/impl/fft/workspace.hpp,v
+retrieving revision 1.2
+diff -u -r1.2 workspace.hpp
+--- src/vsip/impl/fft/workspace.hpp	6 May 2006 22:09:27 -0000	1.2
++++ src/vsip/impl/fft/workspace.hpp	8 May 2006 20:32:19 -0000
+@@ -20,6 +20,7 @@
+ #include <vsip/impl/adjust-layout.hpp>
+ #include <vsip/impl/allocation.hpp>
+ #include <vsip/impl/equal.hpp>
++#include <vsip/impl/rt_extdata.hpp>
+ #include <iostream>
+ 
+ /***********************************************************************
+@@ -39,59 +40,173 @@
+ template <dimension_type D, typename I, typename O, int A>
+ class workspace;
+ 
+-template <typename I, typename O>
+-class workspace<1, I, O, 0>
++template <typename T>
++class workspace<1, std::complex<T>, std::complex<T>, 0>
+ {
+-  typedef typename Scalar_of<I>::type scalar_type;
+ public:
+-  workspace(Domain<1> const &, scalar_type scale)
++  workspace(Domain<1> const &, T scale)
+     : scale_(scale)
+   {}
+   
+   template <typename BE, typename Block0, typename Block1>
+   void by_reference(BE *backend,
+-		    const_Vector<I, Block0> in, Vector<O, Block1> out)
++		    const_Vector<std::complex<T>, Block0> in,
++		    Vector<std::complex<T>, Block1> out)
+   {
+-//       typedef typename Block_layout<Block0>::layout_type in_layout;
+-//       typedef typename Block_layout<Block1>::layout_type out_layout;
+-    typedef impl::Layout<1, tuple<0,1,2>, Stride_unit, Cmplx_inter_fmt> in_layout;
+-    typedef impl::Layout<1, tuple<0,1,2>, Stride_unit, Cmplx_inter_fmt> out_layout;
+-
+-//     static bool const is_split  =
+-//       impl::Type_equal<typename impl::Block_layout<Block0>::complex_type,
+-//                        impl::Cmplx_split_fmt>::value;
+-    {
+-      Ext_data<Block0, in_layout,No_count_policy,Copy_access_tag> 
+-	in_ext(in.block(), SYNC_IN);
+-      Ext_data<Block1, out_layout,No_count_policy,Copy_access_tag>
+-	out_ext(out.block(), SYNC_OUT);
+-      // If this is a real FFT we need to make sure we pass N, not N/2+1 as size.
+-      length_type size = std::max(in_ext.size(0), out_ext.size(0));
+-      if (in_ext.stride(0) == 1 && out_ext.stride(0) == 1)
+-	backend->by_reference(in_ext.data(), in_ext.stride(0),
+-			      out_ext.data(), out_ext.stride(0), size);
++    // Find out about the blocks's actual layout.
++    Rt_layout<1> rtl_in = block_layout<1>(in.block()); 
++    Rt_layout<1> rtl_out = block_layout<1>(out.block()); 
++    
++    // Find out about what layout is acceptable for this backend.
++    backend->query_layout(rtl_in, rtl_out);
++
++    // Check whether the input buffer will be destroyed.
++    sync_action_type in_sync = backend->requires_copy(rtl_in)
++      ? SYNC_IN_NOPRESERVE
++      : SYNC_IN; 
++
++    // Create a 'direct data accessor', adjusting the block layout if necessary.
++    Rt_ext_data<Block0> in_ext(in.block(), rtl_in, in_sync);
++    Rt_ext_data<Block1> out_ext(out.block(), rtl_out, SYNC_OUT);
++    
++    // Call the backend.
++    assert(rtl_in.complex == rtl_out.complex);
++    if (rtl_in.complex == cmplx_inter_fmt) 
++      backend->by_reference(in_ext.data().as_inter(), in_ext.stride(0),
++			    out_ext.data().as_inter(), out_ext.stride(0),
++			    in_ext.size(0));
++    else
++      backend->by_reference(in_ext.data().as_split(), in_ext.stride(0),
++			    out_ext.data().as_split(), out_ext.stride(0),
++			    in_ext.size(0));
+ 
+-    }
+-    if (!backend->supports_scale() && !almost_equal(scale_, scalar_type(1.)))
++    // Scale the data if not already done by the backend.
++    if (!backend->supports_scale() && !almost_equal(scale_, T(1.)))
+       out *= scale_;
+   }
+ 
+   template <typename BE, typename BlockT>
+-  void in_place(BE *backend, Vector<I,BlockT> inout)
++  void in_place(BE *backend, Vector<std::complex<T>,BlockT> inout)
+   {
+-    typedef impl::Layout<1, tuple<0,1,2>, Stride_unit, Cmplx_inter_fmt> layout;
+-    {
+-      vsip::impl::Ext_data<BlockT, layout,No_count_policy,Copy_access_tag>
+-	inout_ext(inout.block(), vsip::impl::SYNC_INOUT);
+-      if (inout_ext.stride(0) == 1)
+-	backend->in_place(inout_ext.data(), inout_ext.stride(0), inout_ext.size(0));
+-    }
+-    if (!backend->supports_scale() && !almost_equal(scale_, scalar_type(1.)))
++    // Find out about the block's actual layout.
++    Rt_layout<1> rtl_inout = block_layout<1>(inout.block()); 
++    
++    // Find out about what layout is acceptable for this backend.
++    backend->query_layout(rtl_inout);
++
++    // Create a 'direct data accessor', adjusting the block layout if necessary.
++    Rt_ext_data<BlockT> inout_ext(inout.block(), rtl_inout, SYNC_INOUT);
++    
++    // Call the backend.
++    if (rtl_inout.complex == cmplx_inter_fmt) 
++      backend->in_place(inout_ext.data().as_inter(),
++			inout_ext.stride(0), inout_ext.size(0));
++    else
++      backend->in_place(inout_ext.data().as_split(),
++			inout_ext.stride(0), inout_ext.size(0));
++
++    // Scale the data if not already done by the backend.
++    if (!backend->supports_scale() && !almost_equal(scale_, T(1.)))
+       inout *= scale_;
+   }
+ 
+ private:
+-  scalar_type scale_;
++  T scale_;
++};
++
++template <typename T>
++class workspace<1, T, std::complex<T>, 0>
++{
++public:
++  workspace(Domain<1> const &, T scale)
++    : scale_(scale)
++  {}
++  
++  template <typename BE, typename Block0, typename Block1>
++  void by_reference(BE *backend,
++		    const_Vector<T, Block0> in,
++		    Vector<std::complex<T>, Block1> out)
++  {
++    // Find out about the blocks's actual layout.
++    Rt_layout<1> rtl_in = block_layout<1>(in.block()); 
++    Rt_layout<1> rtl_out = block_layout<1>(out.block()); 
++    
++    // Find out about what layout is acceptable for this backend.
++    backend->query_layout(rtl_in, rtl_out);
++
++    // Check whether the input buffer will be destroyed.
++    sync_action_type in_sync = backend->requires_copy(rtl_in)
++      ? SYNC_IN_NOPRESERVE
++      : SYNC_IN; 
++
++    // Create a 'direct data accessor', adjusting the block layout if necessary.
++    Rt_ext_data<Block0> in_ext(in.block(), rtl_in, in_sync);
++    Rt_ext_data<Block1> out_ext(out.block(), rtl_out, SYNC_OUT);
++    
++    // Call the backend.
++    if (rtl_out.complex == cmplx_inter_fmt) 
++      backend->by_reference(in_ext.data().as_real(), in_ext.stride(0),
++			    out_ext.data().as_inter(), out_ext.stride(0),
++			    in_ext.size(0));
++    else
++      backend->by_reference(in_ext.data().as_real(), in_ext.stride(0),
++			    out_ext.data().as_split(), out_ext.stride(0),
++			    in_ext.size(0));
++
++    // Scale the data if not already done by the backend.
++    if (!backend->supports_scale() && !almost_equal(scale_, T(1.)))
++      out *= scale_;
++  }
++
++private:
++  T scale_;
++};
++
++template <typename T>
++class workspace<1, std::complex<T>, T, 0>
++{
++public:
++  workspace(Domain<1> const &, T scale)
++    : scale_(scale)
++  {}
++  
++  template <typename BE, typename Block0, typename Block1>
++  void by_reference(BE *backend,
++		    const_Vector<std::complex<T>, Block0> in,
++		    Vector<T, Block1> out)
++  {
++    // Find out about the blocks's actual layout.
++    Rt_layout<1> rtl_in = block_layout<1>(in.block()); 
++    Rt_layout<1> rtl_out = block_layout<1>(out.block()); 
++    
++    // Find out about what layout is acceptable for this backend.
++    backend->query_layout(rtl_in, rtl_out);
++
++    // Check whether the input buffer will be destroyed.
++    sync_action_type in_sync = backend->requires_copy(rtl_in)
++      ? SYNC_IN_NOPRESERVE
++      : SYNC_IN; 
++    // Create a 'direct data accessor', adjusting the block layout if necessary.
++    Rt_ext_data<Block0> in_ext(in.block(), rtl_in, in_sync);
++    Rt_ext_data<Block1> out_ext(out.block(), rtl_out, SYNC_OUT);
++    
++    // Call the backend.
++    if (rtl_in.complex == cmplx_inter_fmt) 
++      backend->by_reference(in_ext.data().as_inter(), in_ext.stride(0),
++			    out_ext.data().as_real(), out_ext.stride(0),
++			    out_ext.size(0));
++    else
++      backend->by_reference(in_ext.data().as_split(), in_ext.stride(0),
++			    out_ext.data().as_real(), out_ext.stride(0),
++			    out_ext.size(0));
++
++    // Scale the data if not already done by the backend.
++    if (!backend->supports_scale() && !almost_equal(scale_, T(1.)))
++      out *= scale_;
++  }
++
++private:
++  T scale_;
+ };
+ 
+ /// workspace for column-wise FFTMs (and column-first 2D FFTs). As all backends
+Index: src/vsip/impl/fftw3/fft_impl.cpp
+===================================================================
+RCS file: /home/cvs/Repository/vpp/src/vsip/impl/fftw3/fft_impl.cpp,v
+retrieving revision 1.1
+diff -u -r1.1 fft_impl.cpp
+--- src/vsip/impl/fftw3/fft_impl.cpp	1 May 2006 19:12:04 -0000	1.1
++++ src/vsip/impl/fftw3/fft_impl.cpp	8 May 2006 20:32:20 -0000
+@@ -141,9 +141,9 @@
+ 			A, E>
+ 
+ {
+-  typedef SCALAR_TYPE stype;
+-  typedef std::complex<stype> ctype;
+-  typedef std::pair<stype*, stype*> ztype;
++  typedef SCALAR_TYPE rtype;
++  typedef std::complex<rtype> ctype;
++  typedef std::pair<rtype*, rtype*> ztype;
+ 
+ public:
+   impl(Domain<1> const &dom, unsigned number)
+@@ -184,22 +184,22 @@
+   : private fft_base<1, SCALAR_TYPE, std::complex<SCALAR_TYPE> >,
+     public fft::backend<1, SCALAR_TYPE, std::complex<SCALAR_TYPE>, A, E>
+ {
+-  typedef SCALAR_TYPE stype;
+-  typedef std::complex<stype> ctype;
+-  typedef std::pair<stype*, stype*> ztype;
++  typedef SCALAR_TYPE rtype;
++  typedef std::complex<rtype> ctype;
++  typedef std::pair<rtype*, rtype*> ztype;
+ 
+ public:
+   impl(Domain<1> const &dom, unsigned number)
+-    : fft_base<1, stype, ctype>(dom, A, convert_NoT(number))
++    : fft_base<1, rtype, ctype>(dom, A, convert_NoT(number))
+   {}
+-  virtual void by_reference(stype *in, stride_type in_stride,
++  virtual void by_reference(rtype *in, stride_type in_stride,
+ 			    ctype *out, stride_type out_stride,
+ 			    length_type length)
+   {
+     FFTW(execute_dft_r2c)(plan_by_reference_, 
+ 			  in, reinterpret_cast<FFTW(complex)*>(out));
+   }
+-  virtual void by_reference(stype *in, stride_type in_stride,
++  virtual void by_reference(rtype *in, stride_type in_stride,
+ 			    ztype out, stride_type out_stride,
+ 			    length_type length)
+   {
+@@ -215,24 +215,26 @@
+   : fft_base<1, std::complex<SCALAR_TYPE>, SCALAR_TYPE>,
+     public fft::backend<1, std::complex<SCALAR_TYPE>, SCALAR_TYPE, A, E>
+ {
+-  typedef SCALAR_TYPE stype;
+-  typedef std::complex<stype> ctype;
+-  typedef std::pair<stype*, stype*> ztype;
++  typedef SCALAR_TYPE rtype;
++  typedef std::complex<rtype> ctype;
++  typedef std::pair<rtype*, rtype*> ztype;
+ 
+ public:
+   impl(Domain<1> const &dom, unsigned number)
+-    : fft_base<1, ctype, stype>(dom, A, convert_NoT(number))
++    : fft_base<1, ctype, rtype>(dom, A, convert_NoT(number))
+   {}
+ 
++  virtual bool requires_copy(Rt_layout<1> &) { return true;}
++
+   virtual void by_reference(ctype *in, stride_type in_stride,
+-			    stype *out, stride_type out_stride,
++			    rtype *out, stride_type out_stride,
+ 			    length_type length)
+   {
+     FFTW(execute_dft_c2r)(plan_by_reference_,
+ 			  reinterpret_cast<FFTW(complex)*>(in), out);
+   }
+   virtual void by_reference(ztype in, stride_type in_stride,
+-			    stype *out, stride_type out_stride,
++			    rtype *out, stride_type out_stride,
+ 			    length_type length)
+   {
+     assert(0);
+@@ -249,9 +251,9 @@
+ 			A, E>
+ 
+ {
+-  typedef SCALAR_TYPE stype;
+-  typedef std::complex<stype> ctype;
+-  typedef std::pair<stype*, stype*> ztype;
++  typedef SCALAR_TYPE rtype;
++  typedef std::complex<rtype> ctype;
++  typedef std::pair<rtype*, rtype*> ztype;
+ 
+ public:
+   impl(Domain<2> const &dom, unsigned number)
+@@ -300,15 +302,18 @@
+   : private fft_base<2, SCALAR_TYPE, std::complex<SCALAR_TYPE> >,
+     public fft::backend<2, SCALAR_TYPE, std::complex<SCALAR_TYPE>, A, E>
+ {
+-  typedef SCALAR_TYPE stype;
+-  typedef std::complex<stype> ctype;
+-  typedef std::pair<stype*, stype*> ztype;
++  typedef SCALAR_TYPE rtype;
++  typedef std::complex<rtype> ctype;
++  typedef std::pair<rtype*, rtype*> ztype;
+ 
+ public:
+   impl(Domain<2> const &dom, unsigned number)
+-    : fft_base<2, stype, ctype>(dom, A, convert_NoT(number))
++    : fft_base<2, rtype, ctype>(dom, A, convert_NoT(number))
+   {}
+-  virtual void by_reference(stype *in,
++
++  virtual bool requires_copy(Rt_layout<2> &) { return true;}
++
++  virtual void by_reference(rtype *in,
+ 			    stride_type in_r_stride, stride_type in_c_stride,
+ 			    ctype *out,
+ 			    stride_type out_r_stride, stride_type out_c_stride,
+@@ -317,7 +322,7 @@
+     FFTW(execute_dft_r2c)(plan_by_reference_,
+ 			  in, reinterpret_cast<FFTW(complex)*>(out));
+   }
+-  virtual void by_reference(stype *in,
++  virtual void by_reference(rtype *in,
+ 			    stride_type in_r_stride, stride_type in_c_stride,
+ 			    ztype,
+ 			    stride_type out_r_stride, stride_type out_c_stride,
+@@ -335,18 +340,20 @@
+   : fft_base<2, std::complex<SCALAR_TYPE>, SCALAR_TYPE>,
+     public fft::backend<2, std::complex<SCALAR_TYPE>, SCALAR_TYPE, A, E>
+ {
+-  typedef SCALAR_TYPE stype;
+-  typedef std::complex<stype> ctype;
+-  typedef std::pair<stype*, stype*> ztype;
++  typedef SCALAR_TYPE rtype;
++  typedef std::complex<rtype> ctype;
++  typedef std::pair<rtype*, rtype*> ztype;
+ 
+ public:
+   impl(Domain<2> const &dom, unsigned number)
+-    : fft_base<2, ctype, stype>(dom, A, convert_NoT(number))
++    : fft_base<2, ctype, rtype>(dom, A, convert_NoT(number))
+   {}
+ 
++  virtual bool requires_copy(Rt_layout<2> &) { return true;}
++
+   virtual void by_reference(ctype *in,
+ 			    stride_type in_r_stride, stride_type in_c_stride,
+-			    stype *out,
++			    rtype *out,
+ 			    stride_type out_r_stride, stride_type out_c_stride,
+ 			    length_type rows, length_type cols)
+   {
+@@ -355,7 +362,7 @@
+   }
+   virtual void by_reference(ztype,
+ 			    stride_type in_r_stride, stride_type in_c_stride,
+-			    stype *out,
++			    rtype *out,
+ 			    stride_type out_r_stride, stride_type out_c_stride,
+ 			    length_type rows, length_type cols)
+   {
+@@ -373,9 +380,9 @@
+ 			A, E>
+ 
+ {
+-  typedef SCALAR_TYPE stype;
+-  typedef std::complex<stype> ctype;
+-  typedef std::pair<stype*, stype*> ztype;
++  typedef SCALAR_TYPE rtype;
++  typedef std::complex<rtype> ctype;
++  typedef std::pair<rtype*, rtype*> ztype;
+ 
+ public:
+   impl(Domain<3> const &dom, unsigned number)
+@@ -446,15 +453,18 @@
+   : private fft_base<3, SCALAR_TYPE, std::complex<SCALAR_TYPE> >,
+     public fft::backend<3, SCALAR_TYPE, std::complex<SCALAR_TYPE>, A, E>
+ {
+-  typedef SCALAR_TYPE stype;
+-  typedef std::complex<stype> ctype;
+-  typedef std::pair<stype*, stype*> ztype;
++  typedef SCALAR_TYPE rtype;
++  typedef std::complex<rtype> ctype;
++  typedef std::pair<rtype*, rtype*> ztype;
+ 
+ public:
+   impl(Domain<3> const &dom, unsigned number)
+-    : fft_base<3, stype, ctype>(dom, A, convert_NoT(number))
++    : fft_base<3, rtype, ctype>(dom, A, convert_NoT(number))
+   {}
+-  virtual void by_reference(stype *in,
++
++  virtual bool requires_copy(Rt_layout<3> &) { return true;}
++
++  virtual void by_reference(rtype *in,
+ 			    stride_type in_x_stride,
+ 			    stride_type in_y_stride,
+ 			    stride_type in_z_stride,
+@@ -468,7 +478,7 @@
+   {
+     std::cout << "3D r->c by_ref" << std::endl;
+   }
+-  virtual void by_reference(stype *in,
++  virtual void by_reference(rtype *in,
+ 			    stride_type in_x_stride,
+ 			    stride_type in_y_stride,
+ 			    stride_type in_z_stride,
+@@ -492,20 +502,22 @@
+   : fft_base<3, std::complex<SCALAR_TYPE>, SCALAR_TYPE>,
+     public fft::backend<3, std::complex<SCALAR_TYPE>, SCALAR_TYPE, A, E>
+ {
+-  typedef SCALAR_TYPE stype;
+-  typedef std::complex<stype> ctype;
+-  typedef std::pair<stype*, stype*> ztype;
++  typedef SCALAR_TYPE rtype;
++  typedef std::complex<rtype> ctype;
++  typedef std::pair<rtype*, rtype*> ztype;
+ 
+ public:
+   impl(Domain<3> const &dom, unsigned number)
+-    : fft_base<3, ctype, stype>(dom, A, convert_NoT(number))
++    : fft_base<3, ctype, rtype>(dom, A, convert_NoT(number))
+   {}
+ 
++  virtual bool requires_copy(Rt_layout<3> &) { return true;}
++
+   virtual void by_reference(ctype *in,
+ 			    stride_type in_x_stride,
+ 			    stride_type in_y_stride,
+ 			    stride_type in_z_stride,
+-			    stype *out,
++			    rtype *out,
+ 			    stride_type out_x_stride,
+ 			    stride_type out_y_stride,
+ 			    stride_type out_z_stride,
+@@ -519,7 +531,7 @@
+ 			    stride_type in_x_stride,
+ 			    stride_type in_y_stride,
+ 			    stride_type in_z_stride,
+-			    stype *out,
++			    rtype *out,
+ 			    stride_type out_x_stride,
+ 			    stride_type out_y_stride,
+ 			    stride_type out_z_stride,
+@@ -539,9 +551,9 @@
+   : private fft_base<1, SCALAR_TYPE, std::complex<SCALAR_TYPE> >,
+     public fft::fftm<SCALAR_TYPE, std::complex<SCALAR_TYPE>, A, -1>
+ {
+-  typedef SCALAR_TYPE stype;
+-  typedef std::complex<stype> ctype;
+-  typedef std::pair<stype*, stype*> ztype;
++  typedef SCALAR_TYPE rtype;
++  typedef std::complex<rtype> ctype;
++  typedef std::pair<rtype*, rtype*> ztype;
+ 
+ public:
+   fftm(Domain<2> const &dom, unsigned number)
+@@ -550,7 +562,7 @@
+       mult_(dom[1-A].size()) 
+   {
+   }
+-  virtual void by_reference(stype *in,
++  virtual void by_reference(rtype *in,
+ 			    stride_type in_r_stride, stride_type in_c_stride,
+ 			    ctype *out,
+ 			    stride_type out_r_stride, stride_type out_c_stride,
+@@ -566,7 +578,7 @@
+       out += size_[0]/2 + 1;
+     }
+   }
+-  virtual void by_reference(stype *in,
++  virtual void by_reference(rtype *in,
+ 			    stride_type in_r_stride, stride_type in_c_stride,
+ 			    ztype out,
+ 			    stride_type out_r_stride, stride_type out_c_stride,
+@@ -586,18 +598,21 @@
+   : private fft_base<1, std::complex<SCALAR_TYPE>, SCALAR_TYPE>,
+     public fft::fftm<std::complex<SCALAR_TYPE>, SCALAR_TYPE, A, 1>
+ {
+-  typedef SCALAR_TYPE stype;
+-  typedef std::complex<stype> ctype;
+-  typedef std::pair<stype*, stype*> ztype;
++  typedef SCALAR_TYPE rtype;
++  typedef std::complex<rtype> ctype;
++  typedef std::pair<rtype*, rtype*> ztype;
+ 
+ public:
+   fftm(Domain<2> const &dom, unsigned number)
+     : fft_base<1, std::complex<SCALAR_TYPE>, SCALAR_TYPE>
+         (dom[A], 0, convert_NoT(number) | FFTW_UNALIGNED),
+       mult_(dom[1-A].size()) {}
++
++  virtual bool requires_copy(Rt_layout<2> &) { return true;}
++
+   virtual void by_reference(ctype *in,
+ 			    stride_type in_r_stride, stride_type in_c_stride,
+-			    stype *out,
++			    rtype *out,
+ 			    stride_type out_r_stride, stride_type out_c_stride,
+ 			    length_type rows, length_type cols)
+   {
+@@ -613,7 +628,7 @@
+   }
+   virtual void by_reference(ztype in,
+ 			    stride_type in_r_stride, stride_type in_c_stride,
+-			    stype *out,
++			    rtype *out,
+ 			    stride_type out_r_stride, stride_type out_c_stride,
+ 			    length_type rows, length_type cols)
+   {
+@@ -631,9 +646,9 @@
+   : private fft_base<1, std::complex<SCALAR_TYPE>, std::complex<SCALAR_TYPE> >,
+     public fft::fftm<std::complex<SCALAR_TYPE>, std::complex<SCALAR_TYPE>, A, E>
+ {
+-  typedef SCALAR_TYPE stype;
+-  typedef std::complex<stype> ctype;
+-  typedef std::pair<stype*, stype*> ztype;
++  typedef SCALAR_TYPE rtype;
++  typedef std::complex<rtype> ctype;
++  typedef std::pair<rtype*, rtype*> ztype;
+ 
+ public:
+   fftm(Domain<2> const &dom, int number)
+Index: src/vsip/impl/sal/fft.cpp
+===================================================================
+RCS file: /home/cvs/Repository/vpp/src/vsip/impl/sal/fft.cpp,v
+retrieving revision 1.2
+diff -u -r1.2 fft.cpp
+--- src/vsip/impl/sal/fft.cpp	6 May 2006 22:09:27 -0000	1.2
++++ src/vsip/impl/sal/fft.cpp	8 May 2006 20:32:20 -0000
+@@ -165,6 +165,11 @@
+     rtype *d = reinterpret_cast<rtype*>(data);
+     vsmulx(d, 1, &s, d, 1, 2 * size, ESAL);
+   }
++  void scale(std::pair<rtype*, rtype*> data, length_type size, rtype s)
++  {
++    vsmulx(data.first, 1, &s, data.first, 1, size, ESAL);
++    vsmulx(data.second, 1, &s, data.second, 1, size, ESAL);
++  }
+   void scale(rtype *data, length_type size, rtype s)
+   {
+     vsmulx(data, 1, &s, data, 1, size, ESAL);
+@@ -356,6 +361,11 @@
+     rtype *d = reinterpret_cast<rtype*>(data);
+     vsmuldx(d, 1, &s, d, 1, 2 * size, ESAL);
+   }
++  void scale(std::pair<rtype*, rtype*> data, length_type size, rtype s)
++  {
++    vsmuldx(data.first, 1, &s, data.first, 1, size, ESAL);
++    vsmuldx(data.second, 1, &s, data.second, 1, size, ESAL);
++  }
+   void scale(rtype *data, length_type size, rtype s)
+   {
+     vsmuldx(data, 1, &s, data, 1, size, ESAL);
+@@ -535,15 +545,29 @@
+   : private fft_base<1, precision<T>::single>,
+     public fft::backend<1, std::complex<T>, std::complex<T>, A, E>
+ {
++  typedef T rtype;
++  typedef std::complex<rtype> ctype;
++  typedef std::pair<rtype*, rtype*> ztype;
+   static int const direction = E == -1 ? FFT_FORWARD : FFT_INVERSE;
++
+ public:
+   impl(Domain<1> const &dom, T scale)
+     : fft_base<1, precision<T>::single>(dom, 0, scale) {}
+ 
+   virtual bool supports_scale() { return true;}
++  virtual void query_layout(Rt_layout<1> &rtl_inout)
++  {
++    rtl_inout.pack = stride_unit_dense;
++    rtl_inout.order = tuple<0, 1, 2>();
++  }
++  virtual void query_layout(Rt_layout<1> &rtl_in, Rt_layout<1> &rtl_out)
++  {
++    rtl_in.pack = stride_unit_dense;
++    rtl_in.order = tuple<0, 1, 2>();
++    rtl_out = rtl_in;
++  }
+ 
+-  virtual void in_place(std::complex<T> *data,
+-			stride_type stride, length_type size)
++  virtual void in_place(ctype *data, stride_type stride, length_type size)
+   {
+     assert(stride == 1);
+     assert(size == this->size_[0]);
+@@ -552,8 +576,7 @@
+       scale(data, this->size_[0], this->scale_);
+   }
+ 
+-  virtual void in_place(std::pair<T *, T *> data,
+-			stride_type stride, length_type size)
++  virtual void in_place(ztype data, stride_type stride, length_type size)
+   {
+     assert(size == this->size_[0]);
+     zip(data, stride, direction);
+@@ -564,8 +587,8 @@
+     }
+   }
+ 
+-  virtual void by_reference(std::complex<T> *in, stride_type in_stride,
+-			    std::complex<T> *out, stride_type out_stride,
++  virtual void by_reference(ctype *in, stride_type in_stride,
++			    ctype *out, stride_type out_stride,
+ 			    length_type size)
+   {
+     assert(in_stride == 1 && out_stride == 1);
+@@ -574,8 +597,8 @@
+     if (!almost_equal(this->scale_, T(1.)))
+       scale(out, this->size_[0], this->scale_);
+   }
+-  virtual void by_reference(std::pair<T *, T *> in, stride_type in_stride,
+-			    std::pair<T *, T *> out, stride_type out_stride,
++  virtual void by_reference(ztype in, stride_type in_stride,
++			    ztype out, stride_type out_stride,
+ 			    length_type size)
+   {
+     assert(size == this->size_[0]);
+@@ -593,11 +616,22 @@
+   : private fft_base<1, precision<T>::single>,
+     public fft::backend<1, T, std::complex<T>, A, -1>
+ {
++  typedef T rtype;
++  typedef std::complex<rtype> ctype;
++  typedef std::pair<rtype*, rtype*> ztype;
++
+ public:
+   impl(Domain<1> const &dom, T scale)
+     : fft_base<1, precision<T>::single>(dom, 0, scale) {}
+ 
+   virtual bool supports_scale() { return true;}
++  virtual void query_layout(Rt_layout<1> &rtl_in, Rt_layout<1> &rtl_out)
++  {
++    rtl_in.pack = stride_unit_dense;
++    rtl_in.order = tuple<0, 1, 2>();
++    rtl_in.complex = cmplx_inter_fmt;
++    rtl_out = rtl_in;
++  }
+ 
+   virtual void by_reference(T *in, stride_type in_stride,
+ 			    std::complex<T> *out, stride_type out_stride,
+@@ -621,13 +655,27 @@
+   : private fft_base<1, precision<T>::single>,
+     public fft::backend<1, std::complex<T>, T, A, 1>
+ {
++  typedef T rtype;
++  typedef std::complex<rtype> ctype;
++  typedef std::pair<rtype*, rtype*> ztype;
++
+ public:
+   impl(Domain<1> const &dom, T scale)
+     : fft_base<1, precision<T>::single>(dom, 0, scale) {}
+ 
+   virtual bool supports_scale() { return true;}
++  virtual void query_layout(Rt_layout<1> &rtl_in, Rt_layout<1> &rtl_out)
++  {
++    rtl_in.pack = stride_unit_dense;
++    rtl_in.order = tuple<0, 1, 2>();
++    rtl_in.complex = cmplx_inter_fmt;
++    rtl_out = rtl_in;
++  }
++  // SAL requires the input to be packed, so we will modify the input
++  // before passing it along.
++  virtual bool requires_copy(Rt_layout<1> &rtl_in) { return true;}
+ 
+-  virtual void by_reference(std::complex<T> *in, stride_type in_stride,
++  virtual void by_reference(ctype *in, stride_type in_stride,
+ 			    T *out, stride_type out_stride,
+ 			    length_type size)
+   {
+@@ -637,7 +685,7 @@
+     if (!almost_equal(this->scale_, T(1.)))
+       scale(out, this->size_[0], this->scale_);
+   }
+-  virtual void by_reference(std::pair<T *, T *> in, stride_type in_stride,
++  virtual void by_reference(ztype in, stride_type in_stride,
+ 			    T *out, stride_type out_stride,
+ 			    length_type size)
+   {
+@@ -649,12 +697,27 @@
+   : private fft_base<2, precision<T>::single>,
+     public fft::backend<2, std::complex<T>, std::complex<T>, A, E>
+ {
++  typedef T rtype;
++  typedef std::complex<rtype> ctype;
++  typedef std::pair<rtype*, rtype*> ztype;
+   static int const direction = E == -1 ? FFT_FORWARD : FFT_INVERSE;
++
+ public:
+   impl(Domain<2> const &dom, T scale)
+     : fft_base<2, precision<T>::single>(dom, 0, scale) {}
+ 
+   virtual bool supports_scale() { return true;}
++  virtual void query_layout(Rt_layout<2> &rtl_inout)
++  {
++    rtl_inout.pack = stride_unit_dense;
++    rtl_inout.order = tuple<0, 1, 2>();
++  }
++  virtual void query_layout(Rt_layout<2> &rtl_in, Rt_layout<2> &rtl_out)
++  {
++    rtl_in.pack = stride_unit_dense;
++    rtl_in.order = tuple<0, 1, 2>();
++    rtl_out = rtl_in;
++  }
+ 
+   virtual void in_place(std::complex<T> *inout,
+ 			stride_type r_stride, stride_type c_stride,
+@@ -723,11 +786,21 @@
+   : private fft_base<2, precision<T>::single>,
+     public fft::backend<2, T, std::complex<T>, A, -1>
+ {
++  typedef T rtype;
++  typedef std::complex<rtype> ctype;
++  typedef std::pair<rtype*, rtype*> ztype;
++
+ public:
+   impl(Domain<2> const &dom, T scale)
+     : fft_base<2, precision<T>::single>(dom, 0, scale) {}
+ 
+   virtual bool supports_scale() { return true;}
++  virtual void query_layout(Rt_layout<2> &rtl_in, Rt_layout<2> &rtl_out)
++  {
++    rtl_in.pack = stride_unit_dense;
++    rtl_in.order = tuple<0, 1, 2>();
++    rtl_out = rtl_in;
++  }
+ 
+   virtual void by_reference(T *in, stride_type in_r_stride, stride_type in_c_stride,
+ 			    std::complex<T> *out,
+@@ -766,11 +839,24 @@
+   : private fft_base<2, precision<T>::single>,
+     public fft::backend<2, std::complex<T>, T, A, 1>
+ {
++  typedef T rtype;
++  typedef std::complex<rtype> ctype;
++  typedef std::pair<rtype*, rtype*> ztype;
++
+ public:
+   impl(Domain<2> const &dom, T scale)
+     : fft_base<2, precision<T>::single>(dom, 0, scale) {}
+ 
+   virtual bool supports_scale() { return true;}
++  virtual void query_layout(Rt_layout<2> &rtl_in, Rt_layout<2> &rtl_out)
++  {
++    rtl_in.pack = stride_unit_dense;
++    rtl_in.order = tuple<0, 1, 2>();
++    rtl_out = rtl_in;
++  }
++  // SAL requires the input to be packed, so we will modify the input
++  // before passing it along.
++  virtual bool requires_copy(Rt_layout<2> &rtl_in) { return true;}
+ 
+   virtual void by_reference(std::complex<T> *in,
+ 			    stride_type in_r_stride, stride_type in_c_stride,
+@@ -812,10 +898,21 @@
+   : private fft_base<2, precision<T>::single>,
+     public fft::fftm<T, std::complex<T>, A, -1>
+ {
++  typedef T rtype;
++  typedef std::complex<rtype> ctype;
++  typedef std::pair<rtype*, rtype*> ztype;
++
+ public:
+   fftm(Domain<2> const &dom, T scale)
+     : fft_base<2, precision<T>::single>(dom, 0, scale) {}
+ 
++  virtual void query_layout(Rt_layout<2> &rtl_in, Rt_layout<2> &rtl_out)
++  {
++    rtl_in.pack = stride_unit_dense;
++    if (A == 0) rtl_in.order = tuple<1, 0, 2>();
++    else rtl_in.order = tuple<0, 1, 2>();
++    rtl_out = rtl_in;
++  }
+   virtual void by_reference(T *in, stride_type in_r_stride, stride_type in_c_stride,
+ 			    std::complex<T> *out,
+ 			    stride_type out_r_stride, stride_type out_c_stride,
+@@ -851,10 +948,24 @@
+   : private fft_base<2, precision<T>::single>,
+     public fft::fftm<std::complex<T>, T, A, 1>
+ {
++  typedef T rtype;
++  typedef std::complex<rtype> ctype;
++  typedef std::pair<rtype*, rtype*> ztype;
++
+ public:
+   fftm(Domain<2> const &dom, T scale)
+     : fft_base<2, precision<T>::single>(dom, 0, scale) {}
+ 
++  virtual void query_layout(Rt_layout<2> &rtl_in, Rt_layout<2> &rtl_out)
++  {
++    rtl_in.pack = stride_unit_dense;
++    if (A == 0) rtl_in.order = tuple<1, 0, 2>();
++    else rtl_in.order = tuple<0, 1, 2>();
++    rtl_out = rtl_in;
++  }
++  // SAL requires the input to be packed, so we will modify the input
++  // before passing it along.
++  virtual bool requires_copy(Rt_layout<2> &rtl_in) { return true;}
+   virtual void by_reference(std::complex<T> *in,
+ 			    stride_type in_r_stride, stride_type in_c_stride,
+ 			    T *out,
+@@ -891,11 +1002,28 @@
+   : private fft_base<2, precision<T>::single>,
+     public fft::fftm<std::complex<T>, std::complex<T>, A, E>
+ {
++  typedef T rtype;
++  typedef std::complex<rtype> ctype;
++  typedef std::pair<rtype*, rtype*> ztype;
+   static int const direction = E == -1 ? FFT_FORWARD : FFT_INVERSE;
++
+ public:
+   fftm(Domain<2> const &dom, T scale)
+     : fft_base<2, precision<T>::single>(dom, 0, scale) {}
+ 
++  virtual void query_layout(Rt_layout<2> &rtl_inout)
++  {
++    rtl_inout.pack = stride_unit_dense;
++    if (A == 0) rtl_inout.order = tuple<1, 0, 2>();
++    else rtl_inout.order = tuple<0, 1, 2>();
++  }
++  virtual void query_layout(Rt_layout<2> &rtl_in, Rt_layout<2> &rtl_out)
++  {
++    rtl_in.pack = stride_unit_dense;
++    if (A == 0) rtl_in.order = tuple<1, 0, 2>();
++    else rtl_in.order = tuple<0, 1, 2>();
++    rtl_out = rtl_in;
++  }
+   virtual void in_place(std::complex<T> *inout,
+ 			stride_type r_stride, stride_type c_stride,
+ 			length_type rows, length_type cols)

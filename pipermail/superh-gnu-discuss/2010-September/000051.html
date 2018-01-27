@@ -1,0 +1,122 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [PATCH] sh: Work around GCC bug in set_bl_bit()
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:superh-gnu-discuss%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20sh%3A%20Work%20around%20GCC%20bug%20in%20set_bl_bit%28%29&In-Reply-To=%3Ced5637cc82664f68c1609e0f511808c412d4cf68.1285498785.git.matt%40console-pimps.org%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   
+   <LINK REL="Next"  HREF="000052.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[PATCH] sh: Work around GCC bug in set_bl_bit()</H1>
+    <B>Matt Fleming</B> 
+    <A HREF="mailto:superh-gnu-discuss%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20sh%3A%20Work%20around%20GCC%20bug%20in%20set_bl_bit%28%29&In-Reply-To=%3Ced5637cc82664f68c1609e0f511808c412d4cf68.1285498785.git.matt%40console-pimps.org%3E"
+       TITLE="[PATCH] sh: Work around GCC bug in set_bl_bit()">matt at console-pimps.org
+       </A><BR>
+    <I>Sun Sep 26 11:08:37 UTC 2010</I>
+    <P><UL>
+        
+        <LI>Next message: <A HREF="000052.html">[superh-gnu-discuss] [PATCH] sh: Work around GCC bug in set_bl_bit()
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#51">[ date ]</a>
+              <a href="thread.html#51">[ thread ]</a>
+              <a href="subject.html#51">[ subject ]</a>
+              <a href="author.html#51">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>It seems that some versions of GCC do not handle negative constants in
+inline assembly very well, specifically any negative constant less that
+-129. Here is a reduced example of the problematic code,
+
+static inline void set_bl_bit(void)
+{
+	unsigned long __dummy0;
+
+	__asm__ __volatile__ (
+		&quot;and	%1, %0\n\t&quot;
+		: &quot;=r&quot; (__dummy0)
+		: &quot;r&quot; (0xffffff0f)
+		: &quot;memory&quot;
+	);
+}
+
+Now, what GCC should do is place 0xffffff0f in a constant pool and load
+it into a register with a mov.l instruction. What actually happens is
+that GCC truncates 0xffffff0f to 16-bits (0xff0f), places it in a
+constant pool and loads it with mov.w. Since the BL bit of the status
+register is at bit-position 28, it doesn't even get set.
+
+To work around this issue simply replace 0xffffff0f with 0xffffffff. It
+is safe to include the IMASK field of the sr register in the 'and' mask
+because we're blocking interrupts anyway by setting the BL bit, so
+there's no need to disable them. The original mask was buggy anyway as
+if any bits were set in IMASK we'd drop them on the floor and they'd
+never be restored.
+
+This bug was discovered after applying commit
+73a38b839b9295216e8d44dabf54de88270e77b8 (&quot;sh: Only use bl bit toggling
+for sleeping idle.&quot;), which made my sh7785lcr board reset after calling
+local_irq_enable() in default_idle().
+
+Signed-off-by: Matt Fleming &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/superh-gnu-discuss">matt at console-pimps.org</A>&gt;
+---
+
+Paul, it may be worth letting this one bake for another -rc period in
+the hope that if there are any problems, people will hit them. I am
+unsure when this bug was introduced and am pretty confused about why no
+one else is seeing it. It's completely reproducible for me. I've tried
+both Sourcery G++ Lite 4.3-143 for SuperH GNU/Linux and Sourcery G++
+Lite 4.4-200 for SuperH GNU/Linux releases.
+
+ arch/sh/include/asm/system_32.h |    2 +-
+ 1 files changed, 1 insertions(+), 1 deletions(-)
+
+diff --git a/arch/sh/include/asm/system_32.h b/arch/sh/include/asm/system_32.h
+index 9bd2684..d933748 100644
+--- a/arch/sh/include/asm/system_32.h
++++ b/arch/sh/include/asm/system_32.h
+@@ -250,7 +250,7 @@ static inline void set_bl_bit(void)
+ 		&quot;and	%3, %0\n\t&quot;
+ 		&quot;ldc	%0, sr\n\t&quot;
+ 		: &quot;=&amp;r&quot; (__dummy0), &quot;=r&quot; (__dummy1)
+-		: &quot;r&quot; (0x10000000), &quot;r&quot; (0xffffff0f)
++		: &quot;r&quot; (0x10000000), &quot;r&quot; (0xffffffff)
+ 		: &quot;memory&quot;
+ 	);
+ }
+-- 
+1.7.1
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	
+	<LI>Next message: <A HREF="000052.html">[superh-gnu-discuss] [PATCH] sh: Work around GCC bug in set_bl_bit()
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#51">[ date ]</a>
+              <a href="thread.html#51">[ thread ]</a>
+              <a href="subject.html#51">[ subject ]</a>
+              <a href="author.html#51">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/superh-gnu-discuss">More information about the superh-gnu-discuss
+mailing list</a><br>
+</body></html>

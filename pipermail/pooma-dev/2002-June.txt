@@ -1,0 +1,592 @@
+From rguenth at tat.physik.uni-tuebingen.de  Fri Jun  7 09:27:51 2002
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Fri, 7 Jun 2002 11:27:51 +0200 (CEST)
+Subject: Bug in field dependencies?
+Message-ID: <Pine.LNX.4.33.0206071125200.28090-100000@bellatrix.tat.physik.uni-tuebingen.de>
+
+Hi!
+
+If I have a 2d Field and do something like
+
+ rh.all() = 1.0;
+ rh(0, 0) = 10.0;
+
+I'll end up with rh set to 1.0 everywhere - if I insert a
+Pooma::blockAndEvaluate() inbetween the two assignments, it works
+as expected.
+
+Is this intended behavior or is it a bug? I'd think assigning to
+rh(0, 0) should trigger the assignment to rh.all() to complete.
+
+Thanks, Richard.
+
+--
+Richard Guenther <richard.guenther at uni-tuebingen.de>
+WWW: http://www.tat.physik.uni-tuebingen.de/~rguenth/
+The GLAME Project: http://www.glame.de/
+
+
+
+From stephens at proximation.com  Fri Jun  7 16:18:25 2002
+From: stephens at proximation.com (Stephen Smith)
+Date: Fri, 7 Jun 2002 10:18:25 -0600 
+Subject: [pooma-dev] Bug in field dependencies?
+Message-ID: <F871BB04B0EA224A821A5274C31DF315021856@proxim-sf001.santafe.proximation.com>
+
+This is the intended behavior.  The semantics you suggest
+would be much better for the usability of Pooma, but we
+forced this issue on the user for efficiency reasons.
+Consider:
+
+rh.all() = 1.0;
+for (i = 0;...) for (j=0;...)
+  rh(i, j) = 10.0;
+
+At every step in the loop, we would have to call the
+evaluator to check if there are outstanding expressions.
+Actually, this might not be so bad, but we implement our
+inner loops for expression evaluation with the same array
+operator()(int, int) so we would have to rethink the
+implementation of expression evaluation.
+
+We have the command-line option --pooma-blocking-expressions
+(and a function call, Pooma::blockingExpressions(true) I think...)
+that force evaluation after every statement.  Turning this option
+on enforces correctness at the expense of some parallelism.  For
+example:
+
+a = b;
+c = d;
+Pooma::blockAndEvaluate();
+cout << a(5) << c(5) << endl;
+
+In this example, we can evaluate parts of the two expressions
+concurrently since they are independent of each other.  With
+blocking expressions turned on, all of the first statement must
+be evaluated before the second.
+
+With blocking expressions turned off, the user if forced to
+act like a compiler and determine where the blockAndEvaluate()
+calls are necessary.  (Any time you assign to or read from an
+array which may have outstanding evaluation work.)  I agree that
+this is a bad interface choice.
+
+    Stephen Smith
+
+-----Original Message-----
+From: Richard Guenther [mailto:rguenth at tat.physik.uni-tuebingen.de] 
+Sent: Friday, June 07, 2002 3:28 AM
+To: pooma-dev at pooma.codesourcery.com
+Subject: [pooma-dev] Bug in field dependencies?
+
+Hi!
+
+If I have a 2d Field and do something like
+
+ rh.all() = 1.0;
+ rh(0, 0) = 10.0;
+
+I'll end up with rh set to 1.0 everywhere - if I insert a
+Pooma::blockAndEvaluate() inbetween the two assignments, it works
+as expected.
+
+Is this intended behavior or is it a bug? I'd think assigning to
+rh(0, 0) should trigger the assignment to rh.all() to complete.
+
+Thanks, Richard.
+
+--
+Richard Guenther <richard.guenther at uni-tuebingen.de>
+WWW: http://www.tat.physik.uni-tuebingen.de/~rguenth/
+The GLAME Project: http://www.glame.de/
+-------------- next part --------------
+An HTML attachment was scrubbed...
+URL: <http://sourcerytools.com/pipermail/pooma-dev/attachments/20020607/073444cd/attachment.html>
+
+From cantao at ime.unicamp.br  Wed Jun 19 16:48:48 2002
+From: cantao at ime.unicamp.br (Renato Fernandes =?ISO-8859-1?Q?Cant=E3o?=)
+Date: 19 Jun 2002 13:48:48 -0300
+Subject: Compiling SMARTS
+Message-ID: <1024505329.29027.4.camel@lei061.lei.ime.unicamp.br>
+
+Hi!
+
+I know that this is an annoying question and that it should have been
+asked/aswered a million times, but...
+
+How can I compile SMARTS on Linux??? It simply doesn't compile! There's
+no combination of configure parameters that could manage it!
+
+Info:
+
+Mandrake Linux 8.2 - kernel 2.4.18-6enterprise, with headers and source
+installed.
+
+I'm using a dual Pentium with gcc 3.04.
+
+Any hints?
+
+Thanks a lot, Cantao!
+
+-- 
+                     '''
+                    (o o)
++--------------oOOO--(_)----------------------+
+| Renato F. Cantao!                           |
+| Depto. de Matematica Aplicada               |
+| IMECC - UNICAMP                             |
+| Sala 215 - Predio da Pos-graduacao - Lado B |
++--------------------------OOOo---------------+
+                   |__|__|
+                    || ||
+                   ooO Ooo   Linux User #207462
+
+
+
+
+From rguenth at tat.physik.uni-tuebingen.de  Thu Jun 20 08:26:48 2002
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Thu, 20 Jun 2002 10:26:48 +0200 (CEST)
+Subject: [pooma-dev] Compiling SMARTS
+In-Reply-To: <1024505329.29027.4.camel@lei061.lei.ime.unicamp.br>
+Message-ID: <Pine.LNX.4.33.0206201022400.10873-100000@bellatrix.tat.physik.uni-tuebingen.de>
+
+On 19 Jun 2002, Renato Fernandes Cant?o wrote:
+
+> Hi!
+>
+> I know that this is an annoying question and that it should have been
+> asked/aswered a million times, but...
+>
+> How can I compile SMARTS on Linux??? It simply doesn't compile! There's
+> no combination of configure parameters that could manage it!
+
+Seems that the configuration system is somehow suboptimal. I tried to
+compile with --with-CXX=g++ and --with-thread=pthreads and still got
+compile errors. But probably those are easy to track down.
+
+Also it seems SMARTS is no longer actively developed.
+
+Richard.
+
+--
+Richard Guenther <richard.guenther at uni-tuebingen.de>
+WWW: http://www.tat.physik.uni-tuebingen.de/~rguenth/
+The GLAME Project: http://www.glame.de/
+
+
+
+From nilsb at cns.mpg.de  Fri Jun 21 14:31:59 2002
+From: nilsb at cns.mpg.de (Nils H. Busch)
+Date: Fri, 21 Jun 2002 16:31:59 +0200
+Subject: FieldStencils and Field(Range) views
+Message-ID: <3D1338DF.3926E040@cns.mpg.de>
+
+Hello,
+
+I was trying to apply a FieldStencil on a view of a field defined by a
+Range domain.
+I discovered that this does not work, since such a view evaluates to a
+NoGeometry template argument of Field. I was confirmed of this when
+reading the tutorial.
+Does this mean, I cannot apply a FieldStencil to Range views of fields ?
+
+Is there a workaround to this or is this possible with Pooma v 2.4 ?
+Currently, I am still using v 2.3, as I am not certain whether work on
+v2.4 has been completed.
+
+What I am trying to do, is to implement some kind of reduction operation
+(for a multigrid scheme) that operates on blocks of the finer resolution
+field and assigns them to a coarser resolution field.
+If anyone could give me a hint on how to approach that problem (what
+kind of classes to use, example code that does similar things),  I would
+appreciate it very much.
+
+Thanks.
+
+--
+    Nils H. Busch
+    Max-Planck-Institute of Cognitive Neuroscience
+    phone:  ++49 (341) 9940-035 fax:  ++49 (341) 9940-204
+    e-mail: nilsb at cns.mpg.de
+
+
+
+
+
+From jcrotinger at proximation.com  Fri Jun 21 16:06:02 2002
+From: jcrotinger at proximation.com (James Crotinger)
+Date: Fri, 21 Jun 2002 10:06:02 -0600
+Subject: [pooma-dev] FieldStencils and Field(Range) views
+Message-ID: <F871BB04B0EA224A821A5274C31DF3150D00FA@proxim-sf001.santafe.proximation.com>
+
+
+There is, in general, no good way to construct metric information for a
+range view of a field, which is why range views evaluate to Fields with
+NoGeometry. For instance, if you have a non-uniform non-orthogonal
+coordinate system and you remove every other point in one direction, the new
+mesh is no longer a simple sub-mesh of the old mesh, and there is no general
+way for Pooma to calculate this new information. For fields with cartesian
+coordinates this could be done, but such discrimination would have required
+the coordinate system type to be a compile time quantity, and in the
+re-design of Fields our main customers really wanted us to reduce the number
+of template dependencies (helps code-bloat, compile time, . . .).
+
+	Jim
+
+> -----Original Message-----
+> From: Nils H. Busch [mailto:nilsb at cns.mpg.de] 
+> Sent: Friday, June 21, 2002 8:32 AM
+> To: pooma-dev
+> Subject: [pooma-dev] FieldStencils and Field(Range) views
+> 
+> 
+> Hello,
+> 
+> I was trying to apply a FieldStencil on a view of a field 
+> defined by a Range domain. I discovered that this does not 
+> work, since such a view evaluates to a NoGeometry template 
+> argument of Field. I was confirmed of this when reading the 
+> tutorial. Does this mean, I cannot apply a FieldStencil to 
+> Range views of fields ?
+> 
+> Is there a workaround to this or is this possible with Pooma 
+> v 2.4 ? Currently, I am still using v 2.3, as I am not 
+> certain whether work on v2.4 has been completed.
+> 
+> What I am trying to do, is to implement some kind of 
+> reduction operation (for a multigrid scheme) that operates on 
+> blocks of the finer resolution field and assigns them to a 
+> coarser resolution field. If anyone could give me a hint on 
+> how to approach that problem (what kind of classes to use, 
+> example code that does similar things),  I would appreciate 
+> it very much.
+> 
+> Thanks.
+> 
+> --
+>     Nils H. Busch
+>     Max-Planck-Institute of Cognitive Neuroscience
+>     phone:  ++49 (341) 9940-035 fax:  ++49 (341) 9940-204
+>     e-mail: nilsb at cns.mpg.de
+> 
+> 
+> 
+-------------- next part --------------
+An HTML attachment was scrubbed...
+URL: <http://sourcerytools.com/pipermail/pooma-dev/attachments/20020621/4a66f5c9/attachment.html>
+
+From nilsb at cns.mpg.de  Fri Jun 21 16:44:14 2002
+From: nilsb at cns.mpg.de (Nils H. Busch)
+Date: Fri, 21 Jun 2002 18:44:14 +0200
+Subject: [pooma-dev] FieldStencils and Field(Range) views
+References: <F871BB04B0EA224A821A5274C31DF3150D00FA@proxim-sf001.santafe.proximation.com>
+Message-ID: <3D1357DE.BBAEDE79@cns.mpg.de>
+
+James Crotinger wrote:
+
+>
+>
+> There is, in general, no good way to construct metric information for
+> a range view of a field, which is why range views evaluate to Fields
+> with NoGeometry. For instance, if you have a non-uniform
+> non-orthogonal coordinate system and you remove every other point in
+> one direction, the new mesh is no longer a simple sub-mesh of the old
+> mesh, and there is no general way for Pooma to calculate this new
+> information. For fields with cartesian coordinates this could be done,
+> but such discrimination would have required the coordinate system type
+> to be a compile time quantity, and in the re-design of Fields our main
+> customers really wanted us to reduce the number of template
+> dependencies (helps code-bloat, compile time, . . .).
+>
+>         Jim
+>
+
+Thanks for pointing this out.
+
+How do I then proceed to write something like
+
+lhs = Function(restriction(rhs(R)));
+
+where lhs is a coarse resolution field, rhs a finer resolution field, R
+some range and restriction a function that performs some restriction
+operation from fine to coarse, so that the right hand side of the
+assignment is transformed into a POOMA expression tree ( with as few
+temporary fields as possible) ?
+
+Any suggestions appreciated.
+
+
+--
+    Nils H. Busch
+    Max-Planck-Institute of Cognitive Neuroscience
+    phone:  ++49 (341) 9940-035 fax:  ++49 (341) 9940-204
+    e-mail: nilsb at cns.mpg.de
+
+
+
+
+
+From jcrotinger at proximation.com  Fri Jun 21 19:35:40 2002
+From: jcrotinger at proximation.com (James Crotinger)
+Date: Fri, 21 Jun 2002 13:35:40 -0600
+Subject: [pooma-dev] FieldStencils and Field(Range) views
+Message-ID: <F871BB04B0EA224A821A5274C31DF3150D00FB@proxim-sf001.santafe.proximation.com>
+
+Jeffrey might be able to help with this - he worked on some restriction type
+of operators for Fields. 
+
+	Jim
+
+> -----Original Message-----
+> From: Nils H. Busch [mailto:nilsb at cns.mpg.de] 
+> Sent: Friday, June 21, 2002 10:44 AM
+> To: pooma-dev
+> Subject: Re: [pooma-dev] FieldStencils and Field(Range) views
+> 
+> 
+> James Crotinger wrote:
+> 
+> >
+> >
+> > There is, in general, no good way to construct metric 
+> information for 
+> > a range view of a field, which is why range views evaluate 
+> to Fields 
+> > with NoGeometry. For instance, if you have a non-uniform 
+> > non-orthogonal coordinate system and you remove every other 
+> point in 
+> > one direction, the new mesh is no longer a simple sub-mesh 
+> of the old 
+> > mesh, and there is no general way for Pooma to calculate this new 
+> > information. For fields with cartesian coordinates this 
+> could be done, 
+> > but such discrimination would have required the coordinate 
+> system type 
+> > to be a compile time quantity, and in the re-design of 
+> Fields our main 
+> > customers really wanted us to reduce the number of template 
+> > dependencies (helps code-bloat, compile time, . . .).
+> >
+> >         Jim
+> >
+> 
+> Thanks for pointing this out.
+> 
+> How do I then proceed to write something like
+> 
+> lhs = Function(restriction(rhs(R)));
+> 
+> where lhs is a coarse resolution field, rhs a finer 
+> resolution field, R some range and restriction a function 
+> that performs some restriction operation from fine to coarse, 
+> so that the right hand side of the assignment is transformed 
+> into a POOMA expression tree ( with as few temporary fields 
+> as possible) ?
+> 
+> Any suggestions appreciated.
+> 
+> 
+> --
+>     Nils H. Busch
+>     Max-Planck-Institute of Cognitive Neuroscience
+>     phone:  ++49 (341) 9940-035 fax:  ++49 (341) 9940-204
+>     e-mail: nilsb at cns.mpg.de
+> 
+> 
+> 
+-------------- next part --------------
+An HTML attachment was scrubbed...
+URL: <http://sourcerytools.com/pipermail/pooma-dev/attachments/20020621/8f64e3ce/attachment.html>
+
+From rguenth at tat.physik.uni-tuebingen.de  Thu Jun 27 11:41:54 2002
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Thu, 27 Jun 2002 13:41:54 +0200 (CEST)
+Subject: [PATCH] C++ correctness fixes
+Message-ID: <Pine.LNX.4.33.0206271336540.23173-200000@bellatrix.tat.physik.uni-tuebingen.de>
+
+Hi!
+
+The attached patch provides some fixes for C++ correctness to either
+avoid warnings or, in case of ContextMapper.h, fix the destructor being
+not virtual.
+
+All of these were catched by gcc3.1, pooma r2 now compiles without
+warnings [apart from using <*.h> rather than <*> includes].
+
+Richard.
+
+Btw. is it considered good practice to post patches to this mailinglist?
+I have (after some cleanup) more stuff pending, like introducing HDF5
+I/O classes and activation of CoordinateSystem support (much like the one
+from pooma-2.3.0). For my own development I set up a bitkeeper repository
+to mirror the CVS one, but its not pullable from outside our institute.
+
+--
+Richard Guenther <richard.guenther at uni-tuebingen.de>
+WWW: http://www.tat.physik.uni-tuebingen.de/~rguenth/
+The GLAME Project: http://www.glame.de/
+-------------- next part --------------
+# This is a BitKeeper generated patch for the following project:
+# Project Name: pooma/cheetah repository tracking CVS/tarball
+# This patch format is intended for GNU patch command version 2.5 or higher.
+# This patch includes the following deltas:
+#	           ChangeSet	1.26    -> 1.27   
+#	r2/src/Field/DiffOps/FieldShiftEngine.h	1.2     -> 1.3    
+#	r2/src/Field/FieldEngine/FieldEngine.h	1.2     -> 1.3    
+#	r2/src/Partition/ContextMapper.h	1.2     -> 1.3    
+#	r2/src/Field/NearestNeighbors.h	1.2     -> 1.3    
+#
+# The following is the BitKeeper ChangeSet Log
+# --------------------------------------------
+# 02/06/27	rguenth at bellatrix.tat.physik.uni-tuebingen.de	1.27
+# C++ correctness fixes
+# --------------------------------------------
+#
+diff --minimal -Nru a/r2/src/Field/DiffOps/FieldShiftEngine.h b/r2/src/Field/DiffOps/FieldShiftEngine.h
+--- a/r2/src/Field/DiffOps/FieldShiftEngine.h	Thu Jun 27 13:36:27 2002
++++ b/r2/src/Field/DiffOps/FieldShiftEngine.h	Thu Jun 27 13:36:27 2002
+@@ -440,7 +440,7 @@
+ 	      const std::vector<FieldOffset<outputDim> > &vs1,
+               const Centering<outputDim> &centering)
+   {
+-    typedef std::vector<FieldOffset<outputDim> >::size_type size_type;
++    typedef typename std::vector<FieldOffset<outputDim> >::size_type size_type;
+ 
+     // Create a model field with the new centering.
+ 
+diff --minimal -Nru a/r2/src/Field/FieldEngine/FieldEngine.h b/r2/src/Field/FieldEngine/FieldEngine.h
+--- a/r2/src/Field/FieldEngine/FieldEngine.h	Thu Jun 27 13:36:27 2002
++++ b/r2/src/Field/FieldEngine/FieldEngine.h	Thu Jun 27 13:36:27 2002
+@@ -184,8 +184,8 @@
+   
+   FieldEngine(const This_t &model)
+     : num_materials_m(model.num_materials_m),
+-      stride_m(model.stride_m),
+       centering_m(model.centering_m),
++      stride_m(model.stride_m),
+       data_m(model.data_m),
+       physicalCellDomain_m(model.physicalCellDomain_m),
+       guards_m(model.guards_m),
+@@ -246,8 +246,8 @@
+   FieldEngine(const FieldEngine<Mesh, T2, EngineTag2> &model,
+               const Domain_t &d)
+     : num_materials_m(model.numMaterials()),
+-      stride_m(model.centeringSize()),
+       centering_m(model.centering()),
++      stride_m(model.centeringSize()),
+       guards_m(0),
+       mesh_m(model.mesh(),
+              inputDomainToVertexDomain(d))
+@@ -284,8 +284,8 @@
+   FieldEngine(const FieldEngine<Mesh2, T2, EngineTag2> &model,
+               const Domain &d)
+     : num_materials_m(model.numMaterials()),
+-      stride_m(model.centeringSize()),
+       centering_m(model.centering()),
++      stride_m(model.centeringSize()),
+       guards_m(0)
+   {
+     addSubFields();
+@@ -306,8 +306,8 @@
+   FieldEngine(const FieldEngine<Mesh, T2, EngineTag2> &model,
+               const INode<Dim> &i)
+     : num_materials_m(model.numMaterials()),
+-      stride_m(model.centeringSize()),
+       centering_m(model.centering()),
++      stride_m(model.centeringSize()),
+       guards_m(0),
+       mesh_m(model.mesh(),
+              inputDomainToVertexDomain(i.domain())) // FIXME: should hand INode to mesh?
+@@ -344,8 +344,8 @@
+   FieldEngine(const FieldEngine<Mesh2, T2, EngineTag2> &model,
+               const EngineView<Tag> &ev)
+     : num_materials_m(model.numMaterials()),
+-      stride_m(model.centeringSize()),
+       centering_m(model.centering()),
++      stride_m(model.centeringSize()),
+       physicalCellDomain_m(model.physicalCellDomain()),
+       guards_m(model.guardLayers()),
+       mesh_m(model.mesh())
+@@ -368,8 +368,8 @@
+   FieldEngine(const FieldEngine<Mesh, T, EngineTag2> &model,
+               const FieldEnginePatch<Dim> &p)
+     : num_materials_m(model.numMaterials()),
+-      stride_m(model.centeringSize()),
+       centering_m(model.centering()),
++      stride_m(model.centeringSize()),
+       guards_m(model.guardLayers()),
+       mesh_m(model.mesh()) // FIXME: should take a view of the mesh???
+   {
+@@ -386,8 +386,8 @@
+   FieldEngine(const FieldEngine<Mesh2, T2, EngineTag2> &model, 
+               const ComponentWrapper<Components> &cw)
+     : num_materials_m(model.numMaterials()),
+-      stride_m(model.centeringSize()),
+       centering_m(model.centering()),
++      stride_m(model.centeringSize()),
+       physicalCellDomain_m(model.physicalCellDomain()),
+       guards_m(model.guardLayers()),
+       mesh_m(model.mesh())
+@@ -407,8 +407,8 @@
+   FieldEngine(const This_t &model, 
+               const Pooma::DontCopyRelations &d)
+     : num_materials_m(model.numMaterials()),
+-      stride_m(model.centeringSize()),
+       centering_m(model.centering()),
++      stride_m(model.centeringSize()),
+       physicalCellDomain_m(model.physicalCellDomain_m),
+       guards_m(model.guardLayers()),
+       mesh_m(model.mesh())
+diff --minimal -Nru a/r2/src/Field/NearestNeighbors.h b/r2/src/Field/NearestNeighbors.h
+--- a/r2/src/Field/NearestNeighbors.h	Thu Jun 27 13:36:27 2002
++++ b/r2/src/Field/NearestNeighbors.h	Thu Jun 27 13:36:27 2002
+@@ -112,7 +112,7 @@
+ 
+     // Determine nearest neighbors for each output value.
+ 
+-    for (Answer_t::size_type outputIndex = 0;
++    for (typename Answer_t::size_type outputIndex = 0;
+ 	 outputIndex < outputCentering.size();
+ 	 ++outputIndex)
+       answer[outputIndex] = nearestNeighbors(inputPositions,
+@@ -156,7 +156,7 @@
+ 
+     // Determine nearest neighbors for each field offset.
+ 
+-    for (FieldOffsetList_t::size_type folIndex = 0;
++    for (typename FieldOffsetList_t::size_type folIndex = 0;
+ 	 folIndex < outputCentering.size();
+ 	 ++folIndex) {
+       PInsist(fieldOffsetList[folIndex].subFieldNumber() < outputCentering.size(),
+@@ -221,7 +221,7 @@
+ 
+     FieldOffset_vt answerHolder;
+     if (IntraCellOnly) {
+-      for (MinimumSet::size_type minIndex = 0;
++      for (typename MinimumSet::size_type minIndex = 0;
+ 	   minIndex < minimumSet.size();
+ 	   ++minIndex)
+ 	answerHolder.push_back(FieldOffset_t(Loc<Dim>(0),
+@@ -229,7 +229,7 @@
+     }
+     else {
+       FieldOffset_vt partialAnswer;
+-      for (MinimumSet::size_type minIndex = 0;
++      for (typename MinimumSet::size_type minIndex = 0;
+ 	   minIndex < minimumSet.size();
+ 	   ++minIndex)
+ 	{
+diff --minimal -Nru a/r2/src/Partition/ContextMapper.h b/r2/src/Partition/ContextMapper.h
+--- a/r2/src/Partition/ContextMapper.h	Thu Jun 27 13:36:27 2002
++++ b/r2/src/Partition/ContextMapper.h	Thu Jun 27 13:36:27 2002
+@@ -78,6 +78,8 @@
+ 
+   ContextMapper(){};
+ 
++  virtual ~ContextMapper(){};
++
+   virtual void map(const List_t & templist) const = 0;
+ 
+   
+

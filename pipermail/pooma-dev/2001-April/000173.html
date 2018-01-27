@@ -1,0 +1,359 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> RFC: Hydrodynamics Kernel
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20RFC%3A%20Hydrodynamics%20Kernel&In-Reply-To=%3C20010404115524.A15316%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000172.html">
+   <LINK REL="Next"  HREF="000174.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>RFC: Hydrodynamics Kernel</H1>
+    <B>Jeffrey Oldham</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20RFC%3A%20Hydrodynamics%20Kernel&In-Reply-To=%3C20010404115524.A15316%40codesourcery.com%3E"
+       TITLE="RFC: Hydrodynamics Kernel">oldham at codesourcery.com
+       </A><BR>
+    <I>Wed Apr  4 18:55:24 UTC 2001</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000172.html">Patch: Evaluator/ScalarCode.h
+</A></li>
+        <LI>Next message: <A HREF="000174.html">Example of bad behavior from particle boundary conditions
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#173">[ date ]</a>
+              <a href="thread.html#173">[ thread ]</a>
+              <a href="subject.html#173">[ subject ]</a>
+              <a href="author.html#173">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Attached is a partially-completed hydrodynamics kernel program.  Upto
+now, I have tried to program clean code, using Pooma abstractions and
+trying to determine (and implement) the additional Pooma abstractions
+needed to produce clean code.  Given the 15April deadline, soon, I
+will begin hacking unclean code to ensure we have working code by the
+deadline.
+
+Comments regarding the two conceptual choices at the top of the code
+are solicited.
+
+Thanks,
+Jeffrey D. Oldham
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">oldham at codesourcery.com</A>
+-------------- next part --------------
+// Oldham, Jeffrey D.
+// 2001Mar27
+// Pooma
+
+// Hydrodynamics Kernel Written Using POOMA
+
+// Following is pseudocode for the hydrodynamics kernel program.  When
+// the pseudocode is replaced by Pooma code, the program should
+// perform one iteration of a predictor, but not corrector, scheme.
+// The program should compile since unimplemented portions are protected by
+// &quot;PSEUDOCODE&quot; preprocessor symbols.
+// 
+// To complete the problem, two conceptual choices remain.
+// 1. How should corner masses and corner forces be implemented?
+// 
+//    Central to the staggered grid concept, a corner is the intersection
+//    of two overlapping grids, one shifted half a unit in all dimensions
+//    from the other.  For example, in a cell from a two-dimensional (2-D)
+//    grid, there are four corner values, which I have marked using
+//    2-D binary numbers.
+// 
+// 			|-------------------|
+// 			|01               11|
+// 			|         c         |
+// 			|00               10|
+// 			|-------------------|
+// 
+//    In three dimensions, there are eight corners in a cell.  Note that
+//    referring to a corner value requires both (a cell and a binary
+//    number) or (a vertex and a binary number).
+// 
+//    The pseudocode has ??? operations on these corner fields:
+//    1. sumAroundCell(CornerField): For each cell, add together all its
+//       corners.  Form a ConstField with the sums at each cell.
+//    2. sumAroundVertex(CornerField): For each vertex, add together all
+//       its corners.  Form a ConstField with the sums at each vertex.
+//    3. computeCornerVolumes(coordinates): Form a CornerField using the
+//       coordinates Field as input.  This involves one computation per
+//       corner.
+//    4. computeCornerForces(pressure, coordinates): Form a CornerField
+//       using the two given Fields as input.  This involves one
+//       computation per corner.  Pseudocode, which is repetitious, is
+//       given.
+//    5. Mathematical operation \dot(CornerField, vertex-centered-field).
+//       Note the two operands have different number of values, but the
+//       &quot;right thing&quot; should happen, i.e., each all corner values around
+//       a vertex should each be dotted with the corresponding vertex
+//       value.
+// 
+// 2. Field Stenciling.
+// 
+//    vertex-centered-field = computeVolumes(cell-centered-field)
+// 
+//    Scott Haney says that NewField stencils are either broken or
+//    difficult (I do not remember which).  Instead he suggested using
+//    data-parallel statements, but this requires producing a &quot;parallel&quot;
+//    version of the product operation.  Will NewField stencils be fully
+//    supported in Pooma 2.4?
+// 
+// Unfinished Coding Tasks:
+// 1. Decide corner field implementation and then implement the
+//    operations on it.
+// 2. Finish implementing computeVolumes() Field operation.
+// 3. Convert to cylindrical or Lagrangian coordinates.
+// 4. Improve initialization of &quot;coordinates&quot; Field.
+// 5. Improve the implementation of velocity boundary conditions.
+
+
+// *******************************************************************
+
+#include &lt;iostream&gt;
+#include &lt;stdlib.h&gt;
+#include &lt;cmath&gt;
+#include &quot;Pooma/NewFields.h&quot;
+
+// This hydrodynamics program implements &quot;The Construction of
+// Compatible Hydrodynamics Algorithms Utilizing Conservation of Total
+// Energy,&quot; by E.J. Caramana, D.E. Burton, M.J. Shashkov, and
+// P.P. Whalen, \emph{Journal of Computational Physics}, vol. 146
+// (1998), pp. 227-262.
+
+
+// Forward Declarations
+template &lt;class Geometry, class VtxT, class T, class Engine&gt;
+void computeVolumes(const Field&lt;Geometry,VtxT,Engine&gt; &amp; vtxCentered,
+		    Field&lt;Geometry,T,Engine&gt; &amp; output);
+
+template &lt;class Geometry, class VtxT, class Engine&gt;
+void enforceZeroPerpendicularComponent(Field&lt;Geometry,VtxT,Engine&gt; &amp; f,
+				       const Interval&lt;1&gt; &amp; xInterval,
+				       const Interval&lt;1&gt; &amp; yInterval);
+
+
+// The Hydrodynamics Program
+int main(int argc, char *argv[])
+{
+  // Set up the Pooma library.
+  Pooma::initialize(argc,argv);
+#ifdef DEBUG
+  std::cout &lt;&lt; &quot;Hello, world.&quot; &lt;&lt; std::endl;
+#endif // DEBUG
+
+  // Values
+  const double gamma = 4.0/3;		// gas pressure constant $\gamma$
+  const double timeStep = 0.01;		// $\Delta t$
+  unsigned nuIterations = 1;		// number of iterations
+
+  // Create a simple layout.
+  // TODO: Change to Cylindrical coordinates?
+  const unsigned Dim = 2;		// Work in a 2D world.
+  const unsigned nHorizVerts = 11;	// number of horizontal vertices
+  const unsigned nAngles = 5;		// number of angles
+  Interval&lt;Dim&gt; vertexDomain;
+  vertexDomain[0] = Interval&lt;1&gt;(nHorizVerts);
+  vertexDomain[1] = Interval&lt;1&gt;(nAngles);
+  DomainLayout&lt;Dim&gt; layout(vertexDomain, GuardLayers&lt;2&gt;(1));
+
+  // Preparation for Field creation.
+  Vector&lt;Dim&gt; origin(0.0);
+  Vector&lt;Dim&gt; spacings(1.0,1.0);  // TODO: What does this do?
+  typedef UniformRectilinear&lt;Dim, double, Cartesian&lt;Dim&gt; &gt; Geometry_t;
+  typedef Field&lt;Geometry_t, double,      Brick&gt; Fields_t;
+  typedef Field&lt;Geometry_t, double,      Brick&gt; ConstFields_t; // TODO: Change to ConstField when ConstField is available.
+  typedef Field&lt;Geometry_t, Vector&lt;Dim&gt;, Brick&gt; Fieldv_t;
+  typedef Field&lt;Geometry_t, Vector&lt;Dim&gt;, Brick&gt; ConstFieldv_t; // TODO: Change to ConstField when ConstField is available.
+
+  // Cell-centered Fields.
+  Cell cell;
+  Fields_t internalEnergy  (cell, layout, origin, spacings);
+  ConstFields_t zoneMass   (cell, layout, origin, spacings);
+  Fields_t pressure	   (cell, layout, origin, spacings);
+  Fields_t pressureDensity (cell, layout, origin, spacings);
+  Fields_t volume	   (cell, layout, origin, spacings);
+
+  // Vertex-centered Fields.
+  Vert vert;
+  ConstFields_t pointMass  (vert, layout, origin, spacings);
+  Fieldv_t coordinates	   (vert, layout, origin, spacings);
+  Fieldv_t velocity	   (vert, layout, origin, spacings);
+  Fieldv_t velocityChange  (vert, layout, origin, spacings);
+
+  // Corner Fields.
+#ifdef PSEUDOCODE
+  // TODO: How should I implement corner Fields?
+  Fieldv_t cornerForce	   (ReplicateSubFields&lt;Cell&gt;(1&lt;&lt;Dim), layout,
+			    origin, spacings);
+  Fields_t cornerMass      (ReplicateSubFields&lt;Cell&gt;(1&lt;&lt;Dim), layout,
+			    origin, spacings);
+#endif // PSEUDOCODE
+
+  // Initialization
+  // TODO: Is coordinates initialization necessary?  What is the best way to do this?
+  for (unsigned xIndex = 0; xIndex &lt;= vertexDomain[0].last (); ++xIndex)
+    for (unsigned yIndex = 0; yIndex &lt;= vertexDomain[1].last (); ++yIndex)
+      coordinates(xIndex,yIndex) = Vector&lt;2&gt;(xIndex,yIndex);
+#ifdef DEBUG
+  std::cout &lt;&lt; &quot;initial coordinates:\n&quot; &lt;&lt; coordinates &lt;&lt; std::endl;
+#endif // DEBUG
+  internalEnergy = 1.0;
+  pressureDensity = 1.0;
+#ifdef PSEUDOCODE
+  cornerMass = pressureDensity * computeCornerVolumes(coordinates);
+  pointMass = sumAroundCell(cornerMass);
+  zoneMass = sumAroundVertex(cornerMass);
+#endif // PSEUDOCODE
+  velocity = Vector&lt;Dim&gt;(0.0);
+  velocityChange.addUpdaters(AllConstantFaceBC&lt;Vector&lt;Dim&gt; &gt;(Vector&lt;Dim&gt;(0.0), false));
+
+  // Iterations
+  for (; nuIterations &gt; 0; --nuIterations) {
+    pressure = (gamma - 1.0) * pressureDensity * internalEnergy;
+    
+#ifdef PSEUDOCODE
+    cornerForce = computeCornerForces(pressure, coordinates);
+    velocityChange =
+      (timeStep / pointMass) * sumAroundCell(cornerForce);
+    // TODO: Is there a better way to enforce boundary conditions?
+    velocityChange.update();
+    enforceZeroPerpendicularComponent(velocityChange,
+				      vertexDomain[0], vertexDomain[1]);
+    internalEnergy +=
+      -(timeStep / pointMass) *
+      sumAroundVertex(\dot(cornerForce, velocity + 0.5*velocityChange));
+#endif // PSEUDOCODE
+
+    coordinates += (velocity + 0.5*velocityChange) * timeStep;
+    velocity += velocityChange;
+#ifdef PSEUDOCODE
+    volume = computeVolumes(coordinates);
+#endif // PSEUDOCODE
+    pressureDensity = zoneMass / volume;
+  }
+
+  // Termination
+  std::cout &lt;&lt; &quot;final coordinates:\n&quot; &lt;&lt; coordinates &lt;&lt; std::endl;
+
+#ifdef DEBUG
+  std::cout &lt;&lt; &quot;Goodbye, world.&quot; &lt;&lt; std::endl;
+#endif // DEBUG
+  Pooma::finalize();
+  return EXIT_SUCCESS;
+}
+
+
+// Helper Functions
+
+// This Vector operation proves useful, but I do not know the name of
+// the corresponding mathematical operation.
+// TODO: Change to specialization for Dim=2.
+template &lt;int Dim, class T, class E&gt;
+Vector&lt;Dim,T,E&gt;
+product(const Vector&lt;Dim,T,E&gt; &amp;v, const Vector&lt;Dim,T,E&gt; &amp;w)
+{
+  Vector&lt;2,T,E&gt; answer;
+  answer(0) = v(0) * w(1);
+  answer(1) = -v(1) * w(0);
+  return answer;
+}
+
+
+// Compute each cell's volume.
+// TODO: Change to handle any dimension or even 2D better.
+// TODO: Rewrite using a FieldStencil.
+// Geometry: Geometry of the two Field's.
+// VtxT: Vector type of Vertex-centered Field
+// T: scalar type of Cell-centered Field
+// Engine: Engine of the two Field's.
+// output should be cell-centered.
+template &lt;class Geometry, class VtxT, class T, class Engine&gt;
+void computeVolumes(const Field&lt;Geometry,VtxT,Engine&gt; &amp; vtxCentered,
+		    Field&lt;Geometry,T,Engine&gt; &amp; output)
+{
+  // TODO: Check this computation for off-by-one issues.
+  Field&lt;Geometry,T,Engine&gt;::Domain_t range = output.physicalCellDomain();
+  output(range) = 0.5 *
+    std::abs (sum (product (vtxCentered(range+Loc&lt;2&gt;(1,1))-vtxCentered(range+Loc&lt;2&gt;(0,0)),
+			    vtxCentered(range+Loc&lt;2&gt;(1,0))-vtxCentered(range+Loc&lt;2&gt;(0,1)))));
+  return;
+}
+
+
+// Ensure the field's boundaries' vectors have zero perpendicular
+// components.
+// TODO: Change to handle any dimension or even 2D better.
+template &lt;class Geometry, class VtxT, class Engine&gt;
+void enforceZeroPerpendicularComponent(Field&lt;Geometry,VtxT,Engine&gt; &amp; f,
+				       const Interval&lt;1&gt; &amp; xInterval,
+				       const Interval&lt;1&gt; &amp; yInterval)
+{
+  f(0,yInterval).comp(0) = 0.0;
+  f(xInterval,0).comp(1) = 0.0;
+  return;
+}
+
+
+#ifdef PSEUDOCODE
+// Compute the corner forces.
+computeCornerForces(const Field &amp; pressure, const Field &amp; coordinates,
+		    Field &amp; cornerForces)
+{
+  Field&lt;Geometry2,T,Engine&gt;::Domain_t range = input.physicalCellDomain();
+  Loc&lt;Dim&gt; previous_loc, loc, next_loc;
+  previous_loc = Loc&lt;2&gt;(1,0); loc = Loc&lt;2&gt;(1,1); next_loc = Loc&lt;2&gt;(0,1);
+  cornerForces[zoneToBinaryCorner(loc)](range) =
+    pressure(range) * 0.5 *
+    product(Vector&lt;Dim&gt;(1.0),
+	    coordinates(range+next_loc) - coordinates(range+previous_loc));
+  previous_loc = loc; loc = next_loc; next_loc = Loc&lt;2&gt;(0,0);
+  cornerForces[zoneToBinaryCorner(loc)](range) =
+    pressure(range) * 0.5 *
+    product(Vector&lt;Dim&gt;(1.0),
+	    coordinates(range+next_loc) - coordinates(range+previous_loc));
+  previous_loc = loc; loc = next_loc; next_loc = Loc&lt;2&gt;(1,0);
+  cornerForces[zoneToBinaryCorner(loc)](range) =
+    pressure(range) * 0.5 *
+    product(Vector&lt;Dim&gt;(1.0),
+	    coordinates(range+next_loc) - coordinates(range+previous_loc));
+  previous_loc = loc; loc = next_loc; next_loc = Loc&lt;2&gt;(1,1);
+  cornerForces[zoneToBinaryCorner(loc)](range) =
+    pressure(range) * 0.5 *
+    product(Vector&lt;Dim&gt;(1.0),
+	    coordinates(range+next_loc) - coordinates(range+previous_loc));
+  return;
+}
+#endif // PSEUDOCODE
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000172.html">Patch: Evaluator/ScalarCode.h
+</A></li>
+	<LI>Next message: <A HREF="000174.html">Example of bad behavior from particle boundary conditions
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#173">[ date ]</a>
+              <a href="thread.html#173">[ thread ]</a>
+              <a href="subject.html#173">[ subject ]</a>
+              <a href="author.html#173">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

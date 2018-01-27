@@ -1,0 +1,154 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [PATCH] Fix where breakage
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20Fix%20where%20breakage&In-Reply-To=%3CPine.LNX.4.58.0312252310170.519%40goofy%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001430.html">
+   <LINK REL="Next"  HREF="001436.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[PATCH] Fix where breakage</H1>
+    <B>Richard Guenther</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20Fix%20where%20breakage&In-Reply-To=%3CPine.LNX.4.58.0312252310170.519%40goofy%3E"
+       TITLE="[PATCH] Fix where breakage">rguenth at tat.physik.uni-tuebingen.de
+       </A><BR>
+    <I>Thu Dec 25 22:13:44 UTC 2003</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001430.html">[PATCH] OpenMP loop level parallelism
+</A></li>
+        <LI>Next message: <A HREF="001436.html">[PATCH] Fix where breakage
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1431">[ date ]</a>
+              <a href="thread.html#1431">[ thread ]</a>
+              <a href="subject.html#1431">[ subject ]</a>
+              <a href="author.html#1431">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Hi!
+
+With my recent where improvements I did some breakage which is obviously
+fixed by the following patch.  I also extended array_test12 to contain
+some &gt;1 dim tests.
+
+Regtested on the few where tests we have using serial ppc-linux.
+
+Ok to apply?
+
+Thanks,
+
+Richard.
+
+
+2003Dec25  Richard Guenther &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">richard.guenther at uni-tuebingen.de</A>&gt;
+
+	* Array/tests/array_test12.cpp: check systematically for
+	d-dimensional array/scalar rhs in where.
+	Evaluator/WhereProxy.h: use EvalLeaf of the dimensionality
+	of the first where argument.
+
+Index: Array/tests/array_test12.cpp
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/Array/tests/array_test12.cpp,v
+retrieving revision 1.14
+diff -u -u -r1.14 array_test12.cpp
+--- Array/tests/array_test12.cpp	21 Nov 2003 21:30:37 -0000	1.14
++++ Array/tests/array_test12.cpp	25 Dec 2003 22:07:47 -0000
+@@ -39,6 +39,34 @@
+
+ #include &lt;math.h&gt;
+
++template &lt;int Dim&gt;
++void check(Pooma::Tester&amp; tester)
++{
++  tester.out() &lt;&lt; Dim &lt;&lt; &quot;-dimensional tests:\n&quot;;
++  Interval&lt;Dim&gt; I;
++  for (int i=0; i&lt;Dim; ++i)
++    I[i] = Interval&lt;1&gt;(10);
++  Array&lt;Dim&gt; a(I), b(I);
++  a = 1.0;
++  b = 0.0;
++  b = where(a == 1.0, a);
++  tester.check(&quot;2-arg where with array rhs&quot;, all(b == 1.0));
++  b = 0.0;
++  b = where(a == 1.0, 5.0);
++  tester.check(&quot;2-arg where with scalar rhs&quot;, all(b == 5.0));
++  b = 0.0;
++  b = where(a == 1.0, a, a);
++  tester.check(&quot;3-arg where with array/array rhs&quot;, all(b == 1.0));
++  b = 0.0;
++  b = where(a == 1.0, a, 3.0);
++  tester.check(&quot;3-arg where with array/scalar rhs&quot;, all(b == 1.0));
++  b = 0.0;
++  b = where(a == 1.0, 3.0, a);
++  tester.check(&quot;3-arg where with scalar/array rhs&quot;, all(b == 3.0));
++  b = 0.0;
++  b = where(a == 1.0, 1.0, 3.0);
++  tester.check(&quot;3-arg where with scalar/scalar rhs&quot;, all(b == 1.0));
++}
+
+ int main(int argc, char* argv[])
+ {
+@@ -114,6 +142,12 @@
+
+   tester.check(&quot;where reduction&quot;, prod(where(d == 0.0, d)) == 0.0);
+
++  // generic 2/3-arg where with array/scalar rhs
++
++  check&lt;1&gt;(tester);
++  check&lt;2&gt;(tester);
++  check&lt;3&gt;(tester);
++
+   int ret = tester.results(&quot;array_test12&quot;);
+   Pooma::finalize();
+   return ret;
+Index: Evaluator/WhereProxy.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/Evaluator/WhereProxy.h,v
+retrieving revision 1.6
+diff -u -u -r1.6 WhereProxy.h
+--- Evaluator/WhereProxy.h	21 Nov 2003 21:30:38 -0000	1.6
++++ Evaluator/WhereProxy.h	25 Dec 2003 22:07:47 -0000
+@@ -86,7 +86,7 @@
+   typedef typename ConvertWhereProxy&lt;ETrait_t,Tree_t&gt;::Make_t MakeFromTree_t;
+   typedef typename MakeFromTree_t::Expression_t               WhereMask_t;
+   typedef typename ForEach&lt;typename CreateLeaf&lt;B&gt;::Leaf_t,
+-			   EvalLeaf&lt;1&gt;, OpCombine&gt;::Type_t    Element_t;
++			   EvalLeaf&lt;F::dimensions&gt;, OpCombine&gt;::Type_t Element_t;
+
+   inline WhereMask_t
+   whereMask() const
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001430.html">[PATCH] OpenMP loop level parallelism
+</A></li>
+	<LI>Next message: <A HREF="001436.html">[PATCH] Fix where breakage
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1431">[ date ]</a>
+              <a href="thread.html#1431">[ thread ]</a>
+              <a href="subject.html#1431">[ subject ]</a>
+              <a href="author.html#1431">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

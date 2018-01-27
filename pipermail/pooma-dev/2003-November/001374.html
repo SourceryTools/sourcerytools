@@ -1,0 +1,310 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [PATCH] Support reductions over where(), 2nd try
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20Support%20reductions%20over%20where%28%29%2C%202nd%20try&In-Reply-To=%3C3FBE8259.6020904%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001373.html">
+   <LINK REL="Next"  HREF="001375.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[PATCH] Support reductions over where(), 2nd try</H1>
+    <B>Jeffrey D. Oldham</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20Support%20reductions%20over%20where%28%29%2C%202nd%20try&In-Reply-To=%3C3FBE8259.6020904%40codesourcery.com%3E"
+       TITLE="[PATCH] Support reductions over where(), 2nd try">oldham at codesourcery.com
+       </A><BR>
+    <I>Fri Nov 21 21:23:37 UTC 2003</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001373.html">[PATCH] Support reductions over where(), 2nd try
+</A></li>
+        <LI>Next message: <A HREF="001375.html">Extracting a list of Loc&lt;&gt;s out of a distributed engine?
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1374">[ date ]</a>
+              <a href="thread.html#1374">[ thread ]</a>
+              <a href="subject.html#1374">[ subject ]</a>
+              <a href="author.html#1374">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Richard Guenther wrote:
+&gt;<i> Hi!
+</I>&gt;<i> 
+</I>&gt;<i> This version doesnt break any use of where as the first version did.
+</I>&gt;<i> Double-checked with a full build and regression test using Intel
+</I>&gt;<i> icpc 8.0 in -ansi mode.
+</I>&gt;<i> 
+</I>&gt;<i> This also adds the where cases I broke with the first patch to the
+</I>&gt;<i> array and field tests.
+</I>&gt;<i> 
+</I>&gt;<i> Ok?
+</I>
+Yes, but see the correction and three suggestions below.
+
+&gt;<i> Richard.
+</I>&gt;<i> 
+</I>&gt;<i> 
+</I>&gt;<i> 2003Nov21  Richard Guenther &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">richard.guenther at uni-tuebingen.de</A>&gt;
+</I>&gt;<i> 
+</I>&gt;<i> 	* src/Evaluator/WhereProxy.h: support reduction over
+</I>&gt;<i> 	WhereProxy&lt;&gt; objects by adding Element_t.
+</I>&gt;<i> 	src/Evaluator/OpMask.h: Add ReductionTraits&lt;&gt; specialization
+</I>&gt;<i> 	for OpMask&lt;T&gt;, add Unwrap&lt;&gt; to unwrap OpMask&lt;&gt;.
+</I>&gt;<i> 	src/Engine/RemoteEngine.h: use unwrapped Op for final
+</I>&gt;<i> 	reduction over patch results.
+</I>&gt;<i> 	src/Evaluator/Reduction.h: likewise. Add evaluate() method
+</I>&gt;<i> 	handling WhereProxy to main evaluator.
+</I>&gt;<i> 	src/Array/tests/array_test12.cpp: Add where reduction testcases.
+</I>&gt;<i> 	src/Field/tests/WhereTest.cpp: likewise.
+</I>&gt;<i> 
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: /home/pooma/Repository/r2/src/Array/tests/array_test12.cpp,v
+</I>&gt;<i> retrieving revision 1.13
+</I>&gt;<i> diff -u -u -r1.13 array_test12.cpp
+</I>&gt;<i> --- Array/tests/array_test12.cpp	10 Mar 2000 18:10:45 -0000	1.13
+</I>&gt;<i> +++ Array/tests/array_test12.cpp	21 Nov 2003 20:30:07 -0000
+</I>&gt;<i> @@ -109,6 +109,11 @@
+</I>&gt;<i>    tester.out() &lt;&lt; std::endl;
+</I>&gt;<i>    tester.check(&quot;d2 &lt; 0.000001&quot;, d2 &lt; 0.000001);
+</I>&gt;<i> 
+</I>&gt;<i> +  int cnt = sum(where(d == 0.0, 1));
+</I>&gt;<i> +  tester.check(&quot;couting zeros with where reduction&quot;, cnt == 6);
+</I>
+s/couting/counting/
+
+&gt;<i> +
+</I>&gt;<i> +  tester.check(&quot;where reduction&quot;, prod(where(d == 0.0, d)) == 0.0);
+</I>&gt;<i> +
+</I>&gt;<i>    int ret = tester.results(&quot;array_test12&quot;);
+</I>&gt;<i>    Pooma::finalize();
+</I>&gt;<i>    return ret;
+</I>&gt;<i> Index: Engine/RemoteEngine.h
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: /home/pooma/Repository/r2/src/Engine/RemoteEngine.h,v
+</I>&gt;<i> retrieving revision 1.37
+</I>&gt;<i> diff -u -u -r1.37 RemoteEngine.h
+</I>&gt;<i> --- Engine/RemoteEngine.h	22 Oct 2003 19:38:07 -0000	1.37
+</I>&gt;<i> +++ Engine/RemoteEngine.h	21 Nov 2003 20:30:08 -0000
+</I>&gt;<i> @@ -2069,7 +2069,7 @@
+</I>&gt;<i>        {
+</I>&gt;<i>  	ret = vals[0];
+</I>&gt;<i>  	for (j = 1; j &lt; n; j++)
+</I>&gt;<i> -	  op(ret, vals[j]);
+</I>&gt;<i> +	  Unwrap&lt;Op&gt;::unwrap(op)(ret, vals[j]);
+</I>&gt;<i>        }
+</I>&gt;<i> 
+</I>&gt;<i>      delete [] vals;
+</I>&gt;<i> Index: Evaluator/OpMask.h
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: /home/pooma/Repository/r2/src/Evaluator/OpMask.h,v
+</I>&gt;<i> retrieving revision 1.20
+</I>&gt;<i> diff -u -u -r1.20 OpMask.h
+</I>&gt;<i> --- Evaluator/OpMask.h	22 Oct 2003 20:43:26 -0000	1.20
+</I>&gt;<i> +++ Evaluator/OpMask.h	21 Nov 2003 20:30:08 -0000
+</I>&gt;<i> @@ -169,6 +169,28 @@
+</I>&gt;<i>    typedef T1 &amp;Type_t;
+</I>&gt;<i>  };
+</I>&gt;<i> 
+</I>&gt;<i> +template &lt;class Op&gt;
+</I>&gt;<i> +struct Unwrap {
+</I>&gt;<i> +  typedef Op Op_t;
+</I>&gt;<i> +  static inline const Op_t&amp; unwrap(const Op &amp;op) { return op; }
+</I>&gt;<i> +};
+</I>&gt;<i> +
+</I>&gt;<i> +template &lt;class Op&gt;
+</I>&gt;<i> +struct Unwrap&lt;OpMask&lt;Op&gt; &gt; {
+</I>&gt;<i> +  typedef typename Unwrap&lt;Op&gt;::Op_t Op_t;
+</I>&gt;<i> +  static inline const Op_t&amp; unwrap(const OpMask&lt;Op&gt; &amp;op) { return Unwrap&lt;Op&gt;::unwrap(op.op_m); }
+</I>&gt;<i> +};
+</I>&gt;<i> +
+</I>&gt;<i> +template &lt;class Op, class T&gt;
+</I>&gt;<i> +struct ReductionTraits;
+</I>&gt;<i> +
+</I>&gt;<i> +template &lt;class Op, class T&gt;
+</I>&gt;<i> +struct ReductionTraits&lt;OpMask&lt;Op&gt;, T&gt;
+</I>&gt;<i> +{
+</I>&gt;<i> +  static T identity() { return ReductionTraits&lt;Op, T&gt;::identity(); }
+</I>&gt;<i> +};
+</I>&gt;<i> +
+</I>&gt;<i> +
+</I>&gt;<i>  //-----------------------------------------------------------------------------
+</I>&gt;<i>  //
+</I>&gt;<i>  //-----------------------------------------------------------------------------
+</I>&gt;<i> Index: Evaluator/Reduction.h
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: /home/pooma/Repository/r2/src/Evaluator/Reduction.h,v
+</I>&gt;<i> retrieving revision 1.12
+</I>&gt;<i> diff -u -u -r1.12 Reduction.h
+</I>&gt;<i> --- Evaluator/Reduction.h	21 Nov 2003 17:36:10 -0000	1.12
+</I>&gt;<i> +++ Evaluator/Reduction.h	21 Nov 2003 20:30:08 -0000
+</I>&gt;<i> @@ -53,7 +53,9 @@
+</I>&gt;<i>  #include &quot;Engine/IntersectEngine.h&quot;
+</I>&gt;<i>  #include &quot;Evaluator/ReductionKernel.h&quot;
+</I>&gt;<i>  #include &quot;Evaluator/EvaluatorTags.h&quot;
+</I>&gt;<i> +#include &quot;Evaluator/WhereProxy.h&quot;
+</I>&gt;<i>  #include &quot;Threads/PoomaCSem.h&quot;
+</I>&gt;<i> +#include &quot;Utilities/PerformUpdate.h&quot;
+</I>&gt;<i> 
+</I>&gt;<i>  #include &lt;vector&gt;
+</I>&gt;<i>  #include &lt;iterator&gt;
+</I>&gt;<i> @@ -109,6 +111,14 @@
+</I>&gt;<i>      return e.centeringSize() == 1 &amp;&amp; e.numMaterials() == 1;
+</I>&gt;<i>    }
+</I>&gt;<i> 
+</I>&gt;<i> +  /// Un-wrap where() expression operation and pass on to generic evaluator.
+</I>&gt;<i> +
+</I>&gt;<i> +  template&lt;class T, class Op, class Cond, class Expr&gt;
+</I>&gt;<i> +  void evaluate(T &amp;ret, const Op &amp;op, const WhereProxy&lt;Cond, Expr&gt; &amp;w) const
+</I>&gt;<i> +  {
+</I>&gt;<i> +    evaluate(ret, w.opMask(op), w.whereMask());
+</I>&gt;<i> +  }
+</I>&gt;<i> +
+</I>&gt;<i>    /// Input an expression and cause it to be reduced.
+</I>&gt;<i>    /// We just pass the buck to a special reduction after updating
+</I>&gt;<i>    /// the expression leafs and checking its validity (we can handle
+</I>&gt;<i> @@ -249,7 +259,7 @@
+</I>&gt;<i> 
+</I>&gt;<i>      ret = vals[0];
+</I>&gt;<i>      for (j = 1; j &lt; n; j++)
+</I>&gt;<i> -      op(ret, vals[j]);
+</I>&gt;<i> +      Unwrap&lt;Op&gt;::unwrap(op)(ret, vals[j]);
+</I>&gt;<i>      delete [] vals;
+</I>&gt;<i>    }
+</I>&gt;<i>  };
+</I>&gt;<i> Index: Evaluator/WhereProxy.h
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: /home/pooma/Repository/r2/src/Evaluator/WhereProxy.h,v
+</I>&gt;<i> retrieving revision 1.5
+</I>&gt;<i> diff -u -u -r1.5 WhereProxy.h
+</I>&gt;<i> --- Evaluator/WhereProxy.h	22 Oct 2003 20:43:26 -0000	1.5
+</I>&gt;<i> +++ Evaluator/WhereProxy.h	21 Nov 2003 20:30:08 -0000
+</I>&gt;<i> @@ -48,6 +48,7 @@
+</I>&gt;<i> 
+</I>&gt;<i>  #include &quot;Evaluator/OpMask.h&quot;
+</I>&gt;<i>  #include &quot;Pooma/PETE/ExpressionTraits.h&quot;
+</I>&gt;<i> +#include &quot;Engine/ExpressionEngine.h&quot;
+</I>&gt;<i> 
+</I>&gt;<i>  //-----------------------------------------------------------------------------
+</I>&gt;<i>  /// We need the tools to convert a WhereProxy into an Array or Field or
+</I>&gt;<i> @@ -84,6 +85,8 @@
+</I>&gt;<i>    typedef typename ExpressionTraits&lt;Tree_t&gt;::Type_t           ETrait_t;
+</I>&gt;<i>    typedef typename ConvertWhereProxy&lt;ETrait_t,Tree_t&gt;::Make_t MakeFromTree_t;
+</I>&gt;<i>    typedef typename MakeFromTree_t::Expression_t               WhereMask_t;
+</I>&gt;<i> +  typedef typename ForEach&lt;typename CreateLeaf&lt;B&gt;::Leaf_t,
+</I>&gt;<i> +			   EvalLeaf&lt;1&gt;, OpCombine&gt;::Type_t    Element_t;
+</I>&gt;<i> 
+</I>&gt;<i>    inline WhereMask_t
+</I>&gt;<i>    whereMask() const
+</I>&gt;<i> Index: Field/tests/WhereTest.cpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: /home/pooma/Repository/r2/src/Field/tests/WhereTest.cpp,v
+</I>&gt;<i> retrieving revision 1.2
+</I>&gt;<i> diff -u -u -r1.2 WhereTest.cpp
+</I>&gt;<i> --- Field/tests/WhereTest.cpp	23 Jan 2003 19:21:49 -0000	1.2
+</I>&gt;<i> +++ Field/tests/WhereTest.cpp	21 Nov 2003 20:30:09 -0000
+</I>&gt;<i> @@ -86,6 +86,7 @@
+</I>&gt;<i>    // Now, we can declare a field.
+</I>&gt;<i> 
+</I>&gt;<i>    Centering&lt;2&gt; allFace = canonicalCentering&lt;2&gt;(FaceType, Continuous);
+</I>&gt;<i> +  Centering&lt;2&gt; allCell = canonicalCentering&lt;2&gt;(CellType, Continuous);
+</I>&gt;<i> 
+</I>&gt;<i>    typedef UniformRectilinearMesh&lt;2&gt; Geometry_t;
+</I>&gt;<i> 
+</I>&gt;<i> @@ -103,6 +104,9 @@
+</I>&gt;<i>    Field_t a(allFace, layout, origin, spacings);
+</I>&gt;<i>    Field_t b(allFace, layout, origin, spacings);
+</I>&gt;<i>    Field_t c(allFace, layout, origin, spacings);
+</I>&gt;<i> +  Field_t d(allCell, layout, origin, spacings);
+</I>&gt;<i> +  Field_t e(allCell, layout, origin, spacings);
+</I>&gt;<i> +  Field_t f(allCell, layout, origin, spacings);
+</I>&gt;<i> 
+</I>&gt;<i>    PositionsTraits&lt;Geometry_t&gt;::Type_t x = positions(a);
+</I>&gt;<i> 
+</I>&gt;<i> @@ -154,6 +158,43 @@
+</I>&gt;<i>    tester.check(&quot;twoarg where result dirtied part, centering one&quot;,
+</I>&gt;<i>                 all(where(dot(x.subField(0, 1), line) &gt; 8.0,
+</I>&gt;<i>                     b.subField(0, 1), c.subField(0, 1)) == a.subField(0, 1)));
+</I>&gt;<i> +
+</I>&gt;<i> +  // 2-arg where reduction
+</I>&gt;<i> +
+</I>&gt;<i> +  d = 1.0;
+</I>&gt;<i> +  e = positions(e).read(e.physicalDomain()).comp(0);
+</I>&gt;<i> +  tester.check(&quot;reduction over twoarg where&quot;,
+</I>&gt;<i> +	       sum(where(e(e.physicalDomain()) &lt; 4.0, d)) == 4.0*9.0);
+</I>&gt;<i> +
+</I>&gt;<i> +  // 3-arg where reduction
+</I>&gt;<i> +
+</I>&gt;<i> +  d = 1.0;
+</I>&gt;<i> +  f = 0.0;
+</I>&gt;<i> +  e = positions(e).read(e.physicalDomain()).comp(0);
+</I>&gt;<i> +  tester.check(&quot;reduction over twoarg where&quot;,
+</I>&gt;<i> +	       sum(where(e(e.physicalDomain()) &lt; 4.0, d, f)) == 4.0*9.0);
+</I>&gt;<i> +
+</I>&gt;<i> +  // 2-arg where with scalar expression and reduction variant thereof
+</I>&gt;<i> +
+</I>&gt;<i> +  d = where(e(e.physicalDomain()) &gt;= 4.0, 0.0);
+</I>&gt;<i> +  tester.check(&quot;counting reduction&quot;,
+</I>&gt;<i> +	       sum(where(d(d.physicalDomain()) != 0.0, 1)) == 4*9);
+</I>&gt;<i> +
+</I>&gt;<i> +  // 2-arg where with scalar test and reduction variant thereof
+</I>&gt;<i> +
+</I>&gt;<i> +  d = where(true, f);
+</I>&gt;<i> +  tester.check(&quot;stupid where&quot;, all(d(d.physicalDomain()) == 0.0));
+</I>&gt;<i> +  tester.check(&quot;stupid where reduction&quot;, prod(where(true, d)) == 0.0);
+</I>
+I would prefer to use the word &quot;simple&quot;, not &quot;stupid&quot;.
+
+&gt;<i> +
+</I>&gt;<i> +  // note that where with both expression and test being scalar does not
+</I>&gt;<i> +  // work because of
+</I>&gt;<i> +  // src/Pooma/PETE/ExpressionTraits.h:121:
+</I>&gt;<i> +  // error: no type named `Type_t' in
+</I>&gt;<i> +  //        `struct CombineExpressionTraits&lt;ExpressionIsScalar, ExpressionIsScalar&gt;'
+</I>&gt;<i> +  // and that is probably not the only reason.
+</I>&gt;<i> +  //
+</I>&gt;<i> +  // d = where(true, 1.0);
+</I>&gt;<i> +  // tester.check(&quot;even more stupid where&quot;, all(d(d.physicalDomain()) == 1.0));
+</I>
+Likewise.
+
+&gt;<i> 
+</I>&gt;<i>    int ret = tester.results(&quot;WhereTest&quot;);
+</I>&gt;<i>    Pooma::finalize();
+</I>
+
+-- 
+Jeffrey D. Oldham
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">oldham at codesourcery.com</A>
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001373.html">[PATCH] Support reductions over where(), 2nd try
+</A></li>
+	<LI>Next message: <A HREF="001375.html">Extracting a list of Loc&lt;&gt;s out of a distributed engine?
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1374">[ date ]</a>
+              <a href="thread.html#1374">[ thread ]</a>
+              <a href="subject.html#1374">[ subject ]</a>
+              <a href="author.html#1374">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

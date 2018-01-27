@@ -1,0 +1,400 @@
+From vlyamtsev at mzeal.com  Thu Sep  4 13:38:52 2008
+From: vlyamtsev at mzeal.com (Victor)
+Date: Thu, 4 Sep 2008 09:38:52 -0400
+Subject: question about using of malloc / free  in pthreads 
+Message-ID: <000601c90e93$91c5a3c0$6801a8c0@D674VYB1>
+
+Hello,
+I am working on some code where I have to pass data from couple of
+"producer" threads to consumer.
+I use "shared queue" approach, e.g. STL queue protected by mutex for passing
+my "messages" between threads.
+
+struct Block {
+char* msg;
+int size;
+};
+std::queue<block> fifo;
+pthread_mutex_t *lock;
+
+//producer thread
+
+void *producer (void *_p)
+{
+while(true) 
+{
+  Block* buff = malloc(sizeof(Block));
+  char* msg = malloc(128);
+  strncpy(msg, "my msg");
+  buff->msg = msg;
+  buff->size = 128;
+  // get mutex lock
+if (pthread_mutex_lock(lock) == 0)
+   fifo.push(buff);
+pthread_mutex_unlock(lock)
+sleep(10);
+ } //end of while
+} //end of producer
+
+//consumer thread
+
+void *consumer (void *_p)
+{
+
+while(true) 
+{
+ if (pthread_mutex_lock(lock) == 0)
+ {
+  Block *buff = fifo.front();
+//do something here with message
+  printf("%s", buff->msg);
+...
+//remove ptr from  queue
+  fifo.pop(); 
+//free msg memory
+ free(buff->msg);
+ free(buff);
+ pthread_mutex_unlock(lock)
+} //end of if
+ } //end of while
+} //end of consumer
+
+int main() {
+    
+   lock = (pthread_mutex_t *) malloc (sizeof (pthread_mutex_t));
+   pthread_mutex_init (lock, NULL);
+
+    
+    pthread_attr_t attr;
+    pthread_attr_init(&attr);
+    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
+    
+    pthread_create (&con, &attr, consumer, NULL);
+    pthread_create (&pro, &attr, producer, NULL);
+    
+    // cleanup here   
+    printf("End of program\n");
+}
+
+Program runs for while, but eventually it "segfaults", when trying to free
+used "message" memory in consumer.
+I wonder if I am missing some race condition associated with "alloc /free
+cycle" here... 
+Does memory allocation also has to be synchronized? E.g. should I create
+separate mutex for memory allocation:
+ pthread_mutex_t* mem_guard;
+//instead of malloc in "producer" call:
+if (pthread_mutex_lock(mem_guard) == 0) {
+  Block* buff = malloc(sizeof(Block));
+  char* msg = malloc(128);
+  pthread_mutex_unlock(mem_guard)
+}
+
+//instead of free in "consumer" call:
+if (pthread_mutex_lock(mem_guard) == 0) {
+   //free msg memory
+  free(buff->msg);
+  free(buff);
+  pthread_mutex_unlock(mem_guard)
+}
+
+Are there better approaches for IPC between pthreads?
+Thank you for your advise...
+
+-V
+
+-------------- next part --------------
+An HTML attachment was scrubbed...
+URL: <http://sourcerytools.com/pipermail/c++-pthreads/attachments/20080904/090dad93/attachment.html>
+
+From gshiman at commvault.com  Thu Sep  4 15:21:15 2008
+From: gshiman at commvault.com (George Shimanovich)
+Date: Thu, 4 Sep 2008 11:21:15 -0400
+Subject: [c++-pthreads] question about using of malloc / free  in pthreads 
+In-Reply-To: <000601c90e93$91c5a3c0$6801a8c0@D674VYB1>
+References: <000601c90e93$91c5a3c0$6801a8c0@D674VYB1>
+Message-ID: <D7E9043580617245870D12CC23E21F8D0222FF28@USEXCHANGE02.gp.cv.commvault.com>
+
+Consumer thread will crash the program when freeing msg de-referenced
+from 0 pointer in this operator:
+
+ 
+
+free(buff->msg);
+
+ 
+
+I suggest you check buff before derefencing it:
+
+ 
+
+            if(buff)
+
+            {
+
+//free msg memory
+ free(buff->msg);
+ free(buff);
+
+            }
+
+ 
+
+- George
+
+________________________________
+
+From: Victor [mailto:vlyamtsev at mzeal.com] 
+Sent: Thursday, September 04, 2008 9:39 AM
+To: c++-pthreads at codesourcery.com
+Subject: [c++-pthreads] question about using of malloc / free in
+pthreads 
+
+ 
+
+Hello,
+I am working on some code where I have to pass data from couple of
+"producer" threads to consumer.
+I use "shared queue" approach, e.g. STL queue protected by mutex for
+passing my "messages" between threads.
+
+struct Block {
+char* msg;
+int size;
+};
+std::queue<block> fifo;
+pthread_mutex_t *lock;
+
+//producer thread
+
+void *producer (void *_p)
+{
+while(true) 
+{
+  Block* buff = malloc(sizeof(Block));
+  char* msg = malloc(128);
+  strncpy(msg, "my msg");
+  buff->msg = msg;
+  buff->size = 128;
+  // get mutex lock
+if (pthread_mutex_lock(lock) == 0)
+   fifo.push(buff);
+pthread_mutex_unlock(lock)
+sleep(10);
+ } //end of while
+} //end of producer
+
+//consumer thread
+
+void *consumer (void *_p)
+{
+
+while(true) 
+{
+ if (pthread_mutex_lock(lock) == 0)
+ {
+  Block *buff = fifo.front();
+//do something here with message
+  printf("%s", buff->msg);
+...
+//remove ptr from  queue
+  fifo.pop(); 
+//free msg memory
+ free(buff->msg);
+ free(buff);
+ pthread_mutex_unlock(lock)
+} //end of if
+ } //end of while
+} //end of consumer
+
+int main() {
+    
+   lock = (pthread_mutex_t *) malloc (sizeof (pthread_mutex_t));
+   pthread_mutex_init (lock, NULL);
+
+    
+    pthread_attr_t attr;
+    pthread_attr_init(&attr);
+    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
+    
+    pthread_create (&con, &attr, consumer, NULL);
+    pthread_create (&pro, &attr, producer, NULL);
+    
+    // cleanup here   
+    printf("End of program\n");
+}
+
+Program runs for while, but eventually it "segfaults", when trying to
+free used "message" memory in consumer.
+I wonder if I am missing some race condition associated with "alloc
+/free cycle" here... 
+Does memory allocation also has to be synchronized? E.g. should I create
+separate mutex for memory allocation:
+ pthread_mutex_t* mem_guard;
+//instead of malloc in "producer" call:
+if (pthread_mutex_lock(mem_guard) == 0) {
+  Block* buff = malloc(sizeof(Block));
+  char* msg = malloc(128);
+  pthread_mutex_unlock(mem_guard)
+}
+
+//instead of free in "consumer" call:
+if (pthread_mutex_lock(mem_guard) == 0) {
+   //free msg memory
+  free(buff->msg);
+  free(buff);
+  pthread_mutex_unlock(mem_guard)
+}
+
+Are there better approaches for IPC between pthreads?
+Thank you for your advise...
+
+-V
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+******************Legal Disclaimer***************************
+"This communication may contain confidential and privileged material 
+for the sole use of the intended recipient.  Any unauthorized review, 
+use or distribution by others is strictly prohibited.  If you have 
+received the message in error, please advise the sender by reply 
+email and delete the message. Thank you."
+****************************************************************
+-------------- next part --------------
+An HTML attachment was scrubbed...
+URL: <http://sourcerytools.com/pipermail/c++-pthreads/attachments/20080904/3f9d89dc/attachment.html>
+
+From krizka at gmail.com  Thu Sep  4 17:26:30 2008
+From: krizka at gmail.com (kostya.kurilov)
+Date: Thu, 4 Sep 2008 21:26:30 +0400
+Subject: [c++-pthreads] question about using of malloc / free in pthreads
+In-Reply-To: <000601c90e93$91c5a3c0$6801a8c0@D674VYB1>
+References: <000601c90e93$91c5a3c0$6801a8c0@D674VYB1>
+Message-ID: <f534609f0809041026x2a10ed85ta02ce8ab89bb703c@mail.gmail.com>
+
+In spite of many errors and glitches in this code, the main problem
+there is synchronization. You don't even check existance of the
+element in queue, so you have to check it before get pointer by
+calling queue.front() in consumer, the condition variables would be
+the one of the best thing you can use here.
+
+PS. Sorry for english and.. I think it's offtopic for this mailing list :)
+
+On Thu, Sep 4, 2008 at 5:38 PM, Victor <vlyamtsev at mzeal.com> wrote:
+> Hello,
+> I am working on some code where I have to pass data from couple of
+> "producer" threads to consumer.
+> I use "shared queue" approach, e.g. STL queue protected by mutex for passing
+> my "messages" between threads.
+>
+> struct Block {
+> char* msg;
+> int size;
+> };
+> std::queue<block> fifo;
+> pthread_mutex_t *lock;
+>
+> //producer thread
+>
+> void *producer (void *_p)
+> {
+> while(true)
+> {
+>   Block* buff = malloc(sizeof(Block));
+>   char* msg = malloc(128);
+>   strncpy(msg, "my msg");
+>   buff->msg = msg;
+>   buff->size = 128;
+>   // get mutex lock
+> if (pthread_mutex_lock(lock) == 0)
+>    fifo.push(buff);
+> pthread_mutex_unlock(lock)
+> sleep(10);
+>  } //end of while
+> } //end of producer
+>
+> //consumer thread
+>
+> void *consumer (void *_p)
+> {
+>
+> while(true)
+> {
+>  if (pthread_mutex_lock(lock) == 0)
+>  {
+>   Block *buff = fifo.front();
+> //do something here with message
+>   printf("%s", buff->msg);
+> ...
+> //remove ptr from  queue
+>   fifo.pop();
+> //free msg memory
+>  free(buff->msg);
+>  free(buff);
+>  pthread_mutex_unlock(lock)
+> } //end of if
+>  } //end of while
+> } //end of consumer
+>
+> int main() {
+>
+>    lock = (pthread_mutex_t *) malloc (sizeof (pthread_mutex_t));
+>    pthread_mutex_init (lock, NULL);
+>
+>
+>     pthread_attr_t attr;
+>     pthread_attr_init(&attr);
+>     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
+>
+>     pthread_create (&con, &attr, consumer, NULL);
+>     pthread_create (&pro, &attr, producer, NULL);
+>
+>     // cleanup here
+>     printf("End of program\n");
+> }
+>
+> Program runs for while, but eventually it "segfaults", when trying to free
+> used "message" memory in consumer.
+> I wonder if I am missing some race condition associated with "alloc /free
+> cycle" here...
+> Does memory allocation also has to be synchronized? E.g. should I create
+> separate mutex for memory allocation:
+>  pthread_mutex_t* mem_guard;
+> //instead of malloc in "producer" call:
+> if (pthread_mutex_lock(mem_guard) == 0) {
+>   Block* buff = malloc(sizeof(Block));
+>   char* msg = malloc(128);
+>   pthread_mutex_unlock(mem_guard)
+> }
+>
+> //instead of free in "consumer" call:
+> if (pthread_mutex_lock(mem_guard) == 0) {
+>    //free msg memory
+>   free(buff->msg);
+>   free(buff);
+>   pthread_mutex_unlock(mem_guard)
+> }
+>
+> Are there better approaches for IPC between pthreads?
+> Thank you for your advise...
+>
+> -V
+
+
+
+-- 
+Best regards, kostya.kurilov
+
+

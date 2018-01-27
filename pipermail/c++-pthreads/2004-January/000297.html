@@ -1,0 +1,136 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [c++-pthreads] Re: thread-safety definition
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:c%2B%2B-pthreads%40codesourcery.com?Subject=Re%3A%20%5Bc%2B%2B-pthreads%5D%20Re%3A%20thread-safety%20definition&In-Reply-To=%3C400D305F.7CAFE446%40terekhov.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000296.html">
+   <LINK REL="Next"  HREF="000298.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[c++-pthreads] Re: thread-safety definition</H1>
+    <B>Alexander Terekhov</B> 
+    <A HREF="mailto:c%2B%2B-pthreads%40codesourcery.com?Subject=Re%3A%20%5Bc%2B%2B-pthreads%5D%20Re%3A%20thread-safety%20definition&In-Reply-To=%3C400D305F.7CAFE446%40terekhov.de%3E"
+       TITLE="[c++-pthreads] Re: thread-safety definition">boo at terekhov.de
+       </A><BR>
+    <I>Tue Jan 20 13:42:55 UTC 2004</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000296.html">[c++-pthreads] Re: thread-safety definition
+</A></li>
+        <LI>Next message: <A HREF="000298.html">[c++-pthreads] Re: thread-safety definition
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#297">[ date ]</a>
+              <a href="thread.html#297">[ thread ]</a>
+              <a href="subject.html#297">[ subject ]</a>
+              <a href="author.html#297">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Dave Butenhof wrote:
+[...]
+&gt;<i> than explicit API. I was thinking in terms of disabling cancel within a
+</I>&gt;<i> 'throw()' scope... but there might be other conditions. For example, we
+</I>&gt;<i> could disable inside either 'throw()' or any try with a catch(...) that
+</I>&gt;<i> doesn't rethrow... unless there's an INNER scope that allows throwing
+</I>&gt;<i> cancel AND with an explicit catch(cancel). So a nothrow destructor
+</I>&gt;<i> (regardless of whether all destructors were implicitly nothrow or not)
+</I>&gt;<i> could allow &quot;local&quot; cancellation by nesting a try{} catch(cancel) {}.
+</I>
+This will sort of &quot;break&quot; catch(...), I'm afraid.
+
+&gt;<i> 
+</I>&gt;<i> (Sounds too complicated; but it's something to think about. ;-) )
+</I>
+The C++ incarnation of pthread_testcancel() will surely have a throw
+spec &quot;throw(std::thread_cancel_request)&quot; or something like that. Now
+imagine something along the lines of
+
+void oper(/*...*/) throw(std::thread_cancel_request, std::bad_alloc);
+/*...*/ oper_throw_handlers(/*...*/) throw();
+
+void f1() throw() {
+  /*...*/
+  try { 
+    oper(/*... &quot;X&quot; ...*/);
+  }
+  catch(...) { 
+    /*...*/oper_throw_handlers(/*...*/);
+  }
+  /*...*/
+}
+
+void f2() throw() {
+  /*...*/
+  try { 
+    oper(/*... &quot;Y&quot; ...*/);
+  }
+  catch(...) { 
+    /*...*/oper_throw_handlers(/*...*/);
+  }
+  /*...*/
+}
+
+void f3() throw() {
+  /*...*/
+  try { 
+    oper(/*... &quot;Z&quot; ...*/);
+  }
+  catch(...) { 
+    /*...*/oper_throw_handlers(/*...*/);
+  }
+  /*...*/
+}
+
+/*...*/ oper_throw_handlers() throw() {
+  try {
+    throw;
+  }
+  catch(std::bad_alloc const &amp;) {
+    /*...*/
+  }
+  catch(std::thread_cancel_request const &amp;) {
+    /*...*/
+  }
+  /*...*/
+}
+
+regards,
+alexander.
+
+P.S. <A HREF="http://google.com/groups?selm=4007FC34.D5A1059%40web.de">http://google.com/groups?selm=4007FC34.D5A1059%40web.de</A>
+     <A HREF="http://google.com/groups?selm=40095EC5.9FDB3513%40web.de">http://google.com/groups?selm=40095EC5.9FDB3513%40web.de</A>
+     <A HREF="http://google.com/groups?selm=400960FF.558DC7DB%40web.de">http://google.com/groups?selm=400960FF.558DC7DB%40web.de</A>
+     (Subject: Re: is catch(...) safe)
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000296.html">[c++-pthreads] Re: thread-safety definition
+</A></li>
+	<LI>Next message: <A HREF="000298.html">[c++-pthreads] Re: thread-safety definition
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#297">[ date ]</a>
+              <a href="thread.html#297">[ thread ]</a>
+              <a href="subject.html#297">[ subject ]</a>
+              <a href="author.html#297">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/c++-pthreads">More information about the c++-pthreads
+mailing list</a><br>
+</body></html>

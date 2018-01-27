@@ -1,0 +1,128 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [PATCH] Fix dynamic_array_test5
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20Fix%20dynamic_array_test5&In-Reply-To=%3CPine.LNX.4.33.0301301216350.1287-100000%40bellatrix.tat.physik.uni-tuebingen.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001184.html">
+   <LINK REL="Next"  HREF="001186.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[PATCH] Fix dynamic_array_test5</H1>
+    <B>Richard Guenther</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20Fix%20dynamic_array_test5&In-Reply-To=%3CPine.LNX.4.33.0301301216350.1287-100000%40bellatrix.tat.physik.uni-tuebingen.de%3E"
+       TITLE="[PATCH] Fix dynamic_array_test5">rguenth at tat.physik.uni-tuebingen.de
+       </A><BR>
+    <I>Thu Jan 30 11:18:49 UTC 2003</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001184.html">[pooma-dev] [Q] Field/Relations/RelationList.h:makeOwnCopy()
+</A></li>
+        <LI>Next message: <A HREF="001186.html">[PATCH] Fix dynamic_array_badcreate test
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1185">[ date ]</a>
+              <a href="thread.html#1185">[ thread ]</a>
+              <a href="subject.html#1185">[ subject ]</a>
+              <a href="author.html#1185">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Hi!
+
+The following patch fixes dynamic_array_test5 on targets that dont
+support auto-converting std::vector&lt;int&gt;::iterator to int* by introducing
+an extra constructor to IteratorPairDomain that does this conversion
+explicitly.
+
+Ok?
+
+Richard.
+
+
+diff -Nru a/r2/src/Domain/IteratorPairDomain.h b/r2/src/Domain/IteratorPairDomain.h
+--- a/r2/src/Domain/IteratorPairDomain.h	Thu Jan 30 12:16:28 2003
++++ b/r2/src/Domain/IteratorPairDomain.h	Thu Jan 30 12:16:28 2003
+@@ -199,6 +199,17 @@
+     size_m = std::distance(begin_m,end_m);
+   }
+
++  // Secondary constructor taking two &quot;compatible&quot; iterators.
++  // Works around the problem with std::vector&lt;int&gt;::iterator not
++  // convertible to int*. Ideally we would enable this specialized
++  // for Iter == int*/const int* only.
++  template &lt;class Iter2&gt;
++  IteratorPairDomain(Iter2 begin, Iter2 end)
++    : begin_m(&amp;*begin), end_m(&amp;*end)
++  {
++    size_m = std::distance(begin_m,end_m);
++  }
++
+   // Copy constructors
+
+   IteratorPairDomain(const This_t &amp;a)
+diff -Nru a/r2/src/DynamicArray/tests/dynamic_array_test5.cpp b/r2/src/DynamicArray/tests/dynamic_array_test5.cpp
+--- a/r2/src/DynamicArray/tests/dynamic_array_test5.cpp	Thu Jan 30 12:16:28 2003
++++ b/r2/src/DynamicArray/tests/dynamic_array_test5.cpp	Thu Jan 30 12:16:28 2003
+@@ -214,29 +214,7 @@
+
+   // No destroy method specified --- should use BackFill() by default.
+
+-  // NOTE: This may not compile!!! It depends on vector&lt;int&gt;::iterator
+-  // being assignable to &quot;const int *&quot;, which is not guaranteed.  The
+-  // problem is that the patch-based destroy operation results in a
+-  // virtual function call to all observers of the underlying layout,
+-  // with the type of the event passed via an event base class. The
+-  // handler code must then determine the event type, which is
+-  // different for every possible domain type. The problem is that
+-  // vector&lt;int&gt;::const_iterator is usually a typedef for &quot;const int
+-  // *&quot; (and vector&lt;int&gt;::iterator is a typedef for &quot;int *&quot;), and thus
+-  // this code will work (and furthermore it is impossible to
+-  // enumerate them as different types, since they're not). But on
+-  // some systems this isn't the case. It would be nice to support
+-  // vector&lt;int&gt;::iterator even when it is a separate type, but I
+-  // don't know how to do this within the language. If someone else
+-  // wants to conditionally compile a seperate execution path for
+-  // this, and add the necessary configuration options, that would
+-  // probably be the best solution. For now, I've put #if 1...#endif
+-  // around the call and if it fails to compile, just change it to
+-  // #if 0. [JAC]
+-
+-#if 1
+   b2.destroy(kfoo.begin(),kfoo.end(),6);
+-#endif
+
+   a2.sync();
+
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001184.html">[pooma-dev] [Q] Field/Relations/RelationList.h:makeOwnCopy()
+</A></li>
+	<LI>Next message: <A HREF="001186.html">[PATCH] Fix dynamic_array_badcreate test
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1185">[ date ]</a>
+              <a href="thread.html#1185">[ thread ]</a>
+              <a href="subject.html#1185">[ subject ]</a>
+              <a href="author.html#1185">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

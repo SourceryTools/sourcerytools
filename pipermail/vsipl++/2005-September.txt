@@ -1,0 +1,4406 @@
+From postmaster at codesourcery.com  Fri Sep 16 18:53:08 2005
+From: postmaster at codesourcery.com (postmaster at codesourcery.com)
+Date: 16 Sep 2005 18:53:08 -0000
+Subject: Welcome to vsipl++@codesourcery.com
+Message-ID: <20050916185308.28794.qmail@mail.codesourcery.com>
+
+
+Welcome to the vsipl++ at codesourcery.com mailing list!
+
+
+
+From jules at codesourcery.com  Fri Sep 16 20:04:20 2005
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Fri, 16 Sep 2005 16:04:20 -0400
+Subject: [patch] distributed user-storage, setup_assign
+Message-ID: <432B2544.6040403@codesourcery.com>
+
+This patch adds initial support for distributed user-storage, along with 
+unit tests.  It is possible to create a distributed block that can be 
+admitted/released. When creating a block, each processor supplies a 
+pointer to memory large enough for the subblock they own.
+
+Some of the Chained_par_assign code that built MPI datatypes assumed 
+that the data address would not change between when the send/recv lists 
+are constructed and when they are executed.  For single statement 
+assignments 'A = B', this is true.  However, for early-bound assignments 
+(using Setup_assign, also in this patch) of views with user-storage, it 
+is possible that address can change in between buiding the lists and 
+executing them.  To address this, lists are now built relative to the 
+subblock's data pointer, and then offset at execution time.
+
+This patch includes a Setup_assign object which allows expressions to be 
+bound early and executed later:
+
+	Setup_assign expr(A, B + C);	// prebind A = B + C
+
+	...
+
+	expr();				// execute A = B + C
+
+For serial expressions, not a lot of early binding is done.  For 
+parallel expressions, the maps are examined to determine if the 
+expression is simple or requires communication.  If the expr requires 
+communication, any necessary setup is done during early binding.
+
+Finally, this patch includes some setup work for mappings that can 
+either be global or local, depending on their context.  An example of 
+where this might be used is for the generator block returned from the 
+ramp function.
+
+This fixes a small number of FIXMEs and moves two into the tracker. 
+Issues were created for Distributed_block::get/put and more efficient 
+admit/release data copy (#59 and #60).
+
+				-- Jules
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: dar.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20050916/f573932d/attachment.ksh>
+
+From jules at codesourcery.com  Fri Sep 16 20:16:16 2005
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Fri, 16 Sep 2005 16:16:16 -0400
+Subject: Thanks - Re: [vsipl++] math.fns.operators
+In-Reply-To: <432B0D94.7000405@codesourcery.com>
+References: <4329C474.2050202@codesourcery.com> <4329C5CE.5020506@codesourcery.com> <4329D46A.9030808@codesourcery.com> <4329E365.6090201@codesourcery.com> <4329E71A.9050009@codesourcery.com> <432A1644.5030309@codesourcery.com> <432B0884.2090400@codesourcery.com> <432B0D94.7000405@codesourcery.com>
+Message-ID: <432B2810.2020904@codesourcery.com>
+
+Mark, Nathan,
+
+I just want to say thanks for taking the time and effort to help us 
+understand and fix this!
+
+This is a great example of how having folks who really understand the 
+details of the compiler and language in-house benefits our HPC work.
+
+				thanks,
+				-- Jules
+
+Jules Bergmann wrote:
+> Stefan,
+> 
+> Looks good (third time is a charm!).  Thanks for resolving this.
+> 
+>                 -- Jules
+> 
+> Stefan Seefeld wrote:
+> 
+>> Jules Bergmann wrote:
+>>
+>>>
+>>> Jules Bergmann wrote:
+>>>
+>>>> Here's my quick & dirty kludge. -- Jules
+>>>>
+>>>
+>>> Well, as Stefan pointed out, this patch doesn't work 3.4 (it fails 
+>>> for me locally with "gcc version 3.4.5 20050706 (prerelease) (Debian 
+>>> 3.4.4-5)").
+>>
+>>
+>>
+>>
+>> The attached patch uses either of the two versions of the macro, 
+>> depending
+>> on which compiler is used. I tested with gcc 3.4, gcc 4.0.1, and icc 
+>> 8.0 (sethra).
+>>
+>> Regards,
+>>         Stefan
+>>
+> 
+
+
+From mark at codesourcery.com  Fri Sep 16 20:22:20 2005
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Fri, 16 Sep 2005 13:22:20 -0700
+Subject: [vsipl++] [patch] distributed user-storage, setup_assign
+In-Reply-To: <432B2544.6040403@codesourcery.com>
+References: <432B2544.6040403@codesourcery.com>
+Message-ID: <432B297C.8090208@codesourcery.com>
+
+Jules Bergmann wrote:
+
+> This patch includes a Setup_assign object which allows expressions to be
+> bound early and executed later:
+
+Very cool!
+
+Boy, you are going to have some documentation to write, post-HPEC. :-)
+
+-- 
+Mark Mitchell
+CodeSourcery, LLC
+mark at codesourcery.com
+(916) 791-8304
+
+
+From ncm at codesourcery.com  Sat Sep 17 08:49:54 2005
+From: ncm at codesourcery.com (Nathan (Jasper) Myers)
+Date: Sat, 17 Sep 2005 01:49:54 -0700
+Subject: [PATCH] fix real->complex fftm stride bug
+Message-ID: <20050917084954.GA32661@codesourcery.com>
+
+I have checked in the patch below.  ref-impl/fft-coverage.cpp passes
+on x86/FFTW3 now, and most likely others besides.
+
+Nathan Myers
+ncm
+
+Index: ChangeLog
+===================================================================
+RCS file: /home/cvs/Repository/vpp/ChangeLog,v
+retrieving revision 1.248
+diff -u -p -r1.248 ChangeLog
+--- ChangeLog	16 Sep 2005 22:03:20 -0000	1.248
++++ ChangeLog	17 Sep 2005 08:44:29 -0000
+@@ -1,3 +1,8 @@
++2005-09-17  Nathan Myers  <ncm at codesourcery.com>
++
++	* src/vsip/impl/signal-fft.hpp: fix a real->complex FFTM
++	  stride bug detected by ref-impl/fft-coverage.hpp.
++
+ 2005-09-16  Jules Bergmann  <jules at codesourcery.com>
+ 	
+ 	* src/vsip/impl/aligned_allocator.hpp (VSIP_IMPL_ALLOC_ALIGNMENT):
+Index: src/vsip/impl/signal-fft.hpp
+===================================================================
+RCS file: /home/cvs/Repository/vpp/src/vsip/impl/signal-fft.hpp,v
+retrieving revision 1.21
+diff -u -p -r1.21 signal-fft.hpp
+--- src/vsip/impl/signal-fft.hpp	16 Sep 2005 02:13:38 -0000	1.21
++++ src/vsip/impl/signal-fft.hpp	17 Sep 2005 08:44:29 -0000
+@@ -792,9 +792,11 @@ protected:
+       this->core_->stride_ = 1;
+       this->core_->dist_ = 1;
+       if (native_order == (axis == 1)) 
+-        this->core_->dist_ = local_out.size(axis);
++        this->core_->dist_ = (sizeof(inT) <= sizeof(outT)) ?
++          local_in.size(axis) : local_out.size(axis);
+       else 
+-        this->core_->stride_ = local_out.size(1-axis);
++        this->core_->stride_ = (sizeof(inT) <= sizeof(outT)) ?
++          local_in.size(1-axis) : local_out.size(1-axis);
+ 
+       this->core_->from_to(raw_in.data(), raw_out.data());
+     }
+
+
+From jules at codesourcery.com  Sat Sep 17 16:18:58 2005
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Sat, 17 Sep 2005 12:18:58 -0400
+Subject: [patch] configure typo
+Message-ID: <432C41F2.2070207@codesourcery.com>
+
+Patch applied. -- Jules
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: conf.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20050917/d989c5da/attachment.ksh>
+
+From jules at codesourcery.com  Sat Sep 17 17:09:43 2005
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Sat, 17 Sep 2005 13:09:43 -0400
+Subject: [patch] Wall cleanup
+Message-ID: <432C4DD7.7040104@codesourcery.com>
+
+Patch applied. -- Jules
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: wall.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20050917/4e116ee6/attachment.ksh>
+
+From mark at codesourcery.com  Sat Sep 17 19:58:54 2005
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Sat, 17 Sep 2005 12:58:54 -0700
+Subject: PATCH: Remove JADE probes
+Message-ID: <432C757E.7030503@codesourcery.com>
+
+Now that we're set up to use xsltproc, which seems to be much more
+reliable that OpenJade, and have much more consistent behavior, I've
+removed any default use of Jade.  You can still use it with "make
+JADE=...", but it's not the default.
+
+Checked in.
+
+-- 
+Mark Mitchell
+CodeSourcery, LLC
+mark at codesourcery.com
+(916) 791-8304
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: vsip.patch
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20050917/c5f77bf5/attachment.ksh>
+
+From jules at codesourcery.com  Sat Sep 17 20:36:56 2005
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Sat, 17 Sep 2005 16:36:56 -0400
+Subject: [patch] Fix FFTs to compile when destination is a temporary view.
+Message-ID: <432C7E68.2080506@codesourcery.com>
+
+Patch applied. -- Jules
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: ftv.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20050917/02f7b26a/attachment.ksh>
+
+From ncm at codesourcery.com  Sun Sep 18 01:49:04 2005
+From: ncm at codesourcery.com (Nathan (Jasper) Myers)
+Date: Sat, 17 Sep 2005 18:49:04 -0700
+Subject: [PATCH] fix fftm-par.cpp under LAM.
+Message-ID: <20050918014904.GA6144@codesourcery.com>
+
+I have checked in the patch below to make fftm-par.cpp run correctly
+in parallel under mpich-1.2.7 "ch_p4" mode on my x86, and under LAM 
+on sethra.
+
+(I still don't know why comm.barrier() has no apparent effect, for me, 
+both in LAM on sethra and in mpich-shmem, here.)
+
+Nathan Myers
+ncm
+
+Index: ChangeLog
+===================================================================
+RCS file: /home/cvs/Repository/vpp/ChangeLog,v
+retrieving revision 1.257
+diff -u -p -r1.257 ChangeLog
+--- ChangeLog	17 Sep 2005 21:52:22 -0000	1.257
++++ ChangeLog	18 Sep 2005 01:44:37 -0000
+@@ -1,3 +1,8 @@
++2005-09-17  Nathan Myers  <ncm at codesourcery.com>
++
++	* tests/fftm-par.cpp: robustify against mysterious behavior
++	  in sethra lam mpi.
++	
+ 2005-09-17  Mark Mitchell  <mark at codesourcery.com>
+ 
+ 	* doc/quickstart/quickstart.xml: Mention FFTW, IPP, MKL, and
+Index: tests/fftm-par.cpp
+===================================================================
+RCS file: /home/cvs/Repository/vpp/tests/fftm-par.cpp,v
+retrieving revision 1.1
+diff -u -p -r1.1 fftm-par.cpp
+--- tests/fftm-par.cpp	10 Sep 2005 10:18:43 -0000	1.1
++++ tests/fftm-par.cpp	18 Sep 2005 01:44:37 -0000
+@@ -197,7 +197,10 @@ error_db(
+   int size = comm.size();
+ 
+   if (rank != 0)
++  {
+     comm.buf_send(0, &refmax, 1);
++    comm.recv(0, &refmax, 1);
++  }
+   else
+   {
+     for (int i = 1; i < size; ++i)
+@@ -207,6 +210,8 @@ error_db(
+       if (refmax < otherefmax)
+ 	refmax = otherefmax;
+     }
++    for (int i = 1; i < size; ++i)
++      comm.buf_send(i, &refmax, 1);
+   }
+ 
+ 
+@@ -226,7 +231,10 @@ error_db(
+     }
+ 
+   if (rank != 0)
++  {
+     comm.buf_send(0, &maxsum, 1);
++    comm.recv(0, &maxsum, 1);
++  }
+   else
+   {
+     for (int i = 1; i < size; ++i)
+@@ -236,6 +244,8 @@ error_db(
+       if (maxsum < othersum)
+ 	maxsum = othersum;
+     }
++    for (int i = 1; i < size; ++i)
++      comm.buf_send(i, &maxsum, 1);
+     return maxsum;
+   }
+ 
+@@ -718,7 +728,8 @@ main(int argc, char** argv)
+        << endl;
+ 
+   // Stop each process, allow debugger to be attached.
+-  if (comm.rank() == 0) getchar();
++  char c;
++  if (comm.rank() == 0) read(0,&c,1);
+   comm.barrier();
+ #endif
+ 
+@@ -744,4 +755,5 @@ main(int argc, char** argv)
+   test_real<float>(242);
+   test_real<float>(16);
+ #endif
++  return 0;
+ }
+
+
+From jules at codesourcery.com  Sun Sep 18 22:26:47 2005
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Sun, 18 Sep 2005 18:26:47 -0400
+Subject: [patch] ICC test fixes.
+Message-ID: <432DE9A7.4050201@codesourcery.com>
+
+patch applied. -- Jules
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: icc.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20050918/d3e5c8a9/attachment.ksh>
+
+From jules at codesourcery.com  Mon Sep 19 02:12:56 2005
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Sun, 18 Sep 2005 22:12:56 -0400
+Subject: [patch] Fix hypot in ref-impl/view-math.cpp
+Message-ID: <432E1EA8.5080103@codesourcery.com>
+
+Patch applied. -- Jules
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: hypot.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20050918/eac3ddb8/attachment.ksh>
+
+From jules at codesourcery.com  Mon Sep 19 03:40:38 2005
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Sun, 18 Sep 2005 23:40:38 -0400
+Subject: [patch] Final bit of cleanup.
+Message-ID: <432E3336.1070305@codesourcery.com>
+
+Patch applied. -- Jules
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: fixme2.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20050918/6b227316/attachment.ksh>
+
+From don at codesourcery.com  Mon Sep 19 08:36:59 2005
+From: don at codesourcery.com (Don McCoy)
+Date: Mon, 19 Sep 2005 02:36:59 -0600
+Subject: [patch] matvec: dot, trans, kron
+Message-ID: <432E78AB.6010207@codesourcery.com>
+
+The attached patch implements some of the matrix and vector operations.  
+I tested it against the functions in ref-impl/math-matvec.cpp and it 
+passes up through kron().  Also wrote a supplementary test for kron that 
+checks it when called with matrix views [matvec.cpp] (not checked in 
+ref-impl tests).
+
+Don
+
+______
+
+Added support for dot, trans and kron functions in [math.matvec]
+* src/vsip/math.hpp: included impl/matvec.hpp
+* src/vsip/impl/matvec.hpp: new file
+* tests/matvec.cpp: new file
+
+
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: mv.diff
+Type: text/x-patch
+Size: 7168 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20050919/bac7f9f1/attachment.bin>
+
+From jules at codesourcery.com  Mon Sep 19 10:08:38 2005
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Mon, 19 Sep 2005 06:08:38 -0400
+Subject: [vsipl++] [patch] matvec: dot, trans, kron
+In-Reply-To: <432E78AB.6010207@codesourcery.com>
+References: <432E78AB.6010207@codesourcery.com>
+Message-ID: <432E8E26.8040105@codesourcery.com>
+
+Don,
+
+Looks, good.  Can you try out the changes to trans and see if it works? 
+  My suggestion for herm needs a proper return type to work, so let's 
+keep the current version of that for now.
+
+Please check in.
+
+				-- Jules
+
+
+Don McCoy wrote:
+> The attached patch implements some of the matrix and vector operations.  
+> I tested it against the functions in ref-impl/math-matvec.cpp and it 
+> passes up through kron().  Also wrote a supplementary test for kron that 
+> checks it when called with matrix views [matvec.cpp] (not checked in 
+> ref-impl tests).
+> 
+> Don
+
+
+> +  
+
+For trans and herm, I was thinking we should be able to directly return 
+the subview:
+
+> + // Transpositions  [math.matvec.transpose]
+> + 
+> + /// transpose
+> + template <typename T, typename Block>
+
+constMatrix<T, Block>::transpose_view
+
+> + trans(const_Matrix<T, Block> m) VSIP_NOTHROW
+> + {
+> +   return ( Matrix<T>(m.transpose()) );
+
+       return m.transpose();
+
+> + }
+
+
+
+> + 
+> + /// conjugate transpose
+> + template <typename T, typename Block>
+> + const_Matrix<complex<T> >
+
+Uh, the return type for herm is a bit more complex...  Maybe Stefan can 
+suggest a type to use.  If not, go ahead and keep the current function.
+
+
+> + herm(const_Matrix<complex<T>, Block> m) VSIP_NOTHROW
+> + {
+> +   return Matrix<complex<T> >(conj(m.transpose()));
+	return conj(m.transpose());
+
+> + }
+
+
+
+> + 
+
+
+From stefan at codesourcery.com  Mon Sep 19 19:05:13 2005
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Mon, 19 Sep 2005 15:05:13 -0400
+Subject: [vsipl++] [patch] matvec: dot, trans, kron
+In-Reply-To: <432E8E26.8040105@codesourcery.com>
+References: <432E78AB.6010207@codesourcery.com> <432E8E26.8040105@codesourcery.com>
+Message-ID: <432F0BE9.4000406@codesourcery.com>
+
+Jules Bergmann wrote:
+
+>> + + /// conjugate transpose
+>> + template <typename T, typename Block>
+>> + const_Matrix<complex<T> >
+> 
+> 
+> Uh, the return type for herm is a bit more complex...  Maybe Stefan can 
+> suggest a type to use.  If not, go ahead and keep the current function.
+> 
+> 
+>> + herm(const_Matrix<complex<T>, Block> m) VSIP_NOTHROW
+>> + {
+>> +   return Matrix<complex<T> >(conj(m.transpose()));
+> 
+>     return conj(m.transpose());
+> 
+>> + }
+
+what about
+
+template <typename T, typename Block>
+typename Unary_func_view<conj_functor,
+   typename const_Matrix<complex<T>,
+                         Block>::transpose_type>::result_type
+herm(const_Matrix<complex<T>, Block> m) VSIP_NOTHROW
+{
+   typedef typename const_Matrix<complex<T>, Block>::transpose_type transpose_type;
+   typedef Unary_func_view<conj_functor, transpose_type> functor_type;
+   return functor_type::apply(m.transpose());
+}
+
+This assumes the conj_functor is already defined (through the macro
+machinery in fns_elementwise.hpp that defines the conj function).
+
+Regards,
+		Stefan
+
+
+From don at codesourcery.com  Mon Sep 19 21:09:02 2005
+From: don at codesourcery.com (Don McCoy)
+Date: Mon, 19 Sep 2005 15:09:02 -0600
+Subject: [vsipl++] [patch] matvec: dot, trans, kron
+In-Reply-To: <432F0BE9.4000406@codesourcery.com>
+References: <432E78AB.6010207@codesourcery.com> <432E8E26.8040105@codesourcery.com> <432F0BE9.4000406@codesourcery.com>
+Message-ID: <432F28EE.1090107@codesourcery.com>
+
+Stefan Seefeld wrote:
+
+> Jules Bergmann wrote:
+>
+>> Uh, the return type for herm is a bit more complex...  Maybe Stefan 
+>> can suggest a type to use.  If not, go ahead and keep the current 
+>> function.
+>
+>
+> what about
+>
+> template <typename T, typename Block>
+> typename Unary_func_view<conj_functor,
+>   typename const_Matrix<complex<T>,
+>                         Block>::transpose_type>::result_type
+> herm(const_Matrix<complex<T>, Block> m) VSIP_NOTHROW
+> {
+>   typedef typename const_Matrix<complex<T>, Block>::transpose_type 
+> transpose_type;
+>   typedef Unary_func_view<conj_functor, transpose_type> functor_type;
+>   return functor_type::apply(m.transpose());
+> }
+>
+> This assumes the conj_functor is already defined (through the macro
+> machinery in fns_elementwise.hpp that defines the conj function).
+>
+> Regards,
+>         Stefan
+
+
+This worked.  Thank you Stefan.  Function trans() is updated as per your 
+suggestion Jules.  Thank you also.
+
+Retested with icc 8.0 and gcc 3.4.0.  Checked in.
+_____
+
+Changelog:
+
+    Added support for dot, trans and kron functions in [math.matvec]
+    * src/vsip/math.hpp: included impl/matvec.hpp
+    * src/vsip/impl/matvec.hpp: new file
+    * tests/matvec.cpp: new file
+
+-- 
+
+Don McCoy
+CodeSourcery, LLC
+
+
+
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: mv.diff
+Type: text/x-patch
+Size: 7432 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20050919/8f03df59/attachment.bin>
+
+From ncm at codesourcery.com  Tue Sep 20 00:55:07 2005
+From: ncm at codesourcery.com (Nathan (Jasper) Myers)
+Date: Mon, 19 Sep 2005 17:55:07 -0700
+Subject: [PATCH] switch to --with-fft=...
+Message-ID: <20050920005507.GA10733@codesourcery.com>
+
+I have checked in the patch below.  Your VSIPL++ "configure" command 
+lines must change accordingly.  In particular,
+
+  --enable-fftw3                         => --with-fft=fftw3
+  --enable-fftw2 --disable-fftw2-generic => --with-fft=fftw2-float
+  --enable-fftw2 --enable-fftw2-generic  => --with-fft=fftw2-generic
+  --enable-ipp-fft                       => --with-fft=ipp
+
+Note that it is now possible to build with double-precision FFTW2, 
+although the test suite's not very friendly to that choice.  
+(Failures occur for fftw2-float, too, but fewer; more tests assume 
+float support.)
+
+Also, if you're configuring in IPP, you'll need to add one of
+
+  --with-ipp-suffix=
+  --with-ipp-suffix=em64t
+  --with-ipp-suffix=m7
+
+or what-have-you, according to your IPP installation.
+
+Nathan Myers
+ncm
+
+
+Index: ChangeLog
+===================================================================
+RCS file: /home/cvs/Repository/vpp/ChangeLog,v
+retrieving revision 1.262
+diff -u -p -r1.262 ChangeLog
+--- ChangeLog	19 Sep 2005 21:06:45 -0000	1.262
++++ ChangeLog	20 Sep 2005 00:45:36 -0000
+@@ -1,3 +1,10 @@
++2005-09-19  Nathan Myers  <ncm at codesourcery.com>
++
++	* configure.ac: replace all --enable-fftw* and --enable-ipp-fft with
++	  --with-fft={fftw3,fftw2-float,fftw2-double,fftw2-generic,ipp}.
++	  Enable building with fftw2-double.  Add --with-ipp-suffix, and 
++	  require it if using IPP.
++
+ 2005-09-19  Don McCoy  <don at codesourcery.com>
+ 
+ 	Added support for dot, trans and kron functions in [math.matvec]
+Index: configure.ac
+===================================================================
+RCS file: /home/cvs/Repository/vpp/configure.ac,v
+retrieving revision 1.38
+diff -u -p -r1.38 configure.ac
+--- configure.ac	19 Sep 2005 03:39:54 -0000	1.38
++++ configure.ac	20 Sep 2005 00:45:36 -0000
+@@ -41,42 +41,33 @@ AC_ARG_WITH(ipp_prefix,
+                   must be in PATH/include; libraries in PATH/lib.]),
+   dnl If the user specified --with-ipp-prefix, they mean to use IPP for sure.
+   [enable_ipp=yes])
+-
+-AC_ARG_ENABLE([ipp-fft],
+-  AS_HELP_STRING([--enable-ipp-fft],
+-                 [use IPP FFT (default is to use it if it is found and 
+-                  no other FFT is enabled and found.)]),,
+-  [enable_ipp_fft=probe])
+-
+-AC_ARG_ENABLE([fftw3],
+-  AS_HELP_STRING([--disable-fftw3],
+-                 [don't use FFTW3 (default is to use it if found)]),,
+-  [enable_fftw3=probe])
++AC_ARG_WITH(ipp_suffix,
++  AS_HELP_STRING([--with-ipp-suffix=TARGET],
++                 [Specify the optimization target of IPP libraries, such as
++		  a6, em64t, i7, m7, mx, px, t7, w7.  E.g. a6 => -lippsa6.
++                  TARGET may be the empty string.]),
++  dnl If the user specified --with-ipp-suffix, they mean to use IPP for sure.
++  [enable_ipp=yes])
++
++AC_ARG_WITH(fft,
++  AS_HELP_STRING([--with-fft=LIB],
++                 [Specify FFT engine: fftw3, fftw2-float, fftw2-double,
++		  fftw2-generic, or ipp.  For fftw2-generic, float support
++		  is in <fftw.h> and -lfftw, not <sfftw.h> and -lsfftw.]),
++  [chose_fft=yes])
++  
+ AC_ARG_WITH(fftw3_prefix,
+   AS_HELP_STRING([--with-fftw3-prefix=PATH],
+                  [Specify the installation prefix of the fftw3 library.
+                   Headers must be in PATH/include; libraries in PATH/lib.]),
+   dnl If the user specified --with-fftw3-prefix, they mean to use FFTW3 for sure.
+-  [enable_fftw3=yes])
++  [with_fft=fftw3])
+ 
+-AC_ARG_ENABLE([fftw2],
+-  AS_HELP_STRING([--disable-fftw2],
+-                 [don't use FFTW2 (default is to try to use it)]),,
+-  [enable_fftw2=probe])
+ AC_ARG_WITH(fftw2_prefix,
+   AS_HELP_STRING([--with-fftw2-prefix=PATH],
+                  [Specify an installation prefix of the FFTW2 library.  
+ 		  Headers must be in PATH/include; libraries in PATH/lib.]),
+-  [enable_fftw2=yes])
+-AC_ARG_ENABLE([fftw2-generic],
+-  AS_HELP_STRING([--disable-fftw2-generic],
+-                 [Look in <sfftw.h>, not <fftw.h> for fftw2 float headers.
+-		  Link -lsfftw instead of -lfftw to get float fftw2 lib]),,
+-  [enable_fftw2_generic=yes])
+-AC_ARG_ENABLE([fft_use_float],
+-  AS_HELP_STRING([--disable-fft-use-float],
+-                 [Do not try to compile in float FFT support.]),,
+-  [fft_use_float=1])
++  [with_fft=fftw2])
+ 
+ 
+ # LAPACK and related libraries (Intel MKL)
+@@ -201,17 +192,32 @@ vsip_impl_avoid_posix_memalign=
+ # At present, IPP, FFTW3, and FFTW2 are supported.
+ #
+ 
+-if test "$enable_ipp_fft" == "yes"; then
+-  if test "$enable_fftw3" == "yes"; then
+-     AC_MSG_ERROR([Cannot enable both FFTW3 and IPP_FFT])
+-  fi
+-  enable_fftw3="no"
+-
+-  if test "$enable_fftw2" == "yes" ; then
+-     AC_MSG_ERROR([Cannot enable both FFTW2 and IPP_FFT])
+-  fi
+-  enable_fftw2="no"
+-fi
++enable_fftw3="no"
++enable_fftw2="no"
++enable_ipp_fft="no"
++
++if test "$with_fft" = "fftw3"; then
++  enable_fftw3="yes"
++elif test "$with_fft" = "fftw2-float"; then
++  enable_fftw2="yes"
++  enable_fftw2_float="yes"
++elif test "$with_fft" = "fftw2-double"; then
++  enable_fftw2="yes"
++  enable_fftw2_double="yes"
++elif test "$with_fft" = "fftw2-generic"; then
++  enable_fftw2="yes"
++  enable_fftw2_generic="yes"
++  enable_fftw2_float="yes"
++elif test "$with_fft" = "ipp"; then
++  enable_ipp_fft="yes"
++elif test "$chose_fft" != "yes"; then
++  enable_fftw3="probe"
++  enable_fftw2="probe"
++  enable_ipp_fft="probe"
++else
++  AC_MSG_ERROR([Argument to --with-fft= must be one of fftw3, fftw2-float,
++                fftw2-double, fftw2-generic, or ipp.])
++fi 
+ 
+ if test "$enable_fftw3" != "no" ; then
+   keep_CPPFLAGS=$CPPFLAGS
+@@ -231,8 +237,6 @@ if test "$enable_fftw3" != "no" ; then
+       LIBS="$keep_LIBS"
+     fi
+   else
+-    enable_ipp_fft="no"
+-    enable_fftw2="no"
+     AC_DEFINE_UNQUOTED(VSIP_IMPL_FFTW3, 1,
+       [Define to build using FFTW3 headers.])
+ 
+@@ -267,12 +271,19 @@ if test "$enable_fftw3" != "no" ; then
+                  keep_LIBS="$keep_LIBS -lfftw3l"])
+ 
+     LIBS="$keep_LIBS"
++
++    enable_ipp_fft="no"
++    enable_fftw2="no"
+   fi
+ fi
+ 
+ if test "$enable_fftw2" != "no" ; then
+ 
+-  vsip_impl_use_float=1
++  if test "$enable_fftw2_double" != "yes" ; then
++    vsip_impl_use_double=1
++  else
++    vsip_impl_use_float=1
++  fi
+   vsip_impl_fftw2=1
+ 
+   FFT_CPPFLAGS=
+@@ -282,7 +293,8 @@ if test "$enable_fftw2" != "no" ; then
+     FFT_LDFLAGS="-L$with_fftw2_prefix/lib"
+   fi
+   FFT_LIBS=
+-  if test "$enable_fftw2_generic" == "yes" ; then
++  if test "$enable_fftw2_generic" == "yes" -o \
++          "$enable_fftw2_double" ; then
+     FFT_LIBS="-lfftw -lrfftw"
+     fftw2_h="fftw.h"
+   else
+@@ -306,9 +318,13 @@ if test "$enable_fftw2" != "no" ; then
+       CPPFLAGS="$keep_CPPFLAGS"
+     fi
+   else
+-    enable_ipp_fft="no"
+-    AC_DEFINE_UNQUOTED(VSIP_IMPL_FFT_USE_FLOAT, $vsip_impl_use_float,
+-      [Define to build code with support for FFT on float types.])
++    if test "$enable_fftw2_double" == "yes"; then
++      AC_DEFINE_UNQUOTED(VSIP_IMPL_FFT_USE_DOUBLE, $vsip_impl_use_double,
++        [Define to build code with support for FFT on double types.])
++    else
++      AC_DEFINE_UNQUOTED(VSIP_IMPL_FFT_USE_FLOAT, $vsip_impl_use_float,
++        [Define to build code with support for FFT on float types.])
++    fi
+     AC_DEFINE_UNQUOTED(VSIP_IMPL_FFTW2, $vsip_impl_fftw2,
+       [Define to build using FFTW2 headers.])
+     if test "$enable_fftw2_generic" == "yes" ; then
+@@ -318,6 +334,8 @@ if test "$enable_fftw2" != "no" ; then
+ 
+     AC_SUBST(FFT_CPPFLAGS)
+     AC_SUBST(FFT_LIBS)
++
++    enable_ipp_fft="no"
+   fi
+ fi
+ 
+@@ -436,8 +454,9 @@ AC_DEFINE_UNQUOTED(VSIP_IMPL_PAR_SERVICE
+ if test "$enable_ipp_fft" == "yes"; then
+   if test "$enable_ipp" == "no"; then
+     AC_MSG_ERROR([IPP FFT requires IPP])
+-  fi
+-  enable_ipp="yes"
++  else
++    enable_ipp="yes"
++  fi 
+ fi
+ 
+ if test "$enable_ipp" != "no"; then
+@@ -454,22 +473,26 @@ if test "$enable_ipp" != "no"; then
+   AC_CHECK_HEADER([ipps.h], [vsipl_ipps_h_name='<ipps.h>'],, [// no prerequisites])
+   if test "$vsipl_ipps_h_name" == "not found"; then
+     if test "$enable_ipp" != "probe" -o "$enable_ipp_fft" == "yes"; then
+-      AC_MSG_ERROR([IPP or IPP_FFT enabled, but no ipps.h detected])
++      AC_MSG_ERROR([IPP enabled, but no ipps.h detected])
+     else
+       CPPFLAGS="$save_CPPFLAGS"
+     fi
++
+   else
+ 
++    if test "${with_ipp_suffix-unset}" == "unset"; then
++      AC_MSG_ERROR([IPP enabled, but library suffix not set.])
++    fi
+     # Find the library.
+     save_LDFLAGS="$LDFLAGS"
+     LDFLAGS="$LDFLAGS $IPP_LDFLAGS"
+     LIBS="-lpthread $LIBS"
+-    AC_SEARCH_LIBS(ippCoreGetCpuType, [ippcoreem64t],,
++    AC_SEARCH_LIBS(ippCoreGetCpuType, ["ippcore$with_ipp_suffix"],,
+       [LD_FLAGS="$save_LDFLAGS"])
+     
+     save_LDFLAGS="$LDFLAGS"
+     LDFLAGS="$LDFLAGS $IPP_LDFLAGS"
+-    AC_SEARCH_LIBS(ippsMul_32f, [ippsem64t ippsm7 ipps],
++    AC_SEARCH_LIBS(ippsMul_32f, ["ipps$with_ipp_suffix"],
+       [
+         AC_SUBST(VSIP_IMPL_HAVE_IPP, 1)
+         AC_DEFINE_UNQUOTED(VSIP_IMPL_HAVE_IPP, 1,
+@@ -502,7 +525,7 @@ int main(int, char **)
+       LDFLAGS="$LDFLAGS $IPP_FFT_LDFLAGS"
+       
+       AC_SEARCH_LIBS(
+-	  [ippiFFTFwd_CToC_32fc_C1R], [ippiem64t ippim7 ippi],
++	  [ippiFFTFwd_CToC_32fc_C1R], ["ippi$with_ipp_suffix"],
+ 	[
+ 	  AC_SUBST(VSIP_IMPL_IPP_FFT, 1)
+ 	  AC_DEFINE_UNQUOTED(VSIP_IMPL_IPP_FFT, 1,
+
+
+From ncm at codesourcery.com  Tue Sep 20 01:32:38 2005
+From: ncm at codesourcery.com (Nathan (Jasper) Myers)
+Date: Mon, 19 Sep 2005 18:32:38 -0700
+Subject: [PATCH] fft-core.hpp minor cleanup
+Message-ID: <20050920013238.GA12541@codesourcery.com>
+
+The patch below is checked in.  It does some minor whitespace cleanup,
+re-arranging, and comment improvements for better maintainability
+in fft-core.hpp.  It doesn't matter much whether it ends up in the 
+release.
+
+Nathan Myers
+ncm
+
+
+Index: ChangeLog
+===================================================================
+RCS file: /home/cvs/Repository/vpp/ChangeLog,v
+retrieving revision 1.263
+retrieving revision 1.264
+diff -u -p -r1.263 -r1.264
+--- ChangeLog	20 Sep 2005 00:46:29 -0000	1.263
++++ ChangeLog	20 Sep 2005 01:29:43 -0000	1.264
+@@ -1,5 +1,10 @@
+ 2005-09-19  Nathan Myers  <ncm at codesourcery.com>
+ 
++	* src/vsip/impl/fft-core.hpp: minor format cleanup, documentation
++	  improvements.
++
++2005-09-19  Nathan Myers  <ncm at codesourcery.com>
++
+ 	* configure.ac: replace all --enable-fftw* and --enable-ipp-fft with
+ 	  --with-fft={fftw3,fftw2-float,fftw2-double,fftw2-generic,ipp}.
+ 	  Enable building with fftw2-double.  Add --with-ipp-suffix, and 
+Index: src/vsip/impl/fft-core.hpp
+===================================================================
+RCS file: /home/cvs/Repository/vpp/src/vsip/impl/fft-core.hpp,v
+retrieving revision 1.15
+retrieving revision 1.16
+diff -u -p -r1.15 -r1.16
+--- src/vsip/impl/fft-core.hpp	19 Sep 2005 03:39:54 -0000	1.15
++++ src/vsip/impl/fft-core.hpp	20 Sep 2005 01:29:43 -0000	1.16
+@@ -905,22 +905,10 @@ int_log2(unsigned size)    // assume siz
+   return n;
+ }
+ 
+-template <typename P> inline IppStatus dum(P**, int, int, IppHintAlgorithm)
+-  { return ippStsNoErr; }
+-template <typename P> inline IppStatus dum(P**, int, int, int, IppHintAlgorithm)
+-  { return ippStsNoErr; }
+-template <typename P> inline IppStatus dum(P**, IppiSize, int, IppHintAlgorithm)
+-  { return ippStsNoErr; }
+-template <typename P> inline IppStatus dum(P*)
+-  { return ippStsNoErr; }
+-template <typename P> inline IppStatus dum(P const*, int*)
+-  { return ippStsNoErr; }
+-template <typename P, typename T> inline IppStatus dum(
+-  T const*, T*, P const*, Ipp8u*)
+-  { return ippStsNoErr; }
+-template <typename P, typename T> inline IppStatus dum(
+-  T const*, int, T*, int, P const*, Ipp8u*)
+-  { return ippStsNoErr; }
++// Ipp_DFT_Base is the generic driver for all IPP calls.
++// 
++// Note the differing signatures for 2D plans in the FFT (power-of-two
++// array argument size) and DFT forms (non-), planFFun2 vs. planDFun2.
+ 
+ template <
+   vsip::dimension_type Dim,
+@@ -933,8 +921,8 @@ template <
+   IppStatus (*forwardFFun1)(T const*, T*, planFT const*, Ipp8u*),
+   IppStatus (*inverseFFun1)(T const*, T*, planFT const*, Ipp8u*),
+   IppStatus (*forwardFFun2)(T const*, int, T*, int, planFT const*, Ipp8u*),
+-  IppStatus (*inverseFFun2)(T const*, int, T*, int, planFT const*, Ipp8u*),
+-  typename planDT,
++  IppStatus (*inverseFFun2)
++    (T const*, int, T*, int, planFT const*, Ipp8u*), typename planDT,
+   IppStatus (*planDFun1)(planDT**, int, int, IppHintAlgorithm),
+   IppStatus (*planDFun2)(planDT**, IppiSize, int, IppHintAlgorithm),
+   IppStatus (*disposeDFun)(planDT*),
+@@ -1009,7 +997,8 @@ struct Ipp_DFT_base
+   }
+ 
+   static void
+-  forward2(void* plan, void const* in, void* out, void* buffer, bool f) VSIP_NOTHROW
++  forward2(void* plan, void const* in, void* out, void* buffer, bool f)
++    VSIP_NOTHROW
+   {
+     IppStatus result = (f ?
+       (*forwardFFun2)(
+@@ -1024,7 +1013,8 @@ struct Ipp_DFT_base
+   }
+ 
+   static void
+-  inverse(void* plan, void const* in, void* out, void* buffer, bool f) VSIP_NOTHROW
++  inverse(void* plan, void const* in, void* out, void* buffer, bool f)
++    VSIP_NOTHROW
+   {
+     IppStatus result = (f ?
+       (*inverseFFun1)(
+@@ -1039,7 +1029,8 @@ struct Ipp_DFT_base
+   }
+ 
+   static void
+-  inverse2(void* plan, void const* in, void* out, void* buffer, bool f) VSIP_NOTHROW
++  inverse2(void* plan, void const* in, void* out, void* buffer, bool f)
++    VSIP_NOTHROW
+   {
+     IppStatus result = (f ?
+       (*inverseFFun2)(
+@@ -1054,10 +1045,34 @@ struct Ipp_DFT_base
+   }
+ };
+ 
++// These are dummy functions to act as place-holders for arguments to
++// template Ipp_DFT_base<>.
++
++template <typename P> inline IppStatus dum(P**, int, int, IppHintAlgorithm)
++  { return ippStsNoErr; }
++template <typename P> inline IppStatus dum(P**, int, int, int, IppHintAlgorithm)
++  { return ippStsNoErr; }
++template <typename P> inline IppStatus dum(P**, IppiSize, int, IppHintAlgorithm)
++  { return ippStsNoErr; }
++template <typename P> inline IppStatus dum(P*)
++  { return ippStsNoErr; }
++template <typename P> inline IppStatus dum(P const*, int*)
++  { return ippStsNoErr; }
++template <typename P, typename T> inline IppStatus dum(
++  T const*, T*, P const*, Ipp8u*)
++  { return ippStsNoErr; }
++template <typename P, typename T> inline IppStatus dum(
++  T const*, int, T*, int, P const*, Ipp8u*)
++  { return ippStsNoErr; }
++
++
++// Specializations of Ipp_DFT create the mappings from argument
++// types to the appropriate IPP library functions.  
++
+ template <vsip::dimension_type Dim, typename T>
+ struct Ipp_DFT;
+ 
+-// 1D, C to C, float
++// IPP driver, 1D, C to C, float
+ 
+ template <>
+ struct Ipp_DFT<1,std::complex<float> >
+@@ -1077,7 +1092,7 @@ struct Ipp_DFT<1,std::complex<float> >
+    typedef std::complex<float> out_type;
+ };
+ 
+-// 2D, C to C, float
++// IPP driver, 2D, C to C, float
+ 
+ template <>
+ struct Ipp_DFT<2,std::complex<float> >
+@@ -1097,7 +1112,7 @@ struct Ipp_DFT<2,std::complex<float> >
+    typedef std::complex<float> out_type;
+ };
+ 
+-// 1D, C to C, double
++// IPP driver, 1D, C to C, double
+ 
+ template <>
+ struct Ipp_DFT<1,std::complex<double> >
+@@ -1119,7 +1134,7 @@ struct Ipp_DFT<1,std::complex<double> >
+ 
+ // 2D, C to C, double, power of 2
+ 
+-// IPP has no 2D double 
++// IPP driver, IPP has no 2D double 
+ template <>
+ struct Ipp_DFT<2,std::complex<double> >
+   : Ipp_DFT_base<2,Ipp64fc,void,dum,dum,dum,dum,dum,dum,dum,dum,
+@@ -1132,7 +1147,7 @@ struct Ipp_DFT<2,std::complex<double> >
+ 
+ /////////////////////////////////////////////////////////////////////////
+ 
+-// 1D, R to/from C, float
++// IPP driver, 1D, R to/from C, float
+ 
+ template <>
+ struct Ipp_DFT<1,float>
+@@ -1152,7 +1167,7 @@ struct Ipp_DFT<1,float>
+    typedef std::complex<float> out_type;
+ };
+ 
+-// 2D, R to C, float
++// IPP driver, 2D, R to/from C, float
+ 
+ template <>
+ struct Ipp_DFT<2,float>
+@@ -1172,7 +1187,7 @@ struct Ipp_DFT<2,float>
+    typedef std::complex<float> out_type;
+ };
+ 
+-// 1D, R to C, double
++// IPP driver, 1D, R to/from C, double
+ 
+ template <>
+ struct Ipp_DFT<1,double>
+@@ -1192,7 +1207,7 @@ struct Ipp_DFT<1,double>
+    typedef std::complex<double> out_type;
+ };
+ 
+-// 2D, R to C, double
++// 2D, R to/from C, double
+ 
+ // IPP doesn't implement 2D double
+ template <>
+@@ -1253,7 +1268,7 @@ create_ipp_plan(
+   }
+ }
+ 
+-// IPP FFT any
++// IPP FFT plan any
+ 
+ template <vsip::dimension_type Dim, typename T1, typename T2>
+ inline void
+@@ -1272,7 +1287,7 @@ create_plan(
+ }
+ 
+ 
+-// IPP FFTM
++// IPP FFTM plan
+ 
+ template <typename T1, typename T2>
+ inline void
+
+
+From don at codesourcery.com  Tue Sep 20 05:41:29 2005
+From: don at codesourcery.com (Don McCoy)
+Date: Mon, 19 Sep 2005 23:41:29 -0600
+Subject: [vsipl++] [patch] signal.windows
+In-Reply-To: <432F3522.2070203@codesourcery.com>
+References: <4329F238.1090406@codesourcery.com> <432F2E24.7060508@codesourcery.com> <432F3522.2070203@codesourcery.com>
+Message-ID: <432FA109.3050900@codesourcery.com>
+
+Don McCoy wrote:
+
+>> Don McCoy wrote:
+>>
+>> This implements the four windowing functions, Blackman, Chebyshev, 
+>> Hanning and Kaiser.  Tested agains Intel 8.0/9.0 and GCC 3.4.0. 
+>
+> This module passes against the tests I wrote, but fails as of this 
+> moment against ref-impl/signal-windows.cpp.  If you are getting ready 
+> to rebuild and need it checked in, please let me know.  Otherwise, I'm 
+> working on it as quickly as possible.
+
+
+Resolved.  Passes against ref-impl tests as well as new unit tests.  
+Please let me know if this is ready to be checked in.
+
+-- 
+Don McCoy
+CodeSourcery, LLC
+
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: ChangeLog.window
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20050919/52862f7e/attachment.ksh>
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: sw2.diff
+Type: text/x-patch
+Size: 14802 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20050919/52862f7e/attachment.bin>
+
+From jules at codesourcery.com  Tue Sep 20 10:07:41 2005
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Tue, 20 Sep 2005 06:07:41 -0400
+Subject: [vsipl++] [patch] signal.windows
+In-Reply-To: <432FA109.3050900@codesourcery.com>
+References: <4329F238.1090406@codesourcery.com> <432F2E24.7060508@codesourcery.com> <432F3522.2070203@codesourcery.com> <432FA109.3050900@codesourcery.com>
+Message-ID: <432FDF6D.8000404@codesourcery.com>
+
+Don,
+
+This looks good, please check it in.
+
+			thanks,
+			-- Jules
+
+Don McCoy wrote:
+> Don McCoy wrote:
+> 
+>>> Don McCoy wrote:
+>>>
+>>> This implements the four windowing functions, Blackman, Chebyshev, 
+>>> Hanning and Kaiser.  Tested agains Intel 8.0/9.0 and GCC 3.4.0. 
+>>
+>>
+>> This module passes against the tests I wrote, but fails as of this 
+>> moment against ref-impl/signal-windows.cpp.  If you are getting ready 
+>> to rebuild and need it checked in, please let me know.  Otherwise, I'm 
+>> working on it as quickly as possible.
+> 
+> 
+> 
+> Resolved.  Passes against ref-impl tests as well as new unit tests.  
+> Please let me know if this is ready to be checked in.
+
+
+From ncm at codesourcery.com  Tue Sep 20 15:53:29 2005
+From: ncm at codesourcery.com (Nathan (Jasper) Myers)
+Date: Tue, 20 Sep 2005 08:53:29 -0700
+Subject: [PATCH] FFT off by default; clean signal-window.cpp
+Message-ID: <20050920155329.GA31596@codesourcery.com>
+
+This small cleanup is not yet applied, pending Jules's opinion.  
+
+Note that running "configure" with no arguments still looks for and 
+enables MPICH on my machine.  I don't know if that is wanted, or if
+we should also try to turn off any MPI-dependent library components.
+
+Nathan Myers
+ncm
+
+Index: ChangeLog
+===================================================================
+RCS file: /home/cvs/Repository/vpp/ChangeLog,v
+retrieving revision 1.265
+diff -u -p -r1.265 ChangeLog
+--- ChangeLog	20 Sep 2005 12:38:56 -0000	1.265
++++ ChangeLog	20 Sep 2005 15:50:06 -0000
+@@ -1,3 +1,10 @@
++2005-09-20  Nathan Myers  <ncm at codesourcery.com>
++
++	* configure.ac: turn off all FFT libraries by default. 
++	* src/vsip/signal-window.cpp: remove unused local variable.
++	* src/vsip/impl/signal-fft.hpp: move definition of member scale_
++	  outside #if to allow compilation with no FFT engines defined.
++
+ 2005-09-19  Don McCoy  <don at codesourcery.com>
+ 	
+ 	Implemented functions from [signal.windows]
+Index: configure.ac
+===================================================================
+RCS file: /home/cvs/Repository/vpp/configure.ac,v
+retrieving revision 1.39
+diff -u -p -r1.39 configure.ac
+--- configure.ac	20 Sep 2005 00:46:29 -0000	1.39
++++ configure.ac	20 Sep 2005 15:50:06 -0000
+@@ -210,10 +210,10 @@ elif test "$with_fft" = "fftw2-generic";
+   enable_fftw2_float="yes"
+ elif test "$with_fft" = "ipp"; then
+   enable_ipp_fft="yes"
+-elif test "$chose_fft" != "yes"; then
+-  enable_fftw3="probe"
+-  enable_fftw2="probe"
+-  enable_ipp_fft="probe"
++elif test "$chose_fft" != "yes"; then :
++#  enable_fftw3="probe"
++#  enable_fftw2="probe"
++#  enable_ipp_fft="probe"
+ else
+   AC_MSG_ERROR([Argument to --with-fft= must be one of fftw3, fftw2-float,
+                 fftw2-double, fftw2-generic, or ipp.])
+Index: src/vsip/signal-window.cpp
+===================================================================
+RCS file: /home/cvs/Repository/vpp/src/vsip/signal-window.cpp,v
+retrieving revision 1.1
+diff -u -p -r1.1 signal-window.cpp
+--- src/vsip/signal-window.cpp	20 Sep 2005 12:38:57 -0000	1.1
++++ src/vsip/signal-window.cpp	20 Sep 2005 15:50:06 -0000
+@@ -33,7 +33,6 @@ blackman(length_type len) VSIP_THROW((st
+ 
+   Vector<scalar_f> v(len);
+ 
+-  length_type n =  0;
+   scalar_f temp1 = 2 * M_PI / (len - 1);
+   scalar_f temp2 = 2 * temp1;
+ 
+Index: src/vsip/impl/signal-fft.hpp
+===================================================================
+RCS file: /home/cvs/Repository/vpp/src/vsip/impl/signal-fft.hpp,v
+retrieving revision 1.24
+diff -u -p -r1.24 signal-fft.hpp
+--- src/vsip/impl/signal-fft.hpp	19 Sep 2005 03:39:54 -0000	1.24
++++ src/vsip/impl/signal-fft.hpp	20 Sep 2005 15:50:06 -0000
+@@ -66,11 +66,6 @@ struct Fft_core : impl::Ref_count<impl::
+     , plan_from_to_(0)
+     {}
+ 
+-  // if any of the above functions applies the scale itself, it must
+-  // set this->scale_ back to 1 so the caller will know not to repeat it.
+-
+-  typename impl::Scalar_of<outT>::type  scale_;
+-
+   void*  plan_in_place_;
+   void*  plan_from_to_;
+ 
+@@ -88,6 +83,11 @@ struct Fft_core : impl::Ref_count<impl::
+ # endif
+ 
+ #endif
++
++  // if any of the above functions applies the scale itself, it must
++  // set this->scale_ back to 1 so the caller will know not to repeat it.
++
++  typename impl::Scalar_of<outT>::type  scale_;
+ };
+ 
+ // 
+
+
+From stefan at codesourcery.com  Tue Sep 20 19:49:48 2005
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Tue, 20 Sep 2005 15:49:48 -0400
+Subject: test database fix
+Message-ID: <433067DC.7090904@codesourcery.com>
+
+The attached patch fixes the test database to correctly recognize
+and scan subdirectories, even for the empty target.
+
+Checked in.
+
+Regards,
+		Stefan
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: vpp_database.py
+Type: application/x-python
+Size: 9199 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20050920/4fa778b7/attachment.bin>
+
+From stefan at codesourcery.com  Tue Sep 20 19:51:39 2005
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Tue, 20 Sep 2005 15:51:39 -0400
+Subject: [vsipl++] test database fix
+Message-ID: <4330684B.7030407@codesourcery.com>
+
+Sorry, I meant to send the patch, not the entire file.
+Here it is.
+
+Regards,
+		Stefan
+
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: vpp_database.py.diff
+Type: text/x-patch
+Size: 1330 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20050920/86db58c3/attachment.bin>
+
+From don at codesourcery.com  Wed Sep 21 00:30:33 2005
+From: don at codesourcery.com (Don McCoy)
+Date: Tue, 20 Sep 2005 18:30:33 -0600
+Subject: [patch] fft_ext, window tests
+Message-ID: <4330A9A9.1060504@codesourcery.com>
+
+Attached is a patch that makes all of the "fft_ext" tests pass.  Also 
+added conditional compiler directive such that it will build, run and 
+pass even if no FFT is defined.  The fft_ext.cpp module may now be run 
+on data files without command line options, provided that the first two 
+letters of the filename indicate the desired fft type (c-c, c-r, or 
+r-c).  It also runs both single and double precision FFT's on the data, 
+unless an option is provided to select one or the other.
+
+While making these changes, I also caught the fact that the window.cpp 
+test also needed this conditional (because the Chebyshev function is 
+dependent on FFT).
+
+Ok to commit?
+
+-- 
+Don McCoy
+CodeSourcery, LLC
+
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: fe.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20050920/e896a232/attachment.ksh>
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: fe.diff
+Type: text/x-patch
+Size: 10581 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20050920/e896a232/attachment.bin>
+
+From jules at codesourcery.com  Wed Sep 21 05:35:28 2005
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Wed, 21 Sep 2005 01:35:28 -0400
+Subject: [vsipl++] [PATCH] switch to --with-fft=...
+In-Reply-To: <20050920005507.GA10733@codesourcery.com>
+References: <20050920005507.GA10733@codesourcery.com>
+Message-ID: <4330F120.2090703@codesourcery.com>
+
+
+
+Nathan (Jasper) Myers wrote:
+> 
+> Also, if you're configuring in IPP, you'll need to add one of
+> 
+>   --with-ipp-suffix=
+>   --with-ipp-suffix=em64t
+>   --with-ipp-suffix=m7
+> 
+> or what-have-you, according to your IPP installation.
+> 
+
+Nathan,
+
+Is there a reason for requiring a suffix?
+
+If by default we search ipps.so (no suffix) and ippem64t.so, we'll do 
+the right thing in most cases.  On ia32 systems, ipps.so will hit.  It 
+is a dispatcher library that than detects the right processor specific 
+library at runtime.  On em64t systems, ippsem64t.so will hit.  It is not 
+clear from the IPP getting started page if it too is a dispatcher, but 
+presumably it is.
+
+Any objections to making the suffix optional?  This will let people need 
+override the default when necessary, but not force everyone to set it.
+
+				-- Jules
+
+
+
+From jules at codesourcery.com  Wed Sep 21 09:52:36 2005
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Wed, 21 Sep 2005 05:52:36 -0400
+Subject: [patch] Pre-release fixes
+Message-ID: <43312D64.8050100@codesourcery.com>
+
+Several small patches.
+
+  - merged Nathan's patch to disable FFT with a patch to disable the old 
+libraries,
+
+  - made --with-ipp-suffix optional,
+
+  - fixed a missing static definition when timers are disabled,
+
+  - added checking to the IPP dispatch to check the operands have the 
+same type.  It was matching an expression
+
+	View<complex<float>> = View<float> * View<complex<float>>
+
+but there was no corresponding IPP vmul wrapper.
+
+  - reverse the order of parameters to IPP Subtract and Divide.
+
+       ippsSub(A, B, Z, ...)
+
+    is equivalent to
+
+       Z = B - A
+
+    go figure!
+
+Patches applied.
+
+These last two bugs were causing view-math to fail.  I'm checking that 
+it is fixed now.  If it looks good, it will be our release 0.9!
+
+					-- Jules
+
+
+From stefan at codesourcery.com  Wed Sep 21 11:56:27 2005
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Wed, 21 Sep 2005 07:56:27 -0400
+Subject: [vsipl++] [patch] Pre-release fixes
+In-Reply-To: <43312D64.8050100@codesourcery.com>
+References: <43312D64.8050100@codesourcery.com>
+Message-ID: <43314A6B.3090003@codesourcery.com>
+
+Jules Bergmann wrote:
+
+>  - added checking to the IPP dispatch to check the operands have the 
+> same type.  It was matching an expression
+> 
+>     View<complex<float>> = View<float> * View<complex<float>>
+> 
+> but there was no corresponding IPP vmul wrapper.
+> 
+>  - reverse the order of parameters to IPP Subtract and Divide.
+> 
+>       ippsSub(A, B, Z, ...)
+> 
+>    is equivalent to
+> 
+>       Z = B - A
+> 
+>    go figure!
+
+doh !
+
+I was wondering how to best test serial dispatch. It appears I was a bit
+too sloppy when testing as I didn't add a new test that provides specifically
+expressions that match the ones IPP can deal with.
+Instead I locally modified an existing test to make sure the right backend
+was called, but without checking the results.
+
+What we need is a set of expression tests that match all the patterns we
+provide backends for, and then somehow mark them up during execution so
+we know we have complete coverage.
+
+Regards,
+		Stefan
+
+
+From ncm at codesourcery.com  Wed Sep 21 15:36:41 2005
+From: ncm at codesourcery.com (Nathan (Jasper) Myers)
+Date: Wed, 21 Sep 2005 08:36:41 -0700
+Subject: [vsipl++] [PATCH] switch to --with-fft=...
+In-Reply-To: <4330F120.2090703@codesourcery.com>
+References: <20050920005507.GA10733@codesourcery.com> <4330F120.2090703@codesourcery.com>
+Message-ID: <20050921153641.GH31167@codesourcery.com>
+
+On Wed, Sep 21, 2005 at 01:35:28AM -0400, Jules Bergmann wrote:
+> Nathan (Jasper) Myers wrote:
+> >Also, if you're configuring in IPP, you'll need to add one of
+> >
+> >  --with-ipp-suffix=
+> >  --with-ipp-suffix=em64t
+> >  --with-ipp-suffix=m7
+> >
+> >or what-have-you, according to your IPP installation.
+> 
+> Is there a reason for requiring a suffix?
+
+Just two.  First, for some (e.g. in /opt/intel/ipp41_eval/em64t) there's 
+no non-suffix version provided.  Second, Mark recommended requiring the 
+suffix so that we don't pick the wrong one by accident.
+
+Nathan Myers
+ncm
+
+
+From don at codesourcery.com  Fri Sep 23 15:58:39 2005
+From: don at codesourcery.com (Don McCoy)
+Date: Fri, 23 Sep 2005 09:58:39 -0600
+Subject: [vsipl++] [patch] fft_ext, window tests
+In-Reply-To: <4330A9A9.1060504@codesourcery.com>
+References: <4330A9A9.1060504@codesourcery.com>
+Message-ID: <4334262F.3050206@codesourcery.com>
+
+Don McCoy wrote:
+
+> Attached is a patch that makes all of the "fft_ext" tests pass.  Also 
+> added conditional compiler directive such that it will build, run and 
+> pass even if no FFT is defined.  The fft_ext.cpp module may now be run 
+> on data files without command line options, provided that the first 
+> two letters of the filename indicate the desired fft type (c-c, c-r, 
+> or r-c).  It also runs both single and double precision FFT's on the 
+> data, unless an option is provided to select one or the other.
+>
+> While making these changes, I also caught the fact that the window.cpp 
+> test also needed this conditional (because the Chebyshev function is 
+> dependent on FFT).
+>
+> Ok to commit?
+
+Resubmitting this after realizing I had incorrectly applied a 
+conditional compilation directive around the FFT call in 
+src/vsip/signal-window.cpp.
+
+-- 
+Don McCoy
+CodeSourcery, LLC
+
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: fe2.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20050923/ca4424b3/attachment.ksh>
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: fe2.diff
+Type: text/x-patch
+Size: 10287 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20050923/ca4424b3/attachment.bin>
+
+From jules at codesourcery.com  Fri Sep 23 16:06:00 2005
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Fri, 23 Sep 2005 12:06:00 -0400
+Subject: [vsipl++] [patch] fft_ext, window tests
+In-Reply-To: <4334262F.3050206@codesourcery.com>
+References: <4330A9A9.1060504@codesourcery.com> <4334262F.3050206@codesourcery.com>
+Message-ID: <433427E8.4070108@codesourcery.com>
+
+
+
+Don McCoy wrote:
+> Don McCoy wrote:
+> 
+>> Attached is a patch that makes all of the "fft_ext" tests pass.  Also 
+>> added conditional compiler directive such that it will build, run and 
+>> pass even if no FFT is defined.  The fft_ext.cpp module may now be run 
+>> on data files without command line options, provided that the first 
+>> two letters of the filename indicate the desired fft type (c-c, c-r, 
+>> or r-c).  It also runs both single and double precision FFT's on the 
+>> data, unless an option is provided to select one or the other.
+>>
+>> While making these changes, I also caught the fact that the window.cpp 
+>> test also needed this conditional (because the Chebyshev function is 
+>> dependent on FFT).
+>>
+>> Ok to commit?
+> 
+> 
+> Resubmitting this after realizing I had incorrectly applied a 
+> conditional compilation directive around the FFT call in 
+> src/vsip/signal-window.cpp.
+> 
+
+Don, Looks good, please commit.  -- Jules
+
+
+From jules at codesourcery.com  Fri Sep 23 18:39:38 2005
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Fri, 23 Sep 2005 14:39:38 -0400
+Subject: [patch] VERSIONS
+Message-ID: <43344BEA.2030704@codesourcery.com>
+
+Patch applied. -- Jules
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: v.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20050923/5d4bf710/attachment.ksh>
+
+From jules at codesourcery.com  Fri Sep 23 19:58:10 2005
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Fri, 23 Sep 2005 15:58:10 -0400
+Subject: [patch] Vector assignment, sarsim bits
+Message-ID: <43345E52.9070909@codesourcery.com>
+
+A bunch of misc things collected over the past few weeks to optimize and 
+parallel sarsim.
+
+Perhaps the most substantial bit, I changed the Vector assignment 
+operators (+=, -=, etc) to go through the same dispatch as 'operator=', 
+so that 'A += B' gets evaluated as 'A = A + B'.  This throws away the 
+knowledge that it is an update expression, but it lets it get evaluated 
+by IPP when possible.  In the long term, we may want to add special 
+dispatch for operator assignment so we don't throw this knowledge away.
+
+Thoughts?
+
+				-- Jules
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: misc.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20050923/eea6fc46/attachment.ksh>
+
+From mark at codesourcery.com  Fri Sep 23 20:35:59 2005
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Fri, 23 Sep 2005 13:35:59 -0700
+Subject: [vsipl++] [patch] Vector assignment, sarsim bits
+In-Reply-To: <43345E52.9070909@codesourcery.com>
+References: <43345E52.9070909@codesourcery.com>
+Message-ID: <4334672F.2020409@codesourcery.com>
+
+Jules Bergmann wrote:
+> A bunch of misc things collected over the past few weeks to optimize and
+> parallel sarsim.
+> 
+> Perhaps the most substantial bit, I changed the Vector assignment
+> operators (+=, -=, etc) to go through the same dispatch as 'operator=',
+> so that 'A += B' gets evaluated as 'A = A + B'.  This throws away the
+> knowledge that it is an update expression, but it lets it get evaluated
+> by IPP when possible.  In the long term, we may want to add special
+> dispatch for operator assignment so we don't throw this knowledge away.
+> 
+> Thoughts?
+
+We do the same thing in the compiler; "i += j" is treated exactly like
+"i = i + j".  If there are special operations for update you want to
+apply them in both cases, i.e., you want to optimize "i = i + j" and "i
+= j + i" if the user happens to right it that way.  So, first you turn
+"i += j" into "i = i + j"; then you (later) look for the update case.
+
+In VSIPL++, you could do that at runtime-dispatch time.  In a compiler,
+there's generally very little runtime dispatch; these things are decided
+up front.  That does suggest that, in the long run, you may want to do
+compile-time dispatch for the += case if you have a library that
+specially supports that case.  But, you'll probably want to do the
+runtime dispatch anyhow, and that will get you most of the bang.
+
+So, I think your strategy makes sense.
+
+-- 
+Mark Mitchell
+CodeSourcery, LLC
+mark at codesourcery.com
+(916) 791-8304
+
+
+From jules at codesourcery.com  Fri Sep 23 21:00:59 2005
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Fri, 23 Sep 2005 17:00:59 -0400
+Subject: [patch] vector-matrix multiply
+Message-ID: <43346D0B.7010705@codesourcery.com>
+
+Rough implementation of vmmul.  Tries to do the right thing with respect 
+to dimension ordering of the matrix.
+
+				-- Jules
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: vm.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20050923/4aeaf26c/attachment.ksh>
+
+From ncm at codesourcery.com  Fri Sep 23 23:11:31 2005
+From: ncm at codesourcery.com (Nathan (Jasper) Myers)
+Date: Fri, 23 Sep 2005 16:11:31 -0700
+Subject: [vsipl++] [patch] Vector assignment, sarsim bits
+In-Reply-To: <43345E52.9070909@codesourcery.com>
+References: <43345E52.9070909@codesourcery.com>
+Message-ID: <20050923231131.GA15306@codesourcery.com>
+
+On Fri, Sep 23, 2005 at 03:58:10PM -0400, Jules Bergmann wrote:
+> ... I changed the Vector assignment 
+> operators (+=, -=, etc) to go through the same dispatch as 'operator=', 
+> so that 'A += B' gets evaluated as 'A = A + B'.  This throws away the 
+> knowledge that it is an update expression, but it lets it get evaluated 
+> by IPP when possible.  In the long term, we may want to add special 
+> dispatch for operator assignment so we don't throw this knowledge away.
+
+I guess I think of op= as a special case of op+=, not the other way
+'round.  That is, if you imagine an operator # such that (a # b) => b,
+then a.op#=(b), which must mean (a = a # b), is identical to what we 
+call a.op=(b).  In normal code we usually implement op+ using op+=, 
+making the latter the more fundamental.  
+
+I don't know if that means anything in terms of the code we have. 
+Anyhow I thought you were talking about distributed operation, rather 
+than IPP.  I see IPP implements both a = b + c and a += b.  I wonder 
+if we're better off ignoring one or other of those.  My guess would
+be that if we used just one, it should be the second.  Anyway it 
+extends more naturally to their operation a += b * c.
+
+Nathan Myers
+ncm
+
+
+From ncm at codesourcery.com  Mon Sep 26 08:26:27 2005
+From: ncm at codesourcery.com (Nathan (Jasper) Myers)
+Date: Mon, 26 Sep 2005 01:26:27 -0700
+Subject: [PATCH] #if out FFT tests when not config'd
+Message-ID: <20050926082627.GA17236@codesourcery.com>
+
+This patch adds #if blocks around tests that depend on FFT support,
+pending addition of native FFT code to fill in lacunae.  It also adds
+tests using double and complex<double>.  Note this does not patch the 
+tests in ref-impl.
+
+OK to apply?  
+
+Nathan Myers
+ncm
+
+Index: ChangeLog
+===================================================================
+RCS file: /home/cvs/Repository/vpp/ChangeLog,v
+retrieving revision 1.271
+diff -u -p -r1.271 ChangeLog
+--- ChangeLog	23 Sep 2005 19:21:36 -0000	1.271
++++ ChangeLog	26 Sep 2005 08:26:47 -0000
+@@ -1,3 +1,9 @@
++2005-09-26  Nathan Myers  <ncm at codesourcery.com>
++
++	* tests/extdata-fft.cpp, tests/fft.cpp, tests/fftm-par.cpp,
++	  tests/fftm.cpp: #if out tests that depend on FFT where FFT
++	  is not enabled; add tests for double-precision.
++
+ 2005-09-23  Jules Bergmann  <jules at codesourcery.com>
+ 
+ 	* VERSIONS: New file, describes varius CVS tagged versions of
+@@ -32,7 +38,8 @@
+ 
+ 2005-09-20  Stefan Seefeld  <stefan at codesourcery.com>
+ 
+-	* tests/QMTest/vpp_database.py: Make qmtest properly scan subdirectories.
++	* tests/QMTest/vpp_database.py: Make qmtest properly scan
++	  subdirectories.
+ 
+ 2005-09-19  Don McCoy  <don at codesourcery.com>
+ 	
+Index: tests/extdata-fft.cpp
+===================================================================
+RCS file: /home/cvs/Repository/vpp/tests/extdata-fft.cpp,v
+retrieving revision 1.3
+diff -u -p -r1.3 extdata-fft.cpp
+--- tests/extdata-fft.cpp	18 Jun 2005 16:40:45 -0000	1.3
++++ tests/extdata-fft.cpp	26 Sep 2005 08:26:48 -0000
+@@ -314,11 +314,10 @@ test_fft_1d(length_type size, int k)
+   fft("subvector", in(Domain<1>(size)), out(Domain<1>(size)));
+ }
+ 
+-
+-
+ int
+ main()
+ {
+   test_fft_1d<Test_FFT_inter, impl::Fast_block<1, complex<float> > >(256, 3);
+   test_fft_1d<Test_FFT_split, impl::Fast_block<1, complex<float> > >(256, 3);
++  return 0;
+ }
+Index: tests/fft.cpp
+===================================================================
+RCS file: /home/cvs/Repository/vpp/tests/fft.cpp,v
+retrieving revision 1.6
+diff -u -p -r1.6 fft.cpp
+--- tests/fft.cpp	19 Sep 2005 03:39:54 -0000	1.6
++++ tests/fft.cpp	26 Sep 2005 08:26:48 -0000
+@@ -313,6 +313,8 @@ main()
+ {
+   vsipl init;
+ 
++#if defined(VSIP_IMPL_FFT_USE_FLOAT)
++
+   test_by_ref<complex<float> >(2, 64);
+   test_by_ref<complex<float> >(1, 68);
+   test_by_ref<complex<float> >(2, 256);
+@@ -326,4 +328,26 @@ main()
+   test_real<float>(1, 128);
+   test_real<float>(2, 242);
+   test_real<float>(3, 16);
++
++#endif
++
++#if defined(VSIP_IMPL_FFT_USE_DOUBLE)
++
++  test_by_ref<complex<double> >(2, 64);
++  test_by_ref<complex<double> >(1, 68);
++  test_by_ref<complex<double> >(2, 256);
++  test_by_ref<complex<double> >(2, 252);
++  test_by_ref<complex<double> >(3, 17);
++
++  test_by_val<complex<double> >(1, 128);
++  test_by_val<complex<double> >(2, 256);
++  test_by_val<complex<double> >(3, 512);
++
++  test_real<double>(1, 128);
++  test_real<double>(2, 242);
++  test_real<double>(3, 16);
++
++#endif
++
++  return 0;
+ }
+Index: tests/fftm-par.cpp
+===================================================================
+RCS file: /home/cvs/Repository/vpp/tests/fftm-par.cpp,v
+retrieving revision 1.3
+diff -u -p -r1.3 fftm-par.cpp
+--- tests/fftm-par.cpp	19 Sep 2005 03:39:54 -0000	1.3
++++ tests/fftm-par.cpp	26 Sep 2005 08:26:48 -0000
+@@ -733,6 +733,7 @@ main(int argc, char** argv)
+   comm.barrier();
+ #endif
+ 
++#if defined(VSIP_IMPL_FFT_USE_FLOAT)
+   test_by_ref_x<complex<float> >(18);
+   test_by_ref_x<complex<float> >(64);
+   test_by_ref_x<complex<float> >(68);
+@@ -749,11 +750,38 @@ main(int argc, char** argv)
+   test_by_val_y<complex<float> >(18);
+   test_by_val_y<complex<float> >(256);
+ 
+-#if 0
++# if 0
+   // Tests for test r->c, c->r.
+   test_real<float>(128);
+   test_real<float>(242);
+   test_real<float>(16);
++# endif
+ #endif
++
++#if defined(VSIP_IMPL_FFT_USE_DOUBLE)
++  test_by_ref_x<complex<double> >(18);
++  test_by_ref_x<complex<double> >(64);
++  test_by_ref_x<complex<double> >(68);
++  test_by_ref_x<complex<double> >(256);
++  test_by_ref_x<complex<double> >(252);
++
++  test_by_ref_y<complex<double> >(68);
++  test_by_ref_y<complex<double> >(256);
++
++  test_by_val_x<complex<double> >(128);
++  test_by_val_x<complex<double> >(256);
++  test_by_val_x<complex<double> >(512);
++
++  test_by_val_y<complex<double> >(18);
++  test_by_val_y<complex<double> >(256);
++
++# if 0 
++  // Tests for test r->c, c->r.
++  test_real<double>(128);
++  test_real<double>(242);
++  test_real<double>(16);
++# endif
++#endif
++
+   return 0;
+ }
+Index: tests/fftm.cpp
+===================================================================
+RCS file: /home/cvs/Repository/vpp/tests/fftm.cpp,v
+retrieving revision 1.6
+diff -u -p -r1.6 fftm.cpp
+--- tests/fftm.cpp	19 Sep 2005 03:39:54 -0000	1.6
++++ tests/fftm.cpp	26 Sep 2005 08:26:48 -0000
+@@ -477,6 +477,7 @@ main()
+ {
+   vsipl init;
+ 
++#if defined(VSIP_IMPL_FFT_USE_FLOAT)
+   test_by_ref_x<complex<float> >(18);
+   test_by_ref_x<complex<float> >(64);
+   test_by_ref_x<complex<float> >(68);
+@@ -493,10 +494,38 @@ main()
+   test_by_val_y<complex<float> >(18);
+   test_by_val_y<complex<float> >(256);
+ 
+-#if 0
++# if 0
+   // Tests for test r->c, c->r.
+   test_real<float>(128);
+   test_real<float>(242);
+   test_real<float>(16);
++# endif
+ #endif
++
++#if defined(VSIP_IMPL_FFT_USE_DOUBLE)
++  test_by_ref_x<complex<double> >(18);
++  test_by_ref_x<complex<double> >(64);
++  test_by_ref_x<complex<double> >(68);
++  test_by_ref_x<complex<double> >(256);
++  test_by_ref_x<complex<double> >(252);
++
++  test_by_ref_y<complex<double> >(68);
++  test_by_ref_y<complex<double> >(256);
++
++  test_by_val_x<complex<double> >(128);
++  test_by_val_x<complex<double> >(256);
++  test_by_val_x<complex<double> >(512);
++
++  test_by_val_y<complex<double> >(18);
++  test_by_val_y<complex<double> >(256);
++
++# if 0
++  // Tests for test r->c, c->r.
++  test_real<double>(128);
++  test_real<double>(242);
++  test_real<double>(16);
++# endif
++#endif
++
++  return 0;
+ }
+
+
+From stefan at codesourcery.com  Mon Sep 26 12:59:26 2005
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Mon, 26 Sep 2005 08:59:26 -0400
+Subject: operator^
+Message-ID: <4337F0AE.7060100@codesourcery.com>
+
+The attached patch implements the operator^ for view/view and view/scalar.
+In particular, as required by the spec, for View<bool, Block> it maps
+to bxor, and to lxor for anything else.
+
+Regards,
+		Stefan
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: xor.patch
+Type: text/x-patch
+Size: 3095 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20050926/b880a990/attachment.bin>
+
+From jules at codesourcery.com  Mon Sep 26 14:01:17 2005
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Mon, 26 Sep 2005 10:01:17 -0400
+Subject: [vsipl++] operator^
+In-Reply-To: <4337F0AE.7060100@codesourcery.com>
+References: <4337F0AE.7060100@codesourcery.com>
+Message-ID: <4337FF2D.9090301@codesourcery.com>
+
+Looks good, please commit.  thanks -- Jules
+
+Stefan Seefeld wrote:
+> The attached patch implements the operator^ for view/view and view/scalar.
+> In particular, as required by the spec, for View<bool, Block> it maps
+> to bxor, and to lxor for anything else.
+> 
+> Regards,
+>         Stefan
+> 
+> 
+
+
+From jules at codesourcery.com  Mon Sep 26 14:21:07 2005
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Mon, 26 Sep 2005 10:21:07 -0400
+Subject: [vsipl++] [PATCH] #if out FFT tests when not config'd
+In-Reply-To: <20050926082627.GA17236@codesourcery.com>
+References: <20050926082627.GA17236@codesourcery.com>
+Message-ID: <433803D3.70603@codesourcery.com>
+
+Nathan,
+
+extdata-fft doesn't call vsip::Fft, it just demonstrates how one might 
+use Ext_data to implement FFTs.  It shouldn't need anything #if'd out.
+
+Otherwise looks OK.
+
+In the short term, we need to make sure that any attempt to use an 
+unimplemented FFT function results in either a compilation error or an 
+"unimplemented" exception.
+
+In the long term, we need to implement a generic FFT that (a) works when 
+no FFT library is provided and (b) fills in the gaps of whatever FFT 
+library we're using.
+
+				-- Jules
+
+
+
+
+Nathan (Jasper) Myers wrote:
+> This patch adds #if blocks around tests that depend on FFT support,
+> pending addition of native FFT code to fill in lacunae.  It also adds
+> tests using double and complex<double>.  Note this does not patch the 
+> tests in ref-impl.
+> 
+> OK to apply?  
+> 
+
+
+From ncm at codesourcery.com  Mon Sep 26 17:52:56 2005
+From: ncm at codesourcery.com (Nathan (Jasper) Myers)
+Date: Mon, 26 Sep 2005 10:52:56 -0700
+Subject: [vsipl++-csl] [patch] Vector assignment, sarsim bits
+In-Reply-To: <4338290C.90809@codesourcery.com>
+References: <43345E52.9070909@codesourcery.com> <43345ECB.6030700@codesourcery.com> <43374B4D.3090001@codesourcery.com> <20050926014907.GC15306@codesourcery.com> <4338290C.90809@codesourcery.com>
+Message-ID: <20050926175256.GN4613@codesourcery.com>
+
+On Mon, Sep 26, 2005 at 09:59:56AM -0700, Mark Mitchell wrote:
+> Nathan (Jasper) Myers wrote:
+> 
+> >>Writing a test for my fresh implementation for operator^ I observe
+> >>that
+> >>
+> >>  std::cout << typeid(false^true).name() << std::endl;
+> >>
+> >>prints 'i', and not 'b' as I had expected. 
+> 
+> I think Nathan Sidwell may have already answered, but this is not a bug;
+> the usual arithmetic conversations are applied to the operands before
+> applying "^", so the result of "false ^ true" is of type "int".
+
+>From a C++ coder standpoint, this is very surprising.  "The usual
+arithmetic conversions" was one of the areas where the C++ committee
+(library, perhaps, moreso than core?) deliberately broke from C.  
+Am I right, then, that it's allowed-but-not-required for the result 
+to stay bool?  If G++ can do that, it should.
+
+Nathan Myers
+ncm
+
+
+From mark at codesourcery.com  Mon Sep 26 18:04:35 2005
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Mon, 26 Sep 2005 11:04:35 -0700
+Subject: [vsipl++] Re: [vsipl++-csl] [patch] Vector assignment, sarsim
+ bits
+In-Reply-To: <20050926175256.GN4613@codesourcery.com>
+References: <43345E52.9070909@codesourcery.com> <43345ECB.6030700@codesourcery.com> <43374B4D.3090001@codesourcery.com> <20050926014907.GC15306@codesourcery.com> <4338290C.90809@codesourcery.com> <20050926175256.GN4613@codesourcery.com>
+Message-ID: <43383833.40004@codesourcery.com>
+
+Nathan (Jasper) Myers wrote:
+
+> From a C++ coder standpoint, this is very surprising.  "The usual
+> arithmetic conversions" was one of the areas where the C++ committee
+> (library, perhaps, moreso than core?) deliberately broke from C.  
+> Am I right, then, that it's allowed-but-not-required for the result 
+> to stay bool?  If G++ can do that, it should.
+
+A conforming compiler is required to promote to int.  See [expr]/9:
+"Otherwise, the integral promotions shall be performed on both
+operands".  There's nothing special about "^"; the usual arithmetic
+conversions are applied to all operands of arithmetic binary operators,
+like +, -, *, etc., and, as a result, the type of such expressions is
+always at least as wide as "int".
+
+-- 
+Mark Mitchell
+CodeSourcery, LLC
+mark at codesourcery.com
+(916) 791-8304
+
+
+From stefan at codesourcery.com  Mon Sep 26 18:08:55 2005
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Mon, 26 Sep 2005 14:08:55 -0400
+Subject: [vsipl++] Re: [vsipl++-csl] [patch] Vector assignment, sarsim
+ bits
+In-Reply-To: <43383833.40004@codesourcery.com>
+References: <43345E52.9070909@codesourcery.com> <43345ECB.6030700@codesourcery.com> <43374B4D.3090001@codesourcery.com> <20050926014907.GC15306@codesourcery.com> <4338290C.90809@codesourcery.com> <20050926175256.GN4613@codesourcery.com> <43383833.40004@codesourcery.com>
+Message-ID: <43383937.4020307@codesourcery.com>
+
+Mark Mitchell wrote:
+
+> A conforming compiler is required to promote to int.  See [expr]/9:
+> "Otherwise, the integral promotions shall be performed on both
+> operands".  There's nothing special about "^"; the usual arithmetic
+> conversions are applied to all operands of arithmetic binary operators,
+> like +, -, *, etc., and, as a result, the type of such expressions is
+> always at least as wide as "int".
+
+Considering this logic, I'm wondering why the VSIPL++ specs require
+two distinct versions of operator^, one doing a binary and the other
+a logical xor, depending on the operands having type bool or not.
+Isn't that inconsistent with the above ?
+
+Thanks,
+		Stefan
+
+
+From mark at codesourcery.com  Mon Sep 26 19:58:53 2005
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Mon, 26 Sep 2005 12:58:53 -0700
+Subject: [vsipl++] Re: [vsipl++-csl] [patch] Vector assignment, sarsim
+ bits
+In-Reply-To: <43383937.4020307@codesourcery.com>
+References: <43345E52.9070909@codesourcery.com> <43345ECB.6030700@codesourcery.com> <43374B4D.3090001@codesourcery.com> <20050926014907.GC15306@codesourcery.com> <4338290C.90809@codesourcery.com> <20050926175256.GN4613@codesourcery.com> <43383833.40004@codesourcery.com> <43383937.4020307@codesourcery.com>
+Message-ID: <433852FD.6050703@codesourcery.com>
+
+Stefan Seefeld wrote:
+> Mark Mitchell wrote:
+> 
+>> A conforming compiler is required to promote to int.  See [expr]/9:
+>> "Otherwise, the integral promotions shall be performed on both
+>> operands".  There's nothing special about "^"; the usual arithmetic
+>> conversions are applied to all operands of arithmetic binary operators,
+>> like +, -, *, etc., and, as a result, the type of such expressions is
+>> always at least as wide as "int".
+> 
+> 
+> Considering this logic, I'm wondering why the VSIPL++ specs require
+> two distinct versions of operator^, one doing a binary and the other
+> a logical xor, depending on the operands having type bool or not.
+> Isn't that inconsistent with the above ?
+
+I'm sure that comes from VSIPL, but I'm not sure exactly why.  Perhaps
+in VSIPL, "a lxor b" works even if "a" and "b" are of type "int"; i.e.,
+maybe "a lxor b" is the C++ operation "bool(bool(a) ^ bool(b))".
+
+-- 
+Mark Mitchell
+CodeSourcery, LLC
+mark at codesourcery.com
+(916) 791-8304
+
+
+From jules at codesourcery.com  Mon Sep 26 20:24:09 2005
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Mon, 26 Sep 2005 16:24:09 -0400
+Subject: [patch] Generator block, ramp() function
+Message-ID: <433858E9.4090603@codesourcery.com>
+
+Patch applied. -- Jules
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: ramp.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20050926/631b48f4/attachment.ksh>
+
+From nathan at codesourcery.com  Tue Sep 27 07:35:17 2005
+From: nathan at codesourcery.com (Nathan Sidwell)
+Date: Tue, 27 Sep 2005 08:35:17 +0100
+Subject: [vsipl++-csl] [patch] Vector assignment, sarsim bits
+In-Reply-To: <20050926175256.GN4613@codesourcery.com>
+References: <43345E52.9070909@codesourcery.com> <43345ECB.6030700@codesourcery.com> <43374B4D.3090001@codesourcery.com> <20050926014907.GC15306@codesourcery.com> <4338290C.90809@codesourcery.com> <20050926175256.GN4613@codesourcery.com>
+Message-ID: <4338F635.4030808@codesourcery.com>
+
+Nathan (Jasper) Myers wrote:
+
+> From a C++ coder standpoint, this is very surprising.  "The usual
+> arithmetic conversions" was one of the areas where the C++ committee
+> (library, perhaps, moreso than core?) deliberately broke from C.  
+> Am I right, then, that it's allowed-but-not-required for the result 
+> to stay bool?  If G++ can do that, it should.
+
+Not in my understanding of clause 5.
+
+nathan
+
+-- 
+Nathan Sidwell    ::   http://www.codesourcery.com   ::     CodeSourcery LLC
+nathan at codesourcery.com    ::     http://www.planetfall.pwp.blueyonder.co.uk
+
+
+
+From stefan at codesourcery.com  Tue Sep 27 13:01:56 2005
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Tue, 27 Sep 2005 09:01:56 -0400
+Subject: Cleanup patch
+Message-ID: <433942C4.3040009@codesourcery.com>
+
+The attached patch does some cleanup in order to enhance
+header independency:
+
+* view_traits.hpp forward-declares views with all default
+   arguments, which vector.hpp, matrix.hpp, and tensor.hpp
+   then don't issue a second time.
+* dense.hpp doesn't depend on view_traits.hpp
+* expr_functor.hpp depends on expr_binary_operators.hpp
+* matvec.hpp requires promote.hpp and fns_elementwise.hpp
+   to be self-contained.
+
+Ok to commit ?
+
+Regards,
+		Stefan
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: patch
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20050927/ef113ce0/attachment.ksh>
+
+From jules at codesourcery.com  Tue Sep 27 13:33:33 2005
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Tue, 27 Sep 2005 09:33:33 -0400
+Subject: [vsipl++] Cleanup patch
+In-Reply-To: <433942C4.3040009@codesourcery.com>
+References: <433942C4.3040009@codesourcery.com>
+Message-ID: <43394A2D.8040701@codesourcery.com>
+
+Stefan, looks good.  Please commit.  -- Jules
+
+Stefan Seefeld wrote:
+> The attached patch does some cleanup in order to enhance
+> header independency:
+> 
+> * view_traits.hpp forward-declares views with all default
+>   arguments, which vector.hpp, matrix.hpp, and tensor.hpp
+>   then don't issue a second time.
+> * dense.hpp doesn't depend on view_traits.hpp
+> * expr_functor.hpp depends on expr_binary_operators.hpp
+> * matvec.hpp requires promote.hpp and fns_elementwise.hpp
+>   to be self-contained.
+> 
+> Ok to commit ?
+> 
+> Regards,
+>         Stefan
+> 
+> 
+
+
+From jules at codesourcery.com  Tue Sep 27 16:29:16 2005
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Tue, 27 Sep 2005 12:29:16 -0400
+Subject: [patch] SVD solver
+Message-ID: <4339735C.5060609@codesourcery.com>
+
+Implementation (and tests) of the SVD solver object, using LAPACK 
+underneath.
+
+				-- Jules
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: svd.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20050927/21da471b/attachment.ksh>
+
+From don at codesourcery.com  Tue Sep 27 18:30:57 2005
+From: don at codesourcery.com (Don McCoy)
+Date: Tue, 27 Sep 2005 12:30:57 -0600
+Subject: [patch] matvec: outer, gem, cumsum
+Message-ID: <43398FE1.7080906@codesourcery.com>
+
+The attached patch rounds out the functionality of [math.matvec] with 
+the exception of a few of the matrix-vector product functions.  Since 
+those are implemented in a separate file, this patch stands by itself 
+pretty well.
+
+-- 
+Don McCoy
+CodeSourcery, LLC
+
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: mv2.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20050927/3a287d37/attachment.ksh>
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: mv2.diff
+Type: text/x-patch
+Size: 16548 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20050927/3a287d37/attachment.bin>
+
+From stefan at codesourcery.com  Tue Sep 27 20:40:42 2005
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Tue, 27 Sep 2005 16:40:42 -0400
+Subject: [selgen]
+Message-ID: <4339AE4A.4010007@codesourcery.com>
+
+The attached patch implements all functions from section 9.4 ([selgen])
+of the spec, i.e.
+
+* first()
+* indexbool()
+* gather()
+* scatter()
+* clip()
+* invclip()
+* swap()
+
+together with unit tests. It also contains some bits and pieces I
+submitted earlier today to cleanup header dependencies etc., as I
+wasn't able to easily separate the two.
+
+Regards,
+		Stefan
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: selgen.patch
+Type: text/x-patch
+Size: 17340 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20050927/b623cded/attachment.bin>
+
+From jules at codesourcery.com  Tue Sep 27 22:18:13 2005
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Tue, 27 Sep 2005 18:18:13 -0400
+Subject: [vsipl++] [selgen]
+In-Reply-To: <4339AE4A.4010007@codesourcery.com>
+References: <4339AE4A.4010007@codesourcery.com>
+Message-ID: <4339C525.7000707@codesourcery.com>
+
+
+
+Stefan Seefeld wrote:
+> The attached patch implements all functions from section 9.4 ([selgen])
+> of the spec, i.e.
+> 
+> * first()
+> * indexbool()
+> * gather()
+> * scatter()
+> * clip()
+> * invclip()
+> * swap()
+> 
+> together with unit tests. It also contains some bits and pieces I
+> submitted earlier today to cleanup header dependencies etc., as I
+> wasn't able to easily separate the two.
+
+Stefan,
+
+Looks good.  I have one suggestion for indexbool to make it a little 
+more robust, otherwise it looks ready to check in.
+
+Also, were the unit tests included in the patch?
+
+				thanks,
+				-- Jules
+
+
+>  
+>  /***********************************************************************
+> @@ -30,6 +31,29 @@
+>  namespace impl
+>  {
+>  
+> +template <typename T, typename B1, typename B2>
+> +length_type
+> +indexbool(const_Vector<T, B1> source, Vector<Index<1>, B2> indices)
+> +{
+> +  index_type cursor = 0;
+> +  for (index_type i = 0; i != source.size(); ++i)
+> +    if (source.get(i))
+> +      indices.put(cursor++, Index<1>(i));
+> +  return cursor;
+> +}
+
+I'm trying to think if we can do better error checking here.  This 
+doesn't check if cursor < indices.size(0), but the put does, so that's 
+good.  It would be good to have an assertion in indexbool so that the 
+failure is more obvious.
+
+However, I don't think the specification of indexbool makes it very 
+useful.  It should handle an overflow more gracefully than either 
+aborting or corrupting memory.  Since the overflow condition is 
+data-dependent, it forces me to size indices for the absolute worst 
+case.  Hypotheticaly, if I'm doing target detection on an IR sensor and 
+a flare goes off, I'm going to have way more detections for a few frames 
+until I have a chance to adapt my thresholds.  As a system engineer, I 
+would probably choose to drop some detections for a few frames rather 
+than size my detection buffer for the absolute worst-case.  I certainly 
+don't want the application to crash or corrupt itself!
+
+This is a future opportunity here to design a better interface (such as 
+a stateful one that avoids overflow by getting the next N detections 
+from source, where N is the size of indices).
+
+In the short term, let's check that cursor is less than indices.size() 
+before doing the put, i.e.:
+
+   index_type cursor = 0;
+   for (index_type i = 0; i != source.size(); ++i)
+     if (source.get(i) && cursor++ < indices.size())
+       indices.put(cursor-1, Index<1>(i));
+   return cursor;
+
+The returned value (cursor) is still the "number of non-false values in 
+source" (as required by the spec) and we avoid overwriting memory.  A 
+concerned user can check if the returned value is greater than 
+indices.size().
+
+
+> +
+> +template <typename T, typename B1, typename B2>
+> +length_type
+> +indexbool(const_Matrix<T, B1> source, Vector<Index<2>, B2> indices)
+> +{
+> +  index_type cursor = 0;
+> +  for (index_type r = 0; r != source.size(0); ++r)
+> +    for (index_type c = 0; c != source.size(1); ++c)
+> +      if (source.get(r, c))
+> +	indices.put(cursor++, Index<2>(r, c));
+> +  return cursor;
+> +}
+
+Let's do the same as above.
+
+
+>  
+> +namespace impl
+> +{
+> +template <typename Tout, typename Tin1>
+> +struct clip_wrapper
+> +{
+> +  template <typename Tin0>
+> +  struct clip_functor
+> +  {
+> +    typedef Tout result_type;
+> +    result_type operator()(Tin0 t) const 
+> +    {
+> +      return t <= lower_threshold ? lower_clip_value 
+> +	: t < upper_threshold ? t
+> +	: upper_clip_value;
+> +    }
+> +
+> +    Tin1 lower_threshold;
+> +    Tin1 upper_threshold;
+> +    result_type lower_clip_value;
+> +    result_type upper_clip_value;
+> +  };
+> +  template <typename Tin0>
+> +  struct invclip_functor
+> +  {
+> +    typedef Tout result_type;
+> +    result_type operator()(Tin0 t) const 
+> +    {
+> +      return t < lower_threshold ? t
+> +	: t < middle_threshold ? lower_clip_value
+> +	: t <= upper_threshold ? upper_clip_value
+> +	: t;
+> +    }
+> +
+> +    Tin1 lower_threshold;
+> +    Tin1 middle_threshold;
+> +    Tin1 upper_threshold;
+> +    result_type lower_clip_value;
+> +    result_type upper_clip_value;
+> +  };
+> +};
+> +  
+
+Why are clip_functor and invclip_functor nested in clip_wrapper?  (I'm 
+just curious, I'm not suggesting that it should be changed)
+
+> +
+> +namespace impl
+> +{
+> +/// Generic swapping of the content of two blocks.
+> +template <typename Block1, typename Block2>
+> +struct Swap
+> +{
+> +  static void apply(Block1 &block1, Block2 &block2)
+> +  {
+> +    assert(block1.size() == block2.size());
+> +    for (index_type i = 0; i != block1.size(); ++i)
+> +    {
+> +      typename Block1::value_type tmp = block1.get(i);
+> +      block1.put(i, block2.get(i));
+> +      block2.put(i, tmp);
+> +    }
+> +
+> +  }
+> +};
+
+Looks good.  We can plug in specializations to Swap for things like 
+swapping pointers (if we decide it's worth doing).
+
+
+
+From stefan at codesourcery.com  Tue Sep 27 22:44:31 2005
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Tue, 27 Sep 2005 18:44:31 -0400
+Subject: [vsipl++] [selgen]
+In-Reply-To: <4339C525.7000707@codesourcery.com>
+References: <4339AE4A.4010007@codesourcery.com> <4339C525.7000707@codesourcery.com>
+Message-ID: <4339CB4F.2080608@codesourcery.com>
+
+Jules Bergmann wrote:
+
+> Looks good.  I have one suggestion for indexbool to make it a little 
+> more robust, otherwise it looks ready to check in.
+> 
+> Also, were the unit tests included in the patch?
+
+Oups, that was a new file, and thus it wasn't part of the diff.
+I attach it now for the record.
+
+> In the short term, let's check that cursor is less than indices.size() 
+> before doing the put, i.e.:
+> 
+>   index_type cursor = 0;
+>   for (index_type i = 0; i != source.size(); ++i)
+>     if (source.get(i) && cursor++ < indices.size())
+>       indices.put(cursor-1, Index<1>(i));
+>   return cursor;
+> 
+> The returned value (cursor) is still the "number of non-false values in 
+> source" (as required by the spec) and we avoid overwriting memory.  A 
+> concerned user can check if the returned value is greater than 
+> indices.size().
+
+Done.
+
+> Why are clip_functor and invclip_functor nested in clip_wrapper?  (I'm 
+> just curious, I'm not suggesting that it should be changed)
+
+The Unary_expr_block harness expects a functor that is a class template
+taking a single parameter. As here we have three, I put the two additional
+parameters in the outer 'wrapper' template. I'm looking forward to times
+when template typedefs become available. :-)
+
+The patch is checked in now.
+
+Regards,
+		Stefan
+
+
+
+From jules at codesourcery.com  Tue Sep 27 22:56:48 2005
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Tue, 27 Sep 2005 18:56:48 -0400
+Subject: [vsipl++] [patch] matvec: outer, gem, cumsum
+In-Reply-To: <43398FE1.7080906@codesourcery.com>
+References: <43398FE1.7080906@codesourcery.com>
+Message-ID: <4339CE30.9070608@codesourcery.com>
+
+
+
+Don McCoy wrote:
+> The attached patch rounds out the functionality of [math.matvec] with 
+> the exception of a few of the matrix-vector product functions.  Since 
+> those are implemented in a separate file, this patch stands by itself 
+> pretty well.
+
+Don,
+
+gemp and gems need to support the mat_conj and mat_herm mat_op_types as 
+well.  (The spec is a bit confusing.  [math.matvec.gem]/3 defines the 4 
+mat_op_types: mat_ntrans, mat_trans, mat_herm, and mat_conj.  gemp's 
+requirements than say that OpA and OpB must be mat_ntrans or mat_trans 
+unless T is complex.  The implication is that if T is complex, OpA and 
+OpB can be mat_herm and mat_conj as well).
+
+The approach you've taken for gemp is fine, it is definitely possible to 
+plug those additional cases in.  However, since the number of cases is 
+multiplicative (size(OpA) x size(OpB)), you might want to separate the 
+handling of OpA and OpB to simplify things.
+
+One way to do this is to define a class that applies a mat_op to a 
+single matrix:
+
+template <mat_op_type OpT,
+           typename    T,
+           typename    Block>
+struct Apply_mat_op;
+
+template <typename T,
+           typename Block>
+struct Apply_mat_op<mat_ntrans, T, Block>
+{
+   typedef typename const_Matrix<T, Block> result_type;
+
+   static result_type
+   exec(const_Matrix<T, Block> m) VSIP_NOTHROW
+   {
+     return m;
+   }
+};
+
+template <typename T,
+           typename Block>
+struct Apply_mat_op<mat_trans, T, Block>
+{
+   typedef typename const_Matrix<T, Block>::transpose_type result_type;
+
+   static result_type
+   exec(const_Matrix<T, Block> m) VSIP_NOTHROW
+   {
+     return m.transpose();
+   }
+};
+
+template <typename T,
+           typename Block>
+struct Apply_mat_op<mat_herm, complex<T>, Block>
+// this definition only makes mat_herm only valid for complex<T>
+{
+...
+};
+
+
+You could optionaly provide a convenience function to use Apply_mat_op:
+
+template <mat_op_type OpT,
+           typename    T,
+           typename    Block>
+typename Apply_mat_op<OpT, T, Block>::result_type
+apply_mat_op(...)
+{
+   return Apply_mat_op<OpT, T, Block>::exec(m);
+}
+
+Now, you could implement the top-level gemp as:
+
+void
+gemp(
+   T0 alpha,
+   const_Matrix<T1, Block1> A,
+   const_Matrix<T2, Block2> B,
+   T3 beta,
+   Matrix<T4, Block4> C)
+      VSIP_NOTHROW
+{
+   // equivalent to C = alpha * OpA(A) * OpB(B) + beta * C
+   impl::gemp(alpha, apply_mat_op<OpA>(A), apply_mat_op<OpB>(B),
+               beta, C);
+}
+
+
+
+> 
+> 
+> ------------------------------------------------------------------------
+
+> + 
+> + 
+> + template <dimension_type d,
+> +           typename T0,
+> +           typename T1,
+> +           typename Block0,
+> +           typename Block1>
+> + void
+> + cumsum(
+> +   const_Vector<T0, Block0> v,
+> +   Vector<T1, Block1> w) 
+> +     VSIP_NOTHROW
+> + {
+> +   //  Effects: w has values equaling the cumulative sum of values in v. 
+> +   //
+> +   //  If View is Vector, d is ignored and, for 
+> +   //    0 <= i < v.size(), 
+> +   //      w.get(i) equals the sum over 0 <= j <= i of v.get(j)
+> +   assert( v.size() == w.size() );
+> + 
+> +   for ( index_type i = 0; i < v.size(); ++i )
+> +   {
+> +     T1 sum = T0();
+> +     for ( index_type j = 0; j <= i; ++j )
+> +       sum += v.get(j);
+> +     w.put(i, sum);
+> +   }
+
+You could avoid recomputing the sum each time by keeping a running total:
+
+	T1 sum = T0();
+	for (index_type i=0; ...)
+	{
+	  sum += v.get(i);
+	  w.put(i, sum);
+	}
+
+You should be able to something similar for matrix cumsum.
+	
+
+
+From stefan at codesourcery.com  Tue Sep 27 22:57:47 2005
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Tue, 27 Sep 2005 18:57:47 -0400
+Subject: [vsipl++] [selgen]
+In-Reply-To: <4339CB4F.2080608@codesourcery.com>
+References: <4339AE4A.4010007@codesourcery.com> <4339C525.7000707@codesourcery.com> <4339CB4F.2080608@codesourcery.com>
+Message-ID: <4339CE6B.70106@codesourcery.com>
+
+Stefan Seefeld wrote:
+> Jules Bergmann wrote:
+> 
+>> Looks good.  I have one suggestion for indexbool to make it a little 
+>> more robust, otherwise it looks ready to check in.
+>>
+>> Also, were the unit tests included in the patch?
+> 
+> 
+> Oups, that was a new file, and thus it wasn't part of the diff.
+> I attach it now for the record.
+
+Yes I do !
+
+Regards,
+		Stefan
+
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: selgen.cpp
+Type: text/x-c++src
+Size: 3090 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20050927/dede69a4/attachment.cpp>
+
+From ncm at codesourcery.com  Wed Sep 28 00:37:39 2005
+From: ncm at codesourcery.com (Nathan (Jasper) Myers)
+Date: Tue, 27 Sep 2005 17:37:39 -0700
+Subject: fix two small FFT bugs
+Message-ID: <20050928003739.GA20043@codesourcery.com>
+
+The patch below has been applied.
+
+It fixes the only FFT bug revealed thus far by comprehensive testing, 
+and a bug Jules discovered by inspection (respectively). 
+
+Nathan Myers
+ncm
+
+Index: ChangeLog
+===================================================================
+RCS file: /home/cvs/Repository/vpp/ChangeLog,v
+retrieving revision 1.276
+diff -u -p -r1.276 ChangeLog
+--- ChangeLog	27 Sep 2005 22:44:40 -0000	1.276
++++ ChangeLog	28 Sep 2005 00:33:36 -0000
+@@ -1,3 +1,9 @@
++2005-09-27  Nathan Myers  <ncm at codesourcery.com>
++
++	* src/vsip/impl/signal-fft.hpp: fix compilation/instantiation typo
++	  in 2D by-value FFT.
++	* src/vsip/impl/fft-core.hpp: fix IPP FFT scaling-request flag.
++
+ 2005-09-27  Stefan Seefeld  <stefan at codesourcery.com>
+ 
+ 	* src/vsip/dense.hpp: Remove redundant header inclusion.
+Index: src/vsip/impl/signal-fft.hpp
+===================================================================
+RCS file: /home/cvs/Repository/vpp/src/vsip/impl/signal-fft.hpp,v
+retrieving revision 1.26
+diff -u -p -r1.26 signal-fft.hpp
+--- src/vsip/impl/signal-fft.hpp	26 Sep 2005 20:11:05 -0000	1.26
++++ src/vsip/impl/signal-fft.hpp	28 Sep 2005 00:33:36 -0000
+@@ -241,7 +241,7 @@ empty_view_like(vsip::Domain<1> const& d
+ template <typename View>
+ View 
+ empty_view_like(vsip::Domain<2> const& dom)
+-  { return View(dom[0].size(), dom[1].size(1)); }
++  { return View(dom[0].size(), dom[1].size()); }
+ 
+ template <typename View>
+ View  
+Index: src/vsip/impl/fft-core.hpp
+===================================================================
+RCS file: /home/cvs/Repository/vpp/src/vsip/impl/fft-core.hpp,v
+retrieving revision 1.16
+diff -u -p -r1.16 fft-core.hpp
+--- src/vsip/impl/fft-core.hpp	20 Sep 2005 01:29:43 -0000	1.16
++++ src/vsip/impl/fft-core.hpp	28 Sep 2005 00:33:36 -0000
+@@ -1250,7 +1250,7 @@ create_ipp_plan(
+ 
+   self.doing_scaling_ = (self.scale_ == 1.0/dom.size());
+   const int flags = self.doing_scaling_ ? (self.is_forward_ ? 
+-      IPP_FFT_DIV_FWD_BY_N : IPP_FFT_DIV_FWD_BY_N) : IPP_FFT_NODIV_BY_ANY;
++      IPP_FFT_DIV_FWD_BY_N : IPP_FFT_DIV_INV_BY_N) : IPP_FFT_NODIV_BY_ANY;
+ 
+   typedef typename Time_domain<inT,outT>::type time_domain_type;
+   typedef Ipp_DFT< (Dim-doFFTM),time_domain_type>  fft_type;
+
+
+From don at codesourcery.com  Wed Sep 28 17:38:40 2005
+From: don at codesourcery.com (Don McCoy)
+Date: Wed, 28 Sep 2005 11:38:40 -0600
+Subject: [patch] matvec: remaining prod functions
+Message-ID: <433AD520.6010108@codesourcery.com>
+
+The attached implements the last of the functions needed for [math.matvec].
+
+-- 
+Don McCoy
+CodeSourcery, LLC
+
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: mp.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20050928/5b0bb5a5/attachment.ksh>
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: mp.diff
+Type: text/x-patch
+Size: 13020 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20050928/5b0bb5a5/attachment.bin>
+
+From jules at codesourcery.com  Wed Sep 28 19:07:31 2005
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Wed, 28 Sep 2005 15:07:31 -0400
+Subject: [patch] enable use of refcount policy for ext_data
+Message-ID: <433AE9F3.9080403@codesourcery.com>
+
+Comparing our vector-add performance (using IPP) against IPP directly 
+showed that we had some overhead for small vector sizes (for vector 
+sizes less than 1024 elements, our red line falls below IPP's green 
+line).  This overhead appears to be from incrementing and decrementing 
+reference counts for the blocks being used.  This is being done by 
+Ext_data when getting a pointer to the block's data to pass to IPP. 
+Ext_data takes a policy template parameter to indicate whether reference 
+counting should be done, but it was being ignored and reference counting 
+always done.
+
+This patch adds a mechanism to View_block_storage to hold a reference 
+using according to a reference-counting policy.
+
+With this patch, our performance (blue line) is closer to IPP for small 
+vector sizes.
+
+Patch applied.
+
+				-- Jules
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: rp.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20050928/38be0f70/attachment.ksh>
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: vmul.png
+Type: image/png
+Size: 7872 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20050928/38be0f70/attachment.png>
+
+From mark at codesourcery.com  Wed Sep 28 19:12:28 2005
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Wed, 28 Sep 2005 12:12:28 -0700
+Subject: [vsipl++] [patch] enable use of refcount policy for ext_data
+In-Reply-To: <433AE9F3.9080403@codesourcery.com>
+References: <433AE9F3.9080403@codesourcery.com>
+Message-ID: <433AEB1C.9000403@codesourcery.com>
+
+Jules Bergmann wrote:
+
+> With this patch, our performance (blue line) is closer to IPP for small
+> vector sizes.
+
+Great!
+
+For very small vectors (16 elements), I bet we can eventually beat IPP
+by (when we're compiling with GCC) using GCC's vector extensions, and
+thereby avoiding the function-call overhead.
+
+-- 
+Mark Mitchell
+CodeSourcery, LLC
+mark at codesourcery.com
+(916) 791-8304
+
+
+From jules at codesourcery.com  Wed Sep 28 22:10:09 2005
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Wed, 28 Sep 2005 18:10:09 -0400
+Subject: [vsipl++] [patch] matvec: remaining prod functions
+In-Reply-To: <433AD520.6010108@codesourcery.com>
+References: <433AD520.6010108@codesourcery.com>
+Message-ID: <433B14C1.2020508@codesourcery.com>
+
+Don, This looks good, please check it in. -- Jules
+
+Don McCoy wrote:
+> The attached implements the last of the functions needed for [math.matvec].
+> 
+> 
+
+
+
+From ncm at codesourcery.com  Thu Sep 29 02:12:58 2005
+From: ncm at codesourcery.com (Nathan (Jasper) Myers)
+Date: Wed, 28 Sep 2005 19:12:58 -0700
+Subject: [PATCH] fix IPP 2D FFT, complete FFT tests
+Message-ID: <20050929021258.GA24272@codesourcery.com>
+
+I have checked in the patch below. 
+
+It adds (nearly) exhaustive testing on Fft features, and fixes 
+failures in IPP FFT support the testing reveals.  It also adds 
+tests for real->complex and complex -> real Fftm.
+
+Don't be surprised when fft.cpp takes one or two minutes to compile, 
+now, and spends most of that time producing 40MB of assembly code.
+
+Nathan Myers
+ncm
+
+Index: ChangeLog
+===================================================================
+RCS file: /home/cvs/Repository/vpp/ChangeLog,v
+retrieving revision 1.280
+retrieving revision 1.281
+diff -u -p -r1.280 -r1.281
+--- ChangeLog	28 Sep 2005 19:07:26 -0000	1.280
++++ ChangeLog	29 Sep 2005 02:01:09 -0000	1.281
+@@ -1,3 +1,17 @@
++2005-09-28  Nathan Myers  <ncm at codesourcery.com>
++
++	* src/vsip/fft-core.hpp: Make IPP FFT work for 2D FFT. 
++	  Make unimplemented IPP driver functions report failure.
++	* src/vsip/signal-fft.hpp: Initialize scale member early enough 
++	  for IPP create_plan use.
++	* tests/fftm.cpp: Enable tests for complex->real, real->complex.
++	* tests/fft.cpp: Add comprehensive testing:
++	   (2D, 3D) x ((cx->cx fwd, inv), ((re->cx, cx->re) x (all axes))) 
++	   x (Dense/row-major, Dense/column-major, Fast_block)
++	   x (single,double) x (in-place, by_reference, by_value) 
++	   x (unscaled, arbitrary-scaled, scaled by N)
++	Tested with gcc-3.4/em64t/IPP and gcc-4.0.1/x86/FFTW3.
++
+ 2005-09-28  Jules Bergmann  <jules at codesourcery.com>
+ 
+ 	* src/vsip/impl/block-traits.hpp (View_block_storage):
+Index: src/vsip/impl/fft-core.hpp
+===================================================================
+RCS file: /home/cvs/Repository/vpp/src/vsip/impl/fft-core.hpp,v
+retrieving revision 1.17
+retrieving revision 1.18
+diff -u -p -r1.17 -r1.18
+--- src/vsip/impl/fft-core.hpp	28 Sep 2005 00:34:11 -0000	1.17
++++ src/vsip/impl/fft-core.hpp	29 Sep 2005 02:01:09 -0000	1.18
+@@ -997,17 +997,19 @@ struct Ipp_DFT_base
+   }
+ 
+   static void
+-  forward2(void* plan, void const* in, void* out, void* buffer, bool f)
++  forward2(
++    void* plan, void const* in, unsigned in_row_step, 
++    void* out, unsigned out_row_step, void* buffer, bool f)
+     VSIP_NOTHROW
+   {
+     IppStatus result = (f ?
+       (*forwardFFun2)(
+-	reinterpret_cast<T const*>(in), sizeof(T),
+-	reinterpret_cast<T*>(out), sizeof(T),
++	reinterpret_cast<T const*>(in), in_row_step,
++	reinterpret_cast<T*>(out), out_row_step,
+ 	reinterpret_cast<planFT*>(plan), reinterpret_cast<Ipp8u*>(buffer)) :
+       (*forwardDFun2)(
+-	reinterpret_cast<T const*>(in), sizeof(T),
+-	reinterpret_cast<T*>(out), sizeof(T),
++	reinterpret_cast<T const*>(in), in_row_step,
++	reinterpret_cast<T*>(out), out_row_step,
+ 	reinterpret_cast<planDT*>(plan), reinterpret_cast<Ipp8u*>(buffer)));
+     assert(result == ippStsNoErr);
+   }
+@@ -1029,17 +1031,19 @@ struct Ipp_DFT_base
+   }
+ 
+   static void
+-  inverse2(void* plan, void const* in, void* out, void* buffer, bool f)
++  inverse2(
++    void* plan, void const* in, unsigned in_row_step,
++    void* out, unsigned out_row_step, void* buffer, bool f)
+     VSIP_NOTHROW
+   {
+     IppStatus result = (f ?
+       (*inverseFFun2)(
+-	reinterpret_cast<T const*>(in), sizeof(T),
+-	reinterpret_cast<T*>(out), sizeof(T),
++	reinterpret_cast<T const*>(in), in_row_step,
++        reinterpret_cast<T*>(out), out_row_step,
+ 	reinterpret_cast<planFT*>(plan), reinterpret_cast<Ipp8u*>(buffer)) :
+       (*inverseDFun2)(
+-	reinterpret_cast<T const*>(in), sizeof(T),
+-	reinterpret_cast<T*>(out), sizeof(T),
++	reinterpret_cast<T const*>(in), in_row_step,
++	reinterpret_cast<T*>(out), out_row_step,
+ 	reinterpret_cast<planDT*>(plan), reinterpret_cast<Ipp8u*>(buffer)));
+     assert(result == ippStsNoErr);
+   }
+@@ -1049,21 +1053,21 @@ struct Ipp_DFT_base
+ // template Ipp_DFT_base<>.
+ 
+ template <typename P> inline IppStatus dum(P**, int, int, IppHintAlgorithm)
+-  { return ippStsNoErr; }
++  { return ippStsErr; }
+ template <typename P> inline IppStatus dum(P**, int, int, int, IppHintAlgorithm)
+-  { return ippStsNoErr; }
++  { return ippStsErr; }
+ template <typename P> inline IppStatus dum(P**, IppiSize, int, IppHintAlgorithm)
+-  { return ippStsNoErr; }
++  { return ippStsErr; }
+ template <typename P> inline IppStatus dum(P*)
+-  { return ippStsNoErr; }
++  { return ippStsErr; }
+ template <typename P> inline IppStatus dum(P const*, int*)
+-  { return ippStsNoErr; }
++  { return ippStsErr; }
+ template <typename P, typename T> inline IppStatus dum(
+   T const*, T*, P const*, Ipp8u*)
+-  { return ippStsNoErr; }
++  { return ippStsErr; }
+ template <typename P, typename T> inline IppStatus dum(
+   T const*, int, T*, int, P const*, Ipp8u*)
+-  { return ippStsNoErr; }
++  { return ippStsErr; }
+ 
+ 
+ // Specializations of Ipp_DFT create the mappings from argument
+@@ -1255,10 +1259,15 @@ create_ipp_plan(
+   typedef typename Time_domain<inT,outT>::type time_domain_type;
+   typedef Ipp_DFT< (Dim-doFFTM),time_domain_type>  fft_type;
+ 
+-  self.plan_from_to_ = ((Dim - doFFTM == 1) ?
+-     fft_type::create_plan(sizex, flags, self.use_fft_) :
+-     fft_type::create_plan2(sizex, sizey, flags, self.use_fft_));
+-
++  if (Dim - doFFTM == 1)
++    self.plan_from_to_ = fft_type::create_plan(sizex, flags, self.use_fft_);
++  else
++  {
++    self.plan_from_to_ = 
++      fft_type::create_plan2(sizex, sizey, flags, self.use_fft_);
++    self.row_step_ = sizeof(outT) * dom[0].size();
++  }
++  
+   self.p_buffer_ = impl::alloc_align(
+     16, fft_type::bufsize(self.plan_from_to_, self.use_fft_));
+   if (self.p_buffer_ == 0)
+@@ -1373,11 +1382,11 @@ from_to(
+ // IPP doesn't implement 2D double FFT.  Spec allows that.
+ #if ! defined(VSIP_IMPL_DOUBLE)
+   if (self.is_forward_)
+-    Ipp_DFT<2,std::complex<SCALAR_TYPE> >::forward(
+-      self.plan_from_to_, in, out, self.p_buffer_, self.use_fft_) ;
++    Ipp_DFT<2,std::complex<SCALAR_TYPE> >::forward2(self.plan_from_to_,
++      in, self.row_step_, out, self.row_step_, self.p_buffer_, self.use_fft_) ;
+   else
+-    Ipp_DFT<2,std::complex<SCALAR_TYPE> >::inverse(
+-      self.plan_from_to_, in, out, self.p_buffer_, self.use_fft_);
++    Ipp_DFT<2,std::complex<SCALAR_TYPE> >::inverse2(self.plan_from_to_,
++      in, self.row_step_, out, self.row_step_, self.p_buffer_, self.use_fft_);
+ 
+   if (self.doing_scaling_)
+     self.scale_ = 1.0;
+@@ -1421,8 +1430,8 @@ from_to(
+   VSIP_IMPL_THROW(impl::unimplemented(
+ 		    "IPP FFT-2D real->complex not implemented"));
+ #if 0  
+-  Ipp_DFT<1,SCALAR_TYPE>::forward2(
+-    self.plan_from_to_, in, out, self.p_buffer_, self.use_fft_) ;
++  Ipp_DFT<1,SCALAR_TYPE>::forward2(self.plan_from_to_,
++    in, self.row_step_, out, self.row_step_, self.p_buffer_, self.use_fft_) ;
+   // unpack in place
+   if (self.doing_scaling_)
+     self.scale_ = 1.0;
+@@ -1463,8 +1472,8 @@ from_to(
+ #if 0  
+   // pack in place; maybe this must happen in
+   //   fft_by_ref, where _in_, just copied into, is writeable.
+-  Ipp_DFT<1,SCALAR_TYPE>::inverse2(
+-    self.plan_from_to_, in, out, self.p_buffer_, self.use_fft_) ;
++  Ipp_DFT<1,SCALAR_TYPE>::inverse2(self.plan_from_to_,
++    in, self.row_step_, out, self.row_step_, self.p_buffer_, self.use_fft_) ;
+   if (self.doing_scaling_)
+     self.scale_ = 1.0;
+ #endif
+Index: src/vsip/impl/signal-fft.hpp
+===================================================================
+RCS file: /home/cvs/Repository/vpp/src/vsip/impl/signal-fft.hpp,v
+retrieving revision 1.27
+retrieving revision 1.28
+diff -u -p -r1.27 -r1.28
+--- src/vsip/impl/signal-fft.hpp	28 Sep 2005 00:34:11 -0000	1.27
++++ src/vsip/impl/signal-fft.hpp	29 Sep 2005 02:01:10 -0000	1.28
+@@ -80,6 +80,7 @@ struct Fft_core : impl::Ref_count<impl::
+   bool doing_scaling_;  // scaling is performed in the driver.
+   bool is_forward_;
+   void* p_buffer_;      // temporary storage not allocated in the plan
++  unsigned row_step_;    // length in bytes of 2D row.
+ # endif
+ 
+ #endif
+@@ -328,6 +329,7 @@ protected:
+     , in_temp_(this->input_size_)
+     , out_temp_(this->output_size_)
+     {
++      core_->scale_ = scale;  // IPP needs this.
+       impl::Ext_data<in_block_type>  raw_in(this->in_temp_);
+       impl::Ext_data<out_block_type>  raw_out(this->out_temp_);
+       this->core_->create_plan(
+Index: tests/fftm.cpp
+===================================================================
+RCS file: /home/cvs/Repository/vpp/tests/fftm.cpp,v
+retrieving revision 1.7
+retrieving revision 1.8
+diff -u -p -r1.7 -r1.8
+--- tests/fftm.cpp	28 Sep 2005 04:32:55 -0000	1.7
++++ tests/fftm.cpp	29 Sep 2005 02:01:10 -0000	1.8
+@@ -107,6 +107,32 @@ void dft_y(
+ }
+ 
+ 
++template <typename T,
++	  typename Block1,
++	  typename Block2>
++void dft_y_real(
++  vsip::Matrix<T, Block1> in,
++  vsip::Matrix<vsip::complex<T>, Block2> out)
++{
++  length_type const xsize = in.size(1);
++  length_type const ysize = in.size(0);
++  assert(in.size(0)/2 + 1 == out.size(0));
++  assert(in.size(1) == out.size(1));
++  typedef long double AccT;
++
++  AccT const phi = -2.0 * M_PI/ysize;
++
++  for (index_type v=0; v < xsize; ++v)
++    for (index_type w=0; w < ysize / 2 + 1; ++w)
++    {
++      vsip::complex<AccT> sum = vsip::complex<AccT>();
++      for (index_type k=0; k<ysize; ++k)
++	sum += vsip::complex<AccT>(in(k,v)) * sin_cos<AccT>(phi*k*w);
++      out(w,v) = vsip::complex<T>(sum);
++    }
++}
++
++
+ // Error metric between two vectors.
+ 
+ template <typename T1,
+@@ -412,64 +438,47 @@ test_by_val_y(length_type N)
+ }
+ 
+ 
+-#if 0
+ 
+ /// Test r->c and c->r by-value Fft.
+ 
+ template <typename T>
+ void
+-test_real(const int set, const length_type N)
++test_real(const length_type N)
+ {
+-  typedef Fftm<T, std::complex<T>, col, 0, by_value, 1, alg_space>
++  typedef Fftm<T, std::complex<T>, col, fft_fwd, by_value, 1, alg_space>
+ 	f_fftm_type;
+-  typedef Fftm<std::complex<T>, T, col, 0, by_value, 1, alg_space>
++  typedef Fftm<std::complex<T>, T, col, fft_inv, by_value, 1, alg_space>
+ 	i_fftm_type;
+   const length_type N2 = N/2 + 1;
+ 
+-  f_fftm_type f_fftm(Domain<1>(N), 1.0);
+-  i_fftm_type i_fftm(Domain<1>(N), 1.0/(N));
++  f_fftm_type f_fftm(Domain<2>(Domain<1>(N),Domain<1>(5)), 1.0);
++  i_fftm_type i_fftm(Domain<2>(Domain<1>(N),Domain<1>(5)), 1.0/N);
+ 
+-  assert(f_fftm.input_size().size() == N);
+-  assert(f_fftm.output_size().size() == N2);
++  assert(f_fftm.input_size().size() == 5*N);
++  assert(f_fftm.output_size().size() == 5*N2);
+ 
+-  assert(i_fftm.input_size().size() == N2);
+-  assert(i_fftm.output_size().size() == N);
++  assert(i_fftm.input_size().size() == 5*N2);
++  assert(i_fftm.output_size().size() == 5*N);
+ 
+   assert(f_fftm.scale() == 1.0);  // can represent exactly
+   assert(i_fftm.scale() > 1.0/(N + 1) && i_fftm.scale() < 1.0/(N - 1));
+   assert(f_fftm.forward() == true);
+   assert(i_fftm.forward() == false);
+ 
+-  Matrix<T> in(N, T());
+-  Matrix<std::complex<T> > out(N2);
+-  Matrix<std::complex<T> > ref(N2);
+-  Matrix<T> inv(N);
+-  Matrix<T> inv2(N);
++  Matrix<T> in(N, 5, T());
++  Matrix<std::complex<T> > out(N2, 5);
++  Matrix<std::complex<T> > ref(N2, 5);
++  Matrix<T> inv(N, 5);
+ 
+-  setup_data(set, in, 3.0);
++  setup_data_y(in);
++  dft_y_real(in, ref);
+   out = f_fftm(in);
+-
+-  if (set == 1)
+-  {
+-    setup_data(3, ref, 3.0);
+-    assert(error_db(ref, out) < -100);
+-  }
+-  if (set == 3)
+-  {
+-    setup_data(1, ref, 3.0 * N);
+-    assert(error_db(ref, out) < -100);
+-  }
+-
+-  ref = out;
+   inv = i_fftm(out);
+ 
++  assert(error_db(ref, out) < -100);
+   assert(error_db(inv, in) < -100);
+-
+-  // make sure out has not been scribbled in during the conversion.
+-  assert(error_db(ref,out) < -100);
+ }
+ 
+-#endif
+ 
+ 
+ int
+@@ -494,12 +503,10 @@ main()
+   test_by_val_y<complex<float> >(18);
+   test_by_val_y<complex<float> >(256);
+ 
+-# if 0
+   // Tests for test r->c, c->r.
+   test_real<float>(128);
+   test_real<float>(242);
+   test_real<float>(16);
+-# endif
+ #endif
+ 
+ #if defined(VSIP_IMPL_FFT_USE_DOUBLE)
+@@ -519,12 +526,10 @@ main()
+   test_by_val_y<complex<double> >(18);
+   test_by_val_y<complex<double> >(256);
+ 
+-# if 0
+   // Tests for test r->c, c->r.
+   test_real<double>(128);
+   test_real<double>(242);
+   test_real<double>(16);
+-# endif
+ #endif
+ 
+   return 0;
+Index: tests/fft.cpp
+===================================================================
+RCS file: /home/cvs/Repository/vpp/tests/fft.cpp,v
+retrieving revision 1.7
+retrieving revision 1.8
+diff -u -p -r1.7 -r1.8
+--- tests/fft.cpp	28 Sep 2005 04:32:54 -0000	1.7
++++ tests/fft.cpp	29 Sep 2005 02:01:10 -0000	1.8
+@@ -17,6 +17,7 @@
+ #include <vsip/support.hpp>
+ #include <vsip/signal.hpp>
+ #include <vsip/math.hpp>
++#include <vsip/random.hpp>
+ 
+ #include "test.hpp"
+ #include "output.hpp"
+@@ -134,6 +135,52 @@ error_db(
+   return maxsum;
+ }
+ 
++// Error metric between two Matrices.
++
++template <typename T1,
++	  typename T2,
++	  typename Block1,
++	  typename Block2>
++double
++error_db(
++  const_Matrix<T1, Block1> v1,
++  const_Matrix<T2, Block2> v2)
++{
++  double maxsum = -250;
++  for (unsigned i = 0; i < v1.size(0); ++i)
++  {
++    double sum = error_db(v1.row(i), v2.row(i));
++    if (sum > maxsum)
++      maxsum = sum;
++  }
++  return maxsum;
++}
++
++
++
++// Error metric between two Tensors.
++
++template <typename T1,
++	  typename T2,
++	  typename Block1,
++	  typename Block2>
++double
++error_db(
++  const_Tensor<T1, Block1> v1,
++  const_Tensor<T2, Block2> v2)
++{
++  double maxsum = -250;
++  for (unsigned i = 0; i < v1.size(0); ++i)
++  {
++    vsip::Domain<1> y(v1.size(1));
++    vsip::Domain<1> x(v1.size(2));
++    double sum = error_db(v1(i,y,x), v2(i,y,x));
++    if (sum > maxsum)
++      maxsum = sum;
++  }
++  return maxsum;
++}
++
+ 
+ 
+ // Setup input data for Fft.
+@@ -307,12 +354,573 @@ test_real(const int set, const length_ty
+   assert(error_db(ref,out) < -100);
+ }
+ 
++/////////////////////////////////////////////////////////////////////
++//
++// Comprehensive 2D, 3D test
++//
++
++// Elt: unsigned -> element type
++
++template <typename T, bool realV> struct Elt;
++template <typename T> struct Elt<T,true>
++{
++  typedef T in_type;
++  typedef std::complex<T> out_type;
++};
++template <typename T> struct Elt<T,false>
++{
++  typedef std::complex<T> in_type;
++  typedef std::complex<T> out_type;
++};
++
++template <unsigned Dim, typename T, unsigned L> struct Arg;
++
++template <unsigned Dim, typename T> 
++struct Arg<Dim,T,0>
++{
++  typedef typename vsip::impl::View_of_dim<Dim,T,
++    vsip::Dense<Dim,T,typename vsip::impl::Row_major<Dim>::type> >::type type;
++};
++
++template <unsigned Dim, typename T> 
++struct Arg<Dim,T,1>
++{
++  typedef typename vsip::impl::View_of_dim<Dim,T,
++    vsip::Dense<Dim,T,typename vsip::impl::Col_major<Dim>::type> >::type type;
++};
++
++template <unsigned Dim, typename T> 
++struct Arg<Dim,T,2>
++{
++  typedef typename vsip::impl::View_of_dim<Dim,T,
++    vsip::impl::Fast_block<Dim,T,
++      vsip::impl::Layout<Dim,
++        typename vsip::impl::Row_major<Dim>::type,
++        vsip::impl::Stride_unit_dense
++  > > >::type type;
++};
++
++inline unsigned 
++adjust_size(unsigned size, bool is_short, bool is_short_dim, bool no_odds)
++{ 
++  // no odd sizes along axis for real->complex
++  if ((size & 1) && no_odds && is_short_dim)
++    ++size;
++  return (is_short && is_short_dim) ? size / 2 + 1 : size;
++}
++
++template <unsigned Dim> vsip::Domain<Dim> make_dom(unsigned*, bool, int, bool);
++template <> vsip::Domain<2> make_dom<2>(
++  unsigned* d, bool is_short, int sd, bool no_odds)
++{
++  return  vsip::Domain<2>(
++    vsip::Domain<1>(adjust_size(d[1], is_short, sd == 0, no_odds)),
++    vsip::Domain<1>(adjust_size(d[2], is_short, sd == 1, no_odds)));
++} 
++template <> vsip::Domain<3> make_dom<3>(
++  unsigned* d, bool is_short, int sd, bool no_odds)
++{
++  return vsip::Domain<3>(
++    vsip::Domain<1>(adjust_size(d[0], is_short, sd == 0, no_odds)),
++    vsip::Domain<1>(adjust_size(d[1], is_short, sd == 1, no_odds)),
++    vsip::Domain<1>(adjust_size(d[2], is_short, sd == 2, no_odds)));
++} 
++
++template <typename T, typename BlockT>
++vsip::Domain<2>
++domain_of(vsip::Matrix<T,BlockT> const& src)
++{
++  return vsip::Domain<2>(vsip::Domain<1>(src.size(0)),
++                         vsip::Domain<1>(src.size(1)));
++} 
++ 
++
++template <typename T, typename BlockT>
++vsip::Domain<3>
++domain_of(vsip::Tensor<T,BlockT> const& src)
++{
++  return vsip::Domain<2>(vsip::Domain<1>(src.size(0)),
++                         vsip::Domain<1>(src.size(1)),
++                         vsip::Domain<1>(src.size(2)));
++} 
++
++//
++
++template <typename T, typename BlockT>
++vsip::Matrix<T,BlockT>
++force_copy_init(vsip::Matrix<T,BlockT> const& src)
++{ 
++  vsip::Matrix<T,BlockT> tmp(src.size(0), src.size(1));
++  tmp = src;
++  return tmp;
++}
++
++template <typename T, typename BlockT>
++vsip::Tensor<T,BlockT>
++force_copy_init(vsip::Tensor<T,BlockT> const& src)
++{ 
++  vsip::Tensor<T,BlockT> tmp(src.size(0), src.size(1), src.size(2));
++  tmp = src;
++  return tmp;
++}
++
++//
++
++template <typename T> void set_values(T& v1, T& v2)
++{ v1 = T(10); v2 = T(20); }
++
++template <typename T> void set_values(std::complex<T>& z1, std::complex<T>& z2)
++{
++  z1 = std::complex<T>(T(10), T(10));
++  z2 = std::complex<T>(T(20), T(20));
++}
++
++#if 1
++
++// 2D 
++
++template <typename BlockT, typename T>
++void fill_random(
++  vsip::Matrix<T,BlockT> in, vsip::Rand<T>& rander)
++{
++  in = (rander.randu(in.size(0), in.size(1)) * 20.0) - 10.0;
++}
++
++template <typename BlockT, typename T>
++void fill_random(
++  vsip::Matrix<std::complex<T>,BlockT> in,
++  vsip::Rand<std::complex<T> >& rander)
++{
++  in = rander.randu(in.size(0), in.size(1)) * std::complex<T>(20.0) -
++         std::complex<T>(10.0, 10.0);
++}
++
++// 3D 
++
++template <typename BlockT, typename T>
++void fill_random(
++  vsip::Tensor<T,BlockT>& in, vsip::Rand<T>& rander)
++{
++  vsip::Domain<2> sub(vsip::Domain<1>(in.size(1)),
++                      vsip::Domain<1>(in.size(2))); 
++  for (unsigned i = in.size(0); i-- > 0;)
++    fill_random(in(i, vsip::Domain<1>(in.size(1)),
++                      vsip::Domain<1>(in.size(2))), rander);
++}
++
++#else
++// debug -- keep this.
++
++// 2D 
++
++template <typename BlockT, typename T>
++void fill_random(
++  vsip::Matrix<T,BlockT> in, vsip::Rand<T>& rander)
++{
++  in = T(0);
++  in.block().put(0, 0, T(1.0));
++}
++
++// 3D 
++
++template <typename BlockT, typename T>
++void fill_random(
++  vsip::Tensor<T,BlockT>& in, vsip::Rand<T>& rander)
++{
++  in = T(0);
++  in.block().put(0, 0, 0, T(1.0));
++}
++
++#endif
++
++//////
++
++// 2D, cc
++
++template <typename T, typename inBlock, typename outBlock>
++void 
++compute_ref(
++  vsip::Matrix<std::complex<T>,inBlock> const& in,
++  vsip::Domain<2> const& in_dom, 
++  vsip::Matrix<std::complex<T>,outBlock>& ref,
++  vsip::Domain<2> const& out_dom,
++  int (& /* dum */)[1])
++{
++  vsip::Fftm<std::complex<T>,std::complex<T>,0,
++             vsip::fft_fwd,vsip::by_reference,1>  fftm_across(in_dom, 1.0);
++  fftm_across(in, ref);
++
++  vsip::Fftm<std::complex<T>,std::complex<T>,1,
++             vsip::fft_fwd,vsip::by_reference,1>  fftm_down(out_dom, 1.0);
++  fftm_down(ref);
++}
++
++// 2D, rc
++
++template <typename T, typename inBlock, typename outBlock>
++void 
++compute_ref(
++  vsip::Matrix<T,inBlock> const& in,
++  vsip::Domain<2> const& in_dom, 
++  vsip::Matrix<std::complex<T>,outBlock>& ref,
++  vsip::Domain<2> const& out_dom,
++  int (& /* dum */)[1])
++{
++  vsip::Fftm<T,std::complex<T>,1,
++    vsip::fft_fwd,vsip::by_reference,1>  fftm_across(in_dom, 1.0);
++  fftm_across(in, ref);
++
++  typedef std::complex<T> CT;
++  vsip::Fftm<CT,CT,0,
++    vsip::fft_fwd,vsip::by_reference,1>  fftm_down(out_dom, 1.0);
++  fftm_down(ref);
++}
++
++// 2D, rc
++
++template <typename T, typename inBlock, typename outBlock>
++void 
++compute_ref(
++  vsip::Matrix<T,inBlock> const& in,
++  vsip::Domain<2> const& in_dom, 
++  vsip::Matrix<std::complex<T>,outBlock>& ref,
++  vsip::Domain<2> const& out_dom,
++  int (& /* dum */)[2])
++{
++  vsip::Fftm<T,std::complex<T>,0,
++    vsip::fft_fwd,vsip::by_reference,1>  fftm_across(in_dom, 1.0);
++  fftm_across(in, ref);
++
++  typedef std::complex<T> CT;
++  vsip::Fftm<CT,CT,1,
++    vsip::fft_fwd,vsip::by_reference,1>  fftm_down(out_dom, 1.0);
++  fftm_down(ref);
++}
++
++// 3D, cc
++
++template <typename T, typename inBlock, typename outBlock>
++void 
++compute_ref(
++  vsip::Tensor<std::complex<T>,inBlock> const& in,
++  vsip::Domain<3> const& in_dom, 
++  vsip::Tensor<std::complex<T>,outBlock>& ref,
++  vsip::Domain<3> const& out_dom, 
++  int (& /* dum */)[1]) 
++{
++  typedef std::complex<T> CT;
++
++  vsip::Fft<vsip::const_Matrix,CT,CT,vsip::fft_fwd,vsip::by_reference,1>  fft_across(
++    vsip::Domain<2>(in_dom[1], in_dom[2]), 1.0);
++  for (unsigned i = in_dom[0].size(); i-- > 0; )
++    fft_across(in(i, in_dom[1], in_dom[2]),
++              ref(i, out_dom[1], out_dom[2]));
++
++  // note: axis ---v--- here is reverse of notation used otherwise.
++  vsip::Fftm<CT,CT,1,vsip::fft_fwd,vsip::by_reference,1>  fftm_down(
++    vsip::Domain<2>(in_dom[0], in_dom[1]), 1.0);
++  for (unsigned k = in_dom[2].size(); k-- > 0; )
++    fftm_down(ref(out_dom[0], out_dom[1], k));
++}
++
++// 3D, rc, shorten bottom-top
++
++template <typename T, typename inBlock, typename outBlock>
++void 
++compute_ref(
++  vsip::Tensor<T,inBlock> const& in,
++  vsip::Domain<3> const& in_dom, 
++  vsip::Tensor<std::complex<T>,outBlock>& ref,
++  vsip::Domain<3> const& out_dom,
++  int (& /* dum */)[1]) 
++{
++  typedef std::complex<T> CT;
++
++  // first, planes left-right, squeeze top-bottom
++  vsip::Fft<vsip::const_Matrix,T,CT,0,vsip::by_reference,1>   fft_across(
++    vsip::Domain<2>(in_dom[0], in_dom[1]), 1.0);
++  for (unsigned k = in_dom[2].size(); k-- > 0; )
++    fft_across(in(in_dom[0], in_dom[1], k),
++            ref(out_dom[0], out_dom[1], k));
++
++  // planes top-bottom, running left-right
++  // note: axis ---v--- here is reverse of notation used otherwise.
++  vsip::Fftm<CT,CT,0,vsip::fft_fwd,vsip::by_reference,1>   fftm_down(
++    vsip::Domain<2>(in_dom[1], in_dom[2]), 1.0);
++  for (unsigned i = out_dom[0].size(); i-- > 0; )
++    fftm_down(ref(i, out_dom[1], out_dom[2]));
++}
++
++// 3D, rc, shorten front->back
++
++template <typename T, typename inBlock, typename outBlock>
++void 
++compute_ref(
++  vsip::Tensor<T,inBlock> const& in,
++  vsip::Domain<3> const& in_dom, 
++  vsip::Tensor<std::complex<T>,outBlock>& ref,
++  vsip::Domain<3> const& out_dom, 
++  int (& /* dum */)[2]) 
++{
++  typedef std::complex<T> CT;
++
++  // planes top-bottom, squeeze front-back
++  vsip::Fft<vsip::const_Matrix,T,CT,0,vsip::by_reference,1>   fft_across(
++    vsip::Domain<2>(in_dom[1], in_dom[2]), 1.0);
++  for (unsigned i = in_dom[0].size(); i-- > 0; )
++    fft_across(in(i, in_dom[1], in_dom[2]),
++              ref(i, out_dom[1], out_dom[2]));
++
++  // planes front-back, running bottom-top
++  // note: axis ---v--- here is reverse of notation used otherwise.
++  vsip::Fftm<CT,CT,1,vsip::fft_fwd,vsip::by_reference,1>   fftm_down(
++    vsip::Domain<2>(in_dom[0], in_dom[2]), 1.0);
++  for (unsigned j = out_dom[1].size(); j-- > 0; )
++    fftm_down(ref(out_dom[0], j, out_dom[2]));
++}
++
++// 3D, rc, shorten left-right
++
++template <typename T, typename inBlock, typename outBlock>
++void 
++compute_ref(
++  vsip::Tensor<T,inBlock> const& in,
++  vsip::Domain<3> const& in_dom, 
++  vsip::Tensor<std::complex<T>,outBlock>& ref,
++  vsip::Domain<3> const& out_dom, 
++  int (& /* dum */)[3])
++{
++  typedef std::complex<T> CT;
++
++  // planes top-bottom, squeeze left-right
++  vsip::Fft<vsip::const_Matrix,T,CT,1,vsip::by_reference,1>   fft_across(
++    vsip::Domain<2>(in_dom[1], in_dom[2]), 1.0);
++  for (unsigned i = in_dom[0].size(); i-- > 0; )
++    fft_across(in(i, in_dom[1], in_dom[2]),
++              ref(i, out_dom[1], out_dom[2]));
++
++  // planes left-right, running bottom-top
++  // note: axis ---v--- here is reverse of notation used otherwise.
++  vsip::Fftm<CT,CT,1,vsip::fft_fwd,vsip::by_reference,1>   fftm_down(
++    vsip::Domain<2>(in_dom[0], in_dom[1]), 1.0);
++  for (unsigned k = out_dom[2].size(); k-- > 0; )
++    fftm_down(ref(out_dom[0], out_dom[1], k));
++}
++
++template <unsigned Dim, typename T1, typename T2,
++	  int sD, vsip::return_mechanism_type How>
++struct Test_fft;
++
++template <typename T1, typename T2, int sD, vsip::return_mechanism_type How>
++struct Test_fft<2,T1,T2,sD,How>
++{ typedef vsip::Fft<vsip::const_Matrix,T1,T2,sD,How,1,vsip::alg_time>  type; };
++
++template <typename T1, typename T2, int sD, vsip::return_mechanism_type How>
++struct Test_fft<3,T1,T2,sD,How>
++{ typedef vsip::Fft<vsip::const_Tensor,T1,T2,sD,How,1,vsip::alg_time>  type; };
++
++// check_in_place
++//
++
++// there is no in-place for real->complex
++
++template <template <typename,typename> class ViewT1,
++          template <typename,typename> class ViewT2,
++          template <typename,typename> class ViewT3,
++	  typename T, typename Block1, typename Block2, int sDf, int sDi>
++void
++check_in_place(
++  vsip::Fft<ViewT1,T,std::complex<T>,sDf,vsip::by_reference,1,vsip::alg_time>&,
++  vsip::Fft<ViewT1,std::complex<T>,T,sDi,vsip::by_reference,1,vsip::alg_time>&,
++  ViewT2<T,Block1>&, ViewT3<std::complex<T>,Block2>&, double)
++{ }
++
++template <template <typename,typename> class ViewT1,
++          template <typename,typename> class ViewT2,
++          template <typename,typename> class ViewT3,
++	  typename T, typename Block1, typename Block2>
++void
++check_in_place(
++  vsip::Fft<ViewT1,T,T,vsip::fft_fwd,vsip::by_reference,1,vsip::alg_time>&  fwd,
++  vsip::Fft<ViewT1,T,T,vsip::fft_inv,vsip::by_reference,1,vsip::alg_time>&  inv,
++  ViewT2<T,Block1> const&  in,
++  ViewT3<T,Block2> const&  ref,
++  double scalei)
++{
++  typename vsip::impl::View_of_dim<Block1::dim,T,Block1>::type  inout(
++    force_copy_init(in));
++
++  fwd(inout);
++  assert(error_db(inout, ref) < -100); 
++
++  inv(inout);
++  inout *= T(scalei);
++  assert(error_db(inout, in) < -100); 
++}
++
++// when testing matrices, will use latter two values
++
++unsigned  sizes[][3] =
++{
++  { 2, 2, 2 },
++  { 8, 8, 8 },
++  { 1, 1, 1 },
++  { 2, 2, 1 },
++  { 2, 8, 128 },
++  { 3, 5, 7 },
++  { 2, 24, 48 },
++  { 24, 1, 5 },
++};
++
++//   the generic test
++
++template <unsigned inL, unsigned outL, typename F, bool isReal,
++          unsigned Dim, int sD>
++void 
++test_fft()
++{
++  typedef typename Elt<F,isReal>::in_type in_elt_type;
++  typedef typename Elt<F,false>::out_type out_elt_type;
++
++  static const int sdf = (sD < 0) ? vsip::fft_fwd : sD;
++  static const int sdi = (sD < 0) ? vsip::fft_inv : sD;
++  typedef typename Test_fft<Dim,in_elt_type,out_elt_type,
++                    sdf,vsip::by_reference>::type         fwd_by_ref_type;
++  typedef typename Test_fft<Dim,in_elt_type,out_elt_type,
++                    sdf,vsip::by_value>::type             fwd_by_value_type;
++  typedef typename Test_fft<Dim,out_elt_type,in_elt_type,
++                    sdi,vsip::by_reference>::type         inv_by_ref_type;
++  typedef typename Test_fft<Dim,out_elt_type,in_elt_type,
++                    sdi,vsip::by_value>::type             inv_by_value_type;
++
++  typedef typename Arg<Dim,in_elt_type,inL>::type    in_type;
++  typedef typename Arg<Dim,out_elt_type,outL>::type  out_type;
++
++  for (unsigned i = 0; i < sizeof(sizes)/(sizeof(*sizes)*3); ++i)
++  {
++    vsip::Rand<in_elt_type> rander(
++      sizes[i][0] * sizes[i][1] * sizes[i][2] * Dim * (sD+5) * (isReal+1));
++
++    Domain<Dim>  in_dom(make_dom<Dim>(sizes[i], false, sD, isReal)); 
++    Domain<Dim>  out_dom(make_dom<Dim>(sizes[i], isReal, sD, isReal)); 
++
++    typedef typename in_type::block_type   in_block_type;
++    typedef typename out_type::block_type  out_block_type;
++
++    in_block_type  in_block(in_dom);
++    in_type  in(in_block);
++    fill_random(in, rander);
++    in_type  in_copy(force_copy_init(in));
++
++    out_block_type  ref1_block(out_dom);
++    out_type  ref1(ref1_block);
++    int dum[(sD < 0) ? 1 : sD + 1];
++    compute_ref(in, in_dom, ref1, out_dom, dum);
++
++    out_type  ref4(force_copy_init(ref1));
++    ref4 *= out_elt_type(0.25);
++
++    out_type  refN(force_copy_init(ref1));
++    refN /= out_elt_type(in_dom.size());
++
++    assert(error_db(in, in_copy) < -200);  // not clobbered
++
++    { fwd_by_ref_type  fft_ref1(in_dom, 1.0);
++      out_block_type  out_block(out_dom);
++      out_type  out(out_block);
++      out_type  other = fft_ref1(in, out);
++      assert(&out.block() == &other.block());
++      assert(error_db(in, in_copy) < -200);  // not clobbered
++      assert(error_db(out, ref1) < -100); 
++
++      inv_by_ref_type  inv_refN(in_dom, 1.0/in_dom.size());
++      in_block_type  in2_block(in_dom);
++      in_type  in2(in2_block);
++      inv_refN(out, in2);
++      assert(error_db(out, ref1) < -100);  // not clobbered
++      assert(error_db(in2, in) < -100); 
++
++      check_in_place(fft_ref1, inv_refN, in, ref1, 1.0);
++    }
++    { fwd_by_ref_type  fft_ref4(in_dom, 0.25);
++      out_block_type  out_block(out_dom);
++      out_type  out(out_block);
++      out_type  other = fft_ref4(in, out);
++      assert(&out.block() == &other.block());
++      assert(error_db(in, in_copy) < -200);  // not clobbered
++      assert(error_db(out, ref4) < -100); 
++
++      inv_by_ref_type  inv_ref8(in_dom, .125);
++      in_block_type  in2_block(in_dom);
++      in_type  in2(in2_block);
++      inv_ref8(out, in2);
++      assert(error_db(out, ref4) < -100);  // not clobbered
++      in2 /= in_elt_type(in_dom.size() / 32.0);
++      assert(error_db(in2, in) < -100); 
++
++      check_in_place(fft_ref4, inv_ref8, in, ref4, 32.0/in_dom.size());
++    }
++    { fwd_by_ref_type  fft_refN(in_dom, 1.0/in_dom.size());
++      out_block_type  out_block(out_dom);
++      out_type  out(out_block);
++      out_type  other = fft_refN(in, out);
++      assert(&out.block() == &other.block());
++      assert(error_db(in, in_copy) < -200);  // not clobbered
++      assert(error_db(out, refN) < -100); 
++
++      inv_by_ref_type  inv_ref1(in_dom, 1.0);
++      in_block_type  in2_block(in_dom);
++      in_type  in2(in2_block);
++      inv_ref1(out, in2);
++      assert(error_db(out, refN) < -100);  // not clobbered
++      assert(error_db(in2, in) < -100); 
++
++      check_in_place(fft_refN, inv_ref1, in, refN, 1.0);
++    }
++    
++
++    { fwd_by_value_type  fwd_val1(in_dom, 1.0);
++      out_type  out(fwd_val1(in));
++      assert(error_db(in, in_copy) < -200);  // not clobbered
++      assert(error_db(out, ref1) < -100); 
++
++      inv_by_value_type  inv_valN(in_dom, 1.0/in_dom.size());
++      in_type  in2(inv_valN(out));
++      assert(error_db(out, ref1) < -100);    // not clobbered
++      assert(error_db(in2, in) < -100); 
++    }
++    { fwd_by_value_type  fwd_val4(in_dom, 0.25);
++      out_type  out(fwd_val4(in));
++      assert(error_db(in, in_copy) < -200);  // not clobbered
++      assert(error_db(out, ref4) < -100); 
++
++      inv_by_value_type  inv_val8(in_dom, 0.125);
++      in_type  in2(inv_val8(out));
++      assert(error_db(out, ref4) < -100);    // not clobbered
++      in2 /= in_elt_type(in_dom.size() / 32.0);
++      assert(error_db(in2, in) < -100); 
++    }
++    { fwd_by_value_type  fwd_valN(in_dom, 1.0/in_dom.size());
++      out_type  out(fwd_valN(in));
++      assert(error_db(in, in_copy) < -200);  // not clobbered
++      assert(error_db(out, refN) < -100); 
++
++      inv_by_value_type  inv_val1(in_dom, 1.0);
++      in_type  in2(inv_val1(out));
++      assert(error_db(out, refN) < -100);    // not clobbered
++      assert(error_db(in2, in) < -100); 
++    }
++  }
++};
+ 
+ int
+ main()
+ {
+   vsipl init;
+ 
++//
++// First check 1D 
++//
+ #if defined(VSIP_IMPL_FFT_USE_FLOAT)
+ 
+   test_by_ref<complex<float> >(2, 64);
+@@ -329,7 +937,7 @@ main()
+   test_real<float>(2, 242);
+   test_real<float>(3, 16);
+ 
+-#endif
++#endif 
+ 
+ #if defined(VSIP_IMPL_FFT_USE_DOUBLE)
+ 
+@@ -347,6 +955,126 @@ main()
+   test_real<double>(2, 242);
+   test_real<double>(3, 16);
+ 
++#endif 
++
++
++//
++// check 2D, 3D
++//
++
++#if defined(VSIP_IMPL_FFT_USE_FLOAT)
++
++  test_fft<0,0,float,false,2,vsip::fft_fwd>();
++
++#if ! defined(VSIP_IMPL_IPP_FFT)
++  test_fft<0,0,float,false,3,vsip::fft_fwd>();
++
++  test_fft<0,0,float,true,2,1>();
++  test_fft<0,0,float,true,2,0>();
++
++  test_fft<0,0,float,true,3,2>();
++  test_fft<0,0,float,true,3,1>();
++  test_fft<0,0,float,true,3,0>();
++#endif   /* VSIP_IMPL_IPP_FFT */
++
++#endif 
++
++#if defined(VSIP_IMPL_FFT_USE_DOUBLE)
++
++#if ! defined(VSIP_IMPL_IPP_FFT)
++  test_fft<0,0,double,false,2,vsip::fft_fwd>();
++  test_fft<0,0,double,false,3,vsip::fft_fwd>();
++
++  test_fft<0,0,double,true,2,1>();
++  test_fft<0,0,double,true,2,0>();
++
++  test_fft<0,0,double,true,3,2>();
++  test_fft<0,0,double,true,3,1>();
++  test_fft<0,0,double,true,3,0>();
++#endif  /* VSIP_IMPL_IPP_FFT */
++
++#endif
++
++//
++// check with different block types
++//
++
++#if defined(VSIP_IMPL_FFT_USE_FLOAT)
++# define SCALAR float
++#elif defined(VSIP_IMPL_FFT_USE_FLOAT)
++# define SCALAR double
++#endif
++
++#if defined(SCALAR)
++
++  test_fft<0,1,SCALAR,false,2,vsip::fft_fwd>();
++  test_fft<0,2,SCALAR,false,2,vsip::fft_fwd>();
++  test_fft<1,0,SCALAR,false,2,vsip::fft_fwd>();
++  test_fft<1,1,SCALAR,false,2,vsip::fft_fwd>();
++  test_fft<1,2,SCALAR,false,2,vsip::fft_fwd>();
++  test_fft<2,0,SCALAR,false,2,vsip::fft_fwd>();
++  test_fft<2,1,SCALAR,false,2,vsip::fft_fwd>();
++  test_fft<2,2,SCALAR,false,2,vsip::fft_fwd>();
++
++#if ! defined(VSIP_IMPL_IPP_FFT)
++  test_fft<0,1,SCALAR,true,2,1>();
++  test_fft<0,1,SCALAR,true,2,0>();
++  test_fft<0,2,SCALAR,true,2,1>();
++  test_fft<0,2,SCALAR,true,2,0>();
++
++  test_fft<1,0,SCALAR,true,2,1>();
++  test_fft<1,0,SCALAR,true,2,0>();
++  test_fft<1,1,SCALAR,true,2,1>();
++  test_fft<1,1,SCALAR,true,2,0>();
++  test_fft<1,2,SCALAR,true,2,1>();
++  test_fft<1,2,SCALAR,true,2,0>();
++
++  test_fft<2,0,SCALAR,true,2,1>();
++  test_fft<2,0,SCALAR,true,2,0>();
++  test_fft<2,1,SCALAR,true,2,1>();
++  test_fft<2,1,SCALAR,true,2,0>();
++  test_fft<2,2,SCALAR,true,2,1>();
++  test_fft<2,2,SCALAR,true,2,0>();
++
++
++  test_fft<0,1,SCALAR,false,3,vsip::fft_fwd>();
++  test_fft<0,2,SCALAR,false,3,vsip::fft_fwd>();
++  test_fft<1,0,SCALAR,false,3,vsip::fft_fwd>();
++  test_fft<1,1,SCALAR,false,3,vsip::fft_fwd>();
++  test_fft<1,2,SCALAR,false,3,vsip::fft_fwd>();
++  test_fft<2,0,SCALAR,false,3,vsip::fft_fwd>();
++  test_fft<2,1,SCALAR,false,3,vsip::fft_fwd>();
++  test_fft<2,2,SCALAR,false,3,vsip::fft_fwd>();
++
++  test_fft<0,1,SCALAR,true,3,2>();
++  test_fft<0,1,SCALAR,true,3,1>();
++  test_fft<0,1,SCALAR,true,3,0>();
++  test_fft<0,2,SCALAR,true,3,2>();
++  test_fft<0,2,SCALAR,true,3,1>();
++  test_fft<0,2,SCALAR,true,3,0>();
++
++  test_fft<1,0,SCALAR,true,3,2>();
++  test_fft<1,0,SCALAR,true,3,1>();
++  test_fft<1,0,SCALAR,true,3,0>();
++  test_fft<1,1,SCALAR,true,3,2>();
++  test_fft<1,1,SCALAR,true,3,1>();
++  test_fft<1,1,SCALAR,true,3,0>();
++  test_fft<1,2,SCALAR,true,3,2>();
++  test_fft<1,2,SCALAR,true,3,1>();
++  test_fft<1,2,SCALAR,true,3,0>();
++
++  test_fft<2,0,SCALAR,true,3,2>();
++  test_fft<2,0,SCALAR,true,3,1>();
++  test_fft<2,0,SCALAR,true,3,0>();
++  test_fft<2,1,SCALAR,true,3,2>();
++  test_fft<2,1,SCALAR,true,3,1>();
++  test_fft<2,1,SCALAR,true,3,0>();
++  test_fft<2,2,SCALAR,true,3,2>();
++  test_fft<2,2,SCALAR,true,3,1>();
++  test_fft<2,2,SCALAR,true,3,0>();
++
++#endif  /* VSIP_IMPL_IPP_FFT */
++
+ #endif
+ 
+   return 0;
+
+
+From jules at codesourcery.com  Thu Sep 29 15:37:04 2005
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Thu, 29 Sep 2005 11:37:04 -0400
+Subject: [patch] Toeplitz system solver
+Message-ID: <433C0A20.3070503@codesourcery.com>
+
+This patch implements and tests the toeplitz system solver. 
+Implementation is based on the TASP C-VSIPL version.
+
+To write a generic version that works for both real and complex, I 
+needed a conj function that works for both real and complex numbers. 
+However, the VSIPL++ conj is limited to just complex<T>.  To get around 
+this, I added impl_conj (and impl_real and impl_imag) scalar and 
+element-wise functions that work for both real and complex (conj(real) 
+is just the identity function).
+
+It may be worthwhile to make 'conj' have the same behavior as 
+'impl_conj'.  This would let users write generic code that works for 
+both complex and real values.
+
+				-- Jules
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: toep.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20050929/1b727129/attachment.ksh>
+
+From stefan at codesourcery.com  Thu Sep 29 16:36:18 2005
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Thu, 29 Sep 2005 12:36:18 -0400
+Subject: [vsipl++] [patch] Toeplitz system solver
+In-Reply-To: <433C0A20.3070503@codesourcery.com>
+References: <433C0A20.3070503@codesourcery.com>
+Message-ID: <433C1802.8030400@codesourcery.com>
+
+Jules Bergmann wrote:
+
+> It may be worthwhile to make 'conj' have the same behavior as 
+> 'impl_conj'.  This would let users write generic code that works for 
+> both complex and real values.
+
+I second that. As an extension, make herm() call trans() if its argument
+is real. (I note that the code already contains a trans_or_herm() extension,
+which we may merge with the herm() function.)
+
+Regards,
+		Stefan
+
+
+
+From mark at codesourcery.com  Thu Sep 29 22:15:08 2005
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Thu, 29 Sep 2005 15:15:08 -0700
+Subject: Bug in icpc causing Don's problems
+Message-ID: <433C676C.6030402@codesourcery.com>
+
+I've analyzed the GEMP problem that Don is having.
+
+The short answer is that this is a bug in icpc.
+
+The long answer is that icpc is mishandling the calling conventions for:
+
+std::complex<float>
+std::operator*<float>(std::complex<float> const&,
+                      std::complex<float> const&)
+
+In particular, it's inconsistent between the caller and callee.
+
+In particular, icpc is generating an out-of-line copy of the function.
+(Why it's not being inlined is another question; you might be able to
+work around the bug by banging on the inline-harder button.)
+
+Here's the code generated:
+
+_ZStmlIfESt7complexIT_ERKS2_S4_:
+        pushq     %rsi                                          #375.5
+        movq      (%rdi), %rdx                                  #376.26
+        movss     4(%rdi), %xmm5                                #376.26
+        movss     (%rdi), %xmm3                                 #376.26
+        movss     (%rsi), %xmm1                                 #377.11
+        movss     4(%rsi), %xmm2                                #377.11
+        movaps    %xmm3, %xmm4                                  #377.11
+        movaps    %xmm5, %xmm0                                  #377.11
+        mulss     %xmm1, %xmm5                                  #377.11
+        mulss     %xmm1, %xmm4                                  #377.11
+        mulss     %xmm2, %xmm0                                  #377.11
+        mulss     %xmm2, %xmm3                                  #377.11
+        movq      %rdx, (%rsp)                                  #376.26
+        subss     %xmm0, %xmm4                                  #377.11
+        movss     %xmm4, (%rsp)                                 #377.7
+        addss     %xmm3, %xmm5                                  #377.11
+        movss     %xmm5, 4(%rsp)                                #377.7
+        movq      (%rsp), %rax                                  #378.14
+        popq      %rcx                                          #378.14
+        ret                                                     #378.14
+
+Basically, the inputs are pointed to by %rsi and %rdi; the return value
+is stored at %rsp and %rsp + 4.
+
+However, the caller expects the return value in %xmm0:
+
+        call      _ZStmlIfESt7complexIT_ERKS2_S4_               #76.45
+        movlps    %xmm0, -64(%rbp)                              #76.45
+
+The caller is correct.  Because std::complex<float> is a POD, the value
+should go in %xmm0, according to the AMD64 ABI.
+
+Note, by contrast, the code generated by G++ for the same function:
+
+_ZStmlIfESt7complexIT_ERKS2_S4_:
+.LFB1749:
+        movss   (%rdi), %xmm3
+        movss   4(%rdi), %xmm5
+        movaps  %xmm3, %xmm2
+        movaps  %xmm5, %xmm0
+        movss   (%rsi), %xmm1
+        movss   4(%rsi), %xmm4
+        mulss   %xmm1, %xmm2
+        mulss   %xmm4, %xmm0
+        mulss   %xmm4, %xmm3
+        mulss   %xmm5, %xmm1
+        subss   %xmm0, %xmm2
+        addss   %xmm1, %xmm3
+        movss   %xmm2, -16(%rsp)
+        movss   %xmm3, -12(%rsp)
+        movq    -16(%rsp), %xmm0
+        ret
+
+Note that GCC correctly loads the value into %xmm0 at the end of the
+function.
+
+We should report this problem to Intel.  I know the Intel tools manager,
+so I'm sure I can get a bug report processed.  Will you please send me
+(a) the command-line you're using to do the compilation, and (b) put the
+preprocessed source (output of "icpc -E") somewhere?  I'll take it from
+there.
+
+-- 
+Mark Mitchell
+CodeSourcery, LLC
+mark at codesourcery.com
+(916) 791-8304
+
+
+From mark at codesourcery.com  Fri Sep 30 06:15:42 2005
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Thu, 29 Sep 2005 23:15:42 -0700
+Subject: Bug in icpc causing Don's problems
+In-Reply-To: <433C8EDA.1060805@codesourcery.com>
+References: <433C676C.6030402@codesourcery.com> <433C8EDA.1060805@codesourcery.com>
+Message-ID: <433CD80E.3040106@codesourcery.com>
+
+Don McCoy wrote:
+> Mark Mitchell wrote:
+> 
+>> We should report this problem to Intel.  I know the Intel tools manager,
+>> so I'm sure I can get a bug report processed.  Will you please send me
+>> (a) the command-line you're using to do the compilation, and (b) put the
+>> preprocessed source (output of "icpc -E") somewhere?  I'll take it from
+>> there.
+>>
+> The command line is in the script /home/don/gem_issue/build.  It is:
+> 
+> cpc -I/home/don/vpp/src -I/home/don/vpp/tests \
+>    -g -O2 matvec.cpp -o matvec /home/don/vpp/src/vsip/libvsip.a
+> 
+> I ran the preprocessor on it and put results in 'matvec-pre-processed.cpp'
+> 
+> Thanks for your help with this.
+
+I've sent a bug report to the manager of Intel's compiler group.  I'll
+keep you posted as to what we hear back.  I'd suggest trying compilation
+with "-O2 -ip" or even "-fast"; you'll probably get better code, and if
+that function gets inlined, things are likely to work better.
+
+-- 
+Mark Mitchell
+CodeSourcery, LLC
+mark at codesourcery.com
+(916) 791-8304
+
+
+From jules at codesourcery.com  Fri Sep 30 15:45:51 2005
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Fri, 30 Sep 2005 11:45:51 -0400
+Subject: [patch] LU solver
+Message-ID: <433D5DAF.2010204@codesourcery.com>
+
+This patch implements & tests the LU solver.  It uses LAPACK to perform 
+the actual work.
+
+More work went into writing the tests than the actual code!  I found a 
+nice on-line book on "Numerical Computing in Matlab" by Cleve Moler (the 
+MATLAB founder) that I cribbed the residual error bound from.  I put a 
+link to the book on the VSIPL++ resource wiki.
+
+				-- Jules
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: lu.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20050930/0fa79427/attachment.ksh>
+
+From don at codesourcery.com  Fri Sep 30 19:01:35 2005
+From: don at codesourcery.com (Don McCoy)
+Date: Fri, 30 Sep 2005 13:01:35 -0600
+Subject: [vsipl++] [patch] matvec: outer, gem, cumsum
+In-Reply-To: <4339CE30.9070608@codesourcery.com>
+References: <43398FE1.7080906@codesourcery.com> <4339CE30.9070608@codesourcery.com>
+Message-ID: <433D8B8F.8000202@codesourcery.com>
+
+Suggested changes applied.  Using a modified approach that applies the 
+'mat_op_type' makes the code more readable and it was easier to extend 
+to include op types mat_herm and mat_conj.  Also includes 
+specializations that allow herm and conj to be performed on real types 
+(by doing transpose and nothing respectively). 
+
+Tested under GCC 3.4 successfully.  ICPC 8.0 and 9.0 caused failures 
+related to handling of complex types.
+
+-- 
+Don McCoy
+CodeSourcery, LLC
+
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: mv3.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20050930/0d013f3c/attachment.ksh>
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: mv3.diff
+Type: text/x-patch
+Size: 20100 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20050930/0d013f3c/attachment.bin>
+
+From jules at codesourcery.com  Fri Sep 30 21:44:54 2005
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Fri, 30 Sep 2005 17:44:54 -0400
+Subject: [patch] load_view and save_view for tests
+Message-ID: <433DB1D6.3010907@codesourcery.com>
+
+Both solver-lu and solver-cholesky use load_view, so I broke it out into 
+a separate header.  These files are necessary to compile solver-lu. 
+Patch applied.
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: ls.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20050930/4f37cd98/attachment.ksh>
+
+From stefan at codesourcery.com  Fri Sep 30 22:01:26 2005
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Fri, 30 Sep 2005 18:01:26 -0400
+Subject: [vsipl++] [patch] load_view and save_view for tests
+In-Reply-To: <433DB1D6.3010907@codesourcery.com>
+References: <433DB1D6.3010907@codesourcery.com>
+Message-ID: <433DB5B6.3030908@codesourcery.com>
+
+Jules,
+
+shouldn't we try to consistently use <iostream> instead of <stdio.h> ?
+
+Jules Bergmann wrote:
+
+> +   Load_view(char*                    filename,
+> + 	    vsip::Domain<Dim> const& dom)
+> +     : data_  (new base_t[factor*dom.size()]),
+> +       block_ (dom, data_),
+> +       view_  (block_)
+> +   {
+> +     FILE*  fd;
+> +     size_t size = dom.size();
+> +     
+> +     if (!(fd = fopen(filename,"r")))
+
+It might be better to use "rb" as the mode, just to avoid headaches if
+we try to port the code to non-POSIX systems one day.
+
+Regards,
+		Stefan
+
+
+From jules at codesourcery.com  Fri Sep 30 22:05:42 2005
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Fri, 30 Sep 2005 18:05:42 -0400
+Subject: [vsipl++] [patch] load_view and save_view for tests
+In-Reply-To: <433DB5B6.3030908@codesourcery.com>
+References: <433DB1D6.3010907@codesourcery.com> <433DB5B6.3030908@codesourcery.com>
+Message-ID: <433DB6B6.4060605@codesourcery.com>
+
+
+
+Stefan Seefeld wrote:
+> Jules,
+> 
+> shouldn't we try to consistently use <iostream> instead of <stdio.h> ?
+
+Yes, I think that's a good idea.
+
+> 
+> Jules Bergmann wrote:
+> 
+>> +   Load_view(char*                    filename,
+>> +         vsip::Domain<Dim> const& dom)
+>> +     : data_  (new base_t[factor*dom.size()]),
+>> +       block_ (dom, data_),
+>> +       view_  (block_)
+>> +   {
+>> +     FILE*  fd;
+>> +     size_t size = dom.size();
+>> +     +     if (!(fd = fopen(filename,"r")))
+> 
+> 
+> It might be better to use "rb" as the mode, just to avoid headaches if
+> we try to port the code to non-POSIX systems one day.
+
+Sounds good, I'll add that.
+
+
+From jules at codesourcery.com  Fri Sep 30 22:11:24 2005
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Fri, 30 Sep 2005 18:11:24 -0400
+Subject: [patch] RFA Fixes for ICC compilation errors
+Message-ID: <433DB80C.3020308@codesourcery.com>
+
+This patch works around three compilation errors with ICC 9.0.  One is 
+an overloaded function that ICC finds ambiguous, the other two seem to 
+be caused by function return types that use member class templates.
+
+I tested these with ICC-9.0 (32-bit), gcc-3.4 and gcc-4.0.
+
+Stefan, is this Ok to apply?
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: notes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20050930/3f9818d4/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: icc.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20050930/3f9818d4/attachment-0001.ksh>
+
+From stefan at codesourcery.com  Fri Sep 30 22:32:42 2005
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Fri, 30 Sep 2005 18:32:42 -0400
+Subject: [vsipl++] [patch] RFA Fixes for ICC compilation errors
+In-Reply-To: <433DB80C.3020308@codesourcery.com>
+References: <433DB80C.3020308@codesourcery.com>
+Message-ID: <433DBD0A.6030909@codesourcery.com>
+
+Jules Bergmann wrote:
+> This patch works around three compilation errors with ICC 9.0.  One is 
+> an overloaded function that ICC finds ambiguous, the other two seem to 
+> be caused by function return types that use member class templates.
+> 
+> I tested these with ICC-9.0 (32-bit), gcc-3.4 and gcc-4.0.
+> 
+> Stefan, is this Ok to apply?
+
+It is.
+
+Thanks,
+		Stefan
+
+
+From mark at codesourcery.com  Fri Sep 30 22:40:25 2005
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Fri, 30 Sep 2005 15:40:25 -0700
+Subject: [vsipl++] [patch] load_view and save_view for tests
+In-Reply-To: <433DB1D6.3010907@codesourcery.com>
+References: <433DB1D6.3010907@codesourcery.com>
+Message-ID: <433DBED9.50809@codesourcery.com>
+
+Jules Bergmann wrote:
+
+> + // This is nearly same as sarsim LoadView, but doesn't include byte
+> + // ordering.  Move this into common location.
+
+That's a FIXME!
+
+-- 
+Mark Mitchell
+CodeSourcery, LLC
+mark at codesourcery.com
+(916) 791-8304
+
+

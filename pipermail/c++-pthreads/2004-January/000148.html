@@ -1,0 +1,330 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [c++-pthreads] thread-safety definition
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:c%2B%2B-pthreads%40codesourcery.com?Subject=Re%3A%20%5Bc%2B%2B-pthreads%5D%20thread-safety%20definition&In-Reply-To=%3C3FFD6355.80200%40hp.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000147.html">
+   <LINK REL="Next"  HREF="000151.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[c++-pthreads] thread-safety definition</H1>
+    <B>Dave Butenhof</B> 
+    <A HREF="mailto:c%2B%2B-pthreads%40codesourcery.com?Subject=Re%3A%20%5Bc%2B%2B-pthreads%5D%20thread-safety%20definition&In-Reply-To=%3C3FFD6355.80200%40hp.com%3E"
+       TITLE="[c++-pthreads] thread-safety definition">David.Butenhof at hp.com
+       </A><BR>
+    <I>Thu Jan  8 14:04:05 UTC 2004</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000147.html">[c++-pthreads] thread-safety definition
+</A></li>
+        <LI>Next message: <A HREF="000151.html">[c++-pthreads] thread-safety definition
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#148">[ date ]</a>
+              <a href="thread.html#148">[ thread ]</a>
+              <a href="subject.html#148">[ subject ]</a>
+              <a href="author.html#148">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Mathieu Lacage wrote:
+
+&gt;<i>On Thu, 2004-01-08 at 12:34, Dave Butenhof wrote:
+</I>&gt;<i>
+</I>&gt;&gt;&gt;<i>1) &quot;inside cancelation&quot;: This is basically ExitThread (win32 name). It
+</I>&gt;&gt;&gt;<i>exists on all the platforms which support a form of threads or another I
+</I>&gt;&gt;&gt;<i>know of. It semantics vary a lot from one platform to the other
+</I>&gt;&gt;&gt;<i>unfortunatly. On win32, it will not invoke any thread-specific cleanup
+</I>&gt;&gt;&gt;<i>handlers (neither C++ exceptions nor SEH are involved). On BeOS
+</I>&gt;&gt;&gt;<i>(exit_thread), it will behave just like on windows. On POSIX
+</I>&gt;&gt;&gt;<i>(pthread_exit) systems, it will invoke the thread-specific cancelation
+</I>&gt;&gt;&gt;<i>handlers.
+</I>&gt;&gt;&gt;<i>
+</I>&gt;&gt;<i>The term &quot;cancellation&quot; seems heavy here. This is just a voluntary 
+</I>&gt;&gt;<i>termination. But, yes, there are similar properties -- certainly from 
+</I>&gt;&gt;<i>the point of view of the rest of the frames on the call stack at the time.
+</I>&gt;&gt;<i>    
+</I>&gt;&gt;<i>
+</I>&gt;<i>Indeed. For a C++ POSIX binding, I would assume you might want to make
+</I>&gt;<i>such a function throw an exception caught by the thread-creation
+</I>&gt;<i>function to unwind properly the stack. Or is this some kind of wild
+</I>&gt;<i>stupid idea?
+</I>&gt;<i>  
+</I>&gt;<i>
+</I>One example: on Tru64 UNIX and OpenVMS, pthread_exit() raises an 
+exception, which is distinct from the exception provoked by 
+pthread_cancel(), but with similar characteristics. Specifically, that 
+an UNCAUGHT exception will terminate only the thread rather than the 
+process (it's implicitly caught in the thread library's internal &quot;thread 
+base&quot; routine), and that it's &quot;generally improper&quot; (though not 
+impossible nor even illegal) for any other agency to finalize 
+propagation of the exception.
+
+It's an exception for exactly the same reason as cancel: so that each 
+active frame on the stack has the opportunity to perform appropriate 
+cleanup of resources before termination.
+
+In the &quot;pure POSIX model&quot;, without exceptions, both pthread_exit() and 
+cancellation provoke sequential LIFO execution of a stack of &quot;POSIX 
+cleanup handlers&quot; designated by the pthread_cleanup_push() operation. 
+The intended implementation of pthread_cleanup_push() (and our actual 
+implementation) is as a simple macro that initiates an exception scope, 
+analogous to a C++ &quot;try {&quot;.
+
+&gt;&gt;&gt;<i>2) &quot;outside cancelation&quot;: There are two kinds of &quot;outside cancelation&quot;:
+</I>&gt;&gt;&gt;<i>
+</I>&gt;&gt;&gt;<i>	2.1) &quot;async cancelation&quot;: The OS removes the thread from its list of
+</I>&gt;&gt;&gt;<i>tasks to schedule and does nothing to cleanup the thread ressources.
+</I>&gt;&gt;&gt;<i>This is the most extreme useless feature of a thread library. BeOS and
+</I>&gt;&gt;&gt;<i>win32 provide it. POSIX does not provide it.
+</I>&gt;&gt;&gt;<i>      
+</I>&gt;&gt;&gt;<i>
+</I>&gt;<i>I should add: win32 (TerminateThread), BeOS (kill_thread).
+</I>&gt;<i>
+</I>&gt;&gt;<i>POSIX already defines &quot;async cancel&quot;, as a mode where posting a cancel 
+</I>&gt;&gt;<i>to a thread will cause the cancellation to be delivered at any arbitrary 
+</I>&gt;&gt;<i>time supported by the OS and hardware. (Usually on the next clock tick, 
+</I>&gt;&gt;<i>though that's a &quot;common implementation&quot; rather than any rule or even 
+</I>&gt;&gt;<i>recommendation.)
+</I>&gt;&gt;<i>    
+</I>&gt;&gt;<i>
+</I>&gt;<i>OK. I guess this definition of &quot;POSIX async cancel&quot; was already
+</I>&gt;<i>explained on the list before but I missed it. I believe this POSIX async
+</I>&gt;<i>cancel is similar enough (at least, it feels as unsafe to use) to
+</I>&gt;<i>&quot;abort&quot; that we could count it in section 2.1. What do you think ?
+</I>&gt;<i>  
+</I>&gt;<i>
+</I>No, not really. POSIX async cancel is still an exception, allowing 
+hierarchical isolated cleanup of each active frame on the stack. It's 
+just that, because of the resource ownership dilemma, there's no way to 
+safely use async-cancel in &quot;general code&quot;. It has to be restricted to 
+areas of code that do not acquire or release resources, including any 
+calls to external functions that might.
+
+Nevertheless, async cancel CAN be used safely if you're careful, without 
+disrupting the operation of the process. This is not true of 
+TerminateThread, or the hypothetical pthread_abort() proposal, which 
+immediately deschedule the victim thread and abandon any resources it 
+might own -- including heap (which can cause memory leaks) and 
+synchronization objects (which, far worse, is almost guaranteed to cause 
+deadlocks).
+
+And note that it's OK to allocate heap, or lock a mutex, and then enable 
+async cancel for some section of code, disabling async cancel before 
+freeing the memory or releasing the mutex. In such a sequence, the 
+cleanup handlers invoked by async cancel DO know the state of the 
+resources (they are &quot;acquired&quot;), and can clean up. You simply can't 
+enable async cancel across a call that allocates or frees heap, locks or 
+unlocks a mutex, because the cleanup handler couldn't tell whether the 
+operation had completed.
+
+In contrast, ANY use of TerminateThread trashes the process 
+unrecoverably, except in extremely unusual circumstances where an 
+embedded-type application really knows precisely what the victim thread 
+might be doing and can reliably repair any predicates and release or 
+safely discard any resources. You can NEVER do this with a thread that 
+might be running arbitrary library code, because you can't possibly know 
+what resources it might own or the effect of abandoning them. (That's 
+why pthread_abort() was rejected. While it's useful and even essential 
+for some class of embedded system application, it's very nearly useless, 
+and extremely dangerous, in any more general environment. Since the real 
+value of POSIX in true embedded system design is &quot;programmer 
+portability&quot;, not full portability of every API, there would have been 
+no point to including this specialized function in the general standard.)
+
+&gt;&gt;<i>&quot;Cancellation&quot; (both deferred and async) come from the Digital &quot;CMA&quot; 
+</I>&gt;&gt;<i>architecture (where it was called &quot;alert&quot;). The CMA concept derives from 
+</I>&gt;&gt;<i>a less structured (but fundamentally similar) capability in the SRC 
+</I>&gt;&gt;<i>research labs' Topaz thread package.
+</I>&gt;&gt;<i>    
+</I>&gt;&gt;<i>
+</I>&gt;<i>Do you know of other widely used system-level APIs which provide similar
+</I>&gt;<i>features?
+</I>&gt;<i>  
+</I>&gt;<i>
+</I>No; though that's no guarantee that some haven't cropped up somewhere.
+
+&gt;&gt;&gt;<i>Definition &quot;Posix thread-safety&quot;:
+</I>&gt;&gt;&gt;<i>---------------------------------
+</I>&gt;&gt;&gt;<i>A library is &quot;posix thread-safe&quot; if it is thread-safe and
+</I>&gt;&gt;&gt;<i>defered-cancelation-safe.
+</I>&gt;&gt;&gt;<i>
+</I>&gt;&gt;<i>I wouldn't tack cancel-safety onto thread-safety so intimately, although 
+</I>&gt;&gt;<i>    
+</I>&gt;&gt;<i>
+</I>&gt;<i>I used the POSIX name because I thought it was the only widely deployed
+</I>&gt;<i>system which provides this service. Maybe we should rename this to
+</I>&gt;<i>&quot;strong thread-safety&quot;. Maybe &quot;defered-cancel thread-safety&quot;?
+</I>&gt;<i>  
+</I>&gt;<i>
+</I>But my point was that it's perfectly reasonable to have POSIX 
+thread-safety without cancel-safety. I don't see how it's relevant 
+whether anything but POSIX also has cancel-safety.
+
+&gt;&gt;<i>(Async cancel is an oddity; there are, and should be, very few 
+</I>&gt;&gt;<i>async-cancel-safe functions. Async-cancel regions of code cannot 
+</I>&gt;&gt;<i>accomodate resource acquisition or release of any sort, as the recovery 
+</I>&gt;&gt;<i>code is generally unable to determine the state of the resource.)
+</I>&gt;&gt;<i>    
+</I>&gt;&gt;<i>
+</I>&gt;<i>Yes. This is why I don't feel it's necessary to discuss it further since
+</I>&gt;<i>so little code will be concerned with it, we can altogether not deal
+</I>&gt;<i>with it for most C++ libraries.
+</I>&gt;<i>  
+</I>&gt;<i>
+</I>Introducing asynchronous exceptions into C++ would be pointlessly 
+disruptive, like introducing continuable exceptions. I'd rather not even 
+consider it.
+
+Even if it were supported, though, C++ is certainly free to follow the 
+lead of POSIX. We designated only a very few functions to be 
+async-cancel safe; and even at that I think we ended up with more than 
+we really should have had. (I never really figured out why we ended up 
+with pthread_cancel() being async-cancel safe, and I don't think it 
+makes any sense. The guy who write the text couldn't remember either, 
+but in the end we decided not to risk changing it.) Really, in terms of 
+POSIX standard APIs, all you can do with async cancel enabled is to 
+DISABLE async-cancel. I like it that way. There's no reason at all that 
+ANY of the standard C++ runtime should be designated (or coded) to be 
+async-cancel safe.
+
+&gt;&gt;<i>Nevertheless, it's quite reasonable to write a &quot;thread-safe&quot; special 
+</I>&gt;&gt;<i>purpose application routine that doesn't deal with cancellation simply 
+</I>&gt;&gt;<i>because the designer KNOWS that a thread running that code cannot be 
+</I>&gt;&gt;<i>cancelled. One might even make this choice within in a general purpose 
+</I>&gt;&gt;<i>library in some cases -- say, for a daemon thread that could never run 
+</I>&gt;&gt;<i>application code nor be identified to the application, and that 
+</I>&gt;&gt;<i>therefore cannot be cancelled.
+</I>&gt;&gt;<i>    
+</I>&gt;&gt;<i>
+</I>&gt;<i>Yes. Exactly. I have written a lot of code like that. The core C++
+</I>&gt;<i>threaded code is hidden far away from the user which cannot therefore
+</I>&gt;<i>&quot;posix-defer-cancel&quot; it. It can't even ever get the C++ exceptions since
+</I>&gt;<i>they are catch (...) and transformed into C error codes.
+</I>&gt;<i>  
+</I>&gt;<i>
+</I>This doesn't sound like the same thing, though. Your catch(...) may 
+prevent the cancel from doing what it SHOULD do, but it won't prevent 
+delivery, and you've just ignored the application's cancel request. 
+That's bad, and while it may be &quot;cancel safe&quot; in some trivial respect, 
+(an unexpected cancel request won't corrupt the library state), it's not 
+useful to anyone.
+
+If code runs in an application thread, or a thread for which application 
+code might have a valid handle, then that thread can be cancelled at the 
+whim of the application. You can of course simply DOCUMENT that doing 
+this is an error. You can say it'll be ignored, or you can say that it 
+may arbitrarily corrupt application state; but that's not a true general 
+purpose library.
+
+What I'm talking about is a separate thread created within the library 
+to which no application code could possibly have a reference. It is 
+physically impossible for the application code to ever REQUEST 
+cancellation. (Yeah, very little is &quot;physically impossible&quot;, and a 
+simple uninitialized variable could end up holding the handle of such a 
+thread; but that's an application error against which nobody can 
+reasonably defend.) Anyway, if the application &quot;CAN'T&quot; cancel the 
+thread, and the library knows that it WON'T cancel the thread, there's 
+no point in writing code that runs ONLY within that thread to be cancel 
+safe.
+
+&gt;<i>As a conclusion to these (tentative) definitions, I believe the purpose
+</I>&gt;<i>of this mailing list is to find a solution to develop &quot;defered-cancel
+</I>&gt;<i>thread-safe&quot; C++ libraries: simple &quot;thread-safe&quot; libraries do not
+</I>&gt;<i>require special attention. If everyone could agree to the statement
+</I>&gt;<i>above, it would probably make the discussion more productive: other
+</I>&gt;<i>threading models which do not support async cancelation are of no
+</I>&gt;<i>interest to the discussion and can be forgotten.
+</I>&gt;<i>  
+</I>&gt;<i>
+</I>Code that cannot ever be subject to cancellation need not be cancel 
+safe, if that's what you mean. If code was written to a thread model 
+without cancellation, or written specifically for an environment where 
+it would not be cancelled, that code can be brought into a new 
+&quot;cancellable C++&quot; environment safely as long as that basic premise 
+continues -- that it will not be run in a thread that's cancelled.
+
+&gt;<i>If people agree on this statement, the only issue I can see which
+</I>&gt;<i>delimits the design space for the solution to this problem is whether or
+</I>&gt;<i>not you wish to allow the C++ library calling into C code (which uses
+</I>&gt;<i>pthreads) and/or allow C code to use the C++ library (which uses our C++
+</I>&gt;<i>threading solution).
+</I>&gt;<i>
+</I>&gt;<i>Maybe it would help to consider the two cases separatly and try to
+</I>&gt;<i>figure out what requirements each case creates:
+</I>&gt;<i>	1) C++ library calls C++ code and is called by C++ code.
+</I>&gt;<i>	2) C++ library calls into C code.
+</I>&gt;<i>	3) C code calls C++ library.
+</I>&gt;<i>
+</I>&gt;<i>The hard part seems to be 2) and 3) where, if you use exceptions to
+</I>&gt;<i>propagate a cancel operation from either a cancelation point or a
+</I>&gt;<i>pthread_exit call, you need to correctly handle the registered
+</I>&gt;<i>cancelation handlers _and_ the C++ catch blocks in the right order. That
+</I>&gt;<i>seems pretty hard (ie: impossible) to me, being just a _user_ of thread
+</I>&gt;<i>libraries.
+</I>&gt;<i>  
+</I>&gt;<i>
+</I>The impact extends beyond C and C++, to every facility that deals with 
+exceptions; Java, Ada, Modula-2+, or whatever else. The call stack must 
+be unwound once, and all handlers, no matter how declared or in what 
+language, called in the correct sequence. You're right -- it's nearly 
+impossible without exceptions; yet it's trivial, natural, and all but 
+unavoidable if everyone uses the same common exception/unwind package. 
+(And I might point out that any &quot;non exception&quot; mechanism that could 
+accomplish it would be indistinguishable from a common exception 
+infrastructure anyway!) That's precisely why cancellation and thread 
+exit ARE exceptions, were always intended to be exceptions, and cannot 
+practically be anything else. ;-)
+
+&gt;<i>If people are not interested in 2) and 3) and just want to design a
+</I>&gt;<i>solution for 1), then I think it will make the discussion more
+</I>&gt;<i>productive to acknowledge it.
+</I>&gt;<i>  
+</I>&gt;<i>
+</I>The ANSI C++ committee could well do that; just as POSIX and C++ have so 
+far essentially ignored each other. However, we might look back at the 
+recently revealed origin of the name and subject of this mailing list, 
+which is tangled up with actual implementation on a real system, 
+specifically gcc. THEY cannot ignore interoperability between C and C++; 
+and nor can anyone else in the real world. So even if the committee were 
+to decide it cannot or is unwilling to address 2 and 3, I don't think 
+that decision would be relevant to this mailing list!
+
+-- 
+/--------------------[ <A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/c++-pthreads">David.Butenhof at hp.com</A> ]--------------------\
+|<i> Hewlett-Packard Company       Tru64 UNIX &amp; VMS Thread Architect |
+</I>|<i>     My book: <A HREF="http://www.awl.com/cseng/titles/0-201-63392-2/">http://www.awl.com/cseng/titles/0-201-63392-2/</A>     |
+</I>\----[ <A HREF="http://homepage.mac.com/dbutenhof/Threads/Threads.html">http://homepage.mac.com/dbutenhof/Threads/Threads.html</A> ]---/
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000147.html">[c++-pthreads] thread-safety definition
+</A></li>
+	<LI>Next message: <A HREF="000151.html">[c++-pthreads] thread-safety definition
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#148">[ date ]</a>
+              <a href="thread.html#148">[ thread ]</a>
+              <a href="subject.html#148">[ subject ]</a>
+              <a href="author.html#148">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/c++-pthreads">More information about the c++-pthreads
+mailing list</a><br>
+</body></html>

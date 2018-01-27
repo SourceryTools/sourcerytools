@@ -1,0 +1,1254 @@
+From Corrin.Meyer at dornerworks.com  Tue Aug  5 13:58:46 2008
+From: Corrin.Meyer at dornerworks.com (Corrin Meyer)
+Date: Tue, 5 Aug 2008 09:58:46 -0400
+Subject: Inline Assembly
+Message-ID: <D3E384327F5C6D48AADCEA84160B7D732D845C@mcbain.dw.local>
+
+I am having issues generating inline assembly for the ColdFire with GCC.
+Below is the function with inline assembly in question.
+
+ 
+
+static inline uint32_t hal_set_ipl(uint32_t new_ipl)
+
+{
+
+    uint32_t old_ipl;
+
+    register uint32_t _ipl;
+
+ 
+
+    _ipl = (new_ipl & 0x00000007) << 8;
+
+ 
+
+    // Get the old IPL setting and set it to the new one.
+
+    __asm__ __volatile__ (
+
+        "move.w     %%sr, %%d7      \n\t"
+
+        "move.l     %%d7, %0        \n\t"
+
+        "andi.l     #0xf8ff, %%d7   \n\t"
+
+        "or.l       %1, %%d7        \n\t"
+
+        "move.w     %%d7, %%sr      \n\t"
+
+ 
+
+        : "=d" (old_ipl) : "d" (_ipl) : "%%d7" );
+
+ 
+
+    // Mask out non-IPL bits (placed in lower 7 bits).
+
+    old_ipl = (old_ipl & 0x0700) >> 8;
+
+ 
+
+    return old_ipl;
+
+}
+
+ 
+
+The assembly generated is below (I disabled function inlining for
+debugging purposes though I get a similar result even when inlining).
+
+ 
+
+static inline uint32_t hal_set_ipl(uint32_t new_ipl)
+
+{
+
+200006e4:       4e56 0000       linkw %fp,#0
+
+200006e8:       2f07            movel %d7,%sp at -
+
+    register uint32_t _ipl;
+
+ 
+
+    _ipl = (new_ipl & 0x00000007) << 8;
+
+ 
+
+    // Get the old IPL setting and set it to the new one.
+
+    __asm__ __volatile__ (
+
+200006ea:       7007            moveq #7,%d0
+
+200006ec:       c0ae 0008       andl %fp@(8),%d0
+
+200006f0:       e188            lsll #8,%d0
+
+200006f2:       40c7            movew %sr,%d7
+
+200006f4:       2007            movel %d7,%d0
+
+200006f6:       0287 0000 f8ff  andil #63743,%d7
+
+200006fc:       8e80            orl %d0,%d7
+
+200006fe:       46c7            movew %d7,%sr
+
+20000700:       0280 0000 0700  andil #1792,%d0
+
+ 
+
+    // Mask out non-IPL bits (placed in lower 7 bits).
+
+    old_ipl = (old_ipl & 0x0700) >> 8;
+
+ 
+
+    return old_ipl;
+
+}
+
+20000706:       e088            lsrl #8,%d0
+
+20000708:       2e1f            movel %sp at +,%d7
+
+2000070a:       4e5e            unlk %fp
+
+2000070c:       4e75            rts
+
+ 
+
+The problem is that register %d0 is being used for both 'old_ipl' and
+'_ipl' (as can be seed at 200006f4 and 200006fc) and the result is that
+%d7 and hence %sr are not updated appropriately.  The purpose of this
+function is to set the Interrupt Priority level (IPL) bits in the Status
+Register and to return the original value of the IPL bits.  I have tried
+using both 'r' and 'd' constraints on the output/input to the inline
+assembly but both result in this problem.  Using a constraint of 'i'
+does not work unless optimization level of at least "-O"  is used (which
+makes since I think since it would actually require the or.l instruction
+changing to ori.l and figuring out the actual value of new_ipl at
+compile time).
+
+ 
+
+Any insights on why GCC is not allocating the registers correctly (or
+maybe I am missing something...)?  I can get to straight assembly if
+needed but I would prefer, for the simplicity of this series of
+instructions, to use inline assembly.
+
+ 
+
+Corrin J. Meyer 
+DornerWorks, Ltd. 
+Embedded Systems Engineering 
+  
+T: 616.389.8336 
+F: 616.245.8372 
+E: corrin.meyer at dornerworks.com <mailto:corrin.meyer at dornerworks.com>  
+  
+3445 Lake Eastbrook Blvd. SE 
+Grand Rapids, MI 49546 
+
+ 
+
+-------------- next part --------------
+An HTML attachment was scrubbed...
+URL: <http://sourcerytools.com/pipermail/coldfire-gnu-discuss/attachments/20080805/3dd3fe45/attachment.html>
+
+From dan at codesourcery.com  Tue Aug  5 14:18:55 2008
+From: dan at codesourcery.com (Daniel Jacobowitz)
+Date: Tue, 5 Aug 2008 10:18:55 -0400
+Subject: [coldfire-gnu-discuss] Inline Assembly
+In-Reply-To: <D3E384327F5C6D48AADCEA84160B7D732D845C@mcbain.dw.local>
+References: <D3E384327F5C6D48AADCEA84160B7D732D845C@mcbain.dw.local>
+Message-ID: <20080805141853.GQ15524@caradoc.them.org>
+
+On Tue, Aug 05, 2008 at 09:58:46AM -0400, Corrin Meyer wrote:
+>         : "=d" (old_ipl) : "d" (_ipl) : "%%d7" );
+
+You need =&d, not =d.  From the GCC manual:
+
+ Unless an output operand has the `&' constraint modifier, GCC may
+allocate it in the same register as an unrelated input operand, on the
+assumption the inputs are consumed before the outputs are produced.
+This assumption may be false if the assembler code actually consists of
+more than one instruction.  In such a case, use `&' for each output
+operand that may not overlap an input.  *Note Modifiers::.
+
+-- 
+Daniel Jacobowitz
+CodeSourcery
+
+
+From Corrin.Meyer at dornerworks.com  Tue Aug  5 14:26:11 2008
+From: Corrin.Meyer at dornerworks.com (Corrin Meyer)
+Date: Tue, 5 Aug 2008 10:26:11 -0400
+Subject: [coldfire-gnu-discuss] Inline Assembly
+In-Reply-To: <20080805141853.GQ15524@caradoc.them.org>
+References: <D3E384327F5C6D48AADCEA84160B7D732D845C@mcbain.dw.local> <20080805141853.GQ15524@caradoc.them.org>
+Message-ID: <D3E384327F5C6D48AADCEA84160B7D732D8482@mcbain.dw.local>
+
+Daniel Jacobowitz
+>>         : "=d" (old_ipl) : "d" (_ipl) : "%%d7" );
+>
+>You need =&d, not =d.  From the GCC manual:
+>
+> Unless an output operand has the `&' constraint modifier, GCC may
+>allocate it in the same register as an unrelated input operand, on the
+>assumption the inputs are consumed before the outputs are produced.
+>This assumption may be false if the assembler code actually consists of
+>more than one instruction.  In such a case, use `&' for each output
+>operand that may not overlap an input.  *Note Modifiers::.
+
+Thank you very much.  That seems to have solved my problem.
+
+Corrin Meyer
+
+
+
+From jaysenroper at livewire-gaming.com  Wed Aug 20 10:59:44 2008
+From: jaysenroper at livewire-gaming.com (Jaysen Roper)
+Date: Wed, 20 Aug 2008 11:59:44 +0100
+Subject: dbg sprite configuration problems
+Message-ID: <000c01c902b3$dab953b0$902bfb10$@com>
+
+Hi folks,
+
+ 
+
+I have a problem with my dbg sprite.
+
+ 
+
+Its trying to fetch a memory area that i haven't defined, and i dont know
+why.
+
+ 
+
+this is my memory map from the linker...
+
+ 
+
+Memory Configuration
+
+ 
+
+Name             Origin             Length             Attributes
+
+bootflash        0x00000000         0x00080000
+
+bootldr          0x10000000         0x00000400
+
+keepram          0x10000400         0x00010000
+
+ram              0x10010400         0x0002fc00
+
+fpga             0x20000000         0x10000000
+
+vidram           0x30000000         0x10000000
+
+stacka           0x50000000         0x00001f00
+
+fram             0x50001f00         0x00000100
+
+rom              0x60000000         0x00200000
+
+*default*        0x00000000         0xffffffff
+
+ 
+
+the only assignments into "stacka" are ...
+
+      .stack :
+
+      {
+
+            stack_start = .;
+
+            . = . + 0x00001e00;
+
+            stack_end   = .;
+
+      } > stacka
+
+ 
+
+and the sprite config has these sections defined...
+
+ 
+
+    <memory-device address="0x50000000" size="0x00001f00" type="ram">
+
+      <description>
+
+        StackA
+
+      </description>
+
+    </memory-device>
+
+    <memory-device address="0x50001f00" size="0x00000100" type="ram">
+
+      <description>
+
+        FRAM
+
+      </description>
+
+ 
+
+ 
+
+ 
+
+this is my first time using anything other than a serial link, does anyone
+have any sugestions as to what ive done wrong??
+
+ 
+
+ 
+
+TIA
+
+Jayse
+
+--------------------------------------------------------------------------
+
+ 
+
+target remote | m68k-elf-sprite -v pe://ParallelPortCable pluto6
+
+m68k-elf-sprite: Target reset
+
+m68k-elf-sprite: CodeSourcery ColdFire Debug Sprite (Sourcery G++ Lite
+4.2-125)
+
+m68k-elf-sprite: Loaded P&E library 'UNIT_CFZ.DLL'
+
+m68k-elf-sprite: Using P&E DLL version: ColdFire Interface Libraries Version
+3.24 (http://www.pemicro.com)
+
+m68k-elf-sprite: 1 ParallelPortCable devices found
+
+m68k-elf-sprite: Opening P&E ParallelPortCable port 1 (LPT1 : Parallel Port
+1 (Address $0378))
+
+m68k-elf-sprite: Setting connection speed to -1
+
+m68k-elf-sprite: Doing I/O to stdin/stdout
+
+m68k-elf-sprite: Firmware version 0
+
+m68k-elf-sprite: Remote device ready
+
+m68k-elf-sprite: Device has Rev-A debug unit
+
+m68k-elf-sprite: Init write-register 0xc0f:32=0xf0000001
+
+m68k-elf-sprite: Init write-memory 0xf0000064:16=0x0
+
+m68k-elf-sprite: Init write-memory 0xf0000068:32=0xf0000
+
+m68k-elf-sprite: Init write-memory 0xf000006e:16=0x295f
+
+m68k-elf-sprite: Init write-memory 0xf0000070:16=0x1000
+
+m68k-elf-sprite: Init write-memory 0xf0000074:32=0xfff0000
+
+m68k-elf-sprite: Init write-memory 0xf000007a:16=0xdf
+
+m68k-elf-sprite: Init write-memory 0xf000007c:16=0x2000
+
+m68k-elf-sprite: Init write-memory 0xf0000080:32=0xfff0000
+
+m68k-elf-sprite: Init write-memory 0xf0000086:16=0x5f
+
+m68k-elf-sprite: Init write-memory 0xf0000088:16=0x3000
+
+m68k-elf-sprite: Init write-memory 0xf000008c:32=0xfff0000
+
+m68k-elf-sprite: Init write-memory 0xf0000092:16=0x1f
+
+m68k-elf-sprite: Init write-memory 0xf00000c6:16=0x2d4c
+
+m68k-elf-sprite: Init write-memory 0xf00000ca:16=0xfffc
+
+m68k-elf-sprite: Init write-memory 0xf0000046:16=0xff
+
+m68k-elf-sprite: Init write-memory 0xf000004a:16=0x566b
+
+m68k-elf-sprite: Init write-memory 0xf000004c:16=0x6000
+
+m68k-elf-sprite: Init write-memory 0xf0000050:32=0x1e0000
+
+m68k-elf-sprite: Init write-memory 0xf0000057:8=0x93
+
+m68k-elf-sprite: Init write-memory 0xf0000058:16=0x7000
+
+m68k-elf-sprite: Init write-memory 0xf000005c:32=0x1e0000
+
+m68k-elf-sprite: Init write-memory 0xf0000063:8=0x13
+
+m68k-elf-sprite: Init write-register 0xc04:32=0x50000000
+
+m68k-elf-sprite: Memory [0x0,+0x7ffff) ram
+
+m68k-elf-sprite: Memory [0x10000400,+0x10000) ram
+
+m68k-elf-sprite: Memory [0x10010400,+0x2fc00) ram
+
+m68k-elf-sprite: Memory [0x50000000,+0x1f00) ram
+
+m68k-elf-sprite: Memory [0x50001f00,+0x100) ram
+
+m68k-elf-sprite: Memory [0x60000000,+0x1fffff) ram
+
+m68k-elf-sprite: Target reset
+
+m68k-elf-sprite: Got packet: 'qSupported'
+
+m68k-elf-sprite: Sent response:
+'PacketSize=1f40;qXfer:memory-map:read+;qXfer:features:read+;qXfer:features:
+read+'
+
+m68k-elf-sprite: Got packet: 'qXfer:features:read:target.xml:0,fff'
+
+m68k-elf-sprite: Sent response: 'l<?xml version="1.0"?><!DOCTYPE target
+SYSTEM "gdb-target.dtd"><target><xi:include href="cf-core.xml"/></target>'
+
+m68k-elf-sprite: Got packet: 'qXfer:features:read:cf-core.xml:0,fff'
+
+m68k-elf-sprite: Sent response: 'l<?xml version="1.0"?>
+
+<!DOCTYPE feature SYSTEM "gdb-target.dtd">
+
+<feature name="org.gnu.gdb.coldfire.core">
+
+  <reg name="d0" bitsize="32"/>
+
+  <reg name="d1" bitsize="32"/>
+
+  <reg name="d2" bitsize="32"/>
+
+  <reg name="d3" bitsize="32"/>
+
+  <reg name="d4" bitsize="32"/>
+
+  <reg name="d5" bitsize="32"/>
+
+  <reg name="d6" bitsize="32"/>
+
+  <reg name="d7" bitsize="32"/>
+
+  <reg name="a0" bitsize="32" type="data_ptr"/>
+
+  <reg name="a1" bitsize="32" type="data_ptr"/>
+
+  <reg name="a2" bitsize="32" type="data_ptr"/>
+
+  <reg name="a3" bitsize="32" type="data_ptr"/>
+
+  <reg name="a4" bitsize="32" type="data_ptr"/>
+
+  <reg name="a5" bitsize="32" type="data_ptr"/>
+
+  <reg name="fp" bitsize="32" type="data_ptr"/>
+
+  <reg name="sp" bitsize="32" type="data_ptr"/>
+
+ 
+
+  <reg name="ps" bitsize="32"/>
+
+  <reg name="pc" bitsize="32" type="code_ptr"/>
+
+ 
+
+</feature>
+
+'
+
+m68k-elf-sprite: Got packet: '?'
+
+m68k-elf-sprite: Sent response: 'S00'
+
+m68k-elf-sprite: Got packet: 'Hc-1'
+
+m68k-elf-sprite: Sent response: ''
+
+m68k-elf-sprite: Got packet: 'qC'
+
+m68k-elf-sprite: Sent response: 'unset'
+
+m68k-elf-sprite: Got packet: 'qOff0x00000000 in ?? ()
+
+sets'
+
+m68k-elf-sprite: Sent response: ''
+
+m68k-elf-sprite: Got packet: 'Hg0'
+
+m68k-elf-sprite: Sent response: ''
+
+m68k-elf-sprite: Got packet: 'g'
+
+m68k-elf-sprite: Sent response:
+'ef7fffffe7effdfffefffefeffdffffffdefff7ffffffffdfffffffffffdffbfffdffbfbfff
+fffffffffffeeffffffffdcffffee7ffd7f7ff7fffffffbfffffb72fc271700000000'
+
+m68k-elf-sprite: Got packet: 'qSymbol::'
+
+m68k-elf-sprite: Sent response: ''
+
+set $sp = &stack_end
+
+m68k-elf-sprite: Got packet: 'Pf=50001e00'
+
+m68k-elf-sprite: Write register 15 = 0x50001e00
+
+m68k-elf-sprite: Sent response: 'OK'
+
+m68k-elf-sprite: Got packet: 'g'
+
+m68k-elf-sprite: Sent response:
+'ef7fffffe7effdfffefffefeffdffffffdefff7ffffffffdfffffffffffdffbfffdffbfbfff
+fffffffffffeeffffffffdcffffee7ffd7f7ff7ffffff50001e0072fc271700000000'
+
+m68k-elf-sprite: Got packet: 'qXfer:memory-map:read::0,fff'
+
+m68k-elf-sprite: Sent response: 'l<memory-map>
+
+  <memory start="0x0" length="0x7ffff" type="ram"/>
+
+  <memory start="0x10000400" length="0x10000" type="ram"/>
+
+  <memory start="0x10010400" length="0x2fc00" type="ram"/>
+
+  <memory start="0x50000000" length="0x1f00" type="ram"/>
+
+  <memory start="0x50001f00" length="0x100" type="ram"/>
+
+  <memory start="0x60000000" length="0x1fffff" type="ram"/>
+
+</memory-map>
+
+'
+
+m68k-elf-sprite: Got packet: 'm50001e00,4'
+
+m68k-elf-sprite: Sent response: 'ffffffff'
+
+m68k-elf-sprite: Got packet: 'm50001e04,4'
+
+m68k-elf-sprite: Sent response: 'ffffffff'
+
+m68k-elf-sprite: Got packet: 'm50001e08,4'
+
+m68k-elf-sprite: Sent response: 'ffffffff'
+
+m68k-elf-sprite: Got packet: 'm50001e0c,4'
+
+m68k-elf-sprite: Sent response: 'ffffffff'
+
+m68k-elf-sprite: Got packet: 'm50001e10,4'
+
+m68k-elf-sprite: Sent response: 'ffffffff'
+
+-------------------------------------------
+
+continues like this.....until
+
+-------------------------------------------
+
+m68k-elf-sprite: Got packet: 'm50001ff4,4'
+
+m68k-elf-sprite: Sent response: 'ffffffff'
+
+m68k-elf-sprite: Got packet: 'm50001ff8,4'
+
+m68k-elf-sprite: Sent response: 'ffffffff'
+
+m68k-elf-sprite: Got packet: 'm50001ffc,4'
+
+m68k-elf-sprite: Sent response: 'ffffffff'
+
+Cannot access memory at address 0x50002000 <<<<<<<<<<<<<< HERES MY ERROR
+
+load demo.elf
+
+Loading section .vectors, size 0x400 lma 0x60000000
+
+Loading section .text, size 0x1d8ec lma 0x60000400
+
+Loading section .data, size 0xc34 lma 0x6001dcec
+
+Loading section .rodata, size 0x360d lma 0x6001e920
+
+Loading section .eh_frame, size 0x6c lma 0x60021f30
+
+Start address 0x60000400, load size 139161
+
+m68k-elf-sprite: Got packet: 'P11=60000400'
+
+m68k-elf-sprite: Write register 17 = 0x60000400
+
+m68k-elf-sprite: Sent response: 'OK'
+
+Transfer rate: 9 KB/sec, 6626 bytes/write.
+
+symbol-file demo.elf
+
+set $pc = Game
+
+m68k-elf-sprite: Got packet: 'P11=60000408'
+
+m68k-elf-sprite: Write register 17 = 0x60000408
+
+m68k-elf-sprite: Sent response: 'OK'
+
+m68k-elf-sprite: Got packet: 'g'
+
+m68k-elf-sprite: Sent response:
+'ef7fffffe7effdfffefffefeffdffffffdefff7ffffffffdfffffffffffdffbfffdffbfbfff
+fffffffffffeeffffffffdcffffee7ffd7f7ff7ffffff50001e0072fc271760000408'
+
+m68k-elf-sprite: Got packet: 'm50001e00,4'
+
+m68k-elf-sprite: Sent response: 'ffffffff'
+
+stepi
+
+m68k-elf-sprite: Got packet: 'vCont?'
+
+m68k-elf-sprite: Sent response: ''
+
+m68k-elf-sprite: Got packet: 'Hc0'
+
+m68k-elf-sprite: Sent response: ''
+
+m68k-elf-sprite: Got packet: 's'
+
+m68k-elf-sprite: Step at 0x0
+
+m68k-elf-sprite: CSR = 0x01000420, FOF=0 TRG=0 HALT=0 BKPT=1
+
+m68k-elf-sprite: Sent response: 'T0511:6000040c;f:50001dfc;e:50001dfc;'
+
+m68k-elf-sprite: Got packet: 'm60000408,2'
+
+m68k-elf-sprite: Sent response: '4e56'
+
+m68k-elf-sprite: Got packet: 'm6000040a,2'
+
+69    
+
+m68k-elf-sprite: Sent response: '0000'
+
+m68k-elf-sprite: Got packet: 'm50001e00,4'
+
+m68k-elf-sprite: Sent response: 'ffffffff'
+
+m68k-elf-sprite: Got packet: 'm50001dfc,4'
+
+m68k-elf-sprite: Sent response: 'ffffffff'
+
+--------------------------------------------------------------------
+
+continues like this .......... until
+
+--------------------------------------------------------------------
+
+ 
+
+m68k-elf-sprite: Got packet: 'm50001ffc,4'
+
+m68k-elf-sprite: Sent response: 'ffffffff'
+
+m68k-elf-sprite: Got packet: 'm50001dfc,4'
+
+m68k-elf-sprite: Sent response: 'ffffffff'
+
+Cannot access memory at address 0x50002000 <<<<<<<<<<<<<< HERES MY ERROR
+
+Cannot access memory at address 0x50002000 <<<<<<<<<<<<<< HERES MY ERROR
+
+m68k-elf-sprite: Got packet: 'g'
+
+m68k-elf-sprite: Sent response:
+'ef7fffffe7effdfffefffefeffdffffffdefff7ffffffffdfffffffffffdffbfffdffbfbfff
+fffffffffffeeffffffffdcffffee7ffd7f7f50001dfc50001dfc42fc27176000040c'
+
+Cannot access memory at address 0x50002000 <<<<<<<<<<<<<< HERES MY ERROR
+
+Cannot access memory at address 0x50002000 <<<<<<<<<<<<<< HERES MY ERROR
+
+ 
+
+ 
+
+-------------- next part --------------
+An HTML attachment was scrubbed...
+URL: <http://sourcerytools.com/pipermail/coldfire-gnu-discuss/attachments/20080820/e82045be/attachment.html>
+
+From carlos at codesourcery.com  Wed Aug 20 13:51:03 2008
+From: carlos at codesourcery.com (Carlos O'Donell)
+Date: Wed, 20 Aug 2008 09:51:03 -0400
+Subject: [coldfire-gnu-discuss] dbg sprite configuration problems
+In-Reply-To: <000c01c902b3$dab953b0$902bfb10$@com>
+References: <000c01c902b3$dab953b0$902bfb10$@com>
+Message-ID: <48AC2147.5000604@codesourcery.com>
+
+Jaysen Roper wrote:
+> m68k-elf-sprite: Got packet: 'm50001ff4,4'
+> m68k-elf-sprite: Sent response: 'ffffffff'
+> m68k-elf-sprite: Got packet: 'm50001ff8,4'
+> m68k-elf-sprite: Sent response: 'ffffffff'
+> m68k-elf-sprite: Got packet: 'm50001ffc,4'
+> m68k-elf-sprite: Sent response: 'ffffffff'
+> Cannot access memory at address 0x50002000 <<<<<<<<<<<<<< HERES MY ERROR
+
+The address 0x50002000 is 1 byte outside of memory. If you use 
+m68k-elf-readelf -a to examine your binary, do you see anything 
+allocated to that address? If you compile your application with 
+-Wl,-Map,app.map does app.map contian anything allocated to that address?
+
+Cheers,
+Carlos.
+-- 
+Carlos O'Donell
+CodeSourcery
+carlos at codesourcery.com
+(650) 331-3385 x716
+
+
+From jaysenroper at livewire-gaming.com  Wed Aug 20 14:38:41 2008
+From: jaysenroper at livewire-gaming.com (Jaysen Roper)
+Date: Wed, 20 Aug 2008 15:38:41 +0100
+Subject: [coldfire-gnu-discuss] dbg sprite configuration problems
+In-Reply-To: <48AC2147.5000604@codesourcery.com>
+References: <000c01c902b3$dab953b0$902bfb10$@com> <48AC2147.5000604@codesourcery.com>
+Message-ID: <001b01c902d2$70febc20$52fc3460$@com>
+
+
+C:\Games\demo>m68k-elf-readelf -a demo.elf Yielded...
+
+SECTION HEADERS
+ [Nr] Name              Type            Addr     Off    Size   ES Flg Lk Inf
+Al
+ [11] .stack            NOBITS          50000000 002000 001e00 00  WA  0   0
+1
+
+PROGRAM HEADERS
+  Type           Offset   VirtAddr   PhysAddr   FileSiz MemSiz  Flg Align
+  LOAD           0x000000 0x10010000 0x10010000 0x000d4 0x00428 RW  0x2000
+  LOAD           0x0006d8 0x100146d8 0x10014400 0x00000 0x0c33c RW  0x2000
+  LOAD           0x002000 0x50000000 0x50000000 0x00000 0x01e00 RW  0x2000
+  LOAD           0x002000 0x60000000 0x60000000 0x1dcec 0x1dcec RWE 0x2000
+  LOAD           0x020428 0x10010428 0x6001dcec 0x042b0 0x042b0 RW  0x2000
+
+The only regions in the map file that start with 0x5000 are....
+
+Name             Origin             Length
+stacka           0x50000000         0x00001f00 
+fram             0x50001f00         0x00000100
+
+----------
+I assumed that fram length of 256 bytes would give it ranges 1f00-1fff
+inclusive.
+
+
+
+Jaysen
+
+
+
+
+
+-----Original Message-----
+From: Carlos O'Donell [mailto:carlos at codesourcery.com] 
+Sent: 20 August 2008 14:51
+To: Jaysen Roper
+Cc: coldfire-gnu-discuss at codesourcery.com
+Subject: Re: [coldfire-gnu-discuss] dbg sprite configuration problems
+
+Jaysen Roper wrote:
+> m68k-elf-sprite: Got packet: 'm50001ff4,4'
+> m68k-elf-sprite: Sent response: 'ffffffff'
+> m68k-elf-sprite: Got packet: 'm50001ff8,4'
+> m68k-elf-sprite: Sent response: 'ffffffff'
+> m68k-elf-sprite: Got packet: 'm50001ffc,4'
+> m68k-elf-sprite: Sent response: 'ffffffff'
+> Cannot access memory at address 0x50002000 <<<<<<<<<<<<<< HERES MY ERROR
+
+The address 0x50002000 is 1 byte outside of memory. If you use 
+m68k-elf-readelf -a to examine your binary, do you see anything 
+allocated to that address? If you compile your application with 
+-Wl,-Map,app.map does app.map contian anything allocated to that address?
+
+Cheers,
+Carlos.
+-- 
+Carlos O'Donell
+CodeSourcery
+carlos at codesourcery.com
+(650) 331-3385 x716
+
+
+
+
+From nathan at codesourcery.com  Wed Aug 20 14:42:16 2008
+From: nathan at codesourcery.com (Nathan Sidwell)
+Date: Wed, 20 Aug 2008 15:42:16 +0100
+Subject: [coldfire-gnu-discuss] dbg sprite configuration problems
+In-Reply-To: <001b01c902d2$70febc20$52fc3460$@com>
+References: <000c01c902b3$dab953b0$902bfb10$@com> <48AC2147.5000604@codesourcery.com> <001b01c902d2$70febc20$52fc3460$@com>
+Message-ID: <48AC2D48.4080802@codesourcery.com>
+
+Jaysen Roper wrote:
+
+> Jaysen Roper wrote:
+>> m68k-elf-sprite: Got packet: 'm50001ff4,4'
+>> m68k-elf-sprite: Sent response: 'ffffffff'
+>> m68k-elf-sprite: Got packet: 'm50001ff8,4'
+>> m68k-elf-sprite: Sent response: 'ffffffff'
+>> m68k-elf-sprite: Got packet: 'm50001ffc,4'
+>> m68k-elf-sprite: Sent response: 'ffffffff'
+>> Cannot access memory at address 0x50002000 <<<<<<<<<<<<<< HERES MY ERROR
+
+Is this actually causing the debug session to fail?
+
+I think what's happening is that gdb is trying to determine the initial program 
+state (which is somewhat random), and here it's unwinding a stack that looks to 
+be continuing for ever.  When it reaches the end of memory, gdb gives that 
+message and stops unwinding.
+
+
+nathan
+
+-- 
+Nathan Sidwell    ::   http://www.codesourcery.com   ::         CodeSourcery
+
+
+
+From jaysenroper at livewire-gaming.com  Wed Aug 20 15:33:09 2008
+From: jaysenroper at livewire-gaming.com (Jaysen Roper)
+Date: Wed, 20 Aug 2008 16:33:09 +0100
+Subject: [coldfire-gnu-discuss] dbg sprite configuration problems
+In-Reply-To: <48AC2D48.4080802@codesourcery.com>
+References: <000c01c902b3$dab953b0$902bfb10$@com> <48AC2147.5000604@codesourcery.com> <001b01c902d2$70febc20$52fc3460$@com> <48AC2D48.4080802@codesourcery.com>
+Message-ID: <002201c902da$0cb51590$261f40b0$@com>
+
+>
+>Is this actually causing the debug session to fail?
+>
+
+No, at gdb command prompt I can continue debugging.
+
+But eclipse stops dead in its tracks and wont jump to source when I step or
+breakpoint and wont display registers or any other target info.
+
+>I think what's happening is that gdb is trying to determine the initial
+program 
+>state (which is somewhat random), and here it's unwinding a stack that
+looks to 
+>be continuing for ever.  When it reaches the end of memory, gdb gives that 
+>message and stops unwinding.
+
+I thought that too, until I looked a bit closer...
+The first location retrieved is x50001e00 and then it continues up towards
+the x50002000 boundary.
+
+However my stack resides at x50000000 to x50001e00 (in a block of memory
+that goes up to x50001f00)
+
+And this snip appears in the log before any errors are encountered...
+
+set $sp = &stack_end
+m68k-elf-sprite: Got packet: 'Pf=50001e00'
+m68k-elf-sprite: Write register 15 = 0x50001e00
+m68k-elf-sprite: Sent response: 'OK'
+
+-----------------
+Enabling verbose console in eclipse highlights the following. Which I
+presume are being sent to the target after I step.
+
+21-stack-info-depth
+Cannot access memory at address 0x50002000
+
+22-data-list-changed-registers
+Cannot access memory at address 0x50002000
+22^done,changed-registers=["0","1","2","3","4","5","6","7","8","9","10","11"
+,"12","13","14","15","16","17"]
+
+-------------------------
+And entering "where" into gdb results in the following. Its worth noting
+that Game() is my start address and was jumped to at startup.
+
+The "run commands" section in eclipse...
+
+set $sp = &stack_end
+set $pc = Game
+continue
+
+----------------------------------
+
+info mem
+Using memory regions provided by the target.
+Num Enb Low Addr   High Addr  Attrs 
+0   y  	0x00000000 0x00080000 rw nocache 
+1   y  	0x10000400 0x10010400 rw nocache 
+2   y  	0x10010400 0x10040000 rw nocache 
+3   y  	0x50000000 0x50001f00 rw nocache 
+4   y  	0x50001f00 0x50002000 rw nocache 
+5   y  	0x60000000 0x60200000 rw nocache 
+print/x $sp
+$1 = 0x50001dfc
+print/x $fp
+$2 = 0x50001dfc
+
+(gdb) where
+#0  Game () at game.c:69 <<<<<<<<this is my BP that I am sitting on.
+#1  0xffffffff in ?? ()
+#2  0xffffffff in ?? ()
+#3  0xffffffff in ?? ()
+#4  0xffffffff in ?? ()
+#5  0xffffffff in ?? ()
+#6  0xffffffff in ?? ()
+#7  0xffffffff in ?? ()
+#8  0xffffffff in ?? ()
+#9  0xffffffff in ?? ()
+#10 0xffffffff in ?? ()
+#11 0xffffffff in ?? ()
+#12 0xffffffff in ?? ()
+#13 0xffffffff in ?? ()
+#14 0xffffffff in ?? ()
+#15 0xffffffff in ?? ()
+#16 0xffffffff in ?? ()
+#17 0xffffffff in ?? ()
+#18 0xffffffff in ?? ()
+#19 0xffffffff in ?? ()
+#20 0xffffffff in ?? ()
+#21 0xffffffff in ?? ()
+#22 0xffffffff in ?? ()
+#23 0xffffffff in ?? ()
+#24 0xffffffff in ?? ()
+#25 0xffffffff in ?? ()
+#26 0xffffffff in ?? ()
+#27 0xffffffff in ?? ()
+#28 0xffffffff in ?? ()
+#29 0xffffffff in ?? ()
+#30 0xffffffff in ?? ()
+#31 0xffffffff in ?? ()
+#32 0xffffffff in ?? ()
+#33 0xffffffff in ?? ()
+#34 0xffffffff in ?? ()
+#35 0xffffffff in ?? ()
+#36 0xffffffff in ?? ()
+#37 0xffffffff in ?? ()
+#38 0xffffffff in ?? ()
+#39 0xffffffff in ?? ()
+#40 0xffffffff in ?? ()
+#41 0xffffffff in ?? ()
+#42 0xffffffff in ?? ()
+#43 0xffffffff in ?? ()
+#44 0xffffffff in ?? ()
+#45 0xffffffff in ?? ()
+#46 0xffffffff in ?? ()
+#47 0xffffffff in ?? ()
+#48 0xffffffff in ?? ()
+#49 0xffffffff in ?? ()
+#50 0xffffffff in ?? ()
+#51 0xffffffff in ?? ()
+#52 0xffffffff in ?? ()
+#53 0xffffffff in ?? ()
+#54 0xffffffff in ?? ()
+#55 0xffffffff in ?? ()
+#56 0xffffffff in ?? ()
+#57 0xffffffff in ?? ()
+#58 0xffffffff in ?? ()
+#59 0xffffffff in ?? ()
+#60 0xffffffff in ?? ()
+#61 0xffffffff in ?? ()
+#62 0xffffffff in ?? ()
+#63 0xffffffff in ?? ()
+#64 0xffffffff in ?? ()
+#65 0xffffffff in ?? ()
+#66 0xffffffff in ?? ()
+#67 0xffffffff in ?? ()
+#68 0xffffffff in ?? ()
+#69 0xffffffff in ?? ()
+#70 0xffffffff in ?? ()
+#71 0xffffffff in ?? ()
+#72 0xffffffff in ?? ()
+#73 0xffffffff in ?? ()
+#74 0xffffffff in ?? ()
+#75 0xffffffff in ?? ()
+#76 0xffffffff in ?? ()
+#77 0xffffffff in ?? ()
+#78 0xffffffff in ?? ()
+#79 0xffffffff in ?? ()
+#80 0xffffffff in ?? ()
+#81 0xffffffff in ?? ()
+#82 0xffffffff in ?? ()
+#83 0xffffffff in ?? ()
+#84 0xffffffff in ?? ()
+#85 0xffffffff in ?? ()
+#86 0xffffffff in ?? ()
+#87 0xffffffff in ?? ()
+#88 0xffffffff in ?? ()
+#89 0xffffffff in ?? ()
+#90 0xffffffff in ?? ()
+Cannot access memory at address 0x50002000
+#91 0xffffffff in ?? ()
+#92 0xffffffff in ?? ()
+#93 0xffffffff in ?? ()
+#94 0xffffffff in ?? ()
+#95 0xffffffff in ?? ()
+#96 0xffffffff in ?? ()
+#97 0xffffffff in ?? ()
+#98 0xffffffff in ?? ()
+#99 0xffffffff in ?? ()
+#100 0xffffffff in ?? ()
+#101 0xffffffff in ?? ()
+#102 0xffffffff in ?? ()
+#103 0xffffffff in ?? ()
+#104 0xffffffff in ?? ()
+#105 0xffffffff in ?? ()
+#106 0xffffffff in ?? ()
+#107 0xffffffff in ?? ()
+#108 0xffffffff in ?? ()
+#109 0xffffffff in ?? ()
+#110 0xffffffff in ?? ()
+#111 0xffffffff in ?? ()
+#112 0xffffffff in ?? ()
+#113 0xffffffff in ?? ()
+#114 0xffffffff in ?? ()
+#115 0xffffffff in ?? ()
+#116 0xffffffff in ?? ()
+#117 0xffffffff in ?? ()
+#118 0xffffffff in ?? ()
+#119 0xffffffff in ?? ()
+#120 0xffffffff in ?? ()
+#121 0xffffffff in ?? ()
+#122 0xffffffff in ?? ()
+#123 0xffffffff in ?? ()
+#124 0xffffffff in ?? ()
+#125 0xffffffff in ?? ()
+#126 0xffffffff in ?? ()
+#127 0xffffffff in ?? ()
+#128 0xffffffff in ?? ()
+
+
+
+
+From nathan at codesourcery.com  Wed Aug 20 16:10:16 2008
+From: nathan at codesourcery.com (Nathan Sidwell)
+Date: Wed, 20 Aug 2008 17:10:16 +0100
+Subject: [coldfire-gnu-discuss] dbg sprite configuration problems
+In-Reply-To: <002201c902da$0cb51590$261f40b0$@com>
+References: <000c01c902b3$dab953b0$902bfb10$@com> <48AC2147.5000604@codesourcery.com> <001b01c902d2$70febc20$52fc3460$@com> <48AC2D48.4080802@codesourcery.com> <002201c902da$0cb51590$261f40b0$@com>
+Message-ID: <48AC41E8.2030106@codesourcery.com>
+
+Jaysen Roper wrote:
+>> Is this actually causing the debug session to fail?
+
+> The "run commands" section in eclipse...
+> 
+> set $sp = &stack_end
+> set $pc = Game
+> continue
+
+This is unlikely to be creating a correctly terminated stack.
+
+
+I'm guessing you're using your own initialization sequence.
+
+
+nathan
+
+-- 
+Nathan Sidwell    ::   http://www.codesourcery.com   ::         CodeSourcery
+
+
+
+From jaysenroper at livewire-gaming.com  Thu Aug 21 14:33:23 2008
+From: jaysenroper at livewire-gaming.com (Jaysen Roper)
+Date: Thu, 21 Aug 2008 15:33:23 +0100
+Subject: [coldfire-gnu-discuss] dbg sprite configuration problems
+In-Reply-To: <48AC41E8.2030106@codesourcery.com>
+References: <000c01c902b3$dab953b0$902bfb10$@com> <48AC2147.5000604@codesourcery.com> <001b01c902d2$70febc20$52fc3460$@com> <48AC2D48.4080802@codesourcery.com> <002201c902da$0cb51590$261f40b0$@com> <48AC41E8.2030106@codesourcery.com>
+Message-ID: <002a01c9039a$ddd41340$997c39c0$@com>
+
+Yes nathan, ?Set $pc = Game? skips all of the stack initialization so the debugger backtrace just runs off the top of the stack and keeps going.
+
+Ive found the proper entrypoint now, its called ENTRY funnily enough :o
+ 
+
+After downloading the app I examine vectors?
+
+print/x *0x60000004
+$1 = 0x6000c3d8
+
+print/x &ENTRY
+$3 = 0x6000c3d8
+
+(gdb) print/x &Game
+$2 = 0x60000408
+
+I set $pc = &ENTRY and start stepping, you can see what happens below. I think perhaps memory is being reconfigured different to the xml script that I give to the elf-sprite when i connect??
+
+As always, opinions and directions are greatly appreciated ?
+Jayse
+
+
+(gdb) disas
+Dump of assembler code for function ENTRY:
+0x6000c3d8 <ENTRY+0>:   movew #9984,%sr
+0x6000c3dc <ENTRY+4>:   movew #9984,%sr
+0x6000c3e0 <ENTRY+8>:   moveal 0x60000000 <vectors_start>,%sp
+
+Snipped loads of asm for clarity
+
+0x6000c51a <ENTRY+322>: clrl %d0
+0x6000c51c <ENTRY+324>: moveb %a1@(10),%d0
+0x6000c520 <ENTRY+328>: moveb %d0,0xf0000057
+0x6000c526 <ENTRY+334>: clrl %d0
+0x6000c528 <ENTRY+336>: movew %a1@(12),%d0
+0x6000c52c <ENTRY+340>: movew %d0,0xf0000058
+
+Snipped loads of stepi commands for clarity
+
+(gdb)si
+0x6000c51c in ENTRY ()
+(gdb)si
+0x6000c520 in ENTRY ()
+(gdb)si
+0x08080808 in ?? ()      <<<<<<<<<<<<<<<< OUCH, how did I land here?
+(gdb)
+
+
+-----Original Message-----
+From: Nathan Sidwell [mailto:nathan at codesourcery.com] 
+Sent: 20 August 2008 17:10
+To: Jaysen Roper
+Cc: coldfire-gnu-discuss at codesourcery.com
+Subject: Re: [coldfire-gnu-discuss] dbg sprite configuration problems
+
+Jaysen Roper wrote:
+>> Is this actually causing the debug session to fail?
+
+> The "run commands" section in eclipse...
+> 
+> set $sp = &stack_end
+> set $pc = Game
+> continue
+
+This is unlikely to be creating a correctly terminated stack.
+
+
+I'm guessing you're using your own initialization sequence.
+
+
+nathan
+
+-- 
+Nathan Sidwell    ::   http://www.codesourcery.com   ::         CodeSourcery
+
+
+
+
+
+From nathan at codesourcery.com  Fri Aug 22 08:42:09 2008
+From: nathan at codesourcery.com (Nathan Sidwell)
+Date: Fri, 22 Aug 2008 09:42:09 +0100
+Subject: [coldfire-gnu-discuss] dbg sprite configuration problems
+In-Reply-To: <002a01c9039a$ddd41340$997c39c0$@com>
+References: <000c01c902b3$dab953b0$902bfb10$@com> <48AC2147.5000604@codesourcery.com> <001b01c902d2$70febc20$52fc3460$@com> <48AC2D48.4080802@codesourcery.com> <002201c902da$0cb51590$261f40b0$@com> <48AC41E8.2030106@codesourcery.com> <002a01c9039a$ddd41340$997c39c0$@com>
+Message-ID: <48AE7BE1.5020702@codesourcery.com>
+
+Jaysen Roper wrote:
+> Yes nathan, ?Set $pc = Game? skips all of the stack initialization so the debugger backtrace just runs off the top of the stack and keeps going.
+> 
+> Ive found the proper entrypoint now, its called ENTRY funnily enough :o
+
+ From the name, it seems like you're using a startup sequence we did not provide.
+
+> (gdb) disas
+> Dump of assembler code for function ENTRY:
+> 0x6000c3d8 <ENTRY+0>:   movew #9984,%sr
+> 0x6000c3dc <ENTRY+4>:   movew #9984,%sr
+> 0x6000c3e0 <ENTRY+8>:   moveal 0x60000000 <vectors_start>,%sp
+
+this code looks bogus.
+
+nathan
+
+-- 
+Nathan Sidwell    ::   http://www.codesourcery.com   ::         CodeSourcery
+
+
+
+From TDannemiller at peco2.com  Thu Aug 21 21:14:47 2008
+From: TDannemiller at peco2.com (TDannemiller at peco2.com)
+Date: Thu, 21 Aug 2008 17:14:47 -0400
+Subject: Writing to integrated peripheral registers?
+Message-ID: <OF476B02F8.CAEAF3B1-ON852574AC.00746730-852574AC.0074ED40@peco2.com>
+
+Hi,
+
+I attempted to access the integrated peripheral registers, but get a 
+"Cannot access memory" error. So I modified my board file to define 
+the integrated peripheral register area as memory. I can now read the 
+registers, but because these registers are peripheral registers
+that may not read back the same value as written, I sometimes get the 
+following error when trying to write to a register:
+
+m68k-elf-sprite: Memory write verification failed; config file error?
+Cannot access memory at address xxxxxxx
+
+Is there an attribute I can assign in the board file to this area (or 
+another way) that would prevent it from trying to verify after a write?
+
+Thanks,
+Tom
+-------------- next part --------------
+An HTML attachment was scrubbed...
+URL: <http://sourcerytools.com/pipermail/coldfire-gnu-discuss/attachments/20080821/ac82f657/attachment.html>
+
+From nathan at codesourcery.com  Tue Aug 26 08:29:51 2008
+From: nathan at codesourcery.com (Nathan Sidwell)
+Date: Tue, 26 Aug 2008 09:29:51 +0100
+Subject: [coldfire-gnu-discuss] Writing to integrated peripheral registers?
+In-Reply-To: <OF476B02F8.CAEAF3B1-ON852574AC.00746730-852574AC.0074ED40@peco2.com>
+References: <OF476B02F8.CAEAF3B1-ON852574AC.00746730-852574AC.0074ED40@peco2.com>
+Message-ID: <48B3BEFF.1080601@codesourcery.com>
+
+TDannemiller at peco2.com wrote:
+> 
+> Hi,
+> 
+> I attempted to access the integrated peripheral registers, but get a
+> "Cannot access memory" error. So I modified my board file to define
+> the integrated peripheral register area as memory. I can now read the
+> registers, but because these registers are peripheral registers
+> that may not read back the same value as written, I sometimes get the
+> following error when trying to write to a register:
+> 
+> m68k-elf-sprite: Memory write verification failed; config file error?
+> Cannot access memory at address xxxxxxx
+> 
+> Is there an attribute I can assign in the board file to this area (or
+> another way) that would prevent it from trying to verify after a write?
+
+The debug sprite verifies the first memory write after connection.  So you can 
+work around this by writing to RAM first.
+
+nathan
+-- 
+Nathan Sidwell    ::   http://www.codesourcery.com   ::         CodeSourcery
+
+
+

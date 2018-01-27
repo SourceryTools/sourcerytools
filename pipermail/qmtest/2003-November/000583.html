@@ -1,0 +1,324 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> PATCH: Provide more control over statistics formatting
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:qmtest%40codesourcery.com?Subject=Re%3A%20PATCH%3A%20Provide%20more%20control%20over%20statistics%20formatting&In-Reply-To=%3C200311102032.hAAKWS3r009161%40sirius.codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000587.html">
+   <LINK REL="Next"  HREF="000584.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>PATCH: Provide more control over statistics formatting</H1>
+    <B>Mark Mitchell</B> 
+    <A HREF="mailto:qmtest%40codesourcery.com?Subject=Re%3A%20PATCH%3A%20Provide%20more%20control%20over%20statistics%20formatting&In-Reply-To=%3C200311102032.hAAKWS3r009161%40sirius.codesourcery.com%3E"
+       TITLE="PATCH: Provide more control over statistics formatting">mark at codesourcery.com
+       </A><BR>
+    <I>Mon Nov 10 20:32:28 UTC 2003</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000587.html">[qmtest] Access to CVS version of QMtest?
+</A></li>
+        <LI>Next message: <A HREF="000584.html">Basic suites question
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#583">[ date ]</a>
+              <a href="thread.html#583">[ thread ]</a>
+              <a href="subject.html#583">[ subject ]</a>
+              <a href="author.html#583">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>
+This patch makes it possible for users to specify a custom format for
+statistics by providing an argument to TextResultStream.
+
+For example:
+
+  qmtest run -f none --result-stream &quot;text_result_stream.TextResultStream(format = 'stats', statistics_format='%(PASS)d\t%(FAIL)d\t%(ERROR)d\t%(UNEXPECTED)d\n')&quot;
+
+yielded this output:
+
+  41	0	0	0
+
+with one particular test database.
+
+--
+Mark Mitchell
+CodeSourcery, LLC
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">mark at codesourcery.com</A>
+
+2003-11-10  Mark Mitchell  &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">mark at codesourcery.com</A>&gt;
+
+	* qm/test/classes/text_result_stream.py
+	(TextResultStream.arguments): Add statistics_format.
+	(TextResultStream._DisplayArguments): Do not write out the
+	heading here.  Honor the statistics_format, if provided.
+	(TextResultStream._SummarizeTestStats): Use _FormatStatistics.
+	(TextResultStream._SummarizeRelativeTestStats): Likewise.
+	(TextResultStream._FormatStatistics): New function.
+
+Index: qm/test/classes/text_result_stream.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/classes/text_result_stream.py,v
+retrieving revision 1.5
+diff -c -5 -p -r1.5 text_result_stream.py
+*** qm/test/classes/text_result_stream.py	28 Sep 2003 21:08:02 -0000	1.5
+--- qm/test/classes/text_result_stream.py	10 Nov 2003 20:28:39 -0000
+*************** class TextResultStream(FileResultStream)
+*** 81,91 ****
+              The &quot;full&quot; format is like &quot;brief&quot; except that all
+              annotations are shown for tests as they are run.
+  
+              In the &quot;stats&quot; format only the summary statistics are
+              displayed.&quot;&quot;&quot;,
+!             enumerals = [&quot;brief&quot;, &quot;batch&quot;, &quot;full&quot;, &quot;stats&quot;])
+          ]
+      
+      def __init__(self, arguments):
+          &quot;&quot;&quot;Construct a 'TextResultStream'.
+  
+--- 81,125 ----
+              The &quot;full&quot; format is like &quot;brief&quot; except that all
+              annotations are shown for tests as they are run.
+  
+              In the &quot;stats&quot; format only the summary statistics are
+              displayed.&quot;&quot;&quot;,
+!             enumerals = [&quot;brief&quot;, &quot;batch&quot;, &quot;full&quot;, &quot;stats&quot;]),
+!         qm.fields.TextField(
+!             name = &quot;statistics_format&quot;,
+!             title = &quot;Statistics Format&quot;,
+!             verbatim = &quot;true&quot;,
+!             multiline = &quot;true&quot;,
+!             description = &quot;&quot;&quot;The format string used to display statistics.
+! 
+!             The format string is an ordinary Python format string.
+!             The following fill-ins are available:
+! 
+!             'TOTAL' -- The total number of tests.
+! 
+!             'EXPECTED' -- The total number of tests that had an
+!             expected outcome.
+! 
+!             'EXPECTED_PERCENT' -- The percentage of tests with
+!             expected outcomes.
+! 
+!             'UNEXPECTED' -- The total number of tests that had an 
+!             unexpected outcome.
+! 
+!             For each outcome 'O', there are additional fill-ins:
+! 
+!             'O' -- The total number of tests with outcome 'O'.
+!             
+!             'O_PERCENT' -- The percentage of tests with outcome 'O' to
+!             total tests, as a floating point value.
+! 
+!             'O_UNEXPECTED' -- The total number of tests with an
+!             unexpected outcome of 'O'.
+! 
+!             'O_UNEXEPECTED_PERCENT' -- The ratio of tests without an
+!             unexpected outcome of 'O' to total tests, as a floating
+!             point value.&quot;&quot;&quot;),
+          ]
+      
+      def __init__(self, arguments):
+          &quot;&quot;&quot;Construct a 'TextResultStream'.
+  
+*************** class TextResultStream(FileResultStream)
+*** 207,273 ****
+      def _DisplayStatistics(self):
+          &quot;&quot;&quot;Write out statistical information about the results.
+  
+          Write out statistical information about the results.&quot;&quot;&quot;
+  
+-         self.file.write(&quot;\n&quot;)
+-         self._DisplayHeading(&quot;STATISTICS&quot;)
+- 
+          # Summarize the test statistics.
+!         if self.expected_outcomes:
+              self._SummarizeRelativeTestStats()
+          else:
+              self._SummarizeTestStats()
+  
+  
+      def _SummarizeTestStats(self):
+          &quot;&quot;&quot;Generate statistics about the overall results.&quot;&quot;&quot;
+  
+!         num_tests = self.__num_tests
+!         self.file.write(&quot;  %6d        tests total\n&quot; % num_tests)
+  
+!         # If there are no tests, there is no need to go into detail.
+!         if num_tests == 0:
+!             return
+  
+!         for outcome in Result.outcomes:
+!             count = self.__outcome_counts[outcome]
+!             if count &gt; 0:
+!                 self.file.write(&quot;  %6d (%3.0f%%) tests %s\n&quot;
+!                                 % (count, (100. * count) / num_tests,
+!                                    outcome))
+!         self.file.write(&quot;\n&quot;)
+  
+          
+      def _SummarizeRelativeTestStats(self):
+          &quot;&quot;&quot;Generate statistics showing results relative to expectations.&quot;&quot;&quot;
+  
+!         # Indicate the total number of tests.
+!         num_tests = self.__num_tests
+!         self.file.write(&quot;  %6d        tests total\n&quot; % num_tests)
+  
+!         # If there are no tests, there is no need to go into detail.
+!         if num_tests == 0:
+!             return
+  
+!         # Report the number that produced expected outcomes.
+!         unexpected_count = len(self.__unexpected_test_results)
+!         expected_count = num_tests - unexpected_count
+!         self.file.write(&quot;  %6d (%3.0f%%) tests as expected\n&quot;
+!                         % (expected_count,
+!                            (100. * expected_count) / num_tests))
+!         # For results that produced unexpected outcomes, break them down by
+!         # actual outcome.
+!         for outcome in Result.outcomes:
+!             count = self.__unexpected_outcome_counts[outcome]
+!             if count &gt; 0:
+!                 self.file.write(&quot;  %6d (%3.0f%%) tests unexpected %s\n&quot;
+!                                 % (count, (100. * count) / num_tests,
+!                                    outcome))
+!         self.file.write(&quot;\n&quot;)
+  
+  
+      def _SummarizeResults(self, results):
+          &quot;&quot;&quot;Summarize each of the results.
+  
+          'results' -- The sequence of 'Result' objects to summarize.&quot;&quot;&quot;
+  
+--- 241,338 ----
+      def _DisplayStatistics(self):
+          &quot;&quot;&quot;Write out statistical information about the results.
+  
+          Write out statistical information about the results.&quot;&quot;&quot;
+  
+          # Summarize the test statistics.
+!         if self.statistics_format:
+!             self._FormatStatistics(self.statistics_format)
+!         elif self.expected_outcomes:
+              self._SummarizeRelativeTestStats()
+          else:
+              self._SummarizeTestStats()
+  
+  
+      def _SummarizeTestStats(self):
+          &quot;&quot;&quot;Generate statistics about the overall results.&quot;&quot;&quot;
+  
+!         # Print a header.
+!         self.file.write(&quot;\n&quot;)
+!         self._DisplayHeading(&quot;STATISTICS&quot;)
+  
+!         # Build the format string.  If there are no tests we do not
+!         # provide any output.
+!         if self.__num_tests != 0:
+!             # Indicate the total number of tests.
+!             format = &quot;  %(TOTAL)6d        tests total\n&quot;
+!             # Include a line for each outcome.
+!             for o in Result.outcomes:
+!                 if self.__outcome_counts[o] != 0:
+!                     format += (&quot;  %%(%s)6d (%%(%s)3.0f%%%%) tests %s\n&quot;
+!                                % (o, o + &quot;_PERCENT&quot;, o))
+!             format += &quot;\n&quot;
+!         else:
+!             format = &quot;&quot;
+  
+!         self._FormatStatistics(format)
+  
+          
+      def _SummarizeRelativeTestStats(self):
+          &quot;&quot;&quot;Generate statistics showing results relative to expectations.&quot;&quot;&quot;
+  
+!         # Print a header.
+!         self.file.write(&quot;\n&quot;)
+!         self._DisplayHeading(&quot;STATISTICS&quot;)
+  
+!         # Build the format string.  If there are no tests we do not
+!         # provide any output.
+!         if self.__num_tests != 0:
+!             # Indicate the total number of tests.
+!             format = (&quot;  %(EXPECTED)6d (%(EXPECTED_PERCENT)3.0f%%) &quot;
+!                       &quot;tests as expected\n&quot;)
+!             # Include a line for each outcome.
+!             for o in Result.outcomes:
+!                 if self.__unexpected_outcome_counts[o] != 0:
+!                     format += (&quot;  %%(%s)6d (%%(%s)3.0f%%%%) tests &quot;
+!                                &quot;unexpected %s\n&quot;
+!                                % (o + &quot;_UNEXPECTED&quot;,
+!                                   o + &quot;_UNEXPECTED_PERCENT&quot;,
+!                                   o))
+!             format += &quot;\n&quot;
+!         else:
+!             format = &quot;&quot;
+  
+!         self._FormatStatistics(format)
+  
+  
++     def _FormatStatistics(self, format):
++         &quot;&quot;&quot;Output statistical information.
++ 
++         'format' -- A format string with (optional) fill-ins
++         corresponding to statistical information.
++ 
++         The formatted string is written to the result file.&quot;&quot;&quot;
++ 
++         # Build the dictionary of format fill-ins.
++         num_tests = self.__num_tests
++         unexpected = len(self.__unexpected_test_results)
++         expected = num_tests - unexpected
++         values = { &quot;TOTAL&quot; : num_tests,
++                    &quot;EXPECTED&quot; : expected,
++                    &quot;EXPECTED_PERCENT&quot; : (100. * expected) / num_tests,
++                    &quot;UNEXPECTED&quot; : unexpected }
++         for o in Result.outcomes:
++             count = self.__outcome_counts[o]
++             values[o] = count
++             values[o + &quot;_PERCENT&quot;] = (100. * count) / num_tests
++             count = self.__unexpected_outcome_counts[o]
++             values[o + &quot;_UNEXPECTED&quot;] = count
++             values[o + &quot;_UNEXPECTED_PERCENT&quot;] = (100. * count) / num_tests
++ 
++         self.file.write(format % values)
++ 
++         
+      def _SummarizeResults(self, results):
+          &quot;&quot;&quot;Summarize each of the results.
+  
+          'results' -- The sequence of 'Result' objects to summarize.&quot;&quot;&quot;
+  
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000587.html">[qmtest] Access to CVS version of QMtest?
+</A></li>
+	<LI>Next message: <A HREF="000584.html">Basic suites question
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#583">[ date ]</a>
+              <a href="thread.html#583">[ thread ]</a>
+              <a href="subject.html#583">[ subject ]</a>
+              <a href="author.html#583">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">More information about the qmtest
+mailing list</a><br>
+</body></html>

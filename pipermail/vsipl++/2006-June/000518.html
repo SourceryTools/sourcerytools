@@ -1,0 +1,220 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [vsipl++] CFAR Benchmark cleanup
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20CFAR%20Benchmark%20cleanup&In-Reply-To=%3C449221AE.8090205%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000516.html">
+   <LINK REL="Next"  HREF="000523.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[vsipl++] CFAR Benchmark cleanup</H1>
+    <B>Jules Bergmann</B> 
+    <A HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20CFAR%20Benchmark%20cleanup&In-Reply-To=%3C449221AE.8090205%40codesourcery.com%3E"
+       TITLE="[vsipl++] CFAR Benchmark cleanup">jules at codesourcery.com
+       </A><BR>
+    <I>Fri Jun 16 03:12:46 UTC 2006</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000516.html">CFAR Benchmark cleanup
+</A></li>
+        <LI>Next message: <A HREF="000523.html">[vsipl++] CFAR Benchmark cleanup
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#518">[ date ]</a>
+              <a href="thread.html#518">[ thread ]</a>
+              <a href="subject.html#518">[ subject ]</a>
+              <a href="author.html#518">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Don McCoy wrote:
+&gt;<i> The attached patch reorganizes the CFAR benchmark.  It now resembles the 
+</I>&gt;<i> FIR Bank benchmark in that it has more than one algorithm for processing 
+</I>&gt;<i> the data sets.  They now both use a similar structure.
+</I>&gt;<i> 
+</I>&gt;<i> There are enough changes to make a fairly complex diff, so I'm also 
+</I>&gt;<i> including the source file which should be somewhat easier to read and 
+</I>&gt;<i> review.
+</I>&gt;<i> 
+</I>
+Don,
+
+This looks good.  I have one comment below, the temporary 'strip' in 
+ImplHybrid should be created outside of cfar_detect.  Once that is 
+fixed, please check it in.
+
+				thanks,
+				-- Jules
+
+&gt;<i> 
+</I>&gt;<i> template &lt;typename T&gt;
+</I>&gt;<i> struct t_cfar_base&lt;T, ImplHybrid&gt;
+</I>&gt;<i> {
+</I>&gt;<i>   char* what() { return &quot;t_cfar_sweep_range&lt;T, ImplHybrid&gt;&quot;; }
+</I>&gt;<i> 
+</I>&gt;<i>   template &lt;typename Block&gt;
+</I>&gt;<i>   void
+</I>&gt;<i>   cfar_detect(
+</I>&gt;<i>     Tensor&lt;T, Block&gt;    cube,
+</I>&gt;<i>     Tensor&lt;T, Block&gt; /* cpow */,
+</I>&gt;<i>     Matrix&lt;Index&lt;2&gt; &gt;   located,
+</I>&gt;<i>     Vector&lt;length_type&gt; count)
+</I>&gt;<i>   {
+</I>&gt;<i>     length_type const c = cfar_gates_;
+</I>&gt;<i>     length_type const g = guard_cells_;
+</I>&gt;<i>     length_type const beams = cube.size(0);
+</I>&gt;<i>     length_type const dbins = cube.size(1);
+</I>&gt;<i>     length_type const gates = cube.size(2);
+</I>&gt;<i> 
+</I>&gt;<i>     // Clear counts for targets found per gate.
+</I>&gt;<i>     count = 0;
+</I>&gt;<i> 
+</I>&gt;<i>     Vector&lt;v4sf&gt; strip(gates);
+</I>
+Oops, I left a surprise for you here!
+
+'strip' should be allocated outside of cfar_detect, similar to cpow.
+
+Unfortunately, passing an additional parameter breaks the interface 
+consistency with ImplSlice and ImplVector.
+
+
+Here's an idea:
+
+In t_cfar_base, create a typedef for the temporary view (cpow for 
+ImplSlice and ImplVector, slice for ImplHybrid), and a function to 
+initialize it.  operator() can use these to create the right temporary.
+
+I.e. for t_cfar_base&lt;T, ImplHybrid&gt; you might have:
+
+   typedef Vector&lt;v4sf&gt; temp_view;
+
+   temp_view create_temp_view(length_type /*beams*/,
+                              length_type /*dbins*/,
+                              length_type gates)
+   {
+     return temp_view(gates);
+   }
+
+
+
+
+
+&gt;<i> 
+</I>&gt;<i>   void operator()(length_type size, length_type loop, float&amp; time)
+</I>&gt;<i>   {
+</I>&gt;<i>     length_type beams = this-&gt;beams_;
+</I>&gt;<i>     length_type dbins = this-&gt;dbins_;
+</I>&gt;<i>     length_type gates = size;
+</I>&gt;<i> 
+</I>&gt;<i>     // The number of range gates must be sufficiently greater than the sum
+</I>&gt;<i>     // of CFAR gates and guard cells.  If not, the radar signal processing 
+</I>&gt;<i>     // parameters are flawed!
+</I>&gt;<i>     test_assert( 2 * (this-&gt;cfar_gates_ + this-&gt;guard_cells_) &lt; gates );
+</I>&gt;<i>     
+</I>&gt;<i>     // Create a &quot;root&quot; view for initialization.  Only the first processor
+</I>&gt;<i>     // will access the data.
+</I>&gt;<i>     root_view_type root(beams, dbins, gates);
+</I>&gt;<i>     initialize_cube(root);
+</I>&gt;<i> 
+</I>&gt;<i>     // Create a (possibly distributed) view for computation.  Also create a 
+</I>&gt;<i>     // temporary cube with an identical map to hold squared values.
+</I>&gt;<i> #if PARALLEL_CFAR
+</I>&gt;<i>     typedef Map&lt;Block_dist, Block_dist, Whole_dist&gt;  map_type;
+</I>&gt;<i>     typedef Dense&lt;3, T, OrderT, map_type&gt;            block_type;
+</I>&gt;<i>     typedef Tensor&lt;T, block_type&gt;                    view_type;
+</I>&gt;<i>     typedef typename view_type::local_type           local_type;
+</I>&gt;<i> 
+</I>&gt;<i>     processor_type np = num_processors();
+</I>&gt;<i>     map_type map = map_type(Block_dist(np), Block_dist(1), Whole_dist());
+</I>&gt;<i> 
+</I>&gt;<i>     view_type dist_cube(beams, dbins, gates, map);
+</I>&gt;<i>     view_type dist_cpow(beams, dbins, gates, map);
+</I>
+'temp' replaces cpow:
+
+	t_cfar_base&lt;...&gt;::temp_view temp(
+	   t_cfar_base&lt;...&gt;::create_temp_view(beams, dbins, gates));
+&gt;<i> 
+</I>&gt;<i>     dist_cube = root;
+</I>&gt;<i> 
+</I>&gt;<i>     local_type cube = dist_cube.local();
+</I>&gt;<i>     local_type cpow = dist_cpow.local();
+</I>&gt;<i> #else
+</I>&gt;<i>     typedef Dense&lt;3, T, OrderT&gt;     block_type;
+</I>&gt;<i>     typedef Tensor&lt;T, block_type&gt;   view_type;
+</I>&gt;<i>     typedef view_type local_type;
+</I>&gt;<i> 
+</I>&gt;<i>     view_type&amp; cube = root;
+</I>&gt;<i>     view_type cpow(beams, dbins, gates);
+</I>&gt;<i> #endif
+</I>&gt;<i> 
+</I>&gt;<i> 
+</I>&gt;<i>     // Create a place to store the locations of targets that are found
+</I>&gt;<i>     Matrix&lt;Index&lt;2&gt; &gt; located(gates, this-&gt;ntargets_, Index&lt;2&gt;());
+</I>&gt;<i>     Vector&lt;length_type&gt; count(gates);
+</I>&gt;<i>     
+</I>&gt;<i>     // Process the data cube and time it
+</I>&gt;<i>     vsip::impl::profile::Timer t1;
+</I>&gt;<i>     t1.start();
+</I>&gt;<i>     for (index_type l=0; l&lt;loop; ++l)
+</I>&gt;<i>     {
+</I>&gt;<i>       cfar_detect(cube, cpow, located, count);
+</I>
+	cfar_detect(cube, temp, located, count);
+
+&gt;<i>     }
+</I>&gt;<i>     t1.stop();
+</I>&gt;<i>     time = t1.delta();
+</I>&gt;<i> 
+</I>&gt;<i>     // Verify targets detected
+</I>&gt;<i>     cfar_verify(cube, located, count);
+</I>&gt;<i>   }
+</I>&gt;<i> 
+</I>&gt;<i> 
+</I>&gt;<i>   t_cfar_sweep_range(length_type beams, length_type bins,
+</I>&gt;<i>                  length_type cfar_gates, length_type guard_cells)
+</I>&gt;<i>    : t_cfar_base&lt;T, ImplTag&gt;(beams, bins, cfar_gates, guard_cells)
+</I>&gt;<i>   {}
+</I>&gt;<i> };
+</I>&gt;<i> 
+</I>&gt;<i> 
+</I>
+
+-- 
+Jules Bergmann
+CodeSourcery
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">jules at codesourcery.com</A>
+(650) 331-3385 x705
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000516.html">CFAR Benchmark cleanup
+</A></li>
+	<LI>Next message: <A HREF="000523.html">[vsipl++] CFAR Benchmark cleanup
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#518">[ date ]</a>
+              <a href="thread.html#518">[ thread ]</a>
+              <a href="subject.html#518">[ subject ]</a>
+              <a href="author.html#518">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">More information about the vsipl++
+mailing list</a><br>
+</body></html>

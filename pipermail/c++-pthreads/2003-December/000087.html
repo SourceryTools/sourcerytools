@@ -1,0 +1,152 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [c++-pthreads] Re: C++ and posix threads
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:c%2B%2B-pthreads%40codesourcery.com?Subject=Re%3A%20%5Bc%2B%2B-pthreads%5D%20Re%3A%20C%2B%2B%20and%20posix%20threads&In-Reply-To=%3C20031231220611.GI30780%40tofu.dreamhost.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000084.html">
+   <LINK REL="Next"  HREF="000060.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[c++-pthreads] Re: C++ and posix threads</H1>
+    <B>Nathan Myers</B> 
+    <A HREF="mailto:c%2B%2B-pthreads%40codesourcery.com?Subject=Re%3A%20%5Bc%2B%2B-pthreads%5D%20Re%3A%20C%2B%2B%20and%20posix%20threads&In-Reply-To=%3C20031231220611.GI30780%40tofu.dreamhost.com%3E"
+       TITLE="[c++-pthreads] Re: C++ and posix threads">ncm at cantrip.org
+       </A><BR>
+    <I>Wed Dec 31 22:06:12 UTC 2003</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000084.html">[c++-pthreads] Re: C++ and posix threads
+</A></li>
+        <LI>Next message: <A HREF="000060.html">[c++-pthreads] C++ and posix threads
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#87">[ date ]</a>
+              <a href="thread.html#87">[ thread ]</a>
+              <a href="subject.html#87">[ subject ]</a>
+              <a href="author.html#87">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Richard, please suspend judgment and read carefully.
+
+On Mon, Dec 29, 2003 at 09:07:55PM -0800, Richard Henderson wrote:
+&gt;<i> On Mon, Dec 29, 2003 at 05:58:08PM -0800, Nathan Myers wrote:
+</I>&gt;<i> &gt; 
+</I>&gt;<i> &gt; Richard, all these &quot;ZERO uptake&quot; remarks make it very hard to discuss 
+</I>&gt;<i> &gt; design decisions calmly.  [...]
+</I>&gt;<i> 
+</I>&gt;<i> If you think I mean just Uli, then you're wrong.  I mean any vendor.
+</I>
+Have you actually asked all all these vendors?  I suspect you'd find 
+that most would have preferred the option to offer _only_ error-return 
+semantics, and not be obliged to implement unwinding at all.  The
+error-return semantics are certainly easy to provide.
+
+Imagine, for the sake of discussion only, a single new pthread call, 
+e.g. pthread_c10n_points_fail().  After it is called, C cancellation 
+points, when cancelled, do not unwind the stack, they just return EOF, 
+or -1, or 0, as appropriate, and maybe set errno.   Would ordinary 
+well-written, thread-safe code break?  No.  Would (those few) libraries 
+that have already been modified to be &quot;cancellation-safe&quot; fail?  No.  
+Would cancelled threads fail to die?  No more so than they might with 
+C-style unwind semantics.  Might some cancelled threads take a little 
+longer to die?  Maybe, but no time limits are defined in any case.
+
+&gt;<i> I also, personally, think that having different semantics for
+</I>&gt;<i> bleeding system calls between C and C++ is the worst idea ever.
+</I>
+No C++ programmer would object to allowing C programs to run with 
+error-return semantics.  Furthermore, many of the people who maintain 
+C programs would welcome the opportunity to exercise those semantics, 
+and not be obliged to rewrite all their libraries.
+
+You write as if we are asking for something radical, when in fact we 
+simply want well-established public interfaces to continue honoring 
+the same semantics they have always documented.  (Adding a new reason
+they might fail doesn't violate the documented semantics, because 
+they are documented as perhaps failing for reasons beyond those
+listed.)  What is radical is to change system calls' semantics without 
+changing their names.
+
+Good code has to handle ordinary failures anyway.  Ordinary failures
+exercise those handlers.  Similarly, in C++, destructors have to be 
+run anyway.  Running them during exception handling doesn't add extra 
+risk.  Making cancellation exercise that same code, whether normal 
+failure handling blocks or destructors and catch clauses, is likewise 
+pretty safe.  Coding a whole separate apparatus for cancellation that 
+is otherwise never executed, though, is fundamentally risky.  
+Unexercised code rots.
+
+&gt;<i> If you want to automatically disable cancelation while destructors
+</I>&gt;<i> are running, that would be fine.  Small changes to the exception
+</I>&gt;<i> support code in libstdc++ could do that.
+</I>
+I don't doubt that it would be easy to support such a change.  
+It might be necessary, but it would not suffice.
+
+&gt;<i> Beyond that, I have no idea what you think the problem is with
+</I>&gt;<i> system calls throwing exceptions, nor what you hope to achieve
+</I>&gt;<i> with ETHREADCANCEL.
+</I>
+I will explain again.
+
+I am certain that (under other circumstances) you, Richard, can easily
+recognize how changing the semantics defined at an interface breaks 
+code written to the old definition.  Earlier, I posted a code example 
+to illustrate it.  I am also certain that you can easily understand 
+why people avoid changing library code unnecessarily, particularly 
+in libraries they don't control.  I am at a loss to understand why 
+you seem unable or unwilling to apply that understanding in this 
+case.  Can you enlighten us?
+
+Many of us see it as neither necessary nor responsible to break 
+the thousands of well-written libraries that have been deployed 
+and running for years on millions of systems, in programs linked 
+with &quot;-lpthread&quot;.  Nothing in the goal of supporting thread 
+cancellation seems to require violating ISO-standard language 
+semantics.  Our goal is to continue to use the same libraries we 
+have been using, unchanged, and to have them support reasonable 
+cancellation semantics just as they are.  As it happens, that is 
+technically easy to achieve. 
+
+As it is, cancellation is not compatible with g++.  Changing language 
+semantics in g++, or demanding changes in third-party libraries, is 
+certain not to fix that.  Just suspending cancellation in catch 
+blocks isn't sufficient to fix it.  Our needs are simple, and 
+neither remarkable, radical, nor unreasoned.  I don't understand the 
+hostility they evoke.
+
+Nathan Myers
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/c++-pthreads">ncm at cantrip.org</A>
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000084.html">[c++-pthreads] Re: C++ and posix threads
+</A></li>
+	<LI>Next message: <A HREF="000060.html">[c++-pthreads] C++ and posix threads
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#87">[ date ]</a>
+              <a href="thread.html#87">[ thread ]</a>
+              <a href="subject.html#87">[ subject ]</a>
+              <a href="author.html#87">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/c++-pthreads">More information about the c++-pthreads
+mailing list</a><br>
+</body></html>

@@ -1,0 +1,145 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [PATCH] Fix Cheetah operation
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20Fix%20Cheetah%20operation&In-Reply-To=%3C3FFEE448.8030801%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001486.html">
+   <LINK REL="Next"  HREF="001492.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[PATCH] Fix Cheetah operation</H1>
+    <B>Jeffrey D. Oldham</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20Fix%20Cheetah%20operation&In-Reply-To=%3C3FFEE448.8030801%40codesourcery.com%3E"
+       TITLE="[PATCH] Fix Cheetah operation">oldham at codesourcery.com
+       </A><BR>
+    <I>Fri Jan  9 17:26:32 UTC 2004</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001486.html">[PATCH] Fix Cheetah operation
+</A></li>
+        <LI>Next message: <A HREF="001492.html">[PATCH] Fix PrintField wrt expressions
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1487">[ date ]</a>
+              <a href="thread.html#1487">[ thread ]</a>
+              <a href="subject.html#1487">[ subject ]</a>
+              <a href="author.html#1487">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Richard Guenther wrote:
+&gt;<i> Hi!
+</I>&gt;<i> 
+</I>&gt;<i> This patch reverts part of a previous patch to restore unpacking of
+</I>&gt;<i> compressible brick views in Cheetah mode.
+</I>&gt;<i> 
+</I>&gt;<i> Ok?
+</I>
+Yes.
+
+&gt;<i> Richard.
+</I>&gt;<i> 
+</I>&gt;<i> 
+</I>&gt;<i> 2004Jan09  Richard Guenther &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">richard.guenther at uni-tuebingen.de</A>&gt;
+</I>&gt;<i> 
+</I>&gt;<i> 	* src/Engine/RemoteEngine.h: revert removal of unpack(Engine*,
+</I>&gt;<i> 	char*) and cleanup(Engine*) method in Cheetah::Serialize&lt;CHEETAH,
+</I>&gt;<i> 	Engine&lt;Dim, T, CompressibleBrickView&gt; &gt; class.
+</I>&gt;<i> 
+</I>&gt;<i> ===== RemoteEngine.h 1.5 vs edited =====
+</I>&gt;<i> --- 1.5/r2/src/Engine/RemoteEngine.h	Wed Jan  7 09:54:05 2004
+</I>&gt;<i> +++ edited/RemoteEngine.h	Fri Jan  9 14:42:11 2004
+</I>&gt;<i> @@ -1616,6 +1616,55 @@
+</I>&gt;<i>      return nBytes;
+</I>&gt;<i>    }
+</I>&gt;<i> 
+</I>&gt;<i> +  static inline int
+</I>&gt;<i> +  unpack(Engine_t* &amp;a, char *buffer)
+</I>&gt;<i> +  {
+</I>&gt;<i> +    Interval&lt;Dim&gt; *dom;
+</I>&gt;<i> +
+</I>&gt;<i> +    int change;
+</I>&gt;<i> +    int nBytes=0;
+</I>&gt;<i> +
+</I>&gt;<i> +    change = Serialize&lt;CHEETAH, Domain_t&gt;::unpack(dom, buffer);
+</I>&gt;<i> +    buffer += change;
+</I>&gt;<i> +    nBytes += change;
+</I>&gt;<i> +
+</I>&gt;<i> +    bool *compressed;
+</I>&gt;<i> +
+</I>&gt;<i> +    change = Serialize&lt;CHEETAH, bool&gt;::unpack(compressed, buffer);
+</I>&gt;<i> +    buffer += change;
+</I>&gt;<i> +    nBytes += change;
+</I>&gt;<i> +
+</I>&gt;<i> +    if (*compressed)
+</I>&gt;<i> +    {
+</I>&gt;<i> +      T *value;
+</I>&gt;<i> +
+</I>&gt;<i> +      change = Serialize&lt;CHEETAH, T&gt;::unpack(value, buffer);
+</I>&gt;<i> +
+</I>&gt;<i> +      Engine&lt;Dim, T, CompressibleBrick&gt; foo(*dom, *value);
+</I>&gt;<i> +
+</I>&gt;<i> +      a = new Engine_t(foo, *dom);
+</I>&gt;<i> +    }
+</I>&gt;<i> +    else
+</I>&gt;<i> +    {
+</I>&gt;<i> +      Engine&lt;Dim, T, CompressibleBrick&gt; foo(*dom);
+</I>&gt;<i> +
+</I>&gt;<i> +      EngineElemDeSerialize op(buffer);
+</I>&gt;<i> +
+</I>&gt;<i> +      change = EngineBlockSerialize::apply(op, foo, *dom);
+</I>&gt;<i> +
+</I>&gt;<i> +      a = new Engine_t(foo, *dom);
+</I>&gt;<i> +    }
+</I>&gt;<i> +    nBytes += change;
+</I>&gt;<i> +
+</I>&gt;<i> +    return nBytes;
+</I>&gt;<i> +  }
+</I>&gt;<i> +
+</I>&gt;<i> +  static inline void
+</I>&gt;<i> +  cleanup(Engine_t* a)
+</I>&gt;<i> +  {
+</I>&gt;<i> +    delete a;
+</I>&gt;<i> +  }
+</I>&gt;<i> +
+</I>&gt;<i>    // We support a special unpack to avoid an extra copy.
+</I>&gt;<i> 
+</I>&gt;<i>    static inline int
+</I>
+
+-- 
+Jeffrey D. Oldham
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">oldham at codesourcery.com</A>
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001486.html">[PATCH] Fix Cheetah operation
+</A></li>
+	<LI>Next message: <A HREF="001492.html">[PATCH] Fix PrintField wrt expressions
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1487">[ date ]</a>
+              <a href="thread.html#1487">[ thread ]</a>
+              <a href="subject.html#1487">[ subject ]</a>
+              <a href="author.html#1487">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

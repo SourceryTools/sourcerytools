@@ -1,0 +1,178 @@
+Index: ChangeLog
+===================================================================
+--- ChangeLog	(revision 209798)
++++ ChangeLog	(working copy)
+@@ -1,3 +1,9 @@
++2008-05-30  Stefan Seefeld  <stefan@codesourcery.com>
++
++	* m4/fft.m4: Robustify probing for -lfftw3f, -lfftw3, and -lfftw3l
++	* src/vsip/opt/fftw3/fft.hpp: Conditionalize BEs on config checks.
++	* src/vsip/opt/fftw3/fft.cpp: Likewise.
++
+ 2008-05-28  Stefan Seefeld  <stefan@codesourcery.com>
+ 
+ 	* tests/GNUmakefile.inc.in: Adjust for new test database.
+Index: m4/fft.m4
+===================================================================
+--- m4/fft.m4	(revision 209798)
++++ m4/fft.m4	(working copy)
+@@ -184,7 +184,6 @@
+        LIBS=$keep_LIBS])
+   fi
+ fi
+-
+ if test "$enable_builtin_fft" != "no"; then
+ 
+   AC_MSG_NOTICE([Using built-in FFTW3 support.])
+@@ -206,15 +205,19 @@
+       AC_MSG_RESULT([not a supported type.])
+       AC_MSG_NOTICE([Disabling FFT support (--disable-fft-long-double).])
+       enable_fft_long_double=no 
++      provide_fft_long_double=0
+     elif test $ac_cv_sizeof_long_double = $ac_cv_sizeof_double; then
+       AC_MSG_RESULT([same size as double.])
+       AC_MSG_NOTICE([Disabling FFT support (--disable-fft-long-double).])
+       enable_fft_long_double=no 
++      provide_fft_long_double=0
+     else
+       AC_MSG_RESULT([supported.])
++      provide_fft_long_double=1
+     fi
++    provide_fft_float=1
++    provide_fft_double=1
+ 
+-
+     # if $srcdir is relative, correct for chdir into vendor/fftw3*.
+     fftw3_configure="`(cd $srcdir/vendor/fftw; echo \"$PWD\")`"/configure
+ 
+@@ -341,6 +344,25 @@
+ 
+   LATE_LIBS="$FFTW3_LIBS $LATE_LIBS"
+   CPPFLAGS="-I$includedir/fftw3 $CPPFLAGS"
++
+ fi
++if test "$neutral_acconfig" = 'y'; then
++  if test $provide_fft_float = 1; then
++    CPPFLAGS="$CPPFLAGS -DVSIP_IMPL_FFTW3_HAVE_FLOAT"
++  fi
++  if test $provide_fft_double = 1; then
++    CPPFLAGS="$CPPFLAGS -DVSIP_IMPL_FFTW3_HAVE_DOUBLE"
++  fi
++  if test $provide_fft_long_double = 1; then
++    CPPFLAGS="$CPPFLAGS -DVSIP_IMPL_FFTW3_HAVE_LONG_DOUBLE"
++  fi
++else
++  AC_DEFINE_UNQUOTED(VSIP_IMPL_FFTW3_HAVE_FLOAT, $provide_fft_float,
++     [Define to 1 if -lfftw3f was found.])
++  AC_DEFINE_UNQUOTED(VSIP_IMPL_FFTW3_HAVE_DOUBLE, $provide_fft_double, 
++    [Define to 1 if -lfftw3d was found.])
++  AC_DEFINE_UNQUOTED(VSIP_IMPL_FFTW3_HAVE_LONG_DOUBLE, $provide_fft_long_double,
++     [Define to 1 if -lfftw3l was found.])
++fi
+ 
+ ])
+Index: src/vsip/opt/fftw3/fft.hpp
+===================================================================
+--- src/vsip/opt/fftw3/fft.hpp	(revision 209798)
++++ src/vsip/opt/fftw3/fft.hpp	(working copy)
+@@ -72,9 +72,15 @@
+ VSIP_IMPL_FFT_DECL(3, std::complex<T>, std::complex<T>, 1, 1)  \
+ VSIP_IMPL_FFT_DECL(3, std::complex<T>, std::complex<T>, 2, 1)
+ 
++#if VSIP_IMPL_FFTW3_HAVE_FLOAT
+ VSIP_IMPL_FFT_DECL_T(float)
++#endif
++#if VSIP_IMPL_FFTW3_HAVE_DOUBLE
+ VSIP_IMPL_FFT_DECL_T(double)
++#endif
++#if VSIP_IMPL_FFTW3_HAVE_LONG_DOUBLE
+ VSIP_IMPL_FFT_DECL_T(long double)
++#endif
+ 
+ #undef VSIP_IMPL_FFT_DECL_T
+ #undef VSIP_IMPL_FFT_DECL
+@@ -94,9 +100,15 @@
+ VSIP_IMPL_FFT_DECL(std::complex<T>, std::complex<T>, 0, 1)     \
+ VSIP_IMPL_FFT_DECL(std::complex<T>, std::complex<T>, 1, 1)
+ 
++#if VSIP_IMPL_FFTW3_HAVE_FLOAT
+ VSIP_IMPL_FFT_DECL_T(float)
++#endif
++#if VSIP_IMPL_FFTW3_HAVE_DOUBLE
+ VSIP_IMPL_FFT_DECL_T(double)
++#endif
++#if VSIP_IMPL_FFTW3_HAVE_LONG_DOUBLE
+ VSIP_IMPL_FFT_DECL_T(long double)
++#endif
+ 
+ #undef VSIP_IMPL_FFT_DECL_T
+ #undef VSIP_IMPL_FFT_DECL
+@@ -115,7 +127,18 @@
+ 	  unsigned N>
+ struct evaluator<D, I, O, S, R, N, Fftw3_tag>
+ {
+-  static bool const ct_valid = true;
++  static bool const ct_valid =
++#if VSIP_IMPL_FFTW3_HAVE_FLOAT
++    Type_equal<typename Scalar_of<I>::type, float>::value ||
++#endif
++#if VSIP_IMPL_FFTW3_HAVE_DOUBLE
++    Type_equal<typename Scalar_of<I>::type, double>::value ||
++#endif
++#if VSIP_IMPL_FFTW3_HAVE_LONG_DOUBLE
++    Type_equal<typename Scalar_of<I>::type, long double>::value ||
++#endif
++    false;
++
+   static bool rt_valid(Domain<D> const &) { return true;}
+   static std::auto_ptr<backend<D, I, O,
+  			       axis<I, O, S>::value,
+@@ -141,7 +164,18 @@
+ 	  unsigned N>
+ struct evaluator<I, O, A, E, R, N, fft::Fftw3_tag>
+ {
+-  static bool const ct_valid = true;
++  static bool const ct_valid =
++#if VSIP_IMPL_FFTW3_HAVE_FLOAT
++    Type_equal<typename Scalar_of<I>::type, float>::value ||
++#endif
++#if VSIP_IMPL_FFTW3_HAVE_DOUBLE
++    Type_equal<typename Scalar_of<I>::type, double>::value ||
++#endif
++#if VSIP_IMPL_FFTW3_HAVE_LONG_DOUBLE
++    Type_equal<typename Scalar_of<I>::type, long double>::value ||
++#endif
++    false;
++
+   static bool rt_valid(Domain<2> const &/*dom*/) { return true;}
+   static std::auto_ptr<fft::fftm<I, O, A, E> > 
+   create(Domain<2> const &dom, typename impl::Scalar_of<I>::type /*scale*/)
+Index: src/vsip/opt/fftw3/fft.cpp
+===================================================================
+--- src/vsip/opt/fftw3/fft.cpp	(revision 209798)
++++ src/vsip/opt/fftw3/fft.cpp	(working copy)
+@@ -51,21 +51,21 @@
+ } // namespace vsip::impl
+ } // namespace vsip
+ 
+-#if VSIP_IMPL_PROVIDE_FFT_FLOAT
++#if VSIP_IMPL_FFTW3_HAVE_FLOAT
+ #  define FFTW(fun) fftwf_##fun
+ #  define SCALAR_TYPE float
+ #  include "fft_impl.cpp"
+ #  undef SCALAR_TYPE
+ #  undef FFTW
+ #endif
+-#if VSIP_IMPL_PROVIDE_FFT_DOUBLE
++#if VSIP_IMPL_FFTW3_HAVE_DOUBLE
+ #  define FFTW(fun) fftw_##fun
+ #  define SCALAR_TYPE double
+ #  include "fft_impl.cpp"
+ #  undef SCALAR_TYPE
+ #  undef FFTW
+ #endif
+-#if VSIP_IMPL_PROVIDE_FFT_LONG_DOUBLE
++#if VSIP_IMPL_FFTW3_HAVE_LONG_DOUBLE
+ #  define FFTW(fun) fftwl_##fun
+ #  define SCALAR_TYPE long double
+ #  include "fft_impl.cpp"

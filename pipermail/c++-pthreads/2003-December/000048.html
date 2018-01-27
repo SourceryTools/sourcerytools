@@ -1,0 +1,185 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [c++-pthreads] C++ and posix threads
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:c%2B%2B-pthreads%40codesourcery.com?Subject=Re%3A%20%5Bc%2B%2B-pthreads%5D%20C%2B%2B%20and%20posix%20threads&In-Reply-To=%3C20031223092631.GD20663%40jupiter.cs.mu.oz.au%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000042.html">
+   <LINK REL="Next"  HREF="000049.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[c++-pthreads] C++ and posix threads</H1>
+    <B>Fergus Henderson</B> 
+    <A HREF="mailto:c%2B%2B-pthreads%40codesourcery.com?Subject=Re%3A%20%5Bc%2B%2B-pthreads%5D%20C%2B%2B%20and%20posix%20threads&In-Reply-To=%3C20031223092631.GD20663%40jupiter.cs.mu.oz.au%3E"
+       TITLE="[c++-pthreads] C++ and posix threads">fjh at cs.mu.oz.au
+       </A><BR>
+    <I>Tue Dec 23 09:26:31 UTC 2003</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000042.html">[c++-pthreads] C++ and posix threads
+</A></li>
+        <LI>Next message: <A HREF="000049.html">[c++-pthreads] C++ and posix threads
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#48">[ date ]</a>
+              <a href="thread.html#48">[ thread ]</a>
+              <a href="subject.html#48">[ subject ]</a>
+              <a href="author.html#48">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>On 22-Dec-2003, Nathan Myers &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/c++-pthreads">ncm at cantrip.org</A>&gt; wrote:
+&gt;<i> On Tue, Dec 23, 2003 at 02:07:47AM +1100, Fergus Henderson wrote:
+</I>&gt;<i> &gt; I think part of the difficulty is that the problem may be over-constrained.
+</I>&gt;<i> &gt; Ideally, the solution would
+</I>&gt;<i> &gt; 
+</I>&gt;<i> &gt; 	- not require changes to the C pthread library
+</I>&gt;<i> &gt; 	- not modify the C interface visible from C
+</I>&gt;<i> &gt; 	- not modify the C interface visible from C++
+</I>&gt;<i> &gt; 	- never result in a thread cancellation request being ignored
+</I>&gt;<i> &gt; 	- allow threads to execute arbitrary cleanup code in
+</I>&gt;<i> &gt; 	  response to a thread cancellation request
+</I>&gt;<i> &gt; 	- make exception-safe C++ code also safe for (synchronous)
+</I>&gt;<i> &gt; 	  cancellation
+</I>&gt;<i> &gt; 	- make cancellation-safe C code also exception-safe,
+</I>&gt;<i> &gt; 	  and allow propagation of C++ exceptions through cancellation-safe
+</I>&gt;<i> &gt; 	  C code
+</I>&gt;<i> &gt; 	- not introduce any new C++ language constructs or semantics
+</I>&gt;<i> &gt; 	- not introduce any new C language constructs or semantics
+</I>&gt;<i> &gt; 	- not reduce performance of any existing code
+</I>&gt;<i> &gt; 	- be simple, easy to use/understand/teach/specifiy/implement, etc.
+</I>&gt;<i> &gt; 	- probably some other goals that I've accidentally omitted/forgotten
+</I>&gt;<i> &gt; 
+</I>&gt;<i> &gt; However, it is almost certainly not possible to achieve all of these
+</I>&gt;<i> &gt; simultaneously.
+</I>&gt;<i> 
+</I>&gt;<i> I believe that we can achieve our goal if we omit impossible
+</I>&gt;<i> requirements.  Of the above, I see the following as showstoppers
+</I>&gt;<i> that must be jettisoned immediately:
+</I>&gt;<i> 
+</I>&gt;<i>  	- not require changes to the C pthread library
+</I>&gt;<i> 
+</I>&gt;<i>   We assume we can adapt the libraries involved as needed, as long as
+</I>&gt;<i>   our demands are simple to describe and implement.
+</I>
+That seems fair to me.
+
+&gt;<i> 	- never result in a thread cancellation request being ignored
+</I>&gt;<i> 
+</I>&gt;<i>   This is impossible on its face, as it ultimately depends on users' 
+</I>&gt;<i>   coding practices.  A reasonable goal would be that simple good coding 
+</I>&gt;<i>   practices are unlikely to cause cancellation requests to be ignored 
+</I>&gt;<i>   indefinitely.
+</I>
+That seems fair too.
+
+&gt;<i>  	- make cancellation-safe C code also exception-safe, and 
+</I>&gt;<i>  	  allow propagation of C++ exceptions through cancellation-safe
+</I>&gt;<i>  	  C code
+</I>&gt;<i> 
+</I>&gt;<i>   While cancellation-safe C code might exist, in principle, we should 
+</I>&gt;<i>   not contort our solution to try to accommodate it.  A correct C++ 
+</I>&gt;<i>   library does not let exceptions escape to C code, so this case is 
+</I>&gt;<i>   only of academic interest.
+</I>
+Here I don't agree.
+
+Firstly, you should say &quot;a portable C++ library&quot;, not &quot;a correct C++
+library&quot;, since some C/C++ implementations do support throwing C++
+exceptions across C code, and I'm sure some correct but not portable C++
+code takes advantage of this.
+
+Secondly, and more importantly, I think that allowing this case is
+important for language interoperability, not just for C/C++, but also
+for interoperability between C++ and other languages (many of which are
+implemented via compilation to C).
+
+Posix thread cancellation is, in effect, a mechanism that provides a
+limited form of exception handling for C.  It is natural for C implementations
+to extend C with more general support for exception handling, both for its
+own inherent usefulness and for ease of interoperability with other languages.
+For example, both GNU C and Microsoft C have provided C language extensions
+for exception handling, and there have been numerous C libraries that
+provide support for exception handling -- see for example
+
+	- Costello and Truta's &quot;cexcept&quot; &lt;<A HREF="http://cexcept.sourceforge.net/">http://cexcept.sourceforge.net/</A>&gt;
+
+	- Doug Gwyn's &quot;ex&quot; package, available from the cexpect site.
+
+	- Ian Zimmerman's &quot;exc&quot; package, also available via the cexcept site.
+
+	- David Hanson's &quot;except.h&quot;, in his book &quot;C Interfaces and
+	  Implementations&quot; &lt;<A HREF="http://www.cs.princeton.edu/software/cii/">http://www.cs.princeton.edu/software/cii/</A>&gt;
+
+	- Bruce W. Bigby's &quot;GEF&quot;
+	  &lt;<A HREF="http://home.rochester.rr.com/bigbyofrocny/GEF/GEF.html">http://home.rochester.rr.com/bigbyofrocny/GEF/GEF.html</A>&gt;
+
+	- Schotland and Petersen's (unnamed?) exception handling library
+	  &lt;<A HREF="http://www.on-time.com/index.html?page=ddj0011.htm">http://www.on-time.com/index.html?page=ddj0011.htm</A>&gt;,
+
+	- Kaz Kylheku's &quot;KazLib&quot;
+
+	- Symbian EPOC
+
+	- MLib
+
+	- my own &quot;CXCPT&quot; &lt;<A HREF="http://www.cs.mu.oz.au/~fjh/CXCPT/">http://www.cs.mu.oz.au/~fjh/CXCPT/</A>&gt;
+
+There are probably lots more examples.
+
+Given the likelihood of C being extended in this way with some form
+of exception handling, it is desirable to make this exception handling
+interoperate well with both Posix thread cancellation and C++ exceptions.
+This in turn essentially requires that Posix thread cancellation and
+C++ exceptions interoperate well with each other.  To my mind that
+includes being able to propagate C++ exceptions through cancellation-safe
+C code.
+
+When talking about cancellation-safe C code, we should consider that
+this may also include exception-safe C code that has been (or will be)
+written using a C exception facility that is compatible with and/or
+interoperates with Posix thread cancellation.  Currently
+pthread_cleanup_push() and pthread_cleanup_pop() are the only
+_standardized_ facility for enabling C code to clean up during
+stack unwinding.  C exception handling extensions will need to
+provide their own facilities for that.  But it seems like a bad idea to have
+more than one underlying mechanism for such clean up code; even if
+we may be stuck with several interfaces, having them all be implemented
+using a single underlying mechanisms seems like the only reasonable way
+to get the desired level of interoperability.
+
+-- 
+Fergus Henderson &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/c++-pthreads">fjh at cs.mu.oz.au</A>&gt;  |  &quot;I have always known that the pursuit
+The University of Melbourne         |  of excellence is a lethal habit&quot;
+WWW: &lt;<A HREF="http://www.cs.mu.oz.au/~fjh">http://www.cs.mu.oz.au/~fjh</A>&gt;  |     -- the last words of T. S. Garp.
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000042.html">[c++-pthreads] C++ and posix threads
+</A></li>
+	<LI>Next message: <A HREF="000049.html">[c++-pthreads] C++ and posix threads
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#48">[ date ]</a>
+              <a href="thread.html#48">[ thread ]</a>
+              <a href="subject.html#48">[ subject ]</a>
+              <a href="author.html#48">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/c++-pthreads">More information about the c++-pthreads
+mailing list</a><br>
+</body></html>

@@ -1,0 +1,146 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [c++-pthreads] Re: thread-safety definition
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:c%2B%2B-pthreads%40codesourcery.com?Subject=Re%3A%20%5Bc%2B%2B-pthreads%5D%20Re%3A%20thread-safety%20definition&In-Reply-To=%3C4002CBCD.4040701%40hp.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000218.html">
+   <LINK REL="Next"  HREF="000223.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[c++-pthreads] Re: thread-safety definition</H1>
+    <B>Dave Butenhof</B> 
+    <A HREF="mailto:c%2B%2B-pthreads%40codesourcery.com?Subject=Re%3A%20%5Bc%2B%2B-pthreads%5D%20Re%3A%20thread-safety%20definition&In-Reply-To=%3C4002CBCD.4040701%40hp.com%3E"
+       TITLE="[c++-pthreads] Re: thread-safety definition">David.Butenhof at hp.com
+       </A><BR>
+    <I>Mon Jan 12 16:31:09 UTC 2004</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000218.html">[c++-pthreads] Re: thread-safety definition
+</A></li>
+        <LI>Next message: <A HREF="000223.html">[c++-pthreads] Re: thread-safety definition
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#219">[ date ]</a>
+              <a href="thread.html#219">[ thread ]</a>
+              <a href="subject.html#219">[ subject ]</a>
+              <a href="author.html#219">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Ross Smith wrote:
+
+&gt;<i>On Tuesday 13 January 2004 02:41, Dave Butenhof wrote:
+</I>&gt;<i>  
+</I>&gt;<i>
+</I>&gt;&gt;<i>I think I disagree, at least philsophically, with the
+</I>&gt;&gt;<i>characterization of the model as &quot;fragile&quot;. But I think I also
+</I>&gt;&gt;<i>understand what you mean; and the problem isn't with the model, but
+</I>&gt;&gt;<i>rather with the effect of that model on existing code that
+</I>&gt;&gt;<i>all-too-casually and agressively eats exceptions it doesn't
+</I>&gt;&gt;<i>understand. I think there are vanishingly few circumstances where a
+</I>&gt;&gt;<i>blind catch(...) without an unconditional re-throw should be
+</I>&gt;&gt;<i>considered &quot;legitimate&quot;.
+</I>&gt;&gt;<i>    
+</I>&gt;&gt;<i>
+</I>&gt;<i>I'm beginning to get the same worried feeling Wil Evers expressed a few 
+</I>&gt;<i>messages back. It sounds as though a lot of people are seriously 
+</I>&gt;<i>considering the idea of allowing exceptions to escape from destructors.
+</I>&gt;<i>
+</I>&gt;<i>Dave, while I have the greatest respect for your knowledge and 
+</I>&gt;<i>understanding of threads, I think the above shows that you don't really 
+</I>&gt;<i>understand C++.
+</I>&gt;<i>
+</I>While I wouldn't dispute the statement that &quot;I don't really understand 
+C++&quot;, I absolutely do understand objects, encapsulation, modularity, 
+exceptions, cancellation, and resource ownership; and what you're saying 
+seems essentially &quot;obvious and self-evident&quot;. I never argued, or 
+suggested, or assumed, that exceptions would propagate out of 
+destructors. But I'm talking about cancel, not exceptions.
+
+&gt;<i>Please try to understand that it is _absolutely vital_ 
+</I>&gt;<i>that destructors never be allowed to throw under any circumstances. If 
+</I>&gt;<i>a destructor calls a function that may throw some unknown exception (a 
+</I>&gt;<i>very common case, especially in template classes whose destructors will 
+</I>&gt;<i>often call member functions of some arbitrary user-supplied type), the 
+</I>&gt;<i>call _must_ be wrapped in a catch-and-discard-all block. At most you 
+</I>&gt;<i>can log the error somewhere.
+</I>&gt;<i>
+</I>&gt;<i>Any attempt to standardise a solution that doesn't take &quot;Destructors 
+</I>&gt;<i>Must Not Throw&quot; as axiomatic is simply going to be a non-starter as far 
+</I>&gt;<i>as C++ programmers are concerned. I'd really like to see this list 
+</I>&gt;<i>explicitly address this issue rather than continuing to casually talk 
+</I>&gt;<i>about uncatchable exceptions and similar horrors.
+</I>&gt;<i>  
+</I>&gt;<i>
+</I>This discussion is a swirling mix of different issues. They're often 
+related, but please don't assume relations where they're not stated!
+
+Generally, any code that cannot raise (or propagate) an exception SHOULD 
+NOT BE A CANCELLATION POINT. (Note to Dave Abrahams: Sorry, was that 
+shout approved? ;-) )
+
+In the context of cancellation, I don't care about whether exceptions 
+can propagate out of destructors. As has already been said, while a 
+destructor might be activated as part of handling and cleaning up from a 
+cancel, that's not the same as propagating a local exception out of the 
+destructor. If destructors are not cancellable, then no cancel exception 
+can BEGIN within the destructor and the question of whether it could 
+propagate out of the destructor is moot. (For what it's worth, I don't 
+believe that they can or should.) Furthermore, a no-cancel destructor, 
+regardless of whether it has a catch(...) with or without a re-throw, 
+cannot possibily &quot;eat&quot; a cancel, because it can never catch a cancel 
+that's not thrown within the dynamic scope of its try block.
+
+I suspect that destructors should be implicitly &quot;no cancel zones&quot;.  
+(Someone expressed a concern about runtime overhead; but the cost of 
+enabling and disabling cancel CAN be made extremely low by collusion 
+between C++ and the thread library. That's an implementation detail the 
+standard doesn't necessarily need to explicitly address.) There might be 
+cases where someone really wants an indefinite blocking operation in a 
+destructor (perhaps to disconnect from a remote server), and might want 
+that to be cancellable. I think that's a rare special case, and could 
+probably be handled by manually enabling cancel over that range of code, 
+catching/finalizing the cancel if it occurs, cleaning up, restoring the 
+original &quot;cancel disabled&quot; state, and then calling 
+pthread_cancel(pthread_self()) to re-pend the cancel. Perhaps (though it 
+seems doubtful) this might be common enough to justify some special 
+syntax to encapsulate the mechanism and avoid errors.
+
+-- 
+/--------------------[ <A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/c++-pthreads">David.Butenhof at hp.com</A> ]--------------------\
+|<i> Hewlett-Packard Company       Tru64 UNIX &amp; VMS Thread Architect |
+</I>|<i>     My book: <A HREF="http://www.awl.com/cseng/titles/0-201-63392-2/">http://www.awl.com/cseng/titles/0-201-63392-2/</A>     |
+</I>\----[ <A HREF="http://homepage.mac.com/dbutenhof/Threads/Threads.html">http://homepage.mac.com/dbutenhof/Threads/Threads.html</A> ]---/
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000218.html">[c++-pthreads] Re: thread-safety definition
+</A></li>
+	<LI>Next message: <A HREF="000223.html">[c++-pthreads] Re: thread-safety definition
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#219">[ date ]</a>
+              <a href="thread.html#219">[ thread ]</a>
+              <a href="subject.html#219">[ subject ]</a>
+              <a href="author.html#219">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/c++-pthreads">More information about the c++-pthreads
+mailing list</a><br>
+</body></html>

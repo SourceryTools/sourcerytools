@@ -1,0 +1,191 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [mips-tls] A couple of potential changes to the MIPS TLS ABI
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:mips-tls%40codesourcery.com?Subject=Re%3A%20%5Bmips-tls%5D%20A%20couple%20of%20potential%20changes%20to%20the%20MIPS%20TLS%20ABI&In-Reply-To=%3C005b01c50846%244ef8ac60%241bc0a8c0%40MIPS.COM%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   
+   <LINK REL="Next"  HREF="000018.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[mips-tls] A couple of potential changes to the MIPS TLS ABI</H1>
+    <B>Michael Uhler</B> 
+    <A HREF="mailto:mips-tls%40codesourcery.com?Subject=Re%3A%20%5Bmips-tls%5D%20A%20couple%20of%20potential%20changes%20to%20the%20MIPS%20TLS%20ABI&In-Reply-To=%3C005b01c50846%244ef8ac60%241bc0a8c0%40MIPS.COM%3E"
+       TITLE="[mips-tls] A couple of potential changes to the MIPS TLS ABI">uhler at mips.com
+       </A><BR>
+    <I>Tue Feb  1 10:10:50 UTC 2005</I>
+    <P><UL>
+        
+        <LI>Next message: <A HREF="000018.html">[mips-tls] A couple of potential changes to the MIPS TLS ABI
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#15">[ date ]</a>
+              <a href="thread.html#15">[ thread ]</a>
+              <a href="subject.html#15">[ subject ]</a>
+              <a href="author.html#15">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>The one area that I'm concerned about is the use of rdhwr to return the
+pointer.  There are several reasons why I'm not sure this is the right thing
+to do:
+
+- rdhwr is a MIPS32/64 Release 2 instruction.  No existing MIPS I-IV
+implementation has this instruction and probably never will.  Even existing
+MIPS3264 Release 2 implementations don't have the internal register to hold
+the data.  This means that it will be years before any hardware will support
+the feature, and that support depends on an architecture decision (see next
+item)
+
+- We have some concerns at the architecture level about using rdhwr for this
+purpose rather than using a GPR under the umbrella of an ABI re-work that
+some of you are involved in.
+
+- Some preliminary work at MIPS suggests that a tuned handler for syscall is
+faster than one for handling rdhwr at the reserved instruction handler.
+This means that we're betting on having actual hardware implementations of
+rdhwr out there in sufficient volume to make up for the fact that we're
+penalizing everybody else by using an RI trap hander vs. a syscall trap
+handler.
+
+To me, all of these suggest that we may want to use syscall rather than
+rdhwr to get the pointer, at least until we can decide whether to dedicate a
+GPR for this purpose.
+
+By the way, sorry for the late response to the original posting.  There was
+some confusion within MIPS as to who was going to respond.  I've asked our
+UK team to run point on the interaction on TLS from now on, so we'll be more
+responsive.
+
+/gmu
+
+
+---
+Michael Uhler, Chief Technology Officer
+MIPS Technologies, Inc.   Email: <A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/mips-tls">uhler at mips.com</A>
+1225 Charleston Road      Voice:  (650)567-5025   FAX:   (650)567-5225
+Mountain View, CA 94043   Mobile: (650)868-6870   Admin: (650)567-5085
+
+
+-----Original Message-----
+From: Daniel Jacobowitz [mailto:<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/mips-tls">dan at codesourcery.com</A>] 
+Sent: Monday, January 31, 2005 12:57 PM
+To: <A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/mips-tls">mips-tls at codesourcery.com</A>
+Subject: [mips-tls] A couple of potential changes to the MIPS TLS ABI
+
+
+Hi folks,
+
+We have the 32-bit port of NPTL basically working now, and I have been
+preparing the first patches for submission - which means binutils.  So I
+have been going over the ABI in some detail looking for things that we want
+to finalize before the patches are integrated.  I found three points...
+
+
+First, a minor correction: LE was using &quot;ori&quot; where the equivalent LD
+sequence used &quot;addiu&quot;.  I've updated this on the Wiki.  It was a leftover
+from an earlier draft.
+
+
+
+Second, the %tpoff operator is currently ambiguous.  When we say %dtpoff, we
+are always talking about the offset from the base of this module's DTV entry
+to the location of the variable; currently this is always used with %hi and
+%lo.  However, %tpoff can be used with %hi and %lo (Local Exec model, refers
+to variable offset from thread pointer) %or without (Initial Exec model,
+refers to GOT slot holding the variable offset).
+
+How about this instead?
+  R_MIPS_TLS_TPOFF -&gt; R_MIPS_TLS_GOTTPOFF
+  %tpoff(x)($28) -&gt; %gottpoff(x)($28)
+
+This also frees up %tpoff in case we want to use that the way PowerPC uses
+@tprel.  <A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/mips-tls">foo at tprel</A>@l is the low 16 bits of the offset; <A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/mips-tls">foo at tprel</A> s the low
+16 bits also, but signals an error if the ofset does not fit entirely in 16
+bits.  The alternate sequence III of Local Exec could take advantage of
+this.
+
+
+
+Third, the Design Choices section of the specification has this to say:
+
+     *  The compiler is not allowed to schedule the sequences below. 
+
+  The sequences below must appear exactly as written in the code
+  generated by the compiler. This restriction is present because we have
+  not yet determined what linker optimizations may be possible. In order
+  to facilitate adding linker optimizations in the future, without
+  recompiling current code, the compiler is restricted from scheduling
+  these sequences. 
+
+I'd like to settle this one way or the other before finalizing the spec.
+
+For reference, the possible linker optimizations are:
+ General Dynamic -&gt; Initial Exec (whenever linking an exec)  Local Dynamic
+-&gt; Local Exec (ditto)  Initial Exec -&gt; Local Exec (when the symbol is known
+to live in the
+			     executable; can be applied starting at GD too)
+
+The major advantage here is replacing a call to __tls_get_addr with a rdhwr
+instruction.  These are, in theory, doable for MIPS.  Here's an example o32
+GD -&gt; IE, probably the most important one:
+
+   0x00 lw $25, %call16(__tls_get_addr)($28)   R_MIPS_CALL16   g
+   0x04 jalr $25
+   0x08 addiu $4, $28, %tlsgd(x)               R_MIPS_TLS_GD   x
+   0x12 $gp restore (not mentioned in the TLS ABI)
+
+   0x00 rdhwr $4, $5
+   0x04 lw $5, %tpoff(x1)($28)         R_MIPS_TLS_TPOFF        x1
+   0x08 addu $4, $4, $5
+   0x12 the $gp restore can be nop'd out
+
+There are a couple of other quirks for this; the only one I can think of
+offhand is MIPS-I load delay slots, which would mean neither sequence could
+be used as-is.  The immediate disadvantage is that the compiler can not
+schedule the sequences.  I don't know what all the tradeoffs are here, I
+just know that the compiler implementation would be simpler if we did not
+make the sequences fixed and unschedulable. So I'd like to ditch that unless
+folks think that
+  (A) the linker optimizations are useful
+  (B) the linker optimizations are feasible
+  (C) someone is likely to implement the linker optimizations
+
+Any opinions?  I see that Alpha does implement the TLS linker relaxations;
+on the other hand, Alpha already had a linker relaxation mechanism in place,
+and the GNU tools for MIPS don't.
+
+-- 
+Daniel Jacobowitz
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	
+	<LI>Next message: <A HREF="000018.html">[mips-tls] A couple of potential changes to the MIPS TLS ABI
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#15">[ date ]</a>
+              <a href="thread.html#15">[ thread ]</a>
+              <a href="subject.html#15">[ subject ]</a>
+              <a href="author.html#15">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/mips-tls">More information about the mips-tls
+mailing list</a><br>
+</body></html>

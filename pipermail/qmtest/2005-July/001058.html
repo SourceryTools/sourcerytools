@@ -1,0 +1,532 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> PATCH: Deprecate special-purpose database methods
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:qmtest%40codesourcery.com?Subject=Re%3A%20PATCH%3A%20Deprecate%20special-purpose%20database%20methods&In-Reply-To=%3C200507210512.j6L5CoF9014724%40sethra.codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001061.html">
+   <LINK REL="Next"  HREF="001059.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>PATCH: Deprecate special-purpose database methods</H1>
+    <B>Mark Mitchell</B> 
+    <A HREF="mailto:qmtest%40codesourcery.com?Subject=Re%3A%20PATCH%3A%20Deprecate%20special-purpose%20database%20methods&In-Reply-To=%3C200507210512.j6L5CoF9014724%40sethra.codesourcery.com%3E"
+       TITLE="PATCH: Deprecate special-purpose database methods">mark at codesourcery.com
+       </A><BR>
+    <I>Thu Jul 21 05:12:50 UTC 2005</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001061.html">[qmtest] PATCH: Robustify executable.py
+</A></li>
+        <LI>Next message: <A HREF="001059.html">PATCH: Generalize &quot;qmtest create&quot;
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1058">[ date ]</a>
+              <a href="thread.html#1058">[ thread ]</a>
+              <a href="subject.html#1058">[ subject ]</a>
+              <a href="author.html#1058">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>
+In the early history of QMTest, the various things in a database
+(namely tests, resources, and suites) were completely disaparate
+entities.  Eventually, we reworked things so that all of these
+entities were instances of &quot;Extension&quot;.  However, an ugly wart
+remained: we still had Database.GetTest, Database.GetResource, and
+Database.GetSuite.  
+
+This patch adds Database.GetExtension, and new databases should
+override that method, rather than the old methods.  See the updated
+documentation attached for more information.
+
+As a side-effect, writing database classes that permit multiple
+entries with the same name (like having a test and resource both named
+&quot;foo&quot;) is no longer supported.  That was never an intentional feature;
+it was merely an accident of the original implementation, and breaks
+the conceptual model of a Database as logically similar to a
+filesystem.  Existing database classes will continue to work, but any
+dependence on this time is deprecated.
+
+Committed.
+
+--
+Mark Mitchell
+CodeSourcery, LLC
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">mark at codesourcery.com</A>
+
+2005-07-20  Mark Mitchell  &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">mark at codesourcery.com</A>&gt;
+
+	* qm/test/database.py (qm.test.resource.Resource): Import it.
+	(qm.test.suite.Suite): Likewise.
+	(Database._is_generic_database): New
+	variable.
+	(Database.GetExtension): New function.
+	(Database.GetTest): Use it.
+	(Database.GetResource): Likewise.
+	(Database.GetSuite): Likewise.
+	* qm/test/doc/reference.xml: Update information about writing
+	database classes.
+
+Index: qm/test/database.py
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/test/database.py,v
+retrieving revision 1.42
+diff -c -5 -p -r1.42 database.py
+*** qm/test/database.py	31 May 2005 15:48:37 -0000	1.42
+--- qm/test/database.py	21 Jul 2005 05:04:48 -0000
+*************** import qm.extension
+*** 24,33 ****
+--- 24,35 ----
+  import qm.fields
+  from   qm.label import *
+  from   qm.test.base import *
+  from   qm.test.directory_suite import DirectorySuite
+  from   qm.test.runnable import Runnable
++ from   qm.test.resource import Resource
++ from   qm.test.suite import Suite
+  from   qm.test.test import Test
+  
+  ########################################################################
+  # Variables
+  ########################################################################
+*************** class Database(qm.extension.Extension):
+*** 493,502 ****
+--- 495,513 ----
+          }
+      &quot;&quot;&quot;The exceptions to be raised when a particular item cannot be found.
+  
+      This map is indexed by the 'ITEM_KINDS'; the value indicates the
+      exception class to be used when the indicated kind cannot be found.&quot;&quot;&quot;
++ 
++     _is_generic_database = False
++     &quot;&quot;&quot;True if this database implements 'GetExtension' as a primitive.
++ 
++     Databases should implement 'GetExtension' and then override
++     '_is_generic_database', setting it to 'True'.  However, legacy
++     databases implemented 'GetTest', 'GetResource', and 'GetSuite' as
++     primivites.  These legacy databases should not override
++     '_generic_database'.&quot;&quot;&quot;
+      
+      kind = &quot;database&quot;
+      &quot;&quot;&quot;The 'Extension' kind.&quot;&quot;&quot;
+  
+      def __init__(self, path, arguments):
+*************** class Database(qm.extension.Extension):
+*** 590,600 ****
+                  components.append(label)
+                  break
+  
+          return components
+      
+!                 
+      # Methods that deal with tests.
+      
+      def GetTest(self, test_id):
+          &quot;&quot;&quot;Return the 'TestDescriptor' for the test named 'test_id'.
+  
+--- 601,669 ----
+                  components.append(label)
+                  break
+  
+          return components
+      
+! 
+!     # Generic methods that deal with extensions.
+!     
+!     def GetExtension(self, id):
+!         &quot;&quot;&quot;Return the extension object named 'id'.
+! 
+!         'id' -- The label for the extension.
+! 
+!         returns -- The instance of 'Extension' with the indicated name,
+!         or 'None' if there is no such entity.
+! 
+!         Database classes should override this method, and then define
+!         'GetTest', 'GetResource', and 'GetSuite' in terms of this
+!         method.  However, for backwards compatibility, this base class
+!         implements this generic method in terms of the special-purpose
+!         methods.&quot;&quot;&quot;
+! 
+!         for kind in (Database.TEST, Database.RESOURCE):
+!             try:
+!                 item = self.GetItem(kind, id).GetItem()
+!             except NoSuchItemError:
+!                 pass
+!             
+!         try:
+!             return self.GetSuite(id)
+!         except NoSuchSuiteError:
+!             pass
+! 
+!         return None
+!         
+!             
+!     def RemoveExtension(self, id, kind):
+!         &quot;&quot;&quot;Remove the extension 'id' from the database.
+! 
+!         'id' -- A label for the 'Extension' instance stored in the
+!         database.
+! 
+!         'kind' -- The kind of 'Extension' stored with the given 'id'.&quot;&quot;&quot;
+! 
+!         raise NotImplementedError
+!         
+!         
+!     def WriteExtension(self, id, extension):
+!         &quot;&quot;&quot;Store 'extension' in the database, using the name 'id'.
+! 
+!         'id' -- A label for the 'extension'.
+!         
+!         'extension' -- An instance of 'Extension'.
+! 
+!         The 'extension' is stored in the database.  If there is a
+!         previous item in the database with the same id, it is removed
+!         and replaced with 'extension'.  Some databases may not be able
+!         to store all 'Extension' instances; those database must throw an
+!         exception when an attempt is made to store such an
+!         'extension'.&quot;&quot;&quot;
+! 
+!         raise NotImplementedError
+!         
+!         
+      # Methods that deal with tests.
+      
+      def GetTest(self, test_id):
+          &quot;&quot;&quot;Return the 'TestDescriptor' for the test named 'test_id'.
+  
+*************** class Database(qm.extension.Extension):
+*** 603,612 ****
+--- 672,689 ----
+          returns -- A 'TestDescriptor' corresponding to 'test_id'.
+          
+          raises -- 'NoSuchTestError' if there is no test in the database
+          named 'test_id'.&quot;&quot;&quot;
+  
++         if self._is_generic_database:
++             test = self.GetExtension(test_id)
++             if isinstance(test, Test):
++                 return TestDescriptor(self,
++                                       test_id,
++                                       test.GetClassName(),
++                                       test.GetExplicitArguments())
++         
+          raise NoSuchTestError(test_id)
+  
+  
+      def HasTest(self, test_id):
+          &quot;&quot;&quot;Check whether or not the database has a test named 'test_id'.
+*************** class Database(qm.extension.Extension):
+*** 665,674 ****
+--- 742,756 ----
+          subdirectories.&quot;&quot;&quot;
+  
+          if suite_id == &quot;&quot;:
+              return DirectorySuite(self, &quot;&quot;)
+  
++         if self._is_generic_database:
++             suite = GetExtension(suite_id)
++             if isinstance(suite, Suite):
++                 return suite
++             
+          raise NoSuchSuiteError(suite_id)
+  
+  
+      def HasSuite(self, suite_id):
+          &quot;&quot;&quot;Check whether or not the database has a suite named 'suite_id'.
+*************** class Database(qm.extension.Extension):
+*** 724,733 ****
+--- 806,823 ----
+          returns -- A 'ResourceDescriptor' corresponding to 'resource_id'.
+          
+          raises -- 'NoSuchResourceError' if there is no resource in the
+          database named 'resource_id'.&quot;&quot;&quot;
+  
++         if self._is_generic_database:
++             resource = self.GetExtension(resource_id)
++             if isinstance(resource, Resource):
++                 return ResourceDescriptor(self,
++                                           resource_id,
++                                           resource.GetClassName(),
++                                           resource.GetExplicitArguments())
++             
+          raise NoSuchResourceError(resource_id)
+  
+  
+      def HasResource(self, resource_id):
+          &quot;&quot;&quot;Check whether or not the database has a resource named
+*************** class Database(qm.extension.Extension):
+*** 951,991 ****
+  
+          # Convert the maps to sequences.
+          return test_ids.keys(), suite_ids.keys()
+  
+  
+-     def RemoveExtension(self, id, kind):
+-         &quot;&quot;&quot;Remove the extension 'id' from the database.
+- 
+-         'id' -- A label for the 'Extension' instance stored in the
+-         database.
+- 
+-         'kind' -- The kind of 'Extension' stored with the given 'id'.
+-         Some databases store different kinds of 'Extension' in different
+-         namespaces so that it is possible for there to be more than one
+-         'Extension' with the same 'id' in a single database.&quot;&quot;&quot;
+- 
+-         raise NotImplementedError
+-         
+-         
+-     def WriteExtension(self, id, extension):
+-         &quot;&quot;&quot;Store 'extension' in the database, using the name 'id'.
+- 
+-         'id' -- A label for the 'extension'.
+-         
+-         'extension' -- An instance of 'Extension'.
+- 
+-         The 'extension' is stored in the database.  If there is a
+-         previous item in the database with the same id', it is removed
+-         and replaced with 'extension'.  Some databases may not be able
+-         to store all 'Extension' instances; those database must throw an
+-         exception when an attempt is made to store such an
+-         'extension'.&quot;&quot;&quot;
+- 
+-         raise NotImplementedError
+-         
+-         
+      def IsModifiable(self):
+          &quot;&quot;&quot;Returns true iff this database is modifiable.
+  
+          returns -- True iff this database is modifiable.  If the
+          database is modifiable, it supports operatings like 'Write'
+--- 1041,1050 ----
+Index: qm/test/doc/reference.xml
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/test/doc/reference.xml,v
+retrieving revision 1.40
+diff -c -5 -p -r1.40 reference.xml
+*** qm/test/doc/reference.xml	20 Jul 2005 14:36:11 -0000	1.40
+--- qm/test/doc/reference.xml	21 Jul 2005 05:04:48 -0000
+***************
+*** 2446,2457 ****
+    server.&lt;/para&gt;
+  
+    &lt;para&gt;A test database class is a Python class that is derived from
+    &amp;database_class;, which is itself derived from
+    &lt;classname&gt;Extension&lt;/classname&gt;.  To create a new database class,
+!   you must define methods that read and write tests, resources, and
+!   suites.&lt;/para&gt;
+  
+    &lt;para&gt;The database is also responsible for determining how tests
+    (and other entities stored in the database) are named.  Each item
+    stored in the database must have a unique name.  For a database that
+    stores files in the filesystem, the name of the file may be a good
+--- 2446,2457 ----
+    server.&lt;/para&gt;
+  
+    &lt;para&gt;A test database class is a Python class that is derived from
+    &amp;database_class;, which is itself derived from
+    &lt;classname&gt;Extension&lt;/classname&gt;.  To create a new database class,
+!   you must define methods that read and write
+!   &lt;classname&gt;Extension&lt;/classname&gt; instances.&lt;/para&gt;
+  
+    &lt;para&gt;The database is also responsible for determining how tests
+    (and other entities stored in the database) are named.  Each item
+    stored in the database must have a unique name.  For a database that
+    stores files in the filesystem, the name of the file may be a good
+***************
+*** 2459,2551 ****
+    the module might be a good name for the tests.  Choosing the naming
+    convention appropriate requires understanding both the application
+    domain and the way in which the tests will actually be
+    stored.&lt;/para&gt;
+    
+!   &lt;para&gt;The database class must have a &lt;function&gt;GetTest&lt;/function&gt;
+!   function which retrieves a test from the database.  The
+!   &lt;parameter&gt;test_id&lt;/parameter&gt; parameter provide the name of the
+!   test.  The &lt;function&gt;GetTest&lt;/function&gt; function returns a
+!   &amp;test_descriptor_class;.
+!   &lt;footnote&gt;&lt;para&gt;&lt;function&gt;GetTest&lt;/function&gt; returns a
+!   &lt;classname&gt;TestDescriptor&lt;/classname&gt;, rather than a
+!   &lt;classname&gt;Test&lt;/classname&gt;, because that allows QMTest to avoid
+!   loading in the test class.  If you are running many tests in
+!   parallel, on many different machines, this indirection makes QMTest
+!   more effficient; QMTest only needs to load a particular test class
+!   on a particular machine if an instance of that class is being run
+!   on that machine.&lt;/para&gt;&lt;/footnote&gt; A
+!   &lt;classname&gt;TestDescriptor&lt;/classname&gt; indicates the test class, and
+!   the arguments to that test class.  QMTest uses that information to
+!   instantiate an instance of the test class itself as
+!   appropriate.&lt;/para&gt;
+! 
+!   &lt;para&gt;The &lt;function&gt;Write&lt;/function&gt; function is the inverse of
+!   &lt;function&gt;GetTest&lt;/function&gt;.  The test database is responsible for
+!   storing the &lt;classname&gt;Test&lt;/classname&gt; provided.  The name of test
+!   can be obtained by calling &lt;function&gt;GetId&lt;/function&gt; on the
+!   &lt;classname&gt;Test&lt;/classname&gt;.  When the &lt;function&gt;Remove&lt;/function&gt;
+!   function is called the database is responsible for removing the test
+!   named by the &lt;parameter&gt;id&lt;/parameter&gt; parameter.&lt;/para&gt;
+! 
+!   &lt;para&gt;The functions that handle resources are analogous to those
+!   for tests.  For exmaple, &lt;function&gt;GetResource&lt;/function&gt; plays the
+!   same role for resources as &lt;function&gt;GetTest&lt;/function&gt; does for
+!   tests.&lt;/para&gt;
+!   
+!  &lt;/section&gt; &lt;!-- sec-ref-writing-database-classes --&gt;
+! 
+!   &lt;section id=&quot;sec-registering-extension-class&quot;&gt;
+!    &lt;title&gt;Registering an Extension Class&lt;/title&gt;
+! 
+!    &lt;para&gt;To use your test or resource class, you must place the Python
+!    module file containing it in a directory where &qmtest; can find
+!    it.  &qmtest; looks in three places when loading
+!    extension classes:&lt;/para&gt;
+! 
+!    &lt;itemizedlist&gt;
+!     &lt;listitem&gt;
+!      &lt;para&gt;If the environment variable &lt;envar&gt;QMTEST_CLASS_PATH&lt;/envar&gt;
+!      is defined, &amp;qmtest first checks any directories listed in it.
+!      This value of this environment variable should be a list of
+!      directories to check for the module file, in the same format as
+!      the standard &lt;envar&gt;PATH&lt;/envar&gt; environment variable.&lt;/para&gt;
+!     &lt;/listitem&gt;
+! 
+!     &lt;listitem&gt;
+!      &lt;para&gt;A test database may specify additional locations to check.&lt;/para&gt;
+!     &lt;/listitem&gt;
+! 
+!     &lt;listitem&gt;
+!      &lt;para&gt;QMTest checks the configuration directory (the subdirectory
+!      named &lt;filename&gt;QMTest&lt;/filename&gt; of a test database).&lt;/para&gt;
+!     &lt;/listitem&gt;
+! 
+!     &lt;listitem&gt;
+!      &lt;para&gt;Finally, &qmtest; checks a standard directory.  This
+!      directory, installed with &qmtest;, contains modules with the
+!      standard test classes described in &lt;xref
+!      linkend=&quot;sec-ref-classes&quot;/&gt;.&lt;/para&gt;
+!     &lt;/listitem&gt;
+!    &lt;/itemizedlist&gt;
+! 
+!    &lt;para&gt;You should generally place module files containing your test
+!    classes in the test database's &lt;filename&gt;QMTest&lt;/filename&gt;
+!    directory, unless you plan to use the test classes in more than one
+!    test database.&lt;/para&gt;
+! 
+!    &lt;para&gt;You must use the &lt;command&gt;&amp;qmtest-cmd; register&lt;/command&gt;
+!    command to register your new extension class.  You must perform
+!    this step no matter where you place the module containing your
+!    extension class.&lt;/para&gt;
+! 
+!    &lt;para&gt;You can refer to the new extension class using the syntax
+!    &lt;classname&gt;module.Class&lt;/classname&gt;, where
+!    &lt;classname&gt;module&lt;/classname&gt; is the name of the module and
+!    &lt;classname&gt;Class&lt;/classname&gt; is the name of the class.&lt;/para&gt;
+  
+!   &lt;/section&gt; &lt;!-- sec-registering-extension-class --&gt;
+  
+  &lt;/chapter&gt; &lt;!-- chap-test-extension --&gt;
+  
+  &lt;!--
+    Local Variables:
+--- 2459,2528 ----
+    the module might be a good name for the tests.  Choosing the naming
+    convention appropriate requires understanding both the application
+    domain and the way in which the tests will actually be
+    stored.&lt;/para&gt;
+    
+!   &lt;para&gt;The database class must have a
+!   &lt;function&gt;GetExtension&lt;/function&gt; method which retrieves an instance
+!   of &lt;classname&gt;Extension&lt;/classname&gt; given the name of the instance.
+!   If your database is modifiable, you must also provide
+!   &lt;function&gt;WriteExtension&lt;/function&gt; and
+!   &lt;function&gt;RemoveExtension&lt;/function&gt; methods.  For historical
+!   reasons, your database class must also set the class variable
+!   &lt;varname&gt;_is_generic_database&lt;/varname&gt; to true.&lt;/para&gt; &lt;/section&gt;
+!  &lt;!-- sec-ref-writing-database-classes --&gt;
+! 
+!  &lt;section id=&quot;sec-registering-extension-class&quot;&gt;
+!   &lt;title&gt;Registering an Extension Class&lt;/title&gt;
+! 
+!   &lt;para&gt;To use your test or resource class, you must place the Python
+!   module file containing it in a directory where &qmtest; can find
+!   it.  &qmtest; looks in three places when loading
+!   extension classes:&lt;/para&gt;
+! 
+!   &lt;itemizedlist&gt;
+!    &lt;listitem&gt;
+!     &lt;para&gt;If the environment variable &lt;envar&gt;QMTEST_CLASS_PATH&lt;/envar&gt;
+!     is defined, &amp;qmtest first checks any directories listed in it.
+!     This value of this environment variable should be a list of
+!     directories to check for the module file, in the same format as
+!     the standard &lt;envar&gt;PATH&lt;/envar&gt; environment variable.&lt;/para&gt;
+!    &lt;/listitem&gt;
+! 
+!    &lt;listitem&gt;
+!     &lt;para&gt;A test database may specify additional locations to check.&lt;/para&gt;
+!    &lt;/listitem&gt;
+! 
+!    &lt;listitem&gt;
+!     &lt;para&gt;QMTest checks the configuration directory (the subdirectory
+!     named &lt;filename&gt;QMTest&lt;/filename&gt; of a test database).&lt;/para&gt;
+!    &lt;/listitem&gt;
+! 
+!    &lt;listitem&gt;
+!     &lt;para&gt;Finally, &qmtest; checks a standard directory.  This
+!     directory, installed with &qmtest;, contains modules with the
+!     standard test classes described in &lt;xref
+!     linkend=&quot;sec-ref-classes&quot;/&gt;.&lt;/para&gt;
+!    &lt;/listitem&gt;
+!   &lt;/itemizedlist&gt;
+! 
+!   &lt;para&gt;You should generally place module files containing your test
+!   classes in the test database's &lt;filename&gt;QMTest&lt;/filename&gt;
+!   directory, unless you plan to use the test classes in more than one
+!   test database.&lt;/para&gt;
+! 
+!   &lt;para&gt;You must use the &lt;command&gt;&amp;qmtest-cmd; register&lt;/command&gt;
+!   command to register your new extension class.  You must perform
+!   this step no matter where you place the module containing your
+!   extension class.&lt;/para&gt;
+! 
+!   &lt;para&gt;You can refer to the new extension class using the syntax
+!   &lt;classname&gt;module.Class&lt;/classname&gt;, where
+!   &lt;classname&gt;module&lt;/classname&gt; is the name of the module and
+!   &lt;classname&gt;Class&lt;/classname&gt; is the name of the class.&lt;/para&gt;
+  
+!  &lt;/section&gt; &lt;!-- sec-registering-extension-class --&gt;
+  
+  &lt;/chapter&gt; &lt;!-- chap-test-extension --&gt;
+  
+  &lt;!--
+    Local Variables:
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001061.html">[qmtest] PATCH: Robustify executable.py
+</A></li>
+	<LI>Next message: <A HREF="001059.html">PATCH: Generalize &quot;qmtest create&quot;
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1058">[ date ]</a>
+              <a href="thread.html#1058">[ thread ]</a>
+              <a href="subject.html#1058">[ subject ]</a>
+              <a href="author.html#1058">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">More information about the qmtest
+mailing list</a><br>
+</body></html>

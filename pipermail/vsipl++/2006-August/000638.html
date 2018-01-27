@@ -1,0 +1,201 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [vsipl++] [patch] Profiler Configuration Options
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20%5Bpatch%5D%20Profiler%20Configuration%20Options&In-Reply-To=%3C44DCDDA2.7090807%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000636.html">
+   <LINK REL="Next"  HREF="000640.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[vsipl++] [patch] Profiler Configuration Options</H1>
+    <B>Jules Bergmann</B> 
+    <A HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20%5Bpatch%5D%20Profiler%20Configuration%20Options&In-Reply-To=%3C44DCDDA2.7090807%40codesourcery.com%3E"
+       TITLE="[vsipl++] [patch] Profiler Configuration Options">jules at codesourcery.com
+       </A><BR>
+    <I>Fri Aug 11 19:42:26 UTC 2006</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000636.html">[patch] Profiler Configuration Options
+</A></li>
+        <LI>Next message: <A HREF="000640.html">[vsipl++] [patch] Profiler Configuration Options
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#638">[ date ]</a>
+              <a href="thread.html#638">[ thread ]</a>
+              <a href="subject.html#638">[ subject ]</a>
+              <a href="author.html#638">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Don McCoy wrote:
+&gt;<i> This patch adds the ability to enable/disable the profiler or selected 
+</I>&gt;<i> portions.  The new option is:
+</I>&gt;<i> 
+</I>&gt;<i>   --enable-profiler=type  Specify list of areas to profile. Choices include
+</I>&gt;<i>                           none, all or a combination of: signal, matvec, 
+</I>&gt;<i> fns
+</I>&gt;<i>                           and user. Default is none.
+</I>&gt;<i> 
+</I>&gt;<i> There is a built-in dependency on the timer or it produces an error at 
+</I>&gt;<i> configuration time.  The timer has also been renamed to help avoid 
+</I>&gt;<i> confusion.
+</I>&gt;<i> 
+</I>&gt;<i> Although there are four options, only signal and matvec are implemented 
+</I>&gt;<i> yet.  The former controls profiling of FFT's, Convolutions etc. (all 
+</I>&gt;<i> part of the signal processing portion of the standard) and the latter 
+</I>&gt;<i> controls profiling of matrix-vector functions like dot-product and 
+</I>&gt;<i> matrix multiplication.
+</I>
+Don,
+
+This looks good.
+
+I have two comments:
+
+The first comment: in general, I like the way the current profiling code 
+has a minimal foorprint on the functional code.  This minimizes the 
+impact on code readabilit.  In particular, you have done a good job 
+using techniques like RAII so that in many cases a profiling event can 
+be inserted in just a single line with the Scope_event class.
+
+We should be able to keep this up as we add the ability to disable 
+profiling.
+
+For example, instead of disabling a Scope_event class with an ifdef:
+
+	#if PROFILING_ENABLED
+	   Scope_event ev(&quot;name&quot;);
+	#endif
+
+we could define a VSIP_IMPL_PROFILE macro:
+
+	VSIP_IMPL_PROFILE(PROFILING_ENABLED, Scope_event ev(&quot;name&quot;))
+
+That let's us keep this as a single line.
+
+We could even fold the PROFILING_ENABLED into the VSIP_IMPL_PROFILE macro:
+
+	VSIP_IMPL_PROFILE(Scope_event ev(&quot;name&quot;))
+
+Or go all the way down to:
+
+	VSIP_IMPL_SCOPE_EVENT(ev(&quot;name&quot;))
+
+VSIP_IMPL_PROFILE could be used for other things besides Scope_events:
+
+	VSIP_IMPL_PROFILE(pm_in_ext_cost_  += in_ext.cost)
+
+Of course it will make sense to use #if/#endif for some multi-line 
+chunks of profiling code.
+
+
+
+There are a couple of ways to implement this.
+
+First, at the top of each file, you could define those macros:
+
+	#define PROFILING_ENABLED (VSIP_IMPL_PROFILER &amp; ...)
+	#if PROFILING_ENABLED
+	#  define VSIP_IMPL_PROFILE(X) X;
+	#  define VSIP_IMPL_SCOPE_EVENT(X) Scope_event X;
+	   ...
+	#else
+	#  define VSIP_IMPL_PROFILE(X)
+	#  define VSIP_IMPL_SCOPE_EVENT(X)
+	   ...
+	#endif
+
+However, that leads to replication of the macros in each file, which we 
+should avoid.
+
+A better approach is to put the VSIP_IMPL_PROFILE macro in profile.hpp. 
+  That requires a bit of work because it will be defined before 
+PROFILING_ENABLED.  Something like this should work:
+
+	/* in profile.hpp: */
+
+	// Enable (or not) for a single statement
+	#define VSIP_IMPL_PROFILE_EN_0(X)
+	#define VSIP_IMPL_PROFILE_EN_1(X) X;
+
+	// Join two names together (allowing for expansion of macros)
+	#define VSIP_IMPL_JOIN(A, B) VSIP_IMPL_JOIN_1(A, B)
+	#define VSIP_IMPL_JOIN_1(A, B) A ## B
+
+	#define VSIP_IMPL_PROFILE(STMT)				\
+	 VSIP_IMPL_JOIN(VSIP_IMPL_PROFILE_EN_, PROFILING_ENABLED) (STMT)
+
+	#define VSIP_IMPL_SCOPE_EVNET(DECL)			\
+	 VSIP_IMPL_JOIN(VSIP_IMPL_PROFILE_EN_, PROFILING_ENABLED) \
+	 (Scope_event DECL)
+
+One more change is necessary.  The PROFILING_ENABLED variable set at the 
+top of each file needs to be set to either 0 or 1:
+
+	#if (VSIP_IMPL_PROFILER &amp; VSIP_IMPL_PROFILER_SIGNAL)
+	#  define PROFILING_ENABLED 1
+	#else
+	#  define PROFILING_ENABLED 0
+	#endif
+
+An alternative to this is to have configure.ac set individual macros for 
+each class of profiling (set VSIP_IMPL_PROFILER_SIGNAL to either a 0 or 
+a 1) instead of rolling them together into a mask.  Then each header 
+would have:
+
+	#define PROFILING_ENABLED VSIP_IMPL_PROFILER_SIGNAL
+
+
+
+The second comment is more of a wish that can be addressed later.  I 
+would like the ability to separately enable/disable the profiling and 
+performance APIs.  The performance API should have a lower overhead than 
+the profiling because it doesn't store data in a std::vector or 
+std::map.  Right now we can punt on this, as I'm not entire sure what 
+the performance API and profiling overheads are and how folks will 
+actually use all this.
+
+
+Other than that, this looks good to check in.
+
+				-- Jules
+
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">jules at codesourcery.com</A>
+(650) 331-3385 x705
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000636.html">[patch] Profiler Configuration Options
+</A></li>
+	<LI>Next message: <A HREF="000640.html">[vsipl++] [patch] Profiler Configuration Options
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#638">[ date ]</a>
+              <a href="thread.html#638">[ thread ]</a>
+              <a href="subject.html#638">[ subject ]</a>
+              <a href="author.html#638">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">More information about the vsipl++
+mailing list</a><br>
+</body></html>

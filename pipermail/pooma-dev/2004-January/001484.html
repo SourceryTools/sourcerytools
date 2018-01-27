@@ -1,0 +1,237 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [PATCH] Fix deadlocks in MPI reduction evaluators
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20Fix%20deadlocks%20in%20MPI%20reduction%20evaluators&In-Reply-To=%3CPine.LNX.4.58.0401082303590.880%40goofy%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001483.html">
+   <LINK REL="Next"  HREF="001489.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[PATCH] Fix deadlocks in MPI reduction evaluators</H1>
+    <B>Richard Guenther</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20Fix%20deadlocks%20in%20MPI%20reduction%20evaluators&In-Reply-To=%3CPine.LNX.4.58.0401082303590.880%40goofy%3E"
+       TITLE="[PATCH] Fix deadlocks in MPI reduction evaluators">rguenth at tat.physik.uni-tuebingen.de
+       </A><BR>
+    <I>Thu Jan  8 22:13:52 UTC 2004</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001483.html">[pooma-dev] Re: [PATCH] Support hybrid MPI/OpenMP if available
+</A></li>
+        <LI>Next message: <A HREF="001489.html">[PATCH] Fix deadlocks in MPI reduction evaluators
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1484">[ date ]</a>
+              <a href="thread.html#1484">[ thread ]</a>
+              <a href="subject.html#1484">[ subject ]</a>
+              <a href="author.html#1484">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Hi!
+
+The following patch is necessary to avoid deadlocks with the MPI
+implementation and multi-patch setups where one context does not
+participate in the reduction.
+
+Fixes failure of array_test_.. - I don't remember - with MPI.
+
+Basically the scenario is that the collective synchronous MPI_Gather is
+called from ReduceOverContexts&lt;&gt; on the non-participating (and thus
+not receiving) contexts while the SendIterates are still in the
+schedulers queue.  The calculation participating contexts will wait for
+the ReceiveIterates and patch reductions to complete using the CSem
+forever then.
+
+So the fix is to make the not participating contexts wait on the CSem,
+too, by using a fake write iterate queued after the send iterates which
+will trigger as soon as the send iterates complete.
+
+Tested using MPI, Cheetah and serial some time ago.
+
+Ok?
+
+Richard.
+
+
+2004Jan08  Richard Guenther &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">richard.guenther at uni-tuebingen.de</A>&gt;
+
+	* src/Engine/RemoteEngine.h: use a waiting iterate to wait for
+	reduction completion in remote single and multi-patch reduction
+	evaluator.
+	Do begin/endGeneration at the toplevel evaluate.
+	src/Evaluator/Reduction.h: do begin/endGeneration at the toplevel
+	evaluate.
+
+--- src/Engine/RemoteEngine.h	2004-01-02 12:57:48.000000000 +0100
++++ /home/richard/src/pooma/pooma-mpi3/r2/src/Engine/RemoteEngine.h	2004-01-08 23:00:40.000000000 +0100
+@@ -1954,6 +1962,29 @@
+   }
+ };
+
++
++template &lt;class Expr&gt;
++struct WaitingIterate : public Pooma::Iterate_t {
++  WaitingIterate(const Expr&amp; e, Pooma::CountingSemaphore&amp; csem)
++    : Pooma::Iterate_t(Pooma::scheduler()),
++      e_m(e), csem_m(csem)
++  {
++    DataObjectRequest&lt;WriteRequest&gt; writeReq(*this);
++    engineFunctor(e_m, writeReq);
++  }
++  virtual void run()
++  {
++    csem_m.incr();
++  }
++  virtual ~WaitingIterate()
++  {
++    DataObjectRequest&lt;WriteRelease&gt; writeRel;
++    engineFunctor(e_m, writeRel);
++  }
++  Expr e_m;
++  Pooma::CountingSemaphore&amp; csem_m;
++};
++
+ //-----------------------------------------------------------------------------
+ // Single-patch Reductions involving remote engines:
+ //
+@@ -1998,12 +2029,11 @@
+     Pooma::CountingSemaphore csem;
+     csem.height(1);
+
+-    Pooma::scheduler().beginGeneration();
+-
+     if (Pooma::context() != computationContext)
+     {
+       expressionApply(e, RemoteSend(computationContext));
+-      csem.incr();
++      Pooma::Iterate_t *it = new WaitingIterate&lt;Expr&gt;(e, csem);
++      Pooma::scheduler().handOff(it);
+     }
+     else
+     {
+@@ -2013,8 +2043,7 @@
+ 		 forEach(e, view, TreeCombine()), csem);
+     }
+
+-    Pooma::scheduler().endGeneration();
+-
++    // Wait for RemoteSend or Reduction to complete.
+     csem.wait();
+
+     RemoteProxy&lt;T&gt; globalRet(ret, computationContext);
+@@ -2102,8 +2131,6 @@
+     csem.height(n);
+     T *vals = new T[n];
+
+-    Pooma::scheduler().beginGeneration();
+-
+     i = inter.begin();
+     k = 0;
+     for (j = 0; j &lt; inter.size(); j++)
+@@ -2129,13 +2156,19 @@
+ 	    else
+ 	    {
+ 	      expressionApply(e(*i), RemoteSend(computationalContext[j]));
++              // One extra RemoteSend to wait for. Maybe we can combine these
++              // iterates, but maybe not. Play safe for now.
++	      csem.raise_height(1);
++	      Pooma::Iterate_t *it = new WaitingIterate
++		&lt;typename View1&lt;Expr, INode&lt;Expr::dimensions&gt; &gt;::Type_t&gt;(e(*i), csem);
++	      Pooma::scheduler().handOff(it);
+ 	    }
+ 	  }
+
+ 	++i;
+       }
+
+-    Pooma::scheduler().endGeneration();
++    // Wait for RemoteSends and Reductions to complete.
+     csem.wait();
+
+     if (n &gt; 0)
+--- src/Evaluator/Reduction.h	2003-11-21 22:30:38.000000000 +0100
++++ /home/richard/src/pooma/pooma-mpi3/r2/src/Evaluator/Reduction.h	2004-01-02 00:40:14.000000000 +0100
+@@ -128,10 +128,15 @@
+   void evaluate(T &amp;ret, const Op &amp;op, const Expr &amp;e) const
+   {
+     typedef typename EvaluatorTag1&lt;Expr&gt;::Evaluator_t Evaluator_t;
++
++    Pooma::scheduler().beginGeneration();
++
+     PAssert(checkValidity(e, WrappedInt&lt;Expr::hasRelations&gt;()));
+     forEach(e, PerformUpdateTag(), NullCombine());
+     Reduction&lt;Evaluator_t&gt;().evaluate(ret, op, e());
+
++    Pooma::scheduler().endGeneration();
++
+     POOMA_INCREMENT_STATISTIC(NumReductions)
+   }
+ };
+@@ -184,12 +189,8 @@
+     Pooma::CountingSemaphore csem;
+     csem.height(1);
+
+-    Pooma::scheduler().beginGeneration();
+-
+     evaluate(ret, op, e, csem);
+
+-    Pooma::scheduler().endGeneration();
+-
+     csem.wait();
+   }
+ };
+@@ -237,12 +238,10 @@
+
+     expressionApply(e, IntersectorTag&lt;Inter_t&gt;(inter));
+
+-    const int n = std::distance(inter.begin(), inter.end());
++    const int n = inter.size();
+     Pooma::CountingSemaphore csem;
+     csem.height(n);
+     T *vals = new T[n];
+-
+-    Pooma::scheduler().beginGeneration();
+
+     typename Inter_t::const_iterator i = inter.begin();
+     int j = 0;
+@@ -253,8 +252,6 @@
+         ++i; ++j;
+       }
+
+-    Pooma::scheduler().endGeneration();
+-
+     csem.wait();
+
+     ret = vals[0];
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001483.html">[pooma-dev] Re: [PATCH] Support hybrid MPI/OpenMP if available
+</A></li>
+	<LI>Next message: <A HREF="001489.html">[PATCH] Fix deadlocks in MPI reduction evaluators
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1484">[ date ]</a>
+              <a href="thread.html#1484">[ thread ]</a>
+              <a href="subject.html#1484">[ subject ]</a>
+              <a href="author.html#1484">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

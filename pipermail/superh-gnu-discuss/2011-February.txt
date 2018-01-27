@@ -1,0 +1,395 @@
+From fabio.giovagnini at aurion-tech.com  Wed Feb  9 08:31:45 2011
+From: fabio.giovagnini at aurion-tech.com (Fabio Giovagnini)
+Date: Wed, 9 Feb 2011 09:31:45 +0100
+Subject: Question about static or dynamic linking of userspace app
+In-Reply-To: <4C21ADF3.6060500@codesourcery.com>
+References: <201006171641.17330.fabio.giovagnini@aurion-tech.com> <201006230711.48176.fabio.giovagnini@aurion-tech.com> <4C21ADF3.6060500@codesourcery.com>
+Message-ID: <201102090931.45360.fabio.giovagnini@aurion-tech.com>
+
+Hi Andrew,
+at the I end I got my board booting linux 2.6.37 and hello world userspace 
+applicaiton running properly with
+gcc version 4.4.1 (Sourcery G++ Lite 4.4-206)
+
+Two questions:
+1) is this the last release of the toolchian for uclinux with FDPIC support?
+2) Now I have 4 MiB of jffs2 filesystem. The libuClibc-0.9.30-svn.so is 51,1 MB 
+(53583624 byte). I understand it is not possible to have dynamic linking in 
+this conditions. It it true?
+
+Thanks a lot
+
+
+
+
+-- 
+Ing. Fabio Giovagnini
+
+Aurion s.r.l.
+P.I e C.F.
+00885711200
+skype: aurion.giovagnini
+Tel. +39.051.594.78.24
+Fax. +39.051.082.14.49
+Cell. +39.335.83.50.919
+www.aurion-tech.com
+
+
+From ams at codesourcery.com  Wed Feb  9 10:03:53 2011
+From: ams at codesourcery.com (Andrew Stubbs)
+Date: Wed, 09 Feb 2011 10:03:53 +0000
+Subject: Question about static or dynamic linking of userspace app
+In-Reply-To: <201102090931.45360.fabio.giovagnini@aurion-tech.com>
+References: <201006171641.17330.fabio.giovagnini@aurion-tech.com> <201006230711.48176.fabio.giovagnini@aurion-tech.com> <4C21ADF3.6060500@codesourcery.com> <201102090931.45360.fabio.giovagnini@aurion-tech.com>
+Message-ID: <4D526689.6060301@codesourcery.com>
+
+On 09/02/11 08:31, Fabio Giovagnini wrote:
+> Two questions:
+> 1) is this the last release of the toolchian for uclinux with FDPIC support?
+
+There is a new, updated toolchain here:
+
+http://www.codesourcery.com/sgpp/lite/superh
+
+> 2) Now I have 4 MiB of jffs2 filesystem. The libuClibc-0.9.30-svn.so is 51,1 MB
+> (53583624 byte). I understand it is not possible to have dynamic linking in
+> this conditions. It it true?
+
+I'm not sure I fully understand the question. Are you saying that you 
+can't have dynamic libraries because they are too large for your 
+file-system? If so, then you may well be right, but there is still hope!
+
+In addition to the usual things like stripping the binaries or using a 
+compressed file system, you might be able to use the "mklibs" Library 
+Reduction Utility to reduce the binary size.
+
+CodeSourcery does not bundle this tool into the Lite editions, but it 
+does feature in the full products (there isn't one for FDPIC, but the 
+regular Linux version might work with some tweaking - I believe it just 
+needs to be pointed at the correct linker/objdump tools), and of course 
+you can get it from the upstream repository.
+
+This tool removes everything from the dynamic libraries that are not 
+used by the set of binaries you specify. This means that the code 
+remains shared, and so reduces both run-time memory usage, and 
+file-system storage space. The down-side is that you can't run arbitrary 
+binaries on your system - you have to be sure they don't have additional 
+symbol dependencies.
+
+Hope that helps
+
+Andrew
+
+
+From fabio.giovagnini at aurion-tech.com  Wed Feb  9 16:13:37 2011
+From: fabio.giovagnini at aurion-tech.com (Fabio Giovagnini)
+Date: Wed, 9 Feb 2011 17:13:37 +0100
+Subject: Question about static or dynamic linking of userspace app
+In-Reply-To: <4D526689.6060301@codesourcery.com>
+References: <201006171641.17330.fabio.giovagnini@aurion-tech.com> <201102090931.45360.fabio.giovagnini@aurion-tech.com> <4D526689.6060301@codesourcery.com>
+Message-ID: <201102091713.37840.fabio.giovagnini@aurion-tech.com>
+
+On Wednesday 09 February 2011 11:03:53 Andrew Stubbs wrote:
+> On 09/02/11 08:31, Fabio Giovagnini wrote:
+> > Two questions:
+> > 1) is this the last release of the toolchian for uclinux with FDPIC
+> > support?
+> 
+> There is a new, updated toolchain here:
+> 
+> http://www.codesourcery.com/sgpp/lite/superh
+Thanks I'm upgrading
+
+> 
+> > 2) Now I have 4 MiB of jffs2 filesystem. The libuClibc-0.9.30-svn.so is
+> > 51,1 MB (53583624 byte). I understand it is not possible to have dynamic
+> > linking in this conditions. It it true?
+> 
+> I'm not sure I fully understand the question. Are you saying that you
+> can't have dynamic libraries because they are too large for your
+> file-system? If so, then you may well be right, but there is still hope!
+You understood properly.
+
+
+> 
+> In addition to the usual things like stripping the binaries or using a
+> compressed file system, you might be able to use the "mklibs" Library
+> Reduction Utility to reduce the binary size.
+With strip --debug reduce a lot the size.
+sh-uclinux-strip --strip-debug
+is the only opstion or I can reduce more and more with other options?
+
+> 
+> CodeSourcery does not bundle this tool into the Lite editions, but it
+> does feature in the full products (there isn't one for FDPIC, but the
+> regular Linux version might work with some tweaking - I believe it just
+> needs to be pointed at the correct linker/objdump tools), and of course
+> you can get it from the upstream repository.
+I'm not sure to understand.
+mkliubs is available with sh-uclinux lite or not?
+If yes where can I download it and study hiow to use it?
+
+
+> 
+> This tool removes everything from the dynamic libraries that are not
+> used by the set of binaries you specify. This means that the code
+> remains shared, and so reduces both run-time memory usage, and
+> file-system storage space. The down-side is that you can't run arbitrary
+> binaries on your system - you have to be sure they don't have additional
+> symbol dependencies.
+> 
+> Hope that helps
+Sure!!!! A lot.
+
+
+> 
+> Andrew
+
+-- 
+Ing. Fabio Giovagnini
+
+Aurion s.r.l.
+P.I e C.F.
+00885711200
+skype: aurion.giovagnini
+Tel. +39.051.594.78.24
+Fax. +39.051.082.14.49
+Cell. +39.335.83.50.919
+www.aurion-tech.com
+
+
+From ams at codesourcery.com  Wed Feb  9 18:09:59 2011
+From: ams at codesourcery.com (Andrew Stubbs)
+Date: Wed, 09 Feb 2011 18:09:59 +0000
+Subject: Question about static or dynamic linking of userspace app
+In-Reply-To: <201102091713.37840.fabio.giovagnini@aurion-tech.com>
+References: <201006171641.17330.fabio.giovagnini@aurion-tech.com> <201102090931.45360.fabio.giovagnini@aurion-tech.com> <4D526689.6060301@codesourcery.com> <201102091713.37840.fabio.giovagnini@aurion-tech.com>
+Message-ID: <4D52D877.2000904@codesourcery.com>
+
+On 09/02/11 16:13, Fabio Giovagnini wrote:
+> sh-uclinux-strip --strip-debug
+> is the only opstion or I can reduce more and more with other options?
+
+I believe that is all. You could strip all symbols from static binaries, 
+but I think that will break dynamic ones.
+
+> mkliubs is available with sh-uclinux lite or not?
+> If yes where can I download it and study hiow to use it?
+
+mklibs is not included in the sh-uclinux package, not in any of the Lite 
+releases (I believe). It is included in the sh-linux full product.
+
+mklibs is implemented in python and uses the binutils for most of what 
+it does, so will probably work. No promises though.
+
+I'm not sure where the official upstream is, but both debian and ubuntu 
+have it in their source repositories.
+
+Andrew
+
+
+From fabio.giovagnini at aurion-tech.com  Wed Feb  9 20:14:19 2011
+From: fabio.giovagnini at aurion-tech.com (Fabio Giovagnini)
+Date: Wed, 9 Feb 2011 21:14:19 +0100
+Subject: Question about static or dynamic linking of userspace app
+In-Reply-To: <4D52D877.2000904@codesourcery.com>
+References: <201006171641.17330.fabio.giovagnini@aurion-tech.com> <201102091713.37840.fabio.giovagnini@aurion-tech.com> <4D52D877.2000904@codesourcery.com>
+Message-ID: <201102092114.19588.fabio.giovagnini@aurion-tech.com>
+
+Thanks a lot. I understand.
+But now I have problem of
+sh: page allocation failure. order:8, mode:0xd0
+
+Just for my information.
+When I build a user sapce applicaito, do I need to specify the complier / 
+linker I want an executable fo a MMUless machine?
+
+Thanks in advance
+
+
+
+On Wednesday 09 February 2011 19:09:59 Andrew Stubbs wrote:
+> On 09/02/11 16:13, Fabio Giovagnini wrote:
+> > sh-uclinux-strip --strip-debug
+> > is the only opstion or I can reduce more and more with other options?
+> 
+> I believe that is all. You could strip all symbols from static binaries,
+> but I think that will break dynamic ones.
+> 
+> > mkliubs is available with sh-uclinux lite or not?
+> > If yes where can I download it and study hiow to use it?
+> 
+> mklibs is not included in the sh-uclinux package, not in any of the Lite
+> releases (I believe). It is included in the sh-linux full product.
+> 
+> mklibs is implemented in python and uses the binutils for most of what
+> it does, so will probably work. No promises though.
+> 
+> I'm not sure where the official upstream is, but both debian and ubuntu
+> have it in their source repositories.
+> 
+> Andrew
+
+-- 
+Ing. Fabio Giovagnini
+
+Aurion s.r.l.
+P.I e C.F.
+00885711200
+skype: aurion.giovagnini
+Tel. +39.051.594.78.24
+Fax. +39.051.082.14.49
+Cell. +39.335.83.50.919
+www.aurion-tech.com
+
+
+From ams at codesourcery.com  Thu Feb 10 09:51:48 2011
+From: ams at codesourcery.com (Andrew Stubbs)
+Date: Thu, 10 Feb 2011 09:51:48 +0000
+Subject: Question about static or dynamic linking of userspace app
+In-Reply-To: <201102092114.19588.fabio.giovagnini@aurion-tech.com>
+References: <201006171641.17330.fabio.giovagnini@aurion-tech.com> <201102091713.37840.fabio.giovagnini@aurion-tech.com> <4D52D877.2000904@codesourcery.com> <201102092114.19588.fabio.giovagnini@aurion-tech.com>
+Message-ID: <4D53B534.1010904@codesourcery.com>
+
+On 09/02/11 20:14, Fabio Giovagnini wrote:
+> Thanks a lot. I understand.
+> But now I have problem of
+> sh: page allocation failure. order:8, mode:0xd0
+
+That means you ran out of memory. This could be a toolchain bug, say if 
+the shared memory isn't working right, but it's probably just too large 
+an application.
+
+I run busybox on my board, and nothing else but the specific application 
+I need.
+
+> Just for my information.
+> When I build a user sapce applicaito, do I need to specify the complier /
+> linker I want an executable fo a MMUless machine?
+
+The Sourery G++ for SH uClinux is built specifically for an MMUless machine.
+
+Andrew
+
+
+From fabio.giovagnini at aurion-tech.com  Thu Feb 10 16:59:23 2011
+From: fabio.giovagnini at aurion-tech.com (Fabio Giovagnini)
+Date: Thu, 10 Feb 2011 17:59:23 +0100 (CET)
+Subject: Question about static or dynamic linking of userspace app
+In-Reply-To: <4D53B534.1010904@codesourcery.com>
+References: <201006171641.17330.fabio.giovagnini@aurion-tech.com>
+    <201102091713.37840.fabio.giovagnini@aurion-tech.com>
+    <4D52D877.2000904@codesourcery.com>
+    <201102092114.19588.fabio.giovagnini@aurion-tech.com>
+    <4D53B534.1010904@codesourcery.com>
+Message-ID: <f71242a7899398040c30157b4199e505.squirrel@aurion-tech.com>
+
+Really I have 64 MiB of SDRAM; now I have set the kernel to know that and
+I will try.
+Could be usefull to test the last toolchain you wrote to me?
+
+Thanks
+
+
+> On 09/02/11 20:14, Fabio Giovagnini wrote:
+>> Thanks a lot. I understand.
+>> But now I have problem of
+>> sh: page allocation failure. order:8, mode:0xd0
+>
+> That means you ran out of memory. This could be a toolchain bug, say if
+> the shared memory isn't working right, but it's probably just too large
+> an application.
+>
+> I run busybox on my board, and nothing else but the specific application
+> I need.
+>
+>> Just for my information.
+>> When I build a user sapce applicaito, do I need to specify the complier
+>> /
+>> linker I want an executable fo a MMUless machine?
+>
+> The Sourery G++ for SH uClinux is built specifically for an MMUless
+> machine.
+>
+> Andrew
+>
+
+
+
+
+From ams at codesourcery.com  Thu Feb 10 17:35:37 2011
+From: ams at codesourcery.com (Andrew Stubbs)
+Date: Thu, 10 Feb 2011 17:35:37 +0000
+Subject: Question about static or dynamic linking of userspace app
+In-Reply-To: <f71242a7899398040c30157b4199e505.squirrel@aurion-tech.com>
+References: <201006171641.17330.fabio.giovagnini@aurion-tech.com>    <201102091713.37840.fabio.giovagnini@aurion-tech.com>    <4D52D877.2000904@codesourcery.com>    <201102092114.19588.fabio.giovagnini@aurion-tech.com>    <4D53B534.1010904@codesourcery.com> <f71242a7899398040c30157b4199e505.squirrel@aurion-tech.com>
+Message-ID: <4D5421E9.4020902@codesourcery.com>
+
+On 10/02/11 16:59, Fabio Giovagnini wrote:
+> Really I have 64 MiB of SDRAM; now I have set the kernel to know that and
+> I will try.
+
+Oh, OK. My boards have much less (each instance of busybox takes 10%!)
+
+> Could be usefull to test the last toolchain you wrote to me?
+
+Yes, if you find any problems, please let us know in the bug tracker.
+
+Thanks
+
+Andrew
+
+
+From fabio.giovagnini at aurion-tech.com  Mon Feb 14 15:16:49 2011
+From: fabio.giovagnini at aurion-tech.com (Fabio Giovagnini)
+Date: Mon, 14 Feb 2011 16:16:49 +0100
+Subject: Question about static or dynamic linking of userspace app
+In-Reply-To: <4D52D877.2000904@codesourcery.com>
+References: <201006171641.17330.fabio.giovagnini@aurion-tech.com> <201102091713.37840.fabio.giovagnini@aurion-tech.com> <4D52D877.2000904@codesourcery.com>
+Message-ID: <201102141616.50078.fabio.giovagnini@aurion-tech.com>
+
+Ok, Andrew.
+I tesetd the latest toolchain and it works.
+I set properly the ram size of my board and its works.
+
+I go head with the develop.
+
+Thanka a lot
+
+
+
+On Wednesday 09 February 2011 19:09:59 Andrew Stubbs wrote:
+> On 09/02/11 16:13, Fabio Giovagnini wrote:
+> > sh-uclinux-strip --strip-debug
+> > is the only opstion or I can reduce more and more with other options?
+> 
+> I believe that is all. You could strip all symbols from static binaries,
+> but I think that will break dynamic ones.
+> 
+> > mkliubs is available with sh-uclinux lite or not?
+> > If yes where can I download it and study hiow to use it?
+> 
+> mklibs is not included in the sh-uclinux package, not in any of the Lite
+> releases (I believe). It is included in the sh-linux full product.
+> 
+> mklibs is implemented in python and uses the binutils for most of what
+> it does, so will probably work. No promises though.
+> 
+> I'm not sure where the official upstream is, but both debian and ubuntu
+> have it in their source repositories.
+> 
+> Andrew
+
+-- 
+Ing. Fabio Giovagnini
+
+Aurion s.r.l.
+P.I e C.F.
+00885711200
+skype: aurion.giovagnini
+Tel. +39.051.594.78.24
+Fax. +39.051.082.14.49
+Cell. +39.335.83.50.919
+www.aurion-tech.com
+
+

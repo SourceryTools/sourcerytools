@@ -1,0 +1,156 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> PATCH: Fix packaging glitch
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:qmtest%40codesourcery.com?Subject=Re%3A%20PATCH%3A%20Fix%20packaging%20glitch&In-Reply-To=%3C200402272220.i1RMKOju000830%40sirius.codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000792.html">
+   
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>PATCH: Fix packaging glitch</H1>
+    <B>Mark Mitchell</B> 
+    <A HREF="mailto:qmtest%40codesourcery.com?Subject=Re%3A%20PATCH%3A%20Fix%20packaging%20glitch&In-Reply-To=%3C200402272220.i1RMKOju000830%40sirius.codesourcery.com%3E"
+       TITLE="PATCH: Fix packaging glitch">mark at codesourcery.com
+       </A><BR>
+    <I>Fri Feb 27 22:20:24 UTC 2004</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000792.html">[qmtest] exceptions.TypeError: All dictionary items must be strings, or all must be unicode
+</A></li>
+        
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#793">[ date ]</a>
+              <a href="thread.html#793">[ thread ]</a>
+              <a href="subject.html#793">[ subject ]</a>
+              <a href="author.html#793">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>
+The code in setup.py that tried to decide whether we were building a
+Windows package or a UNIX package, and name the main QMTest script
+&quot;qmtest&quot; or &quot;qmtest.py&quot; accordingly, was very fragile.  So fragile
+that the Windows 2.1.1 release packages failed to contain &quot;qmtest.py&quot;,
+which is a major glitch.
+
+This patch removes this fragility and been committed on the 2.1 branch
+and the mainline.
+
+--
+Mark Mitchell
+CodeSourcery, LLC
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">mark at codesourcery.com</A>
+
+
+2004-02-27  Mark Mitchell  &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">mark at codesourcery.com</A>&gt;
+
+	* setup.py: Install both &quot;qmtest&quot; and &quot;qmtest.py&quot; on all systems.
+
+Index: setup.py
+===================================================================
+RCS file: /home/qm/Repository/qm/setup.py,v
+retrieving revision 1.9
+diff -c -5 -p -r1.9 setup.py
+*** setup.py	4 Dec 2003 02:38:08 -0000	1.9
+--- setup.py	27 Feb 2004 21:59:55 -0000
+*************** tutorial_files = files_with_ext(&quot;qm/test
+*** 84,108 ****
+  test_dtml_files = files_with_ext(&quot;qm/test/share/dtml&quot;, &quot;.dtml&quot;)
+  
+  share_files = {}
+  os.path.walk(&quot;share&quot;, select_share_files, share_files)
+  
+! # On UNIX, we want the main script to be &quot;qmtest&quot;.  On Windows, we need
+! # to use a &quot;.py&quot; extension so that users can invoke the script directly;
+! # if we were to omit the &quot;.py&quot; extension they would have to explicitly
+! # type &quot;python qmtest&quot; to invoke the script.  Searching for
+! # &quot;bdist_wininst&quot; in sys.argv is an (inelegant) way of checking to see
+! # if we are building a Windows binary installer.
+  qmtest_script = join(&quot;qm&quot;, &quot;test&quot;, &quot;qmtest&quot;)
+! py_script = qmtest_script + &quot;.py&quot;
+! if &quot;bdist_wininst&quot; in sys.argv:
+!     shutil.copyfile(qmtest_script, py_script)
+!     qmtest_script = py_script
+! elif os.path.exists(py_script):
+!     # Avoid accidentally packaging the &quot;.py&quot; version of the script, if
+!     # it exists.
+!     os.remove(py_script)
+       
+  setup(name=&quot;qm&quot;, 
+        version=version,
+        author=&quot;CodeSourcery, LLC&quot;,
+        author_email=&quot;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">info at codesourcery.com</A>&quot;,
+--- 84,100 ----
+  test_dtml_files = files_with_ext(&quot;qm/test/share/dtml&quot;, &quot;.dtml&quot;)
+  
+  share_files = {}
+  os.path.walk(&quot;share&quot;, select_share_files, share_files)
+  
+! # On UNIX, users invoke &quot;qmtest&quot;.  On Windows, there is no way to make a
+! # Python script directly executable, unless its suffix is &quot;.py&quot;.  It is
+! # difficult to get distutils to install just one script or the other, so
+! # we install both on all platforms.
+  qmtest_script = join(&quot;qm&quot;, &quot;test&quot;, &quot;qmtest&quot;)
+! qmtest_py_script = qmtest_script + &quot;.py&quot;
+! shutil.copyfile(qmtest_script, qmtest_py_script)
+       
+  setup(name=&quot;qm&quot;, 
+        version=version,
+        author=&quot;CodeSourcery, LLC&quot;,
+        author_email=&quot;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">info at codesourcery.com</A>&quot;,
+*************** setup(name=&quot;qm&quot;, 
+*** 122,132 ****
+                  'qm/external',
+                  'qm/external/DocumentTemplate',
+                  'qm/test',
+                  'qm/test/classes',
+                  'qm/test/web'),
+!       scripts=[qmtest_script],
+        data_files=[('qm/messages/test',
+                     prefix(messages, 'qm/test/share/messages')),
+                    # DTML files for the GUI.
+                    (&quot;qm/dtml/test&quot;, test_dtml_files),
+                    # The documentation.
+--- 114,124 ----
+                  'qm/external',
+                  'qm/external/DocumentTemplate',
+                  'qm/test',
+                  'qm/test/classes',
+                  'qm/test/web'),
+!       scripts=[qmtest_script, qmtest_py_script],
+        data_files=[('qm/messages/test',
+                     prefix(messages, 'qm/test/share/messages')),
+                    # DTML files for the GUI.
+                    (&quot;qm/dtml/test&quot;, test_dtml_files),
+                    # The documentation.
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000792.html">[qmtest] exceptions.TypeError: All dictionary items must be strings, or all must be unicode
+</A></li>
+	
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#793">[ date ]</a>
+              <a href="thread.html#793">[ thread ]</a>
+              <a href="subject.html#793">[ subject ]</a>
+              <a href="author.html#793">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">More information about the qmtest
+mailing list</a><br>
+</body></html>

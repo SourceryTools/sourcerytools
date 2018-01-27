@@ -1,0 +1,857 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> Hydrodynamics Kernel (12Apr Version)
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20Hydrodynamics%20Kernel%20%2812Apr%20Version%29&In-Reply-To=%3C20010412161056.A2659%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000246.html">
+   <LINK REL="Next"  HREF="000252.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>Hydrodynamics Kernel (12Apr Version)</H1>
+    <B>Jeffrey Oldham</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20Hydrodynamics%20Kernel%20%2812Apr%20Version%29&In-Reply-To=%3C20010412161056.A2659%40codesourcery.com%3E"
+       TITLE="Hydrodynamics Kernel (12Apr Version)">oldham at codesourcery.com
+       </A><BR>
+    <I>Thu Apr 12 23:10:56 UTC 2001</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000246.html">[pooma-dev] Re: cheetah
+</A></li>
+        <LI>Next message: <A HREF="000252.html">[pooma-dev] Hydrodynamics Kernel (12Apr Version)
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#251">[ date ]</a>
+              <a href="thread.html#251">[ thread ]</a>
+              <a href="subject.html#251">[ subject ]</a>
+              <a href="author.html#251">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Yesterday, I delivered a hydrodynamics kernel for testing the Field
+class and to use for timings.  Today, I replaced the two sequential
+computations with parallel versions:
+
+1) changing the initialization of the coordinates Fields
+2) changing the computation of corner forces.
+
+There are now no significant sequential computations in the code.
+(There are a few; just count the number of semicolons. :)
+
+Attached is
+
+1) the main hydrodynamics kernel file (also included in the archive)
+2) a uuencoded gzipped tar archive with all the source files
+3) a patch with the differences between yesterday and today's source code
+
+To compile the program,
+a. uudecode foo.uu              # produces hydrodynamics.tgz
+b. tar xzvf hydrodynamics.tgz   # extracts the five files
+c. In Makefile, modify the compiler definitions as necessary.
+d. make                         # produces hydrodynamics
+
+Please send suggestions, comments, and questions.
+
+Thanks,
+Jeffrey D. Oldham
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">oldham at codesourcery.com</A>
+-------------- next part --------------
+// Oldham, Jeffrey D.
+// 2001Mar27
+// Pooma
+
+// Hydrodynamics Kernel Written Using POOMA
+
+#include &lt;iostream&gt;
+#include &lt;stdlib.h&gt;
+#include &lt;cmath&gt;
+#include &quot;Pooma/NewFields.h&quot;
+#include &quot;ComputeVolumes.h&quot;
+#include &quot;Product.h&quot;
+#include &quot;ConstantVectorComponentBC.h&quot;
+
+// This hydrodynamics program implements &quot;The Construction of
+// Compatible Hydrodynamics Algorithms Utilizing Conservation of Total
+// Energy,&quot; by E.J. Caramana, D.E. Burton, M.J. Shashkov, and
+// P.P. Whalen, \emph{Journal of Computational Physics}, vol. 146
+// (1998), pp. 227-262.
+
+// The code uses fields with two different granularities: coarse and
+// fine.  Both grid conceptually cover the same domain, but the
+// fine-grain one has twice the number of values for each dimension.
+// Currently, Pooma does not nicely support operations between fields
+// with different granularities.  The code occurring between
+// `CORNER_FIELD_TEMPORARY' preprocessor values substitutes for this
+// lack of support.  See the separately distributed proposal for
+// details.
+
+// Preprocessor symbols:
+// CORNER_FIELD_TEMPORARY: Define this symbol.  Include code to deal
+// 			   with different granularity fields.
+// PSEUDOCODE: Do not define this symbol.  Surrounds desired code to
+//	       deal with different granularity fields.
+// DEBUG: If defined, print some information about internal program
+//	  values.
+// DEBUG2: If defined, print much more information about internal
+//	   program values.
+
+// Sample compilation command:
+// g++ -g -DCORNER_FIELD_TEMPORARY -I/nfs/oz/home/oldham/pooma/r2/src/ -I/nfs/oz/home/oldham/pooma/r2/lib/LINUXgcc/ -L. hydrodynamics.cc -lpooma-gcc -o hydrodynamics
+
+#ifdef CORNER_FIELD_TEMPORARY
+
+/** FORWARD DECLARATIONS **/
+
+template&lt;class InputGeometry, class OutputGeometry, class T, class EngineTag&gt;
+inline
+void
+sumAroundCell (const Field&lt;InputGeometry, T, EngineTag&gt; &amp; input,
+	       Field&lt;OutputGeometry, T, EngineTag&gt; &amp; output);
+
+template&lt;class InputGeometry, class OutputGeometry, class T, class EngineTag&gt;
+inline
+void
+sumAroundVertex(const Field&lt;InputGeometry, T, EngineTag&gt; &amp; input,
+		Field&lt;OutputGeometry, T, EngineTag&gt; &amp; output);
+
+template&lt;class InputGeometry1,
+         class InputT1, class InputT2,
+         class InputEngineTag1, class InputEngineTag2,
+         class OutputGeometry, class OutputT, class OutputEngineTag&gt;
+inline
+void
+computeCornerMasses(const Field&lt;InputGeometry1, InputT1, InputEngineTag1&gt; &amp; pressureDensity,
+		    const Field&lt;OutputGeometry, InputT2, InputEngineTag2&gt; &amp; fineCoordinates,
+		    Field&lt;OutputGeometry, OutputT, OutputEngineTag&gt; &amp; output);
+
+template &lt;class InputGeometry1,
+          class InputT1, class InputT2,
+          class InputEngineTag1, class InputEngineTag2,
+          class OutputGeometry, class OutputT, class OutputEngineTag&gt;
+inline
+void
+computeCornerForces(const Field&lt;InputGeometry1, InputT1, InputEngineTag1&gt; &amp; pressure,
+		    const Field&lt;OutputGeometry, InputT2, InputEngineTag2&gt; &amp; coordinates,
+		    Field&lt;OutputGeometry, OutputT, OutputEngineTag&gt; &amp; output);
+
+template &lt;class InputGeometry1,
+          class InputT1,
+          class InputEngineTag1,
+          class OutputGeometry, class OutputT, class OutputEngineTag&gt;
+inline
+void
+copyVelocities(const Field&lt;InputGeometry1, InputT1, InputEngineTag1&gt; &amp; input1,
+	       const Field&lt;InputGeometry1, InputT1, InputEngineTag1&gt; &amp; input2,
+	       Field&lt;OutputGeometry, OutputT, OutputEngineTag&gt; &amp; output);
+#endif // CORNER_FIELD_TEMPORARY
+
+
+
+/** THE HYDRODYNAMICS PROGRAM **/
+
+int main(int argc, char *argv[])
+{
+  // Set up the Pooma library.
+  Pooma::initialize(argc,argv);
+#ifdef DEBUG
+  std::cout &lt;&lt; &quot;Hello, world.&quot; &lt;&lt; std::endl;
+#endif // DEBUG
+
+  /* DECLARATIONS */
+
+  // Values
+  const double gamma = 4.0/3;		// gas pressure constant $\gamma$
+  const double timeStep = 0.01;		// $\Delta t$
+  unsigned nuIterations = 1;		// number of iterations
+
+  // Create a simple layout.
+  const unsigned Dim = 2;		// Work in a 2D world.
+  const unsigned nHorizVerts = 11;	// number of horizontal vertices
+  const unsigned nAngles = 5;		// number of angles
+  Interval&lt;Dim&gt; vertexDomain;
+  vertexDomain[0] = Interval&lt;1&gt;(nHorizVerts);
+  vertexDomain[1] = Interval&lt;1&gt;(nAngles);
+  DomainLayout&lt;Dim&gt; layout(vertexDomain, GuardLayers&lt;2&gt;(1));
+
+  // Preparation for Field creation.
+  Vector&lt;Dim&gt; origin(0.0);
+  Vector&lt;Dim&gt; spacings(1.0,1.0);  // TODO: What does this do?
+  typedef UniformRectilinear&lt;Dim, double, Cartesian&lt;Dim&gt; &gt; Geometry_t;
+  typedef Field&lt;Geometry_t, double,      Brick&gt; Fields_t;
+  typedef Field&lt;Geometry_t, double,      Brick&gt; ConstFields_t; // TODO: Change to ConstField when ConstField is available.
+  typedef Field&lt;Geometry_t, Vector&lt;Dim&gt;, Brick&gt; Fieldv_t;
+  typedef Field&lt;Geometry_t, Vector&lt;Dim&gt;, Brick&gt; ConstFieldv_t; // TODO: Change to ConstField when ConstField is available.
+
+  // Cell-centered Fields.
+  Cell cell;
+  Fields_t internalEnergy  (cell, layout, origin, spacings);
+  ConstFields_t zoneMass   (cell, layout, origin, spacings);
+  Fields_t pressure	   (cell, layout, origin, spacings);
+  Fields_t pressureDensity (cell, layout, origin, spacings);
+  Fields_t volume	   (cell, layout, origin, spacings);
+
+  // Vertex-centered Fields.
+  Vert vert;
+  ConstFields_t pointMass  (vert, layout, origin, spacings);
+  Fieldv_t coordinates	   (vert, layout, origin, spacings);
+  Fieldv_t velocity	   (vert, layout, origin, spacings);
+  Fieldv_t velocityChange  (vert, layout, origin, spacings);
+
+  // Corner Fields.
+  // TODO: How should I implement corner Fields?
+#ifdef CORNER_FIELD_TEMPORARY
+  // For now, implement corner Fields using a Field with twice as many
+  // entries in each dimension.
+  Interval&lt;Dim&gt; cornerVertexDomain;
+  for (unsigned d = 0; d &lt; Dim; ++d)
+    cornerVertexDomain[d] = Interval&lt;1&gt;(2*vertexDomain[d].min(),2*vertexDomain[d].max());
+  DomainLayout&lt;Dim&gt; cornerLayout(cornerVertexDomain, GuardLayers&lt;2&gt;(1));
+  Fieldv_t cornerForces	   (cell, cornerLayout, origin, spacings);
+  Fields_t cornerMasses    (cell, cornerLayout, origin, spacings);
+  Fieldv_t cornerCoordinates(vert, cornerLayout, origin, spacings);
+  Fieldv_t cornerVelocities(vert, cornerLayout, origin, spacings);
+  Fields_t tmp1		   (cell, cornerLayout, origin, spacings);
+  Fields_t tmp2		   (cell, cornerLayout, origin, spacings);
+#endif // CORNER_FIELD_TEMPORARY
+
+  /* INITIALIZATION */
+
+  Iota&lt;Dim&gt;::Iota_t range(coordinates.domain());
+  #define X (range.comp(0))
+  #define Y (range.comp(1))
+  coordinates.comp(0) = 1.0*X/(nHorizVerts-1) * cos(Y*M_PI/(2*(nAngles-1)));
+  coordinates.comp(1) = 1.0*X/(nHorizVerts-1) * sin(Y*M_PI/(2*(nAngles-1)));
+  Iota&lt;Dim&gt;::Iota_t crange(cornerCoordinates.domain());
+  #define X (crange.comp(0))
+  #define Y (crange.comp(1))
+  cornerCoordinates.comp(0) =
+    0.5*X/(nHorizVerts-1) * cos(0.5*Y*M_PI/(2*(nAngles-1)));
+  cornerCoordinates.comp(1) =
+    0.5*X/(nHorizVerts-1) * sin(0.5*Y*M_PI/(2*(nAngles-1)));
+#ifdef DEBUG
+  std::cout &lt;&lt; &quot;initial coordinates:\n&quot; &lt;&lt; coordinates &lt;&lt; std::endl;
+#endif // DEBUG
+  internalEnergy = 1.0;
+  pressureDensity = 1.0;
+#ifdef PSEUDOCODE
+  // This is the desired code:
+  cornerMasses = replicate&lt;2&gt;(pressureDensity) *
+    computeVolumes(interpolate&lt;2&gt;(coordinates));
+  pointMass = total&lt;2&gt;(cornerMasses);
+  zoneMass = total&lt;2&gt;(cornerMasses);
+  // This is the code that Pooma currently supports:
+#endif // PSEUDOCODE
+#ifdef CORNER_FIELD_TEMPORARY
+  computeCornerMasses(pressureDensity, cornerCoordinates, cornerMasses);
+  sumAroundVertex(cornerMasses, pointMass);
+  sumAroundCell(cornerMasses, zoneMass);
+#endif // CORNER_FIELD_TEMPORARY
+  PInsist(min(pointMass) &gt; 0.0, &quot;Zero masses are not supported.&quot;);
+#ifdef DEBUG2
+  std::cout &lt;&lt; &quot;pointMass:\n&quot; &lt;&lt; pointMass &lt;&lt; std::endl;
+  std::cout &lt;&lt; &quot;zoneMass:\n&quot; &lt;&lt; zoneMass &lt;&lt; std::endl;
+#endif // DEBUG2
+  velocity = Vector&lt;Dim&gt;(0.0);
+  velocityChange.addUpdaters(AllConstantFaceBC&lt;Vector&lt;Dim&gt; &gt;(Vector&lt;Dim&gt;(0.0), false));
+  for (int d = 0; d &lt; Dim; ++d)
+    velocityChange.addUpdater(ConstantVectorComponentBC&lt;Vector&lt;Dim&gt;::Element_t&gt;(2*d, d, 0.0, true));
+  velocityChange.addUpdater(ConstantVectorComponentBC&lt;Vector&lt;Dim&gt;::Element_t&gt;(3, 0, 0.0, true));
+
+  /* ITERATIONS */
+
+  for (; nuIterations &gt; 0; --nuIterations) {
+#ifdef DEBUG
+    std::cout &lt;&lt; &quot;Begin an iteration.&quot; &lt;&lt; std::endl;
+#endif // DEBUG
+    pressure = (gamma - 1.0) * pressureDensity * internalEnergy;
+#ifdef DEBUG2
+    std::cout &lt;&lt; &quot;pressure:\n&quot; &lt;&lt; pressure &lt;&lt; std::endl;
+#endif // DEBUG2
+#ifdef PSEUDOCODE
+    // This is the desired code.
+    forces = replicate&lt;2&gt;(pressure) * addNormals(coordinates);
+    velocityChange = (timeStep / pointMass) * total&lt;2&gt;(cornerForces);
+    // This is the code that Pooma currently supports:
+#endif // PSEUDOCODE
+#ifdef CORNER_FIELD_TEMPORARY
+    computeCornerForces(pressure, coordinates, cornerForces);
+    sumAroundVertex(cornerForces, velocityChange);
+    velocityChange *= timeStep / pointMass;
+#endif // CORNER_FIELD_TEMPORARY
+#ifdef DEBUG2
+    std::cout &lt;&lt; &quot;corner forces:\n&quot; &lt;&lt; cornerForces &lt;&lt; std::endl;
+    std::cout &lt;&lt; &quot;velocity changes:\n&quot; &lt;&lt; velocityChange &lt;&lt; std::endl;
+#endif // DEBUG2
+    velocityChange.update();
+#ifdef PSEUDOCODE
+    // This is the desired code.
+    internalEnergy +=
+      -(timeStep / pointMass) *
+      total&lt;2&gt;(dot(cornerForces, replicate&lt;2&gt;(velocity + 0.5*velocityChange)));
+    // This is the code that Pooma currently supports:
+#endif // PSEUDOCODE
+#ifdef CORNER_FIELD_TEMPORARY
+    copyVelocities(velocity, velocityChange, cornerVelocities);
+    tmp1 = dot(cornerForces, cornerVelocities);
+    sumAroundCell(tmp1, tmp2);
+    internalEnergy += -(timeStep / pointMass) * tmp2;
+#endif // CORNER_FIELD_TEMPORARY
+    coordinates += (velocity + 0.5*velocityChange) * timeStep;
+    velocity += velocityChange;
+    volume = computeVolumes(coordinates);
+    pressureDensity = zoneMass / volume;
+#ifdef DEBUG2
+    std::cout &lt;&lt; &quot;pressure density:\n&quot; &lt;&lt; pressureDensity &lt;&lt; std::endl;
+#endif // DEBUG2
+  }
+
+  /* TERMINATION */
+
+  std::cout &lt;&lt; &quot;final coordinates:\n&quot; &lt;&lt; coordinates &lt;&lt; std::endl;
+#ifdef DEBUG
+  std::cout &lt;&lt; &quot;Goodbye, world.&quot; &lt;&lt; std::endl;
+#endif // DEBUG
+  Pooma::finalize();
+  return EXIT_SUCCESS;
+}
+
+
+/** HELPER FUNCTIONS **/
+
+#ifdef CORNER_FIELD_TEMPORARY
+// Following is temporary code to permit compilation using the current
+// Pooma code.  Adding new Pooma abstractions may eliminate the need
+// for this code.
+static Loc&lt;2&gt; offset[] = { Loc&lt;2&gt;(0,0), Loc&lt;2&gt;(0,1),
+			     Loc&lt;2&gt;(1,0), Loc&lt;2&gt;(1,1) };
+
+// Given a Field with twice the refinement, form a cell-centered Field
+// by summing the 1&lt;&lt;Dim corresponding corners.
+template&lt;class InputGeometry, class OutputGeometry, class T, class EngineTag&gt;
+inline
+void
+sumAroundCell(const Field&lt;InputGeometry, T, EngineTag&gt; &amp; input,
+	      Field&lt;OutputGeometry, T, EngineTag&gt; &amp; output)
+{
+  const int dim = Field&lt;OutputGeometry, T, EngineTag&gt;::dimensions;
+  Field&lt;OutputGeometry,T,EngineTag&gt;::Domain_t range = output.physicalDomain();
+  output(range) = 0;
+  for (unsigned counter = 0; counter &lt; (1&lt;&lt;dim); ++counter)
+    output(range) += input(2*range+offset[counter]);
+  return;
+}
+
+
+// Given a Field with twice the refinement, form a vertex-centered Field
+// by summing the 1&lt;&lt;Dim corresponding corners.
+template&lt;class InputGeometry, class OutputGeometry, class T, class EngineTag&gt;
+inline
+void
+sumAroundVertex(const Field&lt;InputGeometry, T, EngineTag&gt; &amp; input,
+		Field&lt;OutputGeometry, T, EngineTag&gt; &amp; output)
+{
+  const int dim = Field&lt;OutputGeometry, T, EngineTag&gt;::dimensions;
+  Field&lt;OutputGeometry,T,EngineTag&gt;::Domain_t range = output.physicalDomain();
+  output(range) = 0;
+  for (unsigned counter = 0; counter &lt; (1&lt;&lt;dim); ++counter)
+    output(range) += input(2*range-offset[counter]);
+  return;
+}
+
+
+// Given a quadrilateral's two diagonals as vectors, return the
+// quadrilateral's volume.
+template &lt;int Dim, class T, class E&gt;
+inline
+double
+quadrilateralVolume (const Vector&lt;Dim,T,E&gt; &amp;v, const Vector&lt;Dim,T,E&gt; &amp;w)
+{
+  return 0.5 * std::abs (sum (product (v, w)));
+}
+
+
+// Given a pressure density Field and a fine-mesh coordinate Field, compute
+// corner masses, placing in &quot;output&quot;.
+// TODO: Extend to multiple dimensions.
+template&lt;class InputGeometry1,
+         class InputT1, class InputT2,
+         class InputEngineTag1, class InputEngineTag2,
+         class OutputGeometry, class OutputT, class OutputEngineTag&gt;
+inline
+void
+computeCornerMasses(const Field&lt;InputGeometry1, InputT1, InputEngineTag1&gt; &amp; pressureDensity,
+		    const Field&lt;OutputGeometry, InputT2, InputEngineTag2&gt; &amp; fineCoordinates,
+		    Field&lt;OutputGeometry, OutputT, OutputEngineTag&gt; &amp; output)
+{
+  // Assume the temporary finer coordinates Field fineCoordinates
+  // already has values.
+
+  // Compute the volumes in fineCoordinates.
+  output = computeVolumes(fineCoordinates);
+
+  // Multiply each volume by the pressure density.
+  Field&lt;InputGeometry1,InputT1,InputEngineTag1&gt;::Domain_t range = pressureDensity.physicalDomain();
+  const unsigned corners =
+    (1 &lt;&lt; (Field&lt;InputGeometry1, InputT1, InputEngineTag1&gt;::dimensions));;
+  for (unsigned c = 0; c &lt; corners; ++c)
+    output(2*range+offset[c]) *= pressureDensity(range);
+
+  return;
+}
+
+
+// Given a pressure Field and a coordinate Field, compute the corner
+// forces in a fine-mesh Field.
+template &lt;class InputGeometry1,
+          class InputT1, class InputT2,
+          class InputEngineTag1, class InputEngineTag2,
+          class OutputGeometry, class OutputT, class OutputEngineTag&gt;
+inline
+void
+computeCornerForces(const Field&lt;InputGeometry1, InputT1, InputEngineTag1&gt; &amp; pressure,
+		    const Field&lt;OutputGeometry, InputT2, InputEngineTag2&gt; &amp; coordinates,
+		    Field&lt;OutputGeometry, OutputT, OutputEngineTag&gt; &amp; output)
+{
+  Field&lt;InputGeometry1,InputT1,InputEngineTag1&gt;::Domain_t range = pressure.physicalDomain();
+  output(2*range+offset[0]) =
+    pressure(range) *
+    0.5 * product(InputT2(1.0),
+		  coordinates(range+offset[2])
+		  - coordinates(range+offset[1]));
+  output(2*range+offset[1]) =
+    pressure(range) *
+    0.5 * product(InputT2(1.0),
+		  coordinates(range+offset[0])
+		  - coordinates(range+offset[3]));
+  output(2*range+offset[2]) =
+    pressure(range) *
+    0.5 * product(InputT2(1.0),
+		  coordinates(range+offset[3])
+		  - coordinates(range+offset[0]));
+  output(2*range+offset[3]) =
+    pressure(range) *
+    0.5 * product(InputT2(1.0),
+		  coordinates(range+offset[1])
+		  - coordinates(range+offset[2]));
+  return;
+}
+
+
+template &lt;class InputGeometry, class InputT, class InputEngineTag,
+          class OutputGeometry, class OutputT, class OutputEngineTag&gt;
+inline
+void
+copyVelocities(const Field&lt;InputGeometry, InputT, InputEngineTag&gt; &amp; input1,
+	       const Field&lt;InputGeometry, InputT, InputEngineTag&gt; &amp; input2,
+	       Field&lt;OutputGeometry, OutputT, OutputEngineTag&gt; &amp; output)
+{
+  Field&lt;InputGeometry,InputT,InputEngineTag&gt;::Domain_t range =
+    input1.physicalDomain();
+  output(2*range-offset[0]) =
+  output(2*range-offset[1]) =
+  output(2*range-offset[2]) =
+  output(2*range-offset[3]) = input1(range) + 0.5*input2(range);
+  return;
+}
+
+#endif // CORNER_FIELD_TEMPORARY
+-------------- next part --------------
+begin 660 hydrodynamics.tgz
+M'XL(`(LSUCH``^P]:W&lt;:1[+Y*GY%'R='`7D8'I:E#9*U5P)D*RL+'0G9-R?9
+MXQV&amp;!F8]S'!G!A'BX_WMMQ[=\^(A6P8GN3?L)H+I[NKJJNKJ&gt;G1-FOYX,HWD
+M&amp;]^=CF5HCK[9PJ=:JU8/#JK?5*O5VN'S??Q;/3PXI+_PJ%X_J']3/:P?[!\&lt;
+M'NYCO]JSZL'^-Z*Z#63RGVD868$0W_AN?V2-5_&gt;S0_=KH/.U/Y5*&gt;9.?0J4B
+MFJX5AC)LX'&lt;AFAD!PV&lt;O7;]GN&gt;)\ZMF1XWNB*\&lt;3UXKB$79^Q&amp;8Q+'SK#+R^
+M'(CK3N?UZ;M7/[5N.JV?KDY?7S1OW]UVVU?-B\MWKPK?0A?'DP_T`NPV\2EL
+M?)5`R&lt;Z]#.X=.6L(^)5C#/W,T%F(AA#\O&lt;P&lt;L(@[_D0&amp;5N0'HCA`AOE!2&lt;!3
+M`!W)7W&amp;:G1U!'UMZD0QD7YP[TNV'IIJDO,'_(;R'!0C_R8I0L01K&gt;QM8$UB*
+M&amp;.A15N!/O7YJ!83X;20]VW&amp;/L\0Y:302.I1,(;HCF1J9HZ0B5&quot;@L.YI:KCL7
+MTQ`(8P7I,1,KB!Q813B1-OQU?B-R$]U$ZK-Y\=^&quot;I'7G$PG;A&gt;B_6&gt;#;P/;&quot;
+ML]UI7VX#VV\=ABV&gt;7,D9R5.%_FV.GJQLN_&quot;&lt;B`1`!N&amp;*?BUG,.A,PDI:0K-=
+MKP._/[4C?<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">+ at -DIW</A>[P&lt;P*^J(E;=&lt;*6%+_%,PFY*&gt;N&quot;YB'=N!,$/-82ZS5ARNT
+MI`.[6F]P82,`$:*:]8;&quot;&quot;D4T`EZ&lt;&lt;^L3$2F]A&amp;!@NUMC&amp;:$&quot;@H$95:/Z&amp;^U?
+M)X$,0\#PQ!&quot;SD6./A`,`Y!@T*\R*4/H.K`*@B'M&quot;)U;.I#6NEVN4!(C6VK&amp;J
+M=CQ8FK!(&quot;X(&quot;=]VDR9]&amp;T/:'T^(OG7L)JGMA)4100P!MIH%'M$ITLQ=&amp;U&quot;QF
+M3C3*+3.T+1!H`3\#AVP-/4S^#VIN9&quot;OR%`&gt;%WRNJZ[-ML[)*9-XD0&quot;2Q]$`^
+M7-'U(_AW6APW.E-!0S[F#=&amp;M&amp;VIKO)0^&quot;'TP/RGP[^QF.BIL9=6K]H$_6&amp;*,
+M;G3R;:PFIW_&gt;2-05E3&lt;@_Z)\(FY)?BM-D,\_$EN7C'1`_[2&lt;L0;1?:V_-6^7
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">M at SGFI1</A>[3H&amp;X==.*=YX#R'-_`&lt;P&gt;VIK1T(\`&quot;*.*D\*$PF?9&lt;QVX4&quot;D)$;)7`
+M6-C/'=)G;5:$[Z(C[(!44XJN20H!MCMH&amp;1LU!C1_**`B4&quot;H%^Q9+1_#H(PZ]
+M]&amp;V&lt;^X15:&amp;&lt;P&quot;&amp;44+HP%CK&quot;*M35X/#^0=XTT;`VL6$LF0!5(_R;]%4S)H#15
+M`_^!M5E3E[0Z'AH(.@&quot;UY:!&gt;Z\WCYI&quot;/&amp;=!Q0_1G[`2&gt;243(*<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">UGQ at 3</A>'(\?&quot;\
+M?;+8FX!!D]@=H(9MTQ0E#0&amp;T)&quot;'Z6D8COZ^PQP:4!=&gt;?R:#]*R`7%?%W7Q$/
+M!BNR5(\`#'&gt;&gt;HNF^MG.-.Y/)O(C[&quot;&lt;%!F&lt;D+`C3H0[18TNN!Y;#`.K45XC`H
+M.K6GT%CF;]6$&lt;9N;6OVMKT&quot;A:CX7&gt;\#=?J-A]4)1#*=C49RP'<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">5C8 at 4</A>^1D32&lt;
+M.F!:9CSQ1[5D4+M('NGV&amp;K?#9XOK47^?+=DM=Z$4&lt;!*#O:)/<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">9K4 at 5-ZZ4XRI</A>
+M`3`,^DEKR/R$'[`J,T4P)1V9T&lt;5J2&gt;RI!E',0(+-N)&gt;!541V%W:RG&gt;J+G4H*
+M7GGIA+75$U;SL.J?,F$UGO#<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">IT at GKGS</A>'ALA4ND*&amp;JA&gt;/CEL[O!XW#K9]T^GR+
+M#RO]A15&lt;UQJ&gt;%/!T\&lt;&quot;D+Z1M^5NRM7/!@V,8'I^81D$%&amp;HZ32:`]`2Q.&amp;@WT
+MIV$_V4N5[=K!NX-2X4/J[%N#&quot;5N%&gt;!0FW9&gt;L1?4R'L):W,B(@2G]1+\;C;'U
+M7A85D.+`3)T3Q1)N5Q`FT#/?2J_O#$1E;WV\3&gt;Q5&quot;K]WQ/3_UH?,&quot;\N+V-A&quot;
+M&lt;?$]T.9GS0VF`M;'_^OU_&gt;&lt;UBO_7#VO[AX&lt;8_W]&gt;&gt;_97_/^K?%&quot;5[I5%\^E3
+M_(N:];1YV0`36GKA!CU%BA*.P$(-_4$TLP*)40?X!_0,G/)SL`C0LN&gt;(&lt;W$$
+MKKGC&quot;3``7#!EG]QVSKMO3V_:3TH4%.&quot;GI&quot;9$$7P]_.V*3N_?(,'E#KCQ8&amp;KW
+MM&lt;U)TYQ.)K`@]@)+8&quot;8CF+'5!QSN+&lt;&gt;U&gt;F!M3+V^#,C5!SM]'(+QC.&amp;B'@!&quot;
+M9#C@*S0B8F2%HB&gt;EAX&quot;L&quot;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">9 at H</A>]]`1XSJ!=*4%<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">- at Q</A>%&amp;N#`\,$!16PN3\O-IKB:
+MCGLP&quot;_TH__&quot;W\L%S4Y]W=YXKX7SQ`<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">8- at Y</A>@`$!_2AC6,-P`KHMC&quot;WL*:P0F7K
+M6X0*'F+^7$H!F.COY/;BNL!Y(D&lt;AFI,C#'XQ(.PYEI%$^+DG0KKT0W'J6F/X
+M&lt;T5T@[/XTNKYU&amp;^NJ`6J(PHLL,VN?%.\+1_N5Y^7VU&lt;OR\\.:/T(AR8V;TW1
+MDACOIB`4S-+V9#&quot;&lt;*ZI2^<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">TL at 8</A>&gt;!1.RXP&lt;(:C*!21CY%S`R$%DBU!:1!+^PXX
+M,4X/CK8L&gt;4P&quot;R4X@\'@.)N8$SJJD.P&amp;;!(B.!&quot;X'SCVL[QXXY@?O65IXL#O'
+M06`4S'/TQZ6!S\@!JI$5#`$CE`&quot;G#ZR(1E;$_:_\&quot;/:0DO(YF.G`2[U\YEPX
+M&lt;B:8$Q&quot;9Y?4QNP(BC8@[<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">, at 0</A>:74D'I8)HF2*3YP=YOK)&lt;OY&lt;A30F[+`#%#JN7
+M'%A$L&lt;`SW4&amp;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">A at N</A>\@GQ12P,ZN8_7`IT;A&quot;!1&quot;(9P$H:.&gt;#M1LP`X6DS3-M1!?
+M#!(R0?O8AR/=0:KXRHQ?<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">I+ at APJD</A>]BKLBE!A$&quot;'1V0;S!9X5=%0!'QE;P'I$/
+M?0RV&gt;GZ$H,$L&amp;B!:3L3;3HFP]HJ3/3X(_#%LOJO+&amp;.%S6-48]E!&amp;_8&quot;8`WM)
+MO\!,8)&lt;(61X##%J&amp;[X^M_[)LUW0MSS6'_CW)$X&quot;Y=X`%1&quot;+63#/9$Q-K&quot;!(`
+M$AU%DT:E,IO-S/30&quot;D&amp;KF)O5LEGUO1FX*?`4,X]3NVP[G%NV/&amp;MN.U%[U7Y[
+M?M&amp;^;+V[NVZ==MLW[YJ=J]ONZ57W3;O9[=PT.Z^O.U?MJ^Y9&lt;R%[^UE#MYZ*
+M%2MMKH8X@[9^$W3%$/6LSB]$D0I$ZP`UA39I;]U+SD1H(&quot;#*I#Z&amp;4\S7@/J&quot;
+M;0!;:.ZC(LKE%NF3@&quot;JZ_M#!XW5&gt;@NT?Q]@$Z(B1&amp;`&quot;/&lt;0=8[+0#]F(9M'O+
+MG4KSSY`9^BMIJ8&quot;GLHAWR/,(CIW*E8]IR6R.,6F]/@U#&amp;7&quot;V&lt;4FZ\F[2!PD.
+M]-\52&lt;U&lt;KS.PF_[DZ&lt;L5403PC]&lt;$$M0#<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">H at D</A>'5#:+U=H$Z&quot;I%Q&amp;G.;`(%SWW%
+M*<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">ZV at DI</A>,_(@M&amp;AIRJ%#V\6H%V/2B+OL.C,6T7:<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">YBT at J</A>'$)IR$H+EF:&amp;W3*4J*
+M!*&lt;$C!:5'``C4XNTDJ.2HUHQL0T(6E,OKUA*;GTH4PV1'$O+(QMS9($Y0B`B
+M9RS+?3F!4Q^G`2]8B--TR%R$8&amp;.`P0)K\&amp;&gt;&lt;[P5J`0R)%H0MV&gt;BUV!)`Q5F.
+M2&lt;$K`F1_DX%_Q&quot;:4-1C`TL`R\]RY,EH6TYH\,JS$RT&gt;%;EMH\^`L\03LV/#!
+M1T97CSN`?.G4;\PPI%`WCNVFLM,.+PH#0MISB!7^MI1[C(9.%R4)H17RF4WT
+M;!2A)5D7C#P7Q&amp;IL*&quot;6!HLB1[?ML.P7;Z884Q&gt;^Z8E&lt;3-&amp;[I^;ZK)4C/&lt;J;9
+M^@)`NZ$L(0H-FN;=N(A_2@;%=7/306/NB&gt;JG9X4.^FO)X*#ZBJFAYXJ6DN&quot;!
+M'U3292UU&gt;-VK=&lt;TN6/_2S:Z/'IG\0V.YN%#NM?!\&lt;&lt;'&lt;,7GP\,)YQ,KV4KS\
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">M+0D at G+</A>#.D#V]^)*':/<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">D20Q-R at KZ</A>;:C8?$$ZQJ\&gt;_&gt;)@<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">3P2 at LQ</A>?D8IC[('SQ5
+MK#A:<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">S at C59</A>^'Y48X/JE_RX&amp;@]%U3_E&gt;V4Q8T#SGNH4E7&gt;:DM,L6WPHT$E5)3#
+M&quot;K8U&gt;L9P*.)<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">Q at M</A>&amp;=4/%#JX3B0J9243+.;&gt;:<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">HMCA at D</A>:PTMAL3=G%(BL+4=YV&quot;
+M61R]FMYQ;OH.[#^*K\SP8$`O?&amp;1Y0YDY+[X/^&lt;0PA#2'IL$QA/0!:TO*0-_[
+M3C]S7'&gt;%)V?Z%V:3,Q*4:N/%X?\G%%:0C4**]&quot;Q&gt;2TC,#5V1E&lt;-U-,(&gt;VTIW
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">MG7KJGN at RJXG</A>/0:3&lt;ZK/P:V7#UMNQZLA6%N)Q-EM$0S,)(T/G)-5GY?*.=:)-
+M=!N-.-&gt;,&quot;2&gt;\0Z$B?2D?XK-G?C0&quot;RV^;/)8`CR0&quot;0&lt;'(&gt;C:1MP&amp;&quot;/!H;G'1)
+M6G$-!N)V2N%['L7_W[91ASQ35%+G8HR$V`W!--,&amp;VV&gt;38;=GE\B684(40T/`
+M$Z8R^<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">SE at 7US</A>[\*W18#^[J'+X'Q0G=+($W0(5T0TQH&quot;&lt;&lt;MLA#QI1&quot;Y9Z//\L#
+M=&gt;M&gt;\4[]58YZ40THEDQO.H9U\AU]T/<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">PO7 at B</A>^NY(:A#%8B7=N:&quot;[&amp;V,QVT&lt;L`
+M=9R`CC#)VZ*6XA*8+R5[17V'?#_?,PNJD6[T`*B&gt;;:HCLR+J1X4T,22G1I+!
+M0)&amp;)Y:6I\3WZ&lt;GC/46$L,N,#&quot;4H4CJ*9%/^&gt;`E?MD3_!NU\$(1TL,T1DO&lt;=P
+MFXVQ&gt;3C9$C!PQ/5==&lt;91EH&gt;\58&quot;(/?GDH'O`Y.$EVCP!4*1D$9Q5Z.P0&lt;U&amp;S
+MHVM6CF^(E7*D1N)8?&lt;19DQ2$H`BD6GV&lt;[^Z*&gt;$LG[,EDWDU?7UG[N?]/E():
+M*1G#TP%#JGI*&quot;0[(8G--[=98:%P42B3/R!F.,&quot;H.3C(=Q0FK&amp;7?%YMW,M!_B
+M;P3N%&lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">+ at P2+</A>;HB7)XWP:N*F9:*?#8D%WQI9(FR:J]Q('A1D1SM*(H%X24/A%
+M\(K]6+)3/%)XG3)A%G=-YI-ZIK&lt;1\4!&lt;H`2`Q71&lt;.RFF6LRQ]6L1;YIIA)\J
+M#H`/LZ.O*R]^%B&quot;D$/\H4GQ=R8#+F'G+E_MI;*![?AMD`\';`!MV/I\/J-&gt;8
+MZ#L+%,8VX(Q&gt;35GQ*$WT`O][2[Y)2V:N=?Y'GVVE;7JI\&lt;U.Y1]-)NX\&amp;Y2*
+M35GM&amp;)&amp;U/R7DBME3+^9_3/62B3&amp;OHJW&quot;C&lt;#]!6&lt;)CK#&quot;3JI#XA,=%1*J%S(.
+M0GQNQR=^H\'G%IS]&gt;N[8X-\@T93![[H/!%ZS]2443T1E38D=S!^S004'WEDS
+M5(&amp;^M&gt;'&lt;+&lt;;L\B&amp;[=8O+&amp;LSK&gt;A:7Q='6!-#$)\;0R&quot;S[A(`93Y6)E'&amp;DPNZM
+M&quot;XI]T/[HPQY4RG%2&gt;R)U=_9!&gt;WEWD%R&gt;33;0X\SME`)%:X1([]#A#W^.15WL
+MI?=)'QQX#Q/K(30_?5J*U=O`M/I]K716V\S=DZ)C++*`;R3O:*,;'C&quot;M2_$V
+M7G#QUSGU:8\&gt;P?!FUI&lt;,*X])&quot;__&gt;%[6V](D+![&lt;XQP/U_]7]6I7N_SW??U:M
+MU0^@?VW_L/;7_;^O\=G&quot;^?90?;^N4?BJA?W7\/<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">VNV7V at L</A>#_I5?@S%?8_7$JI
+M:([E/5CG/[;`2,/[3C8,4]E5/G]@&gt;.Y&gt;QY_B&gt;L1?ESD8&gt;.JB1=?QYA4^@+=T
+MKV+MW8+/D&lt;F&amp;N)8!WL##K/PZT32%N``+G:[^O??\&amp;8)QP#!&amp;:]X0O6F$MP#!
+MA)Z&amp;&lt;C!U,4#CJ2IB7&lt;FK&quot;Z&lt;'&amp;+2QPJU&lt;5&gt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">+ at W9L</A>&lt;[G3U0&amp;K&lt;&amp;-O,8MB9M@@[
+M?7G6]@.^B=G'!61HDQ&quot;%<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">INRT. at W15</A>%D8/W]W`RV[EC-^43=3V?9\269LFYX4
+M4K6770-^:UZQ&quot;9YK%;OWVCA?:)EQ/8IZ7N&gt;GEA&gt;&quot;$X\F&amp;G_#,JP7XIZJL&lt;1,
+ME4&amp;JIAHVE&gt;^I&lt;`K:.%JIZ[P5G(];&lt;=26BG=*:M4-4^6@,3LPK&quot;?^I=PS?=MB
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">MLX at 5V</A>,\7YYZRW8C`U^UN^UW[]77W)[9B;^[0A+TMQKU*BVY)MQ:SOIXJZXO=
+MXS/'`[?FAFA]C)VQCC&lt;&amp;F&quot;I46E+XUZV)72MVV&gt;IBM[&gt;BC%&amp;7+!8MHY&gt;N+,N[
+M4#4C1EI):&lt;T@`:[K!OVE#8O)+^6U]5ZJA?&quot;JKOR^/([78J2C`DU0#)&amp;\E-9`
+MITYJ!LS:KE%M%CY_MW+`:1!8\V/`&quot;;`!/)(!]#5YPP,0+;NE\C/M&quot;M?@ECS(
+M71%D:[Q6+&gt;@12_KL174#*3-57RE&quot;&lt;]N)+@&amp;C7T6:9#TZU-U5'O=Z-*AK0.6J
+M'S]-9!)Y_[U$!#;#!J0&quot;M]17%X0LZE^3]SSS&quot;G:3&amp;EC-[)?;U!!**#^=_6K1
+MGZ\A\C,ELI`'^86&quot;L79)G[VH+Y:2)&gt;BLDI(E:*S5$-VO(B)P%&amp;Y/*O&quot;&lt;W98@
+MY!'_^KQG#![-[O55Q;&amp;S__^<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">YJG at T</A>[X,8S(&amp;ICAV:MKV-.=;'_YX]K^W7=/RO
+M5GN.\;]G,.*O^-_7^&amp;`XB59NB!_E8!#(N6B1WU('<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">9KVV at OHAO5+</A>)]\&lt;6N;:O
+MTO(B_B$#3[KB;&gt;!$$;C:=R%ZJ;374I&amp;(8\&lt;'ET5:XY/4LS#JNT[/'*6?V&gt;C?
+MGJ3?:H?35G3%2.[M&gt;-E7&amp;ZQ\'5YZP,I2]R&gt;)VY[9$.CM#0-KG'X1VQ.\C1)?
+M)&gt;+&quot;&quot;/VB)G&quot;VL=(P2Z13=^@#@4;C4%`)S6]()`2`669=64%O2$`P7!MK/,&amp;R
+MWK;YHRF:&gt;#??\L&quot;9:IEM4YQ-@\CW#/$:VVY'5CAZ[]\;^B5NU^:U*=Z.+%=&quot;
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">MEU_ at M</A>!M]^-$'=6NYR&gt;NO=$'O]6@&gt;`GX?#0R*F**V?X`0BK4??OA;R1&quot;3B2GJ
+M]&lt;-R_:!N%G3)@`TG!P8P0L'WC53%Y&lt;P7H&amp;&lt;',L#KRD`O;^I:`94*-6&quot;(%812
+MXX&gt;15U.(,Q^&amp;#0.GCSZA+2?J-9DVEK?RG1X\9#@5RY$25=6)X\LP@^-180A&gt;
+M@(IF6&B;O8C`%1,4]9&quot;6/1)QUHI$NSD-$%-W;K!@PT22RTD]``5XA-/)Q`^B
+M),2&quot;%1?1#*NN&gt;=T(A9:^8MFJM)G(Y=LVS(&lt;\5S!P\+^:G9NK]LT[SC]UP7'O
+MW)S&gt;_/0]E28'/E\SULL(I[TP&lt;B(0]E`5XG*IAVO9[W&amp;U&quot;EV8]%8R)4*L;X9C
+MDJN85&gt;ES'Z5YXH?`&gt;H#&quot;M2*1Y;@A\_&lt;Z/7,X'_=\EV-URU%MB!;'T:F0A?MC
+M&gt;$[M-EIZ!'(A6:PY4;N29G.A+[`A)K?MNU:GV6FU81*.C_67S74+=,7&lt;*Y7K
+MTVNOU*Q8)JFO=L#\GSAMJWUV][*!5&lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">RJA at 8+N</A>]&amp;W&quot;/WQLA)A!^^)X$922H)G
+M99XE`.O+((ZYZ'EIY;$&amp;JQ:A-9&quot;&amp;2R72%JHCBFPZ+H^%[Z`D^L2P(;[,82C*
+MK&gt;6&lt;$^6+BC&lt;(*_YOE1&amp;LK,(GGZI&amp;#NJ5,+`K#_4!W5VYO+BZ^^^AC9TO39$W
+M)$39I=[E(7[WL^V4JZ'WTRS%$!:YMR?..S=O3V]:0,;FY&gt;G-:?&gt;B&lt;W4K]L!6
+MRYOQ%_B.M?P[&gt;_CE5)_R)A\V\PN8A&quot;^$T_$IR12]&amp;R[CA&gt;=FR27D^45O=&amp;V4
+M/CPFCT1^$+]\KK08[MK&amp;DMY0&quot;=ACUK2SR=744O&gt;-4\U),))_UI=WBR?,=H\?
+M+PY;3C5^VLW^7$%!]<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">1ZFI at _</A>&amp;3O&quot;:WAF[FHJ`5[R&gt;',9((W+DIH%LX7D4S9&amp;X
+MA&amp;H*7!YA38_\2A$&lt;:I6F[P=]&lt;.S@&gt;-#@<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">E at .</A>*UYQ?[5+&gt;B8&gt;8]ZG&lt;&gt;RS[ML._
+M&lt;[RZ\^7\^U+&amp;V7\,ICW(I:VP8S)_(UW?)E/<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">IT9P at Y51+-.X7P</A>:D_I+D_B0W)
+M!:-5YQJ?;-U7;9&amp;)18CKF\[+F]/7?+R1A8&quot;WZ.GN=S&quot;T#7K3C-B#[_&lt;__Y-#
+M.ME;^FS'PJD&lt;6%B6+82J+W#BEXL7&quot;1!&quot;0$3Y]&quot;4#!3K32R1M-#Z.C\635W#T
+M^0:^G\7MFT_P$;7#VMST$GDP8K*7.Z(KZCKH&amp;S)9&quot;IHU?7^*SM'0`DM%O!#[
+M9K7R[&amp;AG!PT6*XPW5E)N_-TOU/6[/`&quot;L(;N-Y`3OJ)G5&amp;H/X[I&gt;6=&quot;-+1-A]
+MZF%U)-B#WO0BBDUXO+!.?1,_P8E;%&lt;H&lt;7&lt;+:=_+X\&quot;ZS/Z4:2T8AAMQRL/BA
+MS@#?^L%[&gt;O&amp;&amp;J+&lt;4W19'&gt;*_`&quot;_P-#V%&quot;!7#)H#+&quot;5M^+*.L=X,N#PB4P3KVA
+M*W'\\_Q2+&amp;HIB.3Z,KV?ENN^^78K!N+2OW^NYJ\[IW`L+?2N+?1F;*@G][DD
+M&lt;O',3+IB&amp;H0A7B9WN8_K^,+;TI&amp;B_'7`/HO.5G/INXW\(+]-I'++)P+0A`U8
+M!/[3[.FF&lt;&amp;)A&amp;498K)E5HX8=N`:$$N1O,55+[AZY$GW_[ZGHZ*KW&quot;[/&lt;&amp;&gt;B)
+M@[IV+(\G.HGO=:ZK=L)7)VH`]#D+'/O]B?K/9#QF9/)&amp;&lt;QR&gt;K&quot;U)_J??&gt;8Y7
+M(%*_\7ZQ?B.2N7;J%$V-#-+W#R&amp;];&amp;2&quot;POV7(JUV:N8][OH_.J)&gt;ZHSO:T&lt;&lt;
+M-95BIXJC*P(L&gt;^AA*!G]W_:.M3&gt;-'/B9_156DDK+8PE+&gt;JI$0^]20EM.(:U*
+M&lt;J6]RT4)T!PZ&quot;#E(6D55__MY'O;:WA=$3=H[L5+396V/Q^/Q&gt;#SVC&quot;O,3A7-
+M.\A4%IV%')LCT/W$&lt;H5U.277&quot;G&lt;MR)KB:H7IF,MR=;*<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">P3 at H</A>]L:!Q-Z?X$7&amp;B
+M7,TD88DJ.-&quot;704_VOZG]((ZKE/U$JL/MG0LRRRU1F#D-]4:#()IY7\T^JRAE
+M'&gt;.:A8%9X.&gt;&lt;I2Z&quot;@T!DE[//<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">E30 at XF9</A>!GF7&amp;109D]Y(SIUSWWQ(8OL8`IB+7
+M[.7.&quot;P3^-V=VP`/@&gt;K89TBGPH=B%Z&gt;ZI*)&gt;'=-X[7CCN.5,O?;+3V7\FX;OV
+M3HI/(E03??'CU29/*!:C13J_,1I,L'E#:6`L^\3J(&quot;(LC'4:L][J,`R]&gt;340
+MT)+KZ558N&quot;,59-GZ2F7S=6'4'#N'G:/.WD'G`RJ/K#MV9M=GV/^-!KS*ZN&lt;P
+M9'U#;%2'[&amp;B*:*HSO7WA8T[R&amp;Z+0V&quot;KMO95&amp;&lt;;I-@%P$=+-JK=3?-I6A`$^?
+M#68+_WVI&gt;_JFLRW96ZD_,HV0B`$+LX#)`9T%+$Z&quot;@:*!PTNIE!ADD6*00`L7
+ML*8(#OI:]:=4JD!:)F4208=YH!&gt;HXF6`SES'\-K'[)?&amp;'Y&gt;XH#$^Y:QOA*LZ
+M8(]&quot;H]SYF1,8I&lt;B&amp;[47^W!Q&lt;R;16-S1Y6,(T(9(6AJL=@4!S:E'!W)W0X(CC
+MU6S&quot;A8SF40=$\W23G*0I5U0MYM(J3E8FIRUD&lt;0&gt;MFI:@`[6WHG8E%@W3[R:B
+M2MZLF&amp;1T&lt;XUG&lt;&lt;:JB!C&quot;&lt;?MGE*$24&lt;;.B]=]V#D5=9:1;7+]W9$H+JY]F/2B
+M.N2:02Y9*F+C`WB(3ZG'P7L&lt;]CB88&quot;.YZ'98NQ[C;0U2&lt;734PS8_NP55*U0Y
+MW&gt;&gt;9PZ&quot;.:T%2GR1W&amp;`J^7H+9VI7A#+;P#4\_&quot;A6Z:Z[7GODNN`I[ZQ6U2J(B
+M!&quot;1J(ZDU9[BA&amp;56:L1NDA!G*15&gt;%&gt;NEZ?L-(?,LJ=B1TIP*&gt;&quot;H_:<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">M at D</A>%F_[4
+M-F(\`QH$@?FM*<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">+ZX at M</A>#M]&gt;&gt;C&quot;S!/7$8&amp;CUS#CA&quot;1B).4]\EL$X&quot;0`]'L2K^2
+M(R?C#!QC88:@.5A5EL.)20(V4\22^S&gt;Z;*:*5VB2[-5#V(N;+&quot;P!^C2!R8`@
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">MV at RU</A>;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">0 at 1</A>&quot;&lt;81G:1[,I2'$IZ.^&amp;2;M[9=6]9GD8!GLLRD+!6'%LD$*C5%$H&amp;6
+MD)UY?,,+(^K/:$*/$(Q)0!&gt;&quot;EF04M$H#&lt;9J0*Q%C&lt;D&amp;YM2=K`4LPJ:-KE)ML
+M?@_2N(W3-&lt;\-9]=.9UGLKEM&gt;1IW+Z&lt;CB=^!2:RM`X&gt;.R6&quot;6V^F%,844CQV*\
+MU2GY[?D=2E=P9&lt;/),?*G$QZ++:4)6`L#@)G3&quot;P&quot;;Z[1'%I2U\W(ZN30U7:4P
+M+L3B*JN&gt;_K&lt;9S/)R6[(O0G'EMP*&gt;.WR^\KPGI[UNY]!&lt;_]D5RB7+REI\UKK@
+MY6PV/+\=+;O#H?=2$`_823%=D-K]SM%I[[C5:O=Z[(A4*HE7[8,W[;?BQ?%A
+MRSBVD#T&gt;T`P$867YFCC8TIO-*88&amp;G:6Y&amp;LVGXVOKV`?9A7&quot;4TJC4I_5(<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">J at BQ</A>
+M-T37L&lt;O19_Y^=K[`:QM0G8`0?J/)&gt;(I4I$-4(PK#KPX:L72&quot;&quot;PS&amp;`[RJKOY,
+M4/<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">2 at W</A>\'F\X6_^;4*:&amp;[Z1UB,HC/PQ]#,$&lt;H&lt;`AQ]P%&gt;0;_6,6;&lt;`H3FN6:&lt;8
+M`8)]!`=QVR^`.0&gt;)-)TJBH2[H'PY+G0D&amp;!;5ASI#&lt;O&lt;C)&quot;N=N&lt;`M0:H*=67&lt;
+MG5H&quot;@A70P4NI]*AB%M&quot;14N:L&quot;?%5L5=XG-&quot;.`$9)9'&lt;IJH!2MI%1#DOH1U+N
+MU8]=X&lt;O&gt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">DZ at 50</A>&lt;_GKZ3MVR&quot;E2$2J2&lt;4=OY29,[G(B3%<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">4E9O at RMR6</A>&amp;)3Y1^2W
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">MASK at LV8V8K9</A>@!6;[Y^9L.`&gt;I#1?<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">R0J at Z</A>/#-[=@$G&lt;1=@Q2=7YX6^PY@/O+KE
+M:)9&gt;THN7N80V$3T+%&quot;D)XLX.O4M&lt;0BD5'3G'*E\,DQBN&quot;L%#$2_+H2.^&gt;.=$
+M-+^K^YU9PZ%H[[@,F&quot;H[<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">S at 0MS</A>[#UL4&amp;]MF'X1&gt;/<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">5H1 at 3</A>?7HSN&lt;;[)2-6S!Z;
+MZ^-J/_!Q-7429@^O,N+[NY3:!)7-+261V,Q!@B&quot;&lt;3&gt;:CL^$MGBC71VUY^P_)
+M:40/P`TV!TI5&quot;Z&quot;X(NYDU1N+7&gt;+%6]JL8S7^G`*HN4.DJN6ETWVJ]]S.2Y&quot;=
+M3F&lt;F&quot;E'GP`E/7VRG]T/0E?T5V&lt;@4^U(8)$AEEL=&quot;K&gt;,7*(@M$&gt;S.[R=%,#$X
+M+6)!C?1-D&lt;.:KJ;(214T*@:#Q(EUX@'UOBFFL$AU?6[R/W=N$J7'MQI462J)
+MP[RU$[7QI0HK#:.DML/0PDI^GDP-.,Y4I&quot;8;-/`MP/63(F8(TK.$)\4,S,+[
+MPJR6C]E.)F;U^\)L)Q^S6B9F._&gt;%69B/69TQ,X5=IARRI4VR+/F&gt;9WXK&amp;C,;
+MIY4._.8&quot;^1:G?=.$!\L.1W0D2`ZV.$*;EI`=@2,[DE/#S-1Z9BKR,2.D5SQH
+MH&quot;2:Z&lt;G58K=&lt;`^CW=G!=/YD/&gt;.1_'$]&amp;]UD'^G_7TOR_:^%CY?\=AH]K81WB
+M/^[4GZS]OQ_BV=S&lt;3'(`A\_L`5Y[@K_(!5R^X:\6VJ!'&gt;&amp;_T&amp;W9_]-ZU7ASL
+MO&gt;PU&quot;\$[B%0&lt;O+N&lt;!:#B!Z!(GLU'GDHO!!=BR^?L1?&amp;'G.:&quot;?;2VISLM8J;.
+MUI=7K[OMK^R(B']KRF$Q,&lt;UR5/1:+5FYRB&gt;_!&amp;/8O9],X'UG^WQ\&quot;2]&gt;J]]7
+M#=D_[K5/#SK/7_;[IYU#&quot;:C=<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">DY at SXI</A>`Q%UZY[!WL*W`'U&lt;*FV.OUCKOMN-L&amp;
+M&amp;/TY:#H;\SEL.MZT)Y%`RD5&gt;E9YL3N_U\=N6Q*D9\[_TO-?/?VVWCB!-8JQR
+M-A[)M.:CZJPH585'#2'?O(),[_&gt;+`O_C/MGR&amp;6OY^B?\DM47P8]SZQ&lt;N)ZM8
+MN2!&lt;Y'O9\`KSJ0@^BE)U)O^-Q_+/PO/^DNOOT3RZ'`B\Q[T&quot;&gt;H]VNQ'1S&lt;;@
+M#_4NYR))V_U]08`$2#5A0H-T]N^`,'J\=[)Q`3%#1/&quot;W2$!@H[J&gt;O];/^ED_
+3ZV?]K)_U\W][<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">_ at 7</A>#@K2A`*``````
+`
+end
+-------------- next part --------------
+*** Product.h	Thu Apr 12 16:07:14 2001
+--- Product.h	Thu Apr 12 15:46:46 2001
+*************** product(const Vector&lt;Dim,T,E&gt; &amp;v, const 
+*** 50,53 ****
+--- 50,127 ----
+    return answer;
+  }
+  
++ 
++ //-----------------------------------------------------------------------------
++ //
++ // Full Description: product() versions that operate on `Field's.
++ // 
++ //-----------------------------------------------------------------------------
++ 
++ struct FnProduct
++ {
++   PETE_EMPTY_CONSTRUCTORS(FnProduct)
++   template&lt;class T1, class T2&gt;
++   inline typename BinaryReturn&lt;T1, T2, FnProduct &gt;::Type_t
++   operator()(const T1 &amp;a, const T2 &amp;b) const
++   {
++     return (product(a,b));
++   }
++ };
++ 
++ template&lt;class G1,class T1,class E1,int D2,class T2,class E2&gt;
++ inline typename MakeReturn&lt;BinaryNode&lt;FnProduct,
++   typename CreateLeaf&lt;Field&lt;G1,T1,E1&gt; &gt;::Leaf_t,
++   typename CreateLeaf&lt;Array&lt;D2,T2,E2&gt; &gt;::Leaf_t&gt; &gt;::Expression_t
++ product(const Field&lt;G1,T1,E1&gt; &amp; l,const Array&lt;D2,T2,E2&gt; &amp; r)
++ {
++   typedef BinaryNode&lt;FnProduct,
++     typename CreateLeaf&lt;Field&lt;G1,T1,E1&gt; &gt;::Leaf_t,
++     typename CreateLeaf&lt;Array&lt;D2,T2,E2&gt; &gt;::Leaf_t&gt; Tree_t;
++   return MakeReturn&lt;Tree_t&gt;::make(Tree_t(
++     CreateLeaf&lt;Field&lt;G1,T1,E1&gt; &gt;::make(l),
++     CreateLeaf&lt;Array&lt;D2,T2,E2&gt; &gt;::make(r)));
++ }
++ 
++ template&lt;class G1,class T1,class E1,class T2&gt;
++ inline typename MakeReturn&lt;BinaryNode&lt;FnProduct,
++   typename CreateLeaf&lt;Field&lt;G1,T1,E1&gt; &gt;::Leaf_t,
++   typename CreateLeaf&lt;T2 &gt;::Leaf_t&gt; &gt;::Expression_t
++ product(const Field&lt;G1,T1,E1&gt; &amp; l,const T2 &amp; r)
++ {
++   typedef BinaryNode&lt;FnProduct,
++     typename CreateLeaf&lt;Field&lt;G1,T1,E1&gt; &gt;::Leaf_t,
++     typename CreateLeaf&lt;T2 &gt;::Leaf_t&gt; Tree_t;
++   return MakeReturn&lt;Tree_t&gt;::make(Tree_t(
++     CreateLeaf&lt;Field&lt;G1,T1,E1&gt; &gt;::make(l),
++     CreateLeaf&lt;T2 &gt;::make(r)));
++ }
++ 
++ template&lt;int D1,class T1,class E1,class G2,class T2,class E2&gt;
++ inline typename MakeReturn&lt;BinaryNode&lt;FnProduct,
++   typename CreateLeaf&lt;Array&lt;D1,T1,E1&gt; &gt;::Leaf_t,
++   typename CreateLeaf&lt;Field&lt;G2,T2,E2&gt; &gt;::Leaf_t&gt; &gt;::Expression_t
++ product(const Array&lt;D1,T1,E1&gt; &amp; l,const Field&lt;G2,T2,E2&gt; &amp; r)
++ {
++   typedef BinaryNode&lt;FnProduct,
++     typename CreateLeaf&lt;Array&lt;D1,T1,E1&gt; &gt;::Leaf_t,
++     typename CreateLeaf&lt;Field&lt;G2,T2,E2&gt; &gt;::Leaf_t&gt; Tree_t;
++   return MakeReturn&lt;Tree_t&gt;::make(Tree_t(
++     CreateLeaf&lt;Array&lt;D1,T1,E1&gt; &gt;::make(l),
++     CreateLeaf&lt;Field&lt;G2,T2,E2&gt; &gt;::make(r)));
++ }
++ 
++ template&lt;class T1,class G2,class T2,class E2&gt;
++ inline typename MakeReturn&lt;BinaryNode&lt;FnProduct,
++   typename CreateLeaf&lt;T1 &gt;::Leaf_t,
++   typename CreateLeaf&lt;Field&lt;G2,T2,E2&gt; &gt;::Leaf_t&gt; &gt;::Expression_t
++ product(const T1 &amp; l,const Field&lt;G2,T2,E2&gt; &amp; r)
++ {
++   typedef BinaryNode&lt;FnProduct,
++     typename CreateLeaf&lt;T1 &gt;::Leaf_t,
++     typename CreateLeaf&lt;Field&lt;G2,T2,E2&gt; &gt;::Leaf_t&gt; Tree_t;
++   return MakeReturn&lt;Tree_t&gt;::make(Tree_t(
++     CreateLeaf&lt;T1 &gt;::make(l),
++     CreateLeaf&lt;Field&lt;G2,T2,E2&gt; &gt;::make(r)));
++ }
++ 
+  #endif /* POOMA_HYDRODYNAMICS_PRODUCT_H */
+*** hydrodynamics.cc	Thu Apr 12 15:51:54 2001
+--- hydrodynamics.cc	Thu Apr 12 15:55:42 2001
+*************** int main(int argc, char *argv[])
+*** 158,174 ****
+  
+    /* INITIALIZATION */
+  
+!   // TODO: Is coordinates initialization necessary?  What is the best way to do this?
+!   for (unsigned xIndex = 0; xIndex &lt;= vertexDomain[0].last (); ++xIndex)
+!     for (unsigned yIndex = 0; yIndex &lt;= vertexDomain[1].last (); ++yIndex)
+!       coordinates(xIndex,yIndex) =
+! 	Vector&lt;2&gt;(static_cast&lt;double&gt;(xIndex)/(nHorizVerts-1) * cos(yIndex*M_PI/(2*(nAngles-1))),
+! 		  static_cast&lt;double&gt;(xIndex)/(nHorizVerts-1) * sin(yIndex*M_PI/(2*(nAngles-1))));
+!   for (unsigned xIndex = 0; xIndex &lt;= cornerVertexDomain[0].last (); ++xIndex)
+!     for (unsigned yIndex = 0; yIndex &lt;= cornerVertexDomain[1].last (); ++yIndex)
+!       cornerCoordinates(xIndex,yIndex) =
+! 	Vector&lt;2&gt;(0.5*xIndex/(nHorizVerts-1) * cos(0.5*yIndex*M_PI/(2*(nAngles-1))),
+! 		  0.5*xIndex/(nHorizVerts-1) * sin(0.5*yIndex*M_PI/(2*(nAngles-1))));
+  #ifdef DEBUG
+    std::cout &lt;&lt; &quot;initial coordinates:\n&quot; &lt;&lt; coordinates &lt;&lt; std::endl;
+  #endif // DEBUG
+--- 158,175 ----
+  
+    /* INITIALIZATION */
+  
+!   Iota&lt;Dim&gt;::Iota_t range(coordinates.domain());
+!   #define X (range.comp(0))
+!   #define Y (range.comp(1))
+!   coordinates.comp(0) = 1.0*X/(nHorizVerts-1) * cos(Y*M_PI/(2*(nAngles-1)));
+!   coordinates.comp(1) = 1.0*X/(nHorizVerts-1) * sin(Y*M_PI/(2*(nAngles-1)));
+!   Iota&lt;Dim&gt;::Iota_t crange(cornerCoordinates.domain());
+!   #define X (crange.comp(0))
+!   #define Y (crange.comp(1))
+!   cornerCoordinates.comp(0) =
+!     0.5*X/(nHorizVerts-1) * cos(0.5*Y*M_PI/(2*(nAngles-1)));
+!   cornerCoordinates.comp(1) =
+!     0.5*X/(nHorizVerts-1) * sin(0.5*Y*M_PI/(2*(nAngles-1)));
+  #ifdef DEBUG
+    std::cout &lt;&lt; &quot;initial coordinates:\n&quot; &lt;&lt; coordinates &lt;&lt; std::endl;
+  #endif // DEBUG
+*************** computeCornerForces(const Field&lt;InputGeo
+*** 354,390 ****
+  		    Field&lt;OutputGeometry, OutputT, OutputEngineTag&gt; &amp; output)
+  {
+    Field&lt;InputGeometry1,InputT1,InputEngineTag1&gt;::Domain_t range = pressure.physicalDomain();
+-   for (unsigned xIndex = 0; xIndex &lt;= range.unwrap()[0].last(); ++xIndex)
+-     for (unsigned yIndex = 0; yIndex &lt;= range.unwrap()[1].last(); ++yIndex) {
+-       Loc&lt;2&gt; range (xIndex, yIndex);
+-       output(2*range + offset[0]) =
+- 	pressure(range) *
+- 	0.5 * product(InputT2(1.0),
+- 		      coordinates(range+offset[2])
+- 		      - coordinates(range+offset[1]));
+-       output(2*range+offset[1]) =
+- 	pressure(range) *
+- 	0.5 * product(InputT2(1.0),
+- 		      coordinates(range+offset[0])
+- 		      - coordinates(range+offset[3]));
+-       output(2*range+offset[2]) =
+- 	pressure(range) *
+- 	0.5 * product(InputT2(1.0),
+- 		      coordinates(range+offset[3])
+- 		      - coordinates(range+offset[0]));
+-       output(2*range+offset[3]) =
+- 	pressure(range) *
+- 	0.5 * product(InputT2(1.0),
+- 		      coordinates(range+offset[1])
+- 		      - coordinates(range+offset[2]));
+-     }
+-   return;
+- 
+- #ifdef PSEUDOCODE
+-   // TODO: I really wanted to use &quot;range&quot; in a data-parallel
+-   // statement, but I do not know how to extend &quot;product&quot; to work
+-   // on Fields for such a statement.
+-   Field&lt;InputGeometry1,InputT1,InputEngineTag1&gt;::Domain_t range = pressure.physicalDomain();
+    output(2*range+offset[0]) =
+      pressure(range) *
+      0.5 * product(InputT2(1.0),
+--- 355,360 ----
+*************** computeCornerForces(const Field&lt;InputGeo
+*** 405,411 ****
+      0.5 * product(InputT2(1.0),
+  		  coordinates(range+offset[1])
+  		  - coordinates(range+offset[2]));
+! #endif // PSEUDOCODE
+  }
+  
+  
+--- 375,381 ----
+      0.5 * product(InputT2(1.0),
+  		  coordinates(range+offset[1])
+  		  - coordinates(range+offset[2]));
+!   return;
+  }
+  
+  
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000246.html">[pooma-dev] Re: cheetah
+</A></li>
+	<LI>Next message: <A HREF="000252.html">[pooma-dev] Hydrodynamics Kernel (12Apr Version)
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#251">[ date ]</a>
+              <a href="thread.html#251">[ thread ]</a>
+              <a href="subject.html#251">[ subject ]</a>
+              <a href="author.html#251">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

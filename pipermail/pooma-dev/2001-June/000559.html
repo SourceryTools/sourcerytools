@@ -1,0 +1,419 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> RFA: Improving StencilEngine Comments
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20RFA%3A%20Improving%20StencilEngine%20Comments&In-Reply-To=%3C20010629172103.A18560%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000558.html">
+   <LINK REL="Next"  HREF="000560.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>RFA: Improving StencilEngine Comments</H1>
+    <B>Jeffrey Oldham</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20RFA%3A%20Improving%20StencilEngine%20Comments&In-Reply-To=%3C20010629172103.A18560%40codesourcery.com%3E"
+       TITLE="RFA: Improving StencilEngine Comments">oldham at codesourcery.com
+       </A><BR>
+    <I>Sat Jun 30 00:21:03 UTC 2001</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000558.html">Location of the Latest Cheetah
+</A></li>
+        <LI>Next message: <A HREF="000560.html">[pooma-dev] RFA: Improving StencilEngine Comments
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#559">[ date ]</a>
+              <a href="thread.html#559">[ thread ]</a>
+              <a href="subject.html#559">[ subject ]</a>
+              <a href="author.html#559">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>OK to commit this patch?  Does it meet Pooma comment guidelines?
+
+When working on implementing restriction operators for arrays, I read
+through src/Engine/Stencil.h.  The most confusing aspect was that
+&quot;domain&quot; is used for both stencil input and stencil output.  Also, the
+invariants and data members for the StencilEngine were not documented.
+I wrote comments that, I hope, clarify these aspects.
+
+2001-06-29  Jeffrey D. Oldham  &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">oldham at codesourcery.com</A>&gt;
+
+	* Stencil.h: Fix typographical errors.
+	Add stencil concept comments.
+	(insetDomain): Modify initial comments.
+	(Engine&lt;D,T,StencilEngine&gt;): Fix typographical error.
+	(Engine::Engine): Modify initial comments.
+	(Engine::read): Likewise.
+	(Engine::domain): Likewise.
+	(Engine::first): Likewise.
+	(Engine::viewDomain): Likewise.  Add other comments.
+	(Engine::intersectDomain): Add initial comment.
+	(View1): Modify initial comments.
+	(View2): Likewise.
+	(Stencil): Fix typographical error in initial comments.
+	(DataObjectRequest): Likewise.
+
+Tested on	sequential Linux using gcc 3.0 by compiling Pooma library
+Approved by	???you???
+
+Thanks,
+Jeffrey D. Oldham
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">oldham at codesourcery.com</A>
+-------------- next part --------------
+Index: Stencil.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/Engine/Stencil.h,v
+retrieving revision 1.42
+diff -c -p -r1.42 Stencil.h
+*** Stencil.h	2000/09/20 16:22:07	1.42
+--- Stencil.h	2001/06/29 23:03:06
+***************
+*** 32,38 ****
+  //   StencilEngine         - An tag for an engine for representing a stencil
+  //   ArrayStencil          - contains utility functions for building stencils
+  //                           on arrays
+! //   View1                  - Specialization for Stencil
+  //   Engine                - Specialization for StencilEngine
+  //   NewEngine             - Specialization for StencilEngine
+  //   EvaluatorEngineTraits - Specialization for StencilEngine
+--- 32,38 ----
+  //   StencilEngine         - An tag for an engine for representing a stencil
+  //   ArrayStencil          - contains utility functions for building stencils
+  //                           on arrays
+! //   View1                 - Specialization for Stencil
+  //   Engine                - Specialization for StencilEngine
+  //   NewEngine             - Specialization for StencilEngine
+  //   EvaluatorEngineTraits - Specialization for StencilEngine
+***************
+*** 93,98 ****
+--- 93,153 ----
+  //-----------------------------------------------------------------------------
+  
+  //-----------------------------------------------------------------------------
++ //
++ // Stencil Concepts:
++ // 
++ // A stencil is a pattern repeatedly applied to elements in an input domain to
++ // yield elements in the output domain.  For example, the simplest
++ // stencil copies each element in the input domain to exactly the same
++ // element in the output domain.  A second-order difference stencil can
++ // be represented by the formula
++ // 
++ // 		 out(i) = 2 in(i-1) + in(i) + in(i+1)
++ // 
++ // where in(i) and out(i) indicate the ith input and output elements,
++ // respectively.  This stencil illustrates that a stencil can use more
++ // than one input element, but that all input elements must be
++ // contiguous.
++ // 
++ // A StencilEngine is an engine applying a stencil to an input array.
++ // When invoked, the result is an array filled with values from applying
++ // the stencil to the input array.  We explain the engine's data members
++ // and assumptions.  Even though a StencilEngine stores the data for its
++ // computation, actually performing the computation only when requested,
++ // we use the slang of its &quot;output&quot; to avoid writing &quot;its output when the
++ // computation is invoked.&quot;  Also, in the explanation below, we use
++ // one-dimensional terminology.  The only supported domains and ranges
++ // are Cartesian products so the one-dimensional terminology is easily
++ // generalized.
++ // 
++ // When created, engines frequently are given the desired array output
++ // range indices, e.g., -3, ..., 5.  Any such range can be shifted so the
++ // leftmost element's index is zero, i.e., zero-based.  For example, 0,
++ // ..., 8 with an offset of -3.  To return to the &quot;original,&quot; desired
++ // range, add the offset to each index.  The `domain_m' variable records
++ // the number of output elements.
++ // 
++ // Assume the engine's stencil uses input array elements with indices
++ // lowerExtent, lowerExtent+1, ..., 0, ..., upperExtent.  Thus, to
++ // produce out(0) requires knowing in(lowerExtent), ..., in(upperExtent).
++ // The input domain to consisting of the values used to compute the
++ // zero-based output range is in(lowerExtent), ..., in(domain_m +
++ // upperExtent).
++ // 
++ // The StencilEngine's data members are
++ // 1) function_m representing the stencil
++ // 2) expression_m which is approximately the input
++ // 3) domain_m representing the indices for the output
++ // 4) offset_m representing the 'shift' to yield zero-based output indices
++ // Note all members concern output, not input.
++ // 
++ // When reading the source code below, &quot;domain&quot; is used for both input
++ // and output indices.  The reader must decide the meaning of each
++ // occurrence.
++ // 
++ //-----------------------------------------------------------------------------
++ 
++ //-----------------------------------------------------------------------------
+  // Includes:
+  //-----------------------------------------------------------------------------
+  
+*************** struct StencilEngine 
+*** 158,163 ****
+--- 213,221 ----
+  // b(range) = st(a,range);
+  //
+  // because that version doesn't inset.
++ //
++ // In other words, given a stencil and an input domain, return the
++ // resulting output indices.
+  //---------------------------------------------------------------------------
+  
+  template&lt;class Function, int D&gt;
+*************** Interval&lt;D&gt; insetDomain(const Function &amp;
+*** 186,192 ****
+  // 
+  // Typedefs for the tag, element types, domain and dimensions.
+  // Operator() with integers to evaluate elements quickly.
+! // Operator() with a doman to subset.
+  // Accessor for the domain.
+  //
+  //-----------------------------------------------------------------------------
+--- 244,250 ----
+  // 
+  // Typedefs for the tag, element types, domain and dimensions.
+  // Operator() with integers to evaluate elements quickly.
+! // Operator() with a domain to subset.
+  // Accessor for the domain.
+  //
+  //-----------------------------------------------------------------------------
+*************** public:
+*** 215,226 ****
+    enum { zeroBased = true };
+  
+    //============================================================
+!   // Construct from a Function object and an expression.
+    //============================================================
+  
+    Engine(const Function &amp;f, const Expression &amp;e)
+      : function_m(f), expression_m(e), domain_m(Pooma::NoInit())
+    {
+      Interval&lt;D&gt; inset = insetDomain(f, e.domain());
+      int d;
+      for (d = 0; d &lt; D; ++d)
+--- 273,287 ----
+    enum { zeroBased = true };
+  
+    //============================================================
+!   // Construct from a Function object (effectively a stencil)
+!   // and an expression (effectively the input array), and
+!   // sometimes an output (not input) domain.
+    //============================================================
+  
+    Engine(const Function &amp;f, const Expression &amp;e)
+      : function_m(f), expression_m(e), domain_m(Pooma::NoInit())
+    {
++     // inset is the indices for the stencil's output.
+      Interval&lt;D&gt; inset = insetDomain(f, e.domain());
+      int d;
+      for (d = 0; d &lt; D; ++d)
+*************** public:
+*** 241,246 ****
+--- 302,309 ----
+      }
+    }
+  
++   // Construct an engine for composing stencils, e.g.,
++   // stencil1(stencil2(array)).
+    template&lt;class OtherE&gt;
+    Engine(const Engine&lt;D, T, StencilEngine&lt;Function, OtherE&gt; &gt; &amp;e,
+  	 const INode&lt;D&gt; &amp;node)
+*************** public:
+*** 271,281 ****
+    }
+  
+    //============================================================
+!   // Element access via ints for speed.
+    //============================================================
+  
+    inline Element_t read(int i) const 
+    {
+      return function()(expression_m,
+  		      i + offset_m[0]);
+    }
+--- 334,346 ----
+    }
+  
+    //============================================================
+!   // Element access via ints for speed.  The arguments correspond to
+!   // output elements, not input elements.
+    //============================================================
+  
+    inline Element_t read(int i) const 
+    {
++     // Input index `i + offset_m[0]' corresponds to output index `i'.
+      return function()(expression_m,
+  		      i + offset_m[0]);
+    }
+*************** public:
+*** 333,345 ****
+    }
+  
+    //============================================================
+!   // Return the domain.
+    //============================================================
+  
+    inline Domain_t domain() const { return domain_m; }
+  
+    //============================================================
+!   // Return the first index value for the specified direction
+    // (always zero since this engine is zero-based).
+    //============================================================
+    
+--- 398,410 ----
+    }
+  
+    //============================================================
+!   // Return the output domain.
+    //============================================================
+  
+    inline Domain_t domain() const { return domain_m; }
+  
+    //============================================================
+!   // Return the first output index value for the specified direction
+    // (always zero since this engine is zero-based).
+    //============================================================
+    
+*************** public:
+*** 351,357 ****
+  
+    //---------------------------------------------------------------------------
+    // viewDomain() gives the region of the expression needed to compute a given
+!   // region of the stencil.
+    //---------------------------------------------------------------------------
+  
+    inline
+--- 416,423 ----
+  
+    //---------------------------------------------------------------------------
+    // viewDomain() gives the region of the expression needed to compute a given
+!   // region of the stencil.  That is, viewDomain(outputDomain) yields
+!   // the corresponding input domain.
+    //---------------------------------------------------------------------------
+  
+    inline
+*************** public:
+*** 361,366 ****
+--- 427,434 ----
+      int d;
+      for (d = 0; d &lt; D; ++d)
+      {
++       // The computation subtracts and adds the stencil's extent from
++       // the &quot;original&quot;, unshifted output domain.
+        ret[d] =
+  	Interval&lt;1&gt;(
+  		    domain[d].first() + offset_m[d]
+*************** public:
+*** 377,382 ****
+--- 445,454 ----
+      return INode&lt;D&gt;(inode, viewDomain(inode.domain()));
+    }
+  
++   //---------------------------------------------------------------------------
++   // intersectDomain() gives the &quot;original&quot;, unshifted output domain.
++   //---------------------------------------------------------------------------
++ 
+    inline
+    Interval&lt;D&gt; intersectDomain() const
+    {
+*************** private:
+*** 411,417 ****
+  
+  //-----------------------------------------------------------------------------
+  // View types for stencil objects.  Stencils define operator() to return a
+! // stencil engine object.  If you wanted to store that object, you could write:
+  //
+  // A a;
+  // Laplace laplace;
+--- 483,492 ----
+  
+  //-----------------------------------------------------------------------------
+  // View types for stencil objects.  Stencils define operator() to return a
+! // stencil engine object, which, when invoked, yields the result of
+! // applying the stencil to the given array.
+! //
+! // If you wanted to store that object, you could write:
+  //
+  // A a;
+  // Laplace laplace;
+*************** struct View1&lt;Stencil&lt;Function&gt;, Array&lt;D,
+*** 438,444 ****
+  
+  //-----------------------------------------------------------------------------
+  // View2 is used to construct the return type for stencils where the
+! // domain is given as well.
+  //-----------------------------------------------------------------------------
+  
+  template&lt;class Function, class ArrayIn, int Dim&gt;
+--- 513,519 ----
+  
+  //-----------------------------------------------------------------------------
+  // View2 is used to construct the return type for stencils where the
+! // output domain is given as well.
+  //-----------------------------------------------------------------------------
+  
+  template&lt;class Function, class ArrayIn, int Dim&gt;
+*************** struct View2&lt;Stencil&lt;Function&gt;, ArrayIn,
+*** 517,523 ****
+  // 
+  // The return type is whatever the stencil outputs.  If this is not
+  // the same type as the elements of 'expr', you must specialize
+! // the pooma FunctorResult class (see Pooma/FunctorResult.h).
+  //
+  // To apply a stencil, create an instance of the Stencil&lt;&gt; class.
+  //
+--- 592,598 ----
+  // 
+  // The return type is whatever the stencil outputs.  If this is not
+  // the same type as the elements of 'expr', you must specialize
+! // the Pooma FunctorResult class (see Pooma/FunctorResult.h).
+  //
+  // To apply a stencil, create an instance of the Stencil&lt;&gt; class.
+  //
+*************** struct LeafFunctor&lt;Engine&lt;D,T,StencilEng
+*** 795,801 ****
+  };
+  
+  //---------------------------------------------------------------------------
+! // Specialization of  DataObjectRequest engineFunctor to pass the request to
+  // the contained engine.
+  //---------------------------------------------------------------------------
+  
+--- 870,876 ----
+  };
+  
+  //---------------------------------------------------------------------------
+! // Specialization of DataObjectRequest engineFunctor to pass the request to
+  // the contained engine.
+  //---------------------------------------------------------------------------
+  
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000558.html">Location of the Latest Cheetah
+</A></li>
+	<LI>Next message: <A HREF="000560.html">[pooma-dev] RFA: Improving StencilEngine Comments
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#559">[ date ]</a>
+              <a href="thread.html#559">[ thread ]</a>
+              <a href="subject.html#559">[ subject ]</a>
+              <a href="author.html#559">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

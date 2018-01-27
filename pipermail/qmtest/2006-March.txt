@@ -1,0 +1,365 @@
+From Ted.Hornstedt at enea.se  Fri Mar  3 14:38:23 2006
+From: Ted.Hornstedt at enea.se (=?iso-8859-1?Q?Ted_H=F6rnstedt?=)
+Date: Fri, 3 Mar 2006 15:38:23 +0100
+Subject: Working Directory changed?
+Message-ID: <3D555FEB05BE7E4783098DDF56F5AEC701EC4658@sestoex01.enea.se>
+
+Hi,
+
+I've upgraded qmtest from 2.0.3 to 2.3.0, and am experiencing a problem.
+
+Before the working directory in qmtest (at least within a test class) was the directory where the qmt test file resided. Now it seems to be the qmtest DB root directory or is it the working directory when qmtest was invoked?
+
+Is there any easy way of changing this back? (some tests don't work any more, they reference files relative to the qmt test file).
+
+Regards,
+Ted H?rnstedt 
+
+
+From mark at codesourcery.com  Fri Mar  3 16:49:46 2006
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Fri, 03 Mar 2006 08:49:46 -0800
+Subject: [qmtest] Working Directory changed?
+In-Reply-To: <3D555FEB05BE7E4783098DDF56F5AEC701EC4658@sestoex01.enea.se>
+References: <3D555FEB05BE7E4783098DDF56F5AEC701EC4658@sestoex01.enea.se>
+Message-ID: <440873AA.6020502@codesourcery.com>
+
+Ted H?rnstedt wrote:
+
+> Before the working directory in qmtest (at least within a test class) was the directory where the qmt test file resided. Now it seems to be the qmtest DB root directory or is it the working directory when qmtest was invoked?
+
+The chdir was unsafe in the presence of parallel test runs, i.e.,
+"qmtest run -j N", because a process may only have a single "current
+directory", even if it has multiple threads.
+
+The context variable "qmtest.dbpath" contains the root of the database.
+ So, you can have your individual tests change to that directory (if
+they run in a separate process), or use that variable to create
+filenames that will work (if your tests run as part of QMTest itself).
+
+-- 
+Mark Mitchell
+CodeSourcery
+mark at codesourcery.com
+(650) 331-3385 x713
+
+
+From stefan at codesourcery.com  Tue Mar  7 14:20:14 2006
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Tue, 07 Mar 2006 09:20:14 -0500
+Subject: patch: Fix search path for host extension.
+Message-ID: <440D969E.7080301@codesourcery.com>
+
+The attached patch fixes the CompilerTable's search for host extensions
+to include the database-specific path.
+Applied.
+
+Regards,
+		Stefan
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: ct.diff
+Type: text/x-patch
+Size: 1008 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/qmtest/attachments/20060307/2bf6c81e/attachment.bin>
+
+From mark at codesourcery.com  Wed Mar  8 22:50:29 2006
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Wed, 08 Mar 2006 14:50:29 -0800
+Subject: [qmtest] File Attachment line endings mangled
+In-Reply-To: <A38E2B73AFE64542931B589AAD9644EF0104BEB9@msgusawmb03.ads.autodesk.com>
+References: <A38E2B73AFE64542931B589AAD9644EF0104BEB9@msgusawmb03.ads.autodesk.com>
+Message-ID: <440F5FB5.40204@codesourcery.com>
+
+Ken Horovatin wrote:
+
+> The problem I'm facing is that, when the file attachments (all text) are
+> copied to the attachment store in the test database, something is
+> mangling the files: files that use a Unix line-end are copied to the
+> store unmolested, but files with a DOS line-end (CRLF) end up with
+> mangled line ends (i.e. the CRLF seems to be reversed to a LFCR). As a
+> result, the tests fail.
+
+That's really strange.  Are you sure it's turning into LF/CR and not
+just the UNIX LF convention?  I can't think of anything that would
+mangle it in the way that you suggest.
+
+-- 
+Mark Mitchell
+CodeSourcery
+mark at codesourcery.com
+(650) 331-3385 x713
+
+
+From ken.horovatin at autodesk.com  Wed Mar 15 21:36:20 2006
+From: ken.horovatin at autodesk.com (Ken Horovatin)
+Date: Wed, 15 Mar 2006 13:36:20 -0800
+Subject: [qmtest] File Attachment line endings mangled
+Message-ID: <A38E2B73AFE64542931B589AAD9644EF013E73F9@msgusawmb03.ads.autodesk.com>
+
+-----Original Message-----
+From: Mark Mitchell [mailto:mark at codesourcery.com] 
+Sent: March 8, 2006 3:50 PM
+To: Ken Horovatin
+Cc: qmtest at codesourcery.com
+Subject: Re: [qmtest] File Attachment line endings mangled
+
+Ken Horovatin wrote:
+
+> The problem I'm facing is that, when the file attachments (all text) 
+> are copied to the attachment store in the test database, something is 
+> mangling the files: files that use a Unix line-end are copied to the 
+> store unmolested, but files with a DOS line-end (CRLF) end up with 
+> mangled line ends (i.e. the CRLF seems to be reversed to a LFCR). As a
+
+> result, the tests fail.
+
+That's really strange.  Are you sure it's turning into LF/CR and not
+just the UNIX LF convention?  I can't think of anything that would
+mangle it in the way that you suggest.
+
+--
+Mark Mitchell
+CodeSourcery
+mark at codesourcery.com
+(650) 331-3385 x713
+------------------------------
+Mark,
+
+I've encountered this issue in another place in my test class. My
+previous description  of the issue above is incorrect: the source file
+has Windows-style line endings (\r\n), and when they get copied to the
+attachment store, they end up with an extra carriage return in the line
+ending (\r\r\n). 
+
+Normally this wouldn't be a problem except for a couple of specifics to
+my test setup. Some of the copied files are PHP test scripts that get
+copied to a server under test: PHP chokes on the modified files. Also,
+when I try to use an attachment file as a baseline to compare to a test
+result, the comparison fails. I'm opening the attachment in Python using
+the flags "rb", because sometimes the expected result is text, and
+sometimes it is binary.
+
+On the text front, I've tried using the Python string "splitlines()"
+function to disregard line endings, but it creates extra elements in the
+resulting list for each "\r".
+
+I'm planning on working around this problem a couple of ways: I'm now
+copying the PHP files without using the attachment store, and I'm
+thinking of splitting my baseline comparison so text baselines are
+opened using only the "r" flag and binaries are opened using the "rb" as
+before.
+
+Some more information that may be pertinent: QMTest is being run on
+Windows XP SP2 using ActivePython 2.4.2.
+
+Despite the fact that I'm thinking of working around this issue, I'd
+still like to know what, if anything, I'm doing wrong.
+
+Thanks in advance for any guidance you can offer.
+
+Cheers,
+Ken Horovatin
+
+
+From ken.horovatin at autodesk.com  Fri Mar 17 23:13:17 2006
+From: ken.horovatin at autodesk.com (Ken Horovatin)
+Date: Fri, 17 Mar 2006 15:13:17 -0800
+Subject: Another Attachment Field question
+Message-ID: <A38E2B73AFE64542931B589AAD9644EF013E8035@msgusawmb03.ads.autodesk.com>
+
+I'm having an odd (to me) problem using the AttachmentField in a test
+class I've written.
+ 
+My test class is derived from a base class that is derived from the
+QMTest Test class. Both my base test class and the test class in
+question contain a number of fields, including boolean, text, set and
+enumeration fields..
+ 
+The problem is this: the AttachmentField is an optional field, but if I
+use the gui to try and create a new test case using my test class, as I
+populate any of the set fields, the attachment field displays with a
+light red background and displays an "unpack non-sequence" error
+message, and I am unable to save the test case.
+ 
+As a very temporary workaround, I'm attaching a dummy file, but this is
+obviously not the optimal solution.
+ 
+Any ideas?
+ 
+Cheers,
+Ken Horovatin
+
+
+From akanksha.govil at induslogic.com  Mon Mar 20 06:07:52 2006
+From: akanksha.govil at induslogic.com (akanksha govil)
+Date: Mon, 20 Mar 2006 11:37:52 +0530
+Subject: Need the source code of qmtest 2.2
+Message-ID: <441E46B8.2030902@induslogic.com>
+
+Hi,
+I need the source code of qmtest 2.2
+
+Please tell me from where I can get that.
+
+Thanks
+Akanksha
+
+
+From claes_lillieskold at hotmail.com  Mon Mar 20 15:58:31 2006
+From: claes_lillieskold at hotmail.com (Claes Lilliesköld)
+Date: Mon, 20 Mar 2006 15:58:31 +0000
+Subject: Questions about sql_result_stream
+Message-ID: <BAY109-F20EA9090DA829CABF1AE279EDB0@phx.gbl>
+
+Hi,
+I?m implementing a database framework for storing results from qmtest.
+I have looked at qm/test/classes/sql_result_stream.py in the CVS version,
+but I?m not sure how to use it.
+
+What I want to be able to do is to do my testing first, and then,
+by pointing out the results.qmr file, extract the actual results, and store
+it in a database. Is sql_result_stream a good example of this, and
+do I activate/use this extensions.
+
+regards,
+Claes
+
+
+
+
+From seefeld at sympatico.ca  Mon Mar 20 16:22:09 2006
+From: seefeld at sympatico.ca (Stefan Seefeld)
+Date: Mon, 20 Mar 2006 11:22:09 -0500
+Subject: [qmtest] Questions about sql_result_stream
+In-Reply-To: <BAY109-F20EA9090DA829CABF1AE279EDB0@phx.gbl>
+References: <BAY109-F20EA9090DA829CABF1AE279EDB0@phx.gbl>
+Message-ID: <441ED6B1.2000206@sympatico.ca>
+
+Claes Lilliesk?ld wrote:
+> Hi,
+> I?m implementing a database framework for storing results from qmtest.
+> I have looked at qm/test/classes/sql_result_stream.py in the CVS version,
+> but I?m not sure how to use it.
+> 
+> What I want to be able to do is to do my testing first, and then,
+> by pointing out the results.qmr file, extract the actual results, and store
+> it in a database. Is sql_result_stream a good example of this, and
+> do I activate/use this extensions.
+
+All result streams are used with 'qmtest run' calls, i.e. qmtest will insert
+results during execution (see 'qmtest run --help' as well as the manual for
+details).
+It should certainly be possible to write a script that opens a results file,
+and then transfers individual results into a different results stream (such
+as SQLResultStream).
+
+Regards,
+		Stefan
+
+
+
+From seefeld at sympatico.ca  Mon Mar 20 16:23:31 2006
+From: seefeld at sympatico.ca (Stefan Seefeld)
+Date: Mon, 20 Mar 2006 11:23:31 -0500
+Subject: [qmtest] Need the source code of qmtest 2.2
+In-Reply-To: <441E46B8.2030902@induslogic.com>
+References: <441E46B8.2030902@induslogic.com>
+Message-ID: <441ED703.80008@sympatico.ca>
+
+akanksha govil wrote:
+> Hi,
+> I need the source code of qmtest 2.2
+> 
+> Please tell me from where I can get that.
+
+You can fetch it from http://www.codesourcery.com/public/qmtest/qm-2.2/qm-2.2.tar.gz
+
+Regards,
+		Stefan
+
+
+
+From mark at codesourcery.com  Mon Mar 20 16:30:23 2006
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Mon, 20 Mar 2006 08:30:23 -0800
+Subject: [qmtest] Questions about sql_result_stream
+In-Reply-To: <441ED6B1.2000206@sympatico.ca>
+References: <BAY109-F20EA9090DA829CABF1AE279EDB0@phx.gbl> <441ED6B1.2000206@sympatico.ca>
+Message-ID: <441ED89F.6010203@codesourcery.com>
+
+Stefan Seefeld wrote:
+
+> It should certainly be possible to write a script that opens a results
+> file,
+> and then transfers individual results into a different results stream (such
+> as SQLResultStream).
+
+You can also convert results from one format to another using "qmtest
+summarize".  I believe something like:
+
+  qmtest summarize --result-stream=SQLResultStream results.qmr
+
+will do that, although I forget the exact command-line syntax.
+
+-- 
+Mark Mitchell
+CodeSourcery
+mark at codesourcery.com
+(650) 331-3385 x713
+
+
+From mark at codesourcery.com  Tue Mar 21 09:06:25 2006
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Tue, 21 Mar 2006 01:06:25 -0800
+Subject: [qmtest] Another Attachment Field question
+In-Reply-To: <A38E2B73AFE64542931B589AAD9644EF013E8035@msgusawmb03.ads.autodesk.com>
+References: <A38E2B73AFE64542931B589AAD9644EF013E8035@msgusawmb03.ads.autodesk.com>
+Message-ID: <441FC211.6070602@codesourcery.com>
+
+Ken Horovatin wrote:
+
+> The problem is this: the AttachmentField is an optional field, but if I
+> use the gui to try and create a new test case using my test class, as I
+> populate any of the set fields, the attachment field displays with a
+> light red background and displays an "unpack non-sequence" error
+> message, and I am unable to save the test case.
+>  
+> As a very temporary workaround, I'm attaching a dummy file, but this is
+> obviously not the optimal solution.
+
+That definitely sounds like a bug.  Care to work on a patch? :-)
+
+-- 
+Mark Mitchell
+CodeSourcery
+mark at codesourcery.com
+(650) 331-3385 x713
+
+
+From ken.horovatin at autodesk.com  Mon Mar 27 23:18:15 2006
+From: ken.horovatin at autodesk.com (Ken Horovatin)
+Date: Mon, 27 Mar 2006 15:18:15 -0800
+Subject: Proposed modification for the size of the attachments upload form
+Message-ID: <A38E2B73AFE64542931B589AAD9644EF015C01B7@msgusawmb03.ads.autodesk.com>
+
+I've attached a patch file that corrects an issue that has annoyed us
+for a while: when using the gui on Windows (either IE or Firefox), the
+window that opens up with the attachment upload form is too small for
+the form.
+
+This patch is a one-liner that increases the window size just enough to
+allow all the controls to be visible. I've not tested it on other
+platforms, but it should be safe.
+
+Cheers,
+Ken Horovatin
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: fields.py.patch
+Type: application/octet-stream
+Size: 766 bytes
+Desc: fields.py.patch
+URL: <http://sourcerytools.com/pipermail/qmtest/attachments/20060327/a66f4157/attachment.obj>
+

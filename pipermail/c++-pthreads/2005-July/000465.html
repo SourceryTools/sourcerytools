@@ -1,0 +1,128 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> pthread_cancel and EH: let's try this again
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:c%2B%2B-pthreads%40codesourcery.com?Subject=Re%3A%20pthread_cancel%20and%20EH%3A%20let%27s%20try%20this%20again&In-Reply-To=%3C42DE36FD.DD811A53%40web.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000512.html">
+   <LINK REL="Next"  HREF="000420.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>pthread_cancel and EH: let's try this again</H1>
+    <B>Alexander Terekhov</B> 
+    <A HREF="mailto:c%2B%2B-pthreads%40codesourcery.com?Subject=Re%3A%20pthread_cancel%20and%20EH%3A%20let%27s%20try%20this%20again&In-Reply-To=%3C42DE36FD.DD811A53%40web.de%3E"
+       TITLE="pthread_cancel and EH: let's try this again">terekhov at web.de
+       </A><BR>
+    <I>Wed Jul 20 11:35:25 UTC 2005</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000512.html">pthread_cancel and EH: let's try this again
+</A></li>
+        <LI>Next message: <A HREF="000420.html">[c++-pthreads]  Re: pthread_cancel and EH: let's try this again
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#465">[ date ]</a>
+              <a href="thread.html#465">[ thread ]</a>
+              <a href="subject.html#465">[ subject ]</a>
+              <a href="author.html#465">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>
+Peter Dimov wrote:
+[...]
+&gt;<i> A cancellation request is a request for a thread to not progress any
+</I>&gt;<i> further. It's pretty much a textbook example for using exceptions - a
+</I>&gt;<i> long-distance return all the way up, with the middle layers nearly never
+</I>&gt;<i> needing to not propagate it.
+</I>
+Yup. The effect of cancel delivery is (ought to be) nothing but
+
+  void attempt_deliver_cancel() {
+    int canceltype;
+    // in the case of async cancel delivery
+    pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, &amp;canceltype); 
+    // return all the way up (if cancel is expected)
+    pthread_exit(PTHREAD_CANCELED);
+    // unexpected
+    pthread_setcanceltype(canceltype, &amp;canceltype); 
+  }
+
+And in details...
+
+#define PTHREAD_CANCELED std::thread_canceled()
+
+struct thread_canceled {
+  operator void * () { return &unique; }
+  static thread_canceled unique;
+};
+
+class thread_termination_request : public std::exception ...
+class thread_cancel_request : public std::thread_termination_request ...
+class thread_exit_request : public std::thread_termination_request ...
+template&lt;typename T&gt; class thread_exit_value : public 
+std::thread_exit_request ...
+
+extern &quot;C&quot; void pthread_exit(void * ptr) 
+        throw(std::thread_termination_request) {
+  ptr == PTHREAD_CANCELED ? std::thread_cancel() : 
+                            std::thread_exit(ptr);
+} 
+
+template&lt;typename T&gt;
+void thread_exit(T value) {
+  int cancelstate;
+  assert(std::thread_self().can_exit_with&lt;T&gt;());
+  pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &amp;cancelstate); 
+  throw thread_exit_value(value);
+}
+
+template&lt;&gt;
+void thread_exit(std::thread_canceled) {
+  thread_cancel();
+}
+
+void thread_cancel() {
+  int cancelstate;
+  pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &amp;cancelstate); 
+  assert(cancelstate == PTHREAD_CANCEL_ENABLE)
+  throw_if_expected std::thread_cancel_request();
+  pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, &amp;cancelstate); 
+} 
+
+Or something like that. ;-)
+
+regards,
+alexander.
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000512.html">pthread_cancel and EH: let's try this again
+</A></li>
+	<LI>Next message: <A HREF="000420.html">[c++-pthreads]  Re: pthread_cancel and EH: let's try this again
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#465">[ date ]</a>
+              <a href="thread.html#465">[ thread ]</a>
+              <a href="subject.html#465">[ subject ]</a>
+              <a href="author.html#465">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/c++-pthreads">More information about the c++-pthreads
+mailing list</a><br>
+</body></html>

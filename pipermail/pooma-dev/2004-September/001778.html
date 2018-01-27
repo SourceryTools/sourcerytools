@@ -1,0 +1,177 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [pooma-dev] Re: [PATCH] Fix FileSetReader/Writer
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bpooma-dev%5D%20Re%3A%20%5BPATCH%5D%20Fix%20FileSetReader/Writer&In-Reply-To=%3C41375067.1040603%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001777.html">
+   <LINK REL="Next"  HREF="001779.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[pooma-dev] Re: [PATCH] Fix FileSetReader/Writer</H1>
+    <B>Jeffrey D. Oldham</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bpooma-dev%5D%20Re%3A%20%5BPATCH%5D%20Fix%20FileSetReader/Writer&In-Reply-To=%3C41375067.1040603%40codesourcery.com%3E"
+       TITLE="[pooma-dev] Re: [PATCH] Fix FileSetReader/Writer">oldham at codesourcery.com
+       </A><BR>
+    <I>Thu Sep  2 16:55:03 UTC 2004</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001777.html">[pooma-dev] Re: [PATCH] Fix FileSetReader/Writer
+</A></li>
+        <LI>Next message: <A HREF="001779.html">[pooma-dev] Re: [PATCH] Fix FileSetReader/Writer
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1778">[ date ]</a>
+              <a href="thread.html#1778">[ thread ]</a>
+              <a href="subject.html#1778">[ subject ]</a>
+              <a href="author.html#1778">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Richard Guenther wrote:
+
+&gt;<i> Jeffrey D. Oldham wrote:
+</I>&gt;<i>
+</I>&gt;&gt;<i> Richard Guenther wrote:
+</I>&gt;&gt;<i>
+</I>&gt;&gt;&gt;<i> On Wed, 1 Sep 2004, Richard Guenther wrote:
+</I>&gt;&gt;&gt;<i>
+</I>&gt;&gt;&gt;<i>  
+</I>&gt;&gt;&gt;<i>
+</I>&gt;&gt;&gt;&gt;<i> On Wed, 1 Sep 2004 <A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">oldham at sirius.codesourcery.com</A> wrote:
+</I>&gt;&gt;&gt;&gt;<i>
+</I>&gt;&gt;&gt;&gt;<i>  
+</I>&gt;&gt;&gt;&gt;<i>
+</I>&gt;&gt;&gt;&gt;&gt;<i>  regressions.io.filesetreadertest1             : FAIL
+</I>&gt;&gt;&gt;&gt;&gt;<i>    Unexpected exit_code, standard error.
+</I>&gt;&gt;&gt;&gt;&gt;<i>
+</I>&gt;&gt;&gt;&gt;&gt;<i>  regressions.io.filesetreadertest2             : FAIL
+</I>&gt;&gt;&gt;&gt;&gt;<i>    Unexpected exit_code, standard error.
+</I>&gt;&gt;&gt;&gt;&gt;<i>     
+</I>&gt;&gt;&gt;&gt;<i>
+</I>&gt;&gt;&gt;&gt;<i>
+</I>&gt;&gt;&gt;&gt;<i> I finally figured out why these fail on ia32 (but not on amd64 and 
+</I>&gt;&gt;&gt;&gt;<i> ia64).
+</I>&gt;&gt;&gt;&gt;<i> The test data was appearantly generated on a 64bit big-endian host 
+</I>&gt;&gt;&gt;&gt;<i> and the
+</I>&gt;&gt;&gt;&gt;<i> reader just reads bytes and expects a C++ long to be 64bit everywhere
+</I>&gt;&gt;&gt;&gt;<i> (which is not true obviously).
+</I>&gt;&gt;&gt;&gt;<i>
+</I>&gt;&gt;&gt;&gt;<i> There is also the POOMA_HAS_LONG_LONG define which is set nowhere
+</I>&gt;&gt;&gt;&gt;<i> and used only in the FileSetReader/Writer and ElementProperties.
+</I>&gt;&gt;&gt;&gt;<i>
+</I>&gt;&gt;&gt;&gt;<i> We could check for an appropriate 64bit type during configure and
+</I>&gt;&gt;&gt;&gt;<i> use that or just ignore the issue.
+</I>&gt;&gt;&gt;&gt;<i>   
+</I>&gt;&gt;&gt;<i>
+</I>&gt;&gt;&gt;<i>
+</I>&gt;&gt;&gt;<i>
+</I>&gt;&gt;&gt;<i> Yay, and of course this is not enough, as required alignment for 64bit
+</I>&gt;&gt;&gt;<i> datatypes is of course different.  We should shoot the one that came up
+</I>&gt;&gt;&gt;<i> with
+</I>&gt;&gt;&gt;<i>
+</I>&gt;&gt;&gt;<i>  template &lt;class T&gt;
+</I>&gt;&gt;&gt;<i>  struct OffsetData
+</I>&gt;&gt;&gt;<i>  {
+</I>&gt;&gt;&gt;<i>    void reverseBytes();
+</I>&gt;&gt;&gt;<i>
+</I>&gt;&gt;&gt;<i>    int nodedata[6*Dim];  // domain data (same format as .layout)
+</I>&gt;&gt;&gt;<i>    bool isCompressed;    // Is the data compressed
+</I>&gt;&gt;&gt;<i>    Offset_t offset;      // offset in sizeof(T) units
+</I>&gt;&gt;&gt;<i>    T compressedValue;    // Data value, if compressed
+</I>&gt;&gt;&gt;<i>  };
+</I>&gt;&gt;&gt;<i>
+</I>&gt;&gt;&gt;<i> as possibly &quot;portable&quot; structure to write byte-for-byte to a file.
+</I>&gt;&gt;&gt;<i> Placing bool between int and long long is surely not a good idea.
+</I>&gt;&gt;&gt;<i>
+</I>&gt;&gt;&gt;<i> Changing the above to
+</I>&gt;&gt;&gt;<i>
+</I>&gt;&gt;&gt;<i>    int nodedata[6*Dim];  // domain data (same format as .layout)
+</I>&gt;&gt;&gt;<i>    union {
+</I>&gt;&gt;&gt;<i>      bool isCompressed;  // Is the data compressed
+</I>&gt;&gt;&gt;<i>      char pad[8];
+</I>&gt;&gt;&gt;<i>    } u;
+</I>&gt;&gt;&gt;<i>    Offset_t offset;      // offset in sizeof(T) units
+</I>&gt;&gt;&gt;<i>
+</I>&gt;&gt;&gt;<i> _seems_ to &quot;fix&quot; the problem.
+</I>&gt;&gt;&gt;<i>
+</I>&gt;&gt;&gt;<i> So, is the following patch ok?  Tested on ia32, amd64 and ia64 linux.
+</I>&gt;&gt;&gt;<i>
+</I>&gt;&gt;&gt;<i>  
+</I>&gt;&gt;&gt;<i>
+</I>&gt;&gt;<i> This patch seems to contain two ideas: 1) add POOMA_INT64 and 2) 
+</I>&gt;&gt;<i> changing OffsetData.  Ensuring use of 64-bit values seems to be a 
+</I>&gt;&gt;<i> good idea.  I am unsure why the order of structure data members is 
+</I>&gt;&gt;<i> important.  C++ compilers should obey the C++ ABI 
+</I>&gt;&gt;<i> (<A HREF="http://www.codesourcery.com/cxx-abi/">http://www.codesourcery.com/cxx-abi/</A>) so the structure will be laid 
+</I>&gt;&gt;<i> out in the same way on all machines.
+</I>&gt;<i>
+</I>&gt;<i>
+</I>&gt;<i> I don't think so.  Fact is, that different compilers obey different 
+</I>&gt;<i> C++ ABIs, so the structure may be layed out differently on IRIX with 
+</I>&gt;<i> CC than on ia32 with g++.  I'm not trying to fix all possible 
+</I>&gt;<i> problems, but just the fact that all 64bit ABIs I know of force 
+</I>&gt;<i> alignment of 8-byte types
+</I>&gt;<i> (like Offset_t) on 8-byte boundaries.  The 32bit g++ ABI on ia32 though
+</I>&gt;<i> requires only 4-byte boundary for the 8-byte long long (or maybe it's a
+</I>&gt;<i> bug in g++).
+</I>&gt;<i>
+</I>&gt;<i> Of course properly fixing it for all cases would need a
+</I>&gt;<i> packed structure for the read/write with a byte-wise copy to a properly
+</I>&gt;<i> aligned structure for further use.  But that is beyond the patch. 
+</I>&gt;<i> Rather than doing that I'd bring over parts of my HDF5 support.
+</I>&gt;<i>
+</I>&gt;&gt;<i> Does using just (1) solve the problem?
+</I>&gt;<i>
+</I>&gt;<i>
+</I>&gt;<i> No.  You'll get sizeof(OffsetData) of 96 for ia64 and 92 for ia32 with
+</I>&gt;<i> offset of offset being 80 for the one case and 76 for the other.
+</I>&gt;<i>
+</I>&gt;<i> I just tested the patch on a 32bit big-endian machine (ppc) and it 
+</I>&gt;<i> works there, too.
+</I>&gt;<i>
+</I>&gt;<i> Richard.
+</I>
+It is possible to change your patch to use an Offset_t instead of 
+char[8]?  This seems a more portable way to align to 64 bits.
+
+Regardless, please commit your patch.  I guess these two items will no 
+longer fail in the nightly tests starting 03Sep.
+
+Thanks for fixing this.
+
+-- 
+Jeffrey D. Oldham
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">oldham at codesourcery.com</A>
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001777.html">[pooma-dev] Re: [PATCH] Fix FileSetReader/Writer
+</A></li>
+	<LI>Next message: <A HREF="001779.html">[pooma-dev] Re: [PATCH] Fix FileSetReader/Writer
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1778">[ date ]</a>
+              <a href="thread.html#1778">[ thread ]</a>
+              <a href="subject.html#1778">[ subject ]</a>
+              <a href="author.html#1778">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

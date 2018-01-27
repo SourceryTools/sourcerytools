@@ -1,0 +1,336 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [autoconf-conversion] Something to start with
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:autoconf-conversion%40codesourcery.com?Subject=Re%3A%20%5Bautoconf-conversion%5D%20Something%20to%20start%20with&In-Reply-To=%3C20030614205117.GA17662%40nevyn.them.org%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000011.html">
+   <LINK REL="Next"  HREF="000013.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[autoconf-conversion] Something to start with</H1>
+    <B>Daniel Jacobowitz</B> 
+    <A HREF="mailto:autoconf-conversion%40codesourcery.com?Subject=Re%3A%20%5Bautoconf-conversion%5D%20Something%20to%20start%20with&In-Reply-To=%3C20030614205117.GA17662%40nevyn.them.org%3E"
+       TITLE="[autoconf-conversion] Something to start with">drow at false.org
+       </A><BR>
+    <I>Sat Jun 14 20:51:17 UTC 2003</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000011.html">[autoconf-conversion] Something to start with
+</A></li>
+        <LI>Next message: <A HREF="000013.html">[autoconf-conversion] Something to start with
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#12">[ date ]</a>
+              <a href="thread.html#12">[ thread ]</a>
+              <a href="subject.html#12">[ subject ]</a>
+              <a href="author.html#12">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>On Fri, Jun 13, 2003 at 12:19:25AM -0400, Daniel Jacobowitz wrote:
+&gt;<i>  - I also did libiberty.  I have not tested a combined tree cygwin build
+</I>&gt;<i> yet, which needs to happen, since it exercises the relevant hard case.  I
+</I>&gt;<i> also reimplemented AC_NO_EXECUTABLES based on another of Alexandre's
+</I>&gt;<i> suggestions, which proved quite good: disable link tests at runtime if
+</I>&gt;<i> GCC_NO_EXECUTABLES is encountered, rather than at autoconf time if it is
+</I>&gt;<i> seen in the file.
+</I>&gt;<i> 
+</I>&gt;<i> I've attached the patch for libiberty in case someone wants to give it a
+</I>&gt;<i> whirl before I do, in more combinations.  I'm testing eight kinds of builds
+</I>&gt;<i> right now and I'll have a few more before I'm satisfied, but I won't have
+</I>&gt;<i> time to work on this for a day or two, so I wanted to give the list a kick.
+</I>
+Here's a fixed version, which actually does build Cygwin.  libiberty's
+custom strncmp test uses AC_REQUIRE([AC_FUNC_MMAP]), so I had to wrap
+AC_FUNC_MMAP; otherwise we perform a link test.  The alternative would
+have been invoking AC_FUNC_MMAP instead of AC_REQUIRE'ing it.  I can
+switch if someone prefers.
+
+So now for the million dollar question: do I submit this to
+gcc-patches, or do we try to get most/all directories finished first?
+
+-- 
+Daniel Jacobowitz
+MontaVista Software                         Debian GNU/Linux Developer
+
+2003-06-14  Daniel Jacobowitz  &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/autoconf-conversion">drow at mvista.com</A>&gt;
+
+	* acx.m4: Add GCC_NO_EXECUTABLES.
+
+2003-06-14  Daniel Jacobowitz  &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/autoconf-conversion">drow at mvista.com</A>&gt;
+
+	* aclocal.m4: Include no-executables.m4.  Use AC_LIBOBJ.  Remove
+	LIB_AC_PROG_CC.
+	* configure.in: Use GCC_NO_EXECUTABLES and AC_PROG_CC instead of
+	LIB_AC_PROG_CC.  Also substitue ac_libiberty_warn_cflags here.
+	Use AC_LIBOBJ.  Remove AC_PROG_CC_WORKS call.  Update AC_PREREQ.
+	Move call to AC_ISC_POSIX.
+	* configure: Regenerate using autoconf 2.57.
+
+Index: libiberty/aclocal.m4
+===================================================================
+RCS file: /big/fsf/rsync/src-cvs/src/libiberty/aclocal.m4,v
+retrieving revision 1.7
+diff -u -p -r1.7 aclocal.m4
+--- libiberty/aclocal.m4	7 May 2003 18:06:23 -0000	1.7
++++ libiberty/aclocal.m4	14 Jun 2003 17:21:22 -0000
+@@ -1,4 +1,5 @@
+ sinclude(../config/accross.m4)
++sinclude(../config/acx.m4)
+ 
+ dnl See whether strncmp reads past the end of its string parameters.
+ dnl On some versions of SunOS4 at least, strncmp reads a word at a time
+@@ -71,7 +72,7 @@ main ()
+   ac_cv_func_strncmp_works=no)
+ rm -f core core.* *.core])
+ if test $ac_cv_func_strncmp_works = no ; then
+-  LIBOBJS=&quot;$LIBOBJS strncmp.o&quot;
++  AC_LIBOBJ([strncmp])
+ fi
+ ])
+ 
+@@ -117,48 +118,6 @@ if test $libiberty_cv_decl_needed_$1 = y
+             [Define if $1 is not declared in system header files.])
+ fi
+ ])dnl
+-
+-# FIXME: We temporarily define our own version of AC_PROG_CC.  This is
+-# copied from autoconf 2.12, but does not call AC_PROG_CC_WORKS.  We
+-# are probably using a cross compiler, which will not be able to fully
+-# link an executable.  This should really be fixed in autoconf
+-# itself.
+-
+-AC_DEFUN(LIB_AC_PROG_CC,
+-[AC_BEFORE([$0], [AC_PROG_CPP])dnl
+-AC_PROVIDE([AC_PROG_CC])
+-AC_CHECK_PROG(CC, gcc, gcc)
+-if test -z &quot;$CC&quot;; then
+-  AC_CHECK_PROG(CC, cc, cc, , , /usr/ucb/cc)
+-  test -z &quot;$CC&quot; &amp;&amp; AC_MSG_ERROR([no acceptable cc found in \$PATH])
+-fi
+-
+-AC_PROG_CC_GNU
+-
+-if test $ac_cv_prog_gcc = yes; then
+-  GCC=yes
+-  ac_libiberty_warn_cflags='-W -Wall -Wtraditional -pedantic'
+-dnl Check whether -g works, even if CFLAGS is set, in case the package
+-dnl plays around with CFLAGS (such as to build both debugging and
+-dnl normal versions of a library), tasteless as that idea is.
+-  ac_test_CFLAGS=&quot;${CFLAGS+set}&quot;
+-  ac_save_CFLAGS=&quot;$CFLAGS&quot;
+-  CFLAGS=
+-  AC_PROG_CC_G
+-  if test &quot;$ac_test_CFLAGS&quot; = set; then
+-    CFLAGS=&quot;$ac_save_CFLAGS&quot;
+-  elif test $ac_cv_prog_cc_g = yes; then
+-    CFLAGS=&quot;-g -O2&quot;
+-  else
+-    CFLAGS=&quot;-O2&quot;
+-  fi
+-else
+-  GCC=
+-  ac_libiberty_warn_cflags=
+-  test &quot;${CFLAGS+set}&quot; = set || CFLAGS=&quot;-g&quot;
+-fi
+-AC_SUBST(ac_libiberty_warn_cflags)
+-])
+ 
+ # Work around a bug in autoheader.  This can go away when we switch to
+ # autoconf &gt;2.50.  The use of define instead of AC_DEFUN is
+Index: libiberty/configure.in
+===================================================================
+RCS file: /big/fsf/rsync/src-cvs/src/libiberty/configure.in,v
+retrieving revision 1.47
+diff -u -p -r1.47 configure.in
+--- libiberty/configure.in	13 Jun 2003 01:50:48 -0000	1.47
++++ libiberty/configure.in	14 Jun 2003 20:45:34 -0000
+@@ -1,6 +1,6 @@
+ dnl Process this file with autoconf to produce a configure script
+ 
+-AC_PREREQ(2.13)
++AC_PREREQ(2.57)
+ AC_INIT(xmalloc.c)
+ 
+ # This works around the fact that libtool configuration may change LD
+@@ -99,7 +99,13 @@ dnl to call AC_CHECK_PROG.
+ AC_CHECK_TOOL(AR, ar)
+ AC_CHECK_TOOL(RANLIB, ranlib, :)
+ 
+-LIB_AC_PROG_CC
++GCC_NO_EXECUTABLES
++AC_PROG_CC
++
++if test x$GCC = xyes; then
++  ac_libiberty_warn_cflags='-W -Wall -Wtraditional -pedantic'
++fi
++AC_SUBST(ac_libiberty_warn_cflags)
+ 
+ AC_PROG_CC_C_O
+ # autoconf is lame and doesn't give us any substitution variable for this.
+@@ -111,7 +117,6 @@ fi
+ AC_SUBST(NO_MINUS_C_MINUS_O)
+ AC_SUBST(OUTPUT_OPTION)
+ 
+-AC_ISC_POSIX
+ AC_C_CONST
+ AC_C_INLINE
+ AC_C_BIGENDIAN_CROSS
+@@ -250,7 +255,12 @@ if test -n &quot;${with_target_subdir}&quot;; then
+   # newlib provide and which ones we will be expected to provide.
+ 
+   if test &quot;x${with_newlib}&quot; = &quot;xyes&quot;; then
+-    LIBOBJS=&quot;asprintf.o basename.o insque.o random.o strdup.o vasprintf.o&quot;
++    AC_LIBOBJ([asprintf])
++    AC_LIBOBJ([basename])
++    AC_LIBOBJ([insque])
++    AC_LIBOBJ([random])
++    AC_LIBOBJ([strdup])
++    AC_LIBOBJ([vasprintf])
+ 
+     for f in $funcs; do
+       case &quot;$f&quot; in
+@@ -318,8 +328,16 @@ if test -z &quot;${setobjs}&quot;; then
+     # Handle VxWorks configuration specially, since on VxWorks the
+     # libraries are actually on the target board, not in the file
+     # system.
+-    LIBOBJS=&quot;basename.o getpagesize.o insque.o random.o strcasecmp.o&quot;
+-    LIBOBJS=&quot;$LIBOBJS strncasecmp.o strdup.o vfork.o waitpid.o vasprintf.o&quot;
++    AC_LIBOBJ([basename])
++    AC_LIBOBJ([getpagesize])
++    AC_LIBOBJ([insque])
++    AC_LIBOBJ([random])
++    AC_LIBOBJ([strcasecmp])
++    AC_LIBOBJ([strncasecmp])
++    AC_LIBOBJ([strdup])
++    AC_LIBOBJ([vfork])
++    AC_LIBOBJ([waitpid])
++    AC_LIBOBJ([vasprintf])
+     for f in $funcs; do
+       case &quot;$f&quot; in
+ 	basename | getpagesize | insque | random | strcasecmp)
+@@ -366,7 +384,7 @@ if test -z &quot;${setobjs}&quot;; then
+     if test -n &quot;${with_target_subdir}&quot;
+     then
+       funcs=&quot;`echo $funcs | sed -e 's/random//'`&quot;
+-      LIBOBJS=&quot;$LIBOBJS random.o&quot;
++      AC_LIBOBJ([random])
+       vars=&quot;`echo $vars | sed -e 's/sys_siglist//'`&quot;
+       checkfuncs=&quot;`echo $checkfuncs | sed -e 's/strsignal//' -e 's/psignal//'`&quot;
+     fi
+@@ -402,12 +420,12 @@ if test -z &quot;${setobjs}&quot;; then
+ 
+   # We haven't set the list of objects yet.  Use the standard autoconf
+   # tests.  This will only work if the compiler works.
+-  AC_PROG_CC_WORKS
++  AC_ISC_POSIX
+   AC_REPLACE_FUNCS($funcs)
+   libiberty_AC_FUNC_C_ALLOCA
+   AC_FUNC_VFORK
+   if test $ac_cv_func_vfork_works = no; then
+-    LIBOBJS=&quot;$LIBOBJS vfork.o&quot;
++    AC_LIBOBJ([vfork])
+   fi
+   # We only need _doprnt if we might use it to implement v*printf.
+   if test $ac_cv_func_vprintf != yes \
+Index: config/acx.m4
+===================================================================
+RCS file: /big/fsf/rsync/src-cvs/src/config/acx.m4,v
+retrieving revision 1.3
+diff -u -p -r1.3 acx.m4
+--- config/acx.m4	18 May 2003 15:49:06 -0000	1.3
++++ config/acx.m4	14 Jun 2003 20:41:01 -0000
+@@ -140,3 +140,61 @@ else
+   $1=&quot;$ac_cv_prog_$1&quot;
+ fi
+ ]) []dnl # NCN_STRICT_CHECK_TARGET_TOOL
++
++# GCC_NO_EXECUTABLES
++# -----------------
++# FIXME: The GCC team has specific needs which the current Autoconf
++# framework cannot solve elegantly.  This macro implements a dirty
++# hack until Autoconf is abble to provide the services its users
++# needs.
++#
++# Several of the support libraries that are often built with GCC can't
++# assume the tool-chain is already capable of linking a program: the
++# compiler often expects to be able to link with some of such
++# libraries.
++#
++# In several of these libraries, workarounds have been introduced to
++# avoid the AC_PROG_CC_WORKS test, that would just abort their
++# configuration.  The introduction of AC_EXEEXT, enabled either by
++# libtool or by CVS autoconf, have just made matters worse.
++#
++# Unlike the previous AC_NO_EXECUTABLES, this test does not
++# disable link tests at autoconf time, but at configure time.
++# This allows AC_NO_EXECUTABLES to be invoked conditionally.
++AC_DEFUN_ONCE([GCC_NO_EXECUTABLES],
++[m4_divert_push([KILL])
++
++AC_BEFORE([$0], [_AC_COMPILER_EXEEXT])
++AC_BEFORE([$0], [AC_LINK_IFELSE])
++
++m4_define([_AC_COMPILER_EXEEXT],
++AC_LANG_CONFTEST([AC_LANG_PROGRAM()])
++# FIXME: Cleanup?
++AS_IF([AC_TRY_EVAL(ac_link)], [gcc_no_link=no], [gcc_no_link=yes])
++if test x$gcc_no_link = xyes; then
++  # Setting cross_compile will disable run tests; it will
++  # also disable AC_CHECK_FILE but that's generally
++  # correct if we can't link.
++  cross_compiling=yes
++  EXEEXT=
++else
++  m4_defn([_AC_COMPILER_EXEEXT])dnl
++fi
++)
++
++m4_define([AC_LINK_IFELSE],
++if test x$gcc_no_link = xyes; then
++  AC_MSG_ERROR([Link tests are not allowed after [[$0]].])
++fi
++m4_defn([AC_LINK_IFELSE]))
++
++dnl This is a shame.  We have to provide a default for some link tests,
++dnl similar to the default for run tests.
++m4_define([AC_FUNC_MMAP],
++if test x$gcc_no_link = xyes; then
++  ac_cv_func_mmap_fixed_mapped=no
++fi
++m4_defn([AC_FUNC_MMAP]))
++
++m4_divert_pop()dnl
++])# GCC_NO_EXECUTABLES
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000011.html">[autoconf-conversion] Something to start with
+</A></li>
+	<LI>Next message: <A HREF="000013.html">[autoconf-conversion] Something to start with
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#12">[ date ]</a>
+              <a href="thread.html#12">[ thread ]</a>
+              <a href="subject.html#12">[ subject ]</a>
+              <a href="author.html#12">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/autoconf-conversion">More information about the autoconf-conversion
+mailing list</a><br>
+</body></html>

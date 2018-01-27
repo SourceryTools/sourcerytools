@@ -1,0 +1,168 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [vsipl++] [patch] Pool allocation
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20%5Bpatch%5D%20Pool%20allocation&In-Reply-To=%3C480E4FC7.7020803%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001291.html">
+   <LINK REL="Next"  HREF="001293.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[vsipl++] [patch] Pool allocation</H1>
+    <B>Jules Bergmann</B> 
+    <A HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20%5Bpatch%5D%20Pool%20allocation&In-Reply-To=%3C480E4FC7.7020803%40codesourcery.com%3E"
+       TITLE="[vsipl++] [patch] Pool allocation">jules at codesourcery.com
+       </A><BR>
+    <I>Tue Apr 22 20:51:19 UTC 2008</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001291.html">[vsipl++] [patch] Pool allocation
+</A></li>
+        <LI>Next message: <A HREF="001293.html">[vsipl++] [patch] Pool allocation
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1292">[ date ]</a>
+              <a href="thread.html#1292">[ thread ]</a>
+              <a href="subject.html#1292">[ subject ]</a>
+              <a href="author.html#1292">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Stefan Seefeld wrote:
+ &gt; Jules,
+ &gt;
+ &gt; sorry for having dropped the ball here. The patch looks good. I only
+ &gt; have the usual nit-picks, but nothing blocking.
+ &gt;
+ &gt; A general question concerning the expected usage: By replacing the
+ &gt; template parameter by a function parameter you make the choice of a pool
+ &gt; a runtime-only thing. Who do you expect will use pools explicitly, and
+ &gt; how ? Is this runtime-binding really going to be used by end-users, or
+ &gt; is it merely a convenience for us during R&amp;D ?
+ &gt; (I could think of ways to keep the allocator a compile-time parameter,
+ &gt; but allow us to configure in a special allocator that calls into a
+ &gt; runtime-polymorphic pool type such as the one you implement here...)
+
+I don't think that an allocator choosen at compile time is the best
+choice.  We've had it implemented that way for a long time, and it
+didn't seem that useful.  In particular:
+
+  - The main reason is that I don't think it is a good idea to increase
+    the type diversity for something that doesn't bring a lot of
+    optimization potential.
+
+    Block allocation/deallocation is infrequent, done once per block,
+    and usually done outside of the computation loop.  Each block's
+    allocator will only perform one allocation.  Extra efficiency
+    from a compile-time allocator doesn't buy as much.
+
+    By comparison, stdlib containers use one allocator to allocate
+    entries in the container (sharing a single allocator across
+    multiple allocations).  The allocations/deallocations presumably
+    occur with some frequency, during computations.
+
+  - As implemented, the compile-time allocator was a template
+    parameteter of the Dense_storage implementation, and not accessible
+    from Dense or Dense_impl.  Extending Dense to allow different
+    allocators to be choosen would require extending its type interface,
+    either directly, or through another type (such as Local_map).
+
+
+Allocation pools should be useful in general, beyond just making huge
+page memory easier to allocate for benchmarks.  One &quot;in the wild&quot;
+example would be to allocate memory in a pool that has some special
+memory attribute (such as being part of shared region, or being part
+of memory that can be accessed via DMA).  This type of thing comes up
+often when dealing with I/O devices.
+
+You can achieve a similar effect with admit/release, but some
+kind of block factory with an attached pool would be much easier.
+
+				-- Jules
+
+
+ &gt;
+ &gt;&gt; +
+ &gt;&gt; +/** @file    vsip/core/pool.hpp
+ &gt;&gt; +    @author  Jules Bergmann
+ &gt;&gt; +    @date    2007-04-11
+ &gt;
+ &gt; Is this patch really this old ? :-)
+
+It is old, eh?  It dates back to the VSIPL++ proof of concept we did
+for IBM last year.  This, and the attributes on local maps to set the
+number of SPUs never went into SVN, mostly because I was nervous about
+the local map attributes.
+
+
+ &gt;
+ &gt;&gt; +    @brief   VSIPL++ Library: Memory allocation pool
+ &gt;&gt; +*/
+ &gt;
+ &gt; I would prefer to name the pool actually Memory_pool, to make it clear
+ &gt; that we are talking about memory management here, not threading (say).
+
+Ah yes, good idea.
+
+ &gt;
+ &gt;&gt; +template &lt;typename T&gt;
+ &gt;&gt; +inline T*
+ &gt;&gt; +pool_alloc(
+ &gt;&gt; +  Pool*       pool,
+ &gt;&gt; +  length_type size)
+ &gt;&gt; +{
+ &gt;&gt; +  return (T*)(pool-&gt;allocate(size * sizeof(T)));
+ &gt;&gt; +}
+ &gt;
+ &gt; I understand the need for 'pool_alloc' being a separate function from
+ &gt; the virtual Pool::allocate, but I'd still prefer this to become a member
+ &gt; function. What about
+ &gt;
+ &gt; class Memory_pool
+ &gt; {
+ &gt; public:
+ &gt;   virtual void *allocate(length_type);
+ &gt;   template &lt;typename T&gt;
+ &gt;   T * allocate(length_type);
+ &gt; };
+
+Sounds good, I'll give that a try.
+
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">jules at codesourcery.com</A>
+(650) 331-3385 x705
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001291.html">[vsipl++] [patch] Pool allocation
+</A></li>
+	<LI>Next message: <A HREF="001293.html">[vsipl++] [patch] Pool allocation
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1292">[ date ]</a>
+              <a href="thread.html#1292">[ thread ]</a>
+              <a href="subject.html#1292">[ subject ]</a>
+              <a href="author.html#1292">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">More information about the vsipl++
+mailing list</a><br>
+</body></html>

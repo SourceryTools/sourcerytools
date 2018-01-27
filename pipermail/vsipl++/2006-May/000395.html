@@ -1,0 +1,505 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [vsipl++] [patch] HPEC CFAR Detection benchmark
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20%5Bpatch%5D%20HPEC%20CFAR%20Detection%20benchmark&In-Reply-To=%3C4457A4FB.9040505%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000393.html">
+   <LINK REL="Next"  HREF="000451.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[vsipl++] [patch] HPEC CFAR Detection benchmark</H1>
+    <B>Jules Bergmann</B> 
+    <A HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20%5Bpatch%5D%20HPEC%20CFAR%20Detection%20benchmark&In-Reply-To=%3C4457A4FB.9040505%40codesourcery.com%3E"
+       TITLE="[vsipl++] [patch] HPEC CFAR Detection benchmark">jules at codesourcery.com
+       </A><BR>
+    <I>Tue May  2 18:29:15 UTC 2006</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000393.html">[patch] HPEC CFAR Detection benchmark
+</A></li>
+        <LI>Next message: <A HREF="000451.html">[patch] HPEC CFAR Detection benchmark
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#395">[ date ]</a>
+              <a href="thread.html#395">[ thread ]</a>
+              <a href="subject.html#395">[ subject ]</a>
+              <a href="author.html#395">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Don McCoy wrote:
+&gt;<i> The attached patch implements the CFAR benchmark.  Briefly, this problem 
+</I>&gt;<i> involves finding targets based on data within a three-dimensional cube 
+</I>&gt;<i> of 'beam locations', 'range gates' and 'doppler bins'.  It does this by 
+</I>&gt;<i> comparing the signal in a given cell to that of nearby cells in order to 
+</I>&gt;<i> avoid false-detection of targets.  The range gate parameter is varied 
+</I>&gt;<i> when considering 'nearby' cells.  A certain number of guard cells are 
+</I>&gt;<i> skipped, resulting in a computation that sums the values from two thick 
+</I>&gt;<i> slices of this data cube (one on either side of the slice for a 
+</I>&gt;<i> particular range gate).  The HPEC PCA Kernel-Level benchmark paper has a 
+</I>&gt;<i> diagram that shows one cell under consideration.  Please refer to it if 
+</I>&gt;<i> needed.
+</I>&gt;<i> 
+</I>&gt;<i> The algorithm involves these basic steps:
+</I>&gt;<i>   - compute the squares of all the values in the data cube
+</I>&gt;<i>   - for each range gate:
+</I>&gt;<i>     - sum the squares of desired values around the current range gate
+</I>&gt;<i>     - compute the normalized power for each cell in the slice
+</I>&gt;<i>     - search for values that exceed a certain threshold
+</I>&gt;<i> 
+</I>&gt;<i> Some of the code relates to boundary conditions (near either end of the 
+</I>&gt;<i> 'range gates' parameter), but otherwise it follows the above description.
+</I>
+Don,
+
+Excellent description of the benchmark!  Can you put it into the file 
+header as a comment?
+
+&gt;<i> 
+</I>&gt;<i> For now, the original implementation used get/put (actually operator()) 
+</I>&gt;<i> instead of using subviews and the element-wise operators.  Switching 
+</I>&gt;<i> from one to the other resulted in about a 25% improvement in performance 
+</I>&gt;<i> for the first set of data (see attached graph).  The other sets 
+</I>&gt;<i> experienced improvement as well, to varying degrees.  I'd like to 
+</I>&gt;<i> consider how we can improve the throughput further.  Switching the 
+</I>&gt;<i> processing order may help possibly.  Thoughts are welcome.
+</I>
+General comments:
+  - Avoid memory allocation/deallocation inside the compute loop.
+    For example, the 't1' temporary matrix in cfar_find_targets()
+    is being allocated/deallocated multiple times during a single
+    test_cfar() call.
+
+    You could avoid this by moving cfar_find_targets() and cfar_detect()
+    into t_cfar_base class, and then defining the temporary
+    matrices/tensors as member variables.
+
+  - When taking a slice of a matrix/tensor, use a subview instead of
+    copying data.
+
+    For example, the 'pow_slice' matrix currently looks like:
+
+	Matrix&lt;T&gt; pow_slice = cpow(dom0, 0, dom2);
+  	cfar_find_targets(... pow_slice ...);
+	for (...)
+	{
+	  ...
+	  pow_slice = cpow(dom0, j, dom2);
+	  cfar_find_targets(... pow_slice ...);
+	}
+
+    As written, pow_slice is a separate matrix holding a copy of
+    the slice from cpow.  Each iteration through the loop, new data
+    is copied into pow_slice.
+
+    The reason that pow_slice is a copy instead of a reference
+    is because its block type (Dense&lt;2, T&gt;) is different from the block
+    type returned by 'cpow(...)' (an impl-defined block type that I don't
+    know off the top of my head, Subset_block maybe?).  To have
+    pow_slice reference the data instead of copying it, it needs
+    to have the same block type returned from 'cpow()'.
+
+    You can use Tensor&lt;T&gt;::submtraix&lt;2&gt;::type to get the right type
+    (where Tensor&lt;T&gt; is the type of cpow):
+
+	typename Tensor&lt;T&gt;::submatrix&lt;2&gt;::type
+	  pow0_slice = cpow(dom0, 0, dom2);
+	cfar_find_targets(... pow0_slice ...);
+	for (...)
+	{
+	  ...
+	  typename Tensor&lt;T&gt;::submatrix&lt;2&gt;::type
+	    pow_slice = cpow(dom0, j, dom2);
+	  cfar_find_targets(... pow_slice ...);
+	}
+
+    Note that you can't change what pow_slice refers to after
+    you create it (i.e. change from '0' to 'j').  That's why this
+    has 'pow0_slice' and 'pow_slice'.
+
+    Of course, you could also do away with the explicit
+    variable 'pow_slice' altogether:
+
+	cfar_find_targets(... cpow(dom0, 0, dom2), ...);
+	for (...)
+	{
+	  ...
+	  cfar_find_targets(... cpow(dom0, j, dom2), ...);
+	}
+
+  - When iterating through each element in a matrix or tensor,
+    try to arrange the variables to coincide with the dimension-order.
+
+    For example, if you have a 3 by 3 row-major matrix:
+
+	Matrix&lt;T&gt; mat(3, 3);
+
+    The data will be laid out like this in memory:
+
+	Address		Matrix element
+	0		0,0
+	1		0,1
+	2		0,2
+	3		1,0
+	4		1,1
+	5		1,2
+	6		2,0
+	7		2,1
+	8		2,2
+
+    If you iterate over the elements like so:
+
+	for (index_type j=0; j&lt;mat.size(1); ++j)
+	  for (index_type i=0; i&lt;mat.size(0); ++i)
+	    .. use mat(i, j) ..
+
+    The sequence of addresses you will be accessing from memory will
+    look like:
+
+	0, 3, 6, 1, 4, 7, 2, 5, 8
+
+    This type of sequence makes poor utilization of the cache
+    because cache lines may be flushed out before all their
+    elements are used.
+
+    For example, the access to location 0 would pull in other
+    locations in the same cache line, such as location 1.  However
+    if the matrix is large enough, one of the other access
+    (3 or 6 in this case) might flush location 1 out of the cache
+    before that element is accessed.
+
+    Instead, if you iterate over the elements like this:
+
+	for (index_type i=0; i&lt;mat.size(0); ++i)
+	  for (index_type j=0; j&lt;mat.size(1); ++j)
+	    .. use mat(i, j) ..
+
+    You will get the nice sequence:
+
+	0, 1, 2, 3, 4, 5, 6, 7, 8
+
+&gt;<i> 
+</I>&gt;<i> The benchmark only varies the number of range gates based upon the four 
+</I>&gt;<i> sets of parameters defined in the HPEC paper.  As the workload is 
+</I>&gt;<i> equally dependent on each of the three dimensions, sweeping the other 
+</I>&gt;<i> two would not add much value.
+</I>&gt;<i> 
+</I>&gt;<i> Regards,
+</I>
+&gt;<i> + /***********************************************************************
+</I>&gt;<i> +   Support
+</I>&gt;<i> + ***********************************************************************/
+</I>&gt;<i> + 
+</I>&gt;<i> + template &lt;typename T,
+</I>&gt;<i> +           typename Block1,
+</I>&gt;<i> +           typename Block2&gt; 
+</I>&gt;<i> + inline
+</I>&gt;<i> + void
+</I>&gt;<i> + cfar_find_targets(
+</I>&gt;<i> +   const_Matrix&lt;T, Block1&gt; sum,       // Sum of values in Cfar gates
+</I>&gt;<i> +   length_type             gates,     // Total number of Cfar gates used
+</I>&gt;<i> +   const_Matrix&lt;T, Block2&gt; pow_slice, // A set of squared values of range gates
+</I>&gt;<i> +   const length_type       mu,        // Threshold for determining targets
+</I>&gt;<i> +   Matrix&lt;index_type&gt;      targets,   // All of the targets detected so far. 
+</I>&gt;<i> +   index_type&amp;             next,      // the next empty slot in targets
+</I>&gt;<i> +   const length_type       j)         // Current range gate number. 
+</I>&gt;<i> + {
+</I>&gt;<i> +   if ( next &gt;= targets.size(0) )  // full, nothing to do.
+</I>&gt;<i> +     return;
+</I>&gt;<i> + 
+</I>&gt;<i> +   // Compute the local noise estimate.  The inverse is calculated in advance
+</I>&gt;<i> +   // for efficiency.
+</I>&gt;<i> +   T inv_gates = (1.0 / gates);
+</I>&gt;<i> +   Matrix&lt;T&gt; tl = sum * inv_gates;
+</I>&gt;<i> + 
+</I>&gt;<i> +   // Make sure we don't divide by zero!  We take advantage of a
+</I>&gt;<i> +   // reduction function here, knowing the values are positive.
+</I>&gt;<i> +   Index&lt;const_Matrix&lt;T&gt;::dim&gt; idx;
+</I>&gt;<i> +   if ( minval(tl, idx) == T() )
+</I>
+Checking that minval == T() is actually overhead.  I.e. expanding it out:
+
+	// compute minval
+	for (i = ...)
+	  for (k = ...)
+	    if (t1(i, k) &lt; minval) minval = ...
+
+	// set 0
+	if (val == 0.0)
+	  for (i = ...)
+	    for (k = ...)
+	      if (t1(i, k) == 0.0) ...
+
+In effect it is looping through the matrix multiple times.  Just going 
+through the matrix and looking for zeros should be less expensive.
+
+
+&gt;<i> +   {
+</I>&gt;<i> +     for ( index_type k = 0; k &lt; tl.size(1); ++k )
+</I>&gt;<i> +       for ( index_type i = 0; i &lt; tl.size(0); ++i )
+</I>
+Since t1 is row-major, you should reverse the loop nest.
+
+&gt;<i> +         if ( tl(i,k) == 0.0 ) {
+</I>&gt;<i> +           tl(i,k) = Precision_traits&lt;T&gt;::eps;
+</I>&gt;<i> +           cout &lt;&lt; &quot;! &quot; &lt;&lt; i &lt;&lt; &quot; &quot; &lt;&lt; k &lt;&lt; endl;
+</I>&gt;<i> +         }
+</I>&gt;<i> +   }
+</I>&gt;<i> + 
+</I>&gt;<i> +   // Compute the normalized power in the cell
+</I>&gt;<i> +   Matrix&lt;T&gt; normalized_power = pow_slice / tl;
+</I>
+Instead of using a separate matrix for normalize_power, you could update 
+t1 in-place:
+
+	t1 = pow_slice / t1;
+
+&gt;<i> + 
+</I>&gt;<i> + 
+</I>&gt;<i> +   // If the normalized power is larger than mu record the coordinates.  The
+</I>&gt;<i> +   // list of target are held in a [N x 3] matrix, with each row containing 
+</I>&gt;<i> +   // the beam location, range gate and doppler bin location of each target. 
+</I>&gt;<i> +   //
+</I>&gt;<i> +   for ( index_type k = 0; k &lt; tl.size(1); ++k )
+</I>&gt;<i> +     for ( index_type i = 0; i &lt; tl.size(0); ++i )
+</I>&gt;<i> +     {
+</I>&gt;<i> +       if ( normalized_power(i,k) &gt; mu )
+</I>&gt;<i> +       {
+</I>&gt;<i> +         targets(next,0) = i;
+</I>&gt;<i> +         targets(next,1) = j;
+</I>&gt;<i> +         targets(next,2) = k;
+</I>&gt;<i> +         if ( ++next == targets.size(0) )  // full, nothing else to do.
+</I>&gt;<i> +           return;
+</I>&gt;<i> +       }
+</I>&gt;<i> +     }
+</I>
+Looking at this entire function (cfar_find_targets), it could benefit 
+from loop fusion.  It has 5 separate loops:
+
+  - compute t1
+  - (find minimum -- we can remove this)
+  - replace zero values with eps
+  - compute normalized power
+  - look for detections.
+
+Fusing these loops together would process each element start-to-finish, 
+improving temporal locality.
+
+Ignoring any vectorization potential, it would be more efficient to have 
+a single loop:
+
+	for (i = ...)
+	  for (k = ...)
+	  {
+	    T t1 = sum(i, k) * inv_gates;
+	    if (t1 == T()
+	      t1 = eps;
+	    T norm_power = pow_slice(i, k) / t1;
+	    if (norm_power &gt; mu)
+	       ... record detection ...
+	  }
+
+It would be nice if we could write a high-level VSIPL++ expression that 
+did the same thing.  Something like this might work:
+
+	count = indexbool( pow_slice / max(sum * inv_gates, eps) &gt; mu,
+		  targets(Domain&lt;1&gt;(next, 1, targets.size() - next));
+	next += count;
+
+It would be good to compare the performance of the explicit for loop 
+with the VSIPL++ approach to see if VSIPL++ does a good job.
+
+&gt;<i> + }
+</I>&gt;<i> + 
+</I>&gt;<i> + 
+</I>&gt;<i> + template &lt;typename T,
+</I>&gt;<i> +           typename Block&gt;
+</I>&gt;<i> + void
+</I>&gt;<i> + cfar_detect(
+</I>&gt;<i> +   Tensor&lt;T, Block&gt;   cube,
+</I>&gt;<i> +   Matrix&lt;index_type&gt; found,
+</I>&gt;<i> +   length_type        cfar_gates,
+</I>&gt;<i> +   length_type        guard_cells,
+</I>&gt;<i> +   length_type        mu)
+</I>&gt;<i> + {
+</I>&gt;<i> + // Description:
+</I>&gt;<i> + //   Main computational routine for the Cfar Kernel Benchmark. Determines 
+</I>&gt;<i> + //   targets by finding SNR signal data points that are greater than the 
+</I>&gt;<i> + //   noise threshold mu
+</I>&gt;<i> + //
+</I>&gt;<i> + // Inputs:
+</I>&gt;<i> + //    cube: [beams x gates x bins] The radar datacube
+</I>&gt;<i> + //
+</I>&gt;<i> + // Note: this function assumes that second dimension of input cube C  
+</I>&gt;<i> + // has length (range gates) greater than 2(cfar gates + guard cells).
+</I>&gt;<i> + // If this were not the case, then the parameters of the radar signal 
+</I>&gt;<i> + // processing would be flawed!
+</I>
+Can you put this comment near the assertion that checks it?
+
+
+&gt;<i> + 
+</I>&gt;<i> +   length_type beams = cube.size(0);
+</I>&gt;<i> +   length_type gates = cube.size(1);
+</I>&gt;<i> +   length_type dbins = cube.size(2);
+</I>&gt;<i> +   test_assert( 2*(cfar_gates+guard_cells) &lt; gates );
+</I>&gt;<i> + 
+</I>&gt;<i> +   Tensor&lt;T&gt; cpow = pow(cube, 2);
+</I>&gt;<i> + 
+</I>&gt;<i> +   Domain&lt;1&gt; dom0(beams);
+</I>&gt;<i> +   Domain&lt;1&gt; dom2(dbins);
+</I>&gt;<i> +   Matrix&lt;T&gt; sum(beams, dbins, T());
+</I>&gt;<i> +   for ( length_type lnd = guard_cells; lnd &lt; guard_cells+cfar_gates; ++lnd )
+</I>&gt;<i> +     sum += cpow(dom0, 1+lnd, dom2);
+</I>&gt;<i> + 
+</I>&gt;<i> +   Matrix&lt;T&gt; pow_slice = cpow(dom0, 0, dom2);
+</I>&gt;<i> + 
+</I>&gt;<i> +   index_type next_found = 0;
+</I>&gt;<i> +   cfar_find_targets(sum, cfar_gates, pow_slice, mu, found, next_found, 0);
+</I>&gt;<i> + 
+</I>&gt;<i> +   for ( index_type j = 1; j &lt; gates; ++j )
+</I>&gt;<i> +   {
+</I>&gt;<i> +     length_type gates_used = 0;
+</I>&gt;<i> +     length_type c = cfar_gates;
+</I>&gt;<i> +     length_type g = guard_cells;
+</I>&gt;<i> + 
+</I>
+You could move this 'if-then-else' statement outside of the loop.  This 
+would result in multiple loops.  Since the majority of time is spent in 
+case 3, keeping cases 1 &amp; 2 and 4 &amp; 5 together would be OK.  I.e.:
+  - loop for cases 1 &amp; 2
+  - loop for case 3
+  - loop for cases 4 &amp; 5
+
+&gt;<i> +     // Case 1: No cell included on left side of CFAR; 
+</I>&gt;<i> +     // very close to left boundary 
+</I>&gt;<i> +     if ( j &lt; (g + 1) ) 
+</I>&gt;<i> +     {
+</I>&gt;<i> +       gates_used = c;
+</I>&gt;<i> +       sum += cpow(dom0, j+g+c, dom2)   - cpow(dom0, j+g, dom2);
+</I>&gt;<i> +     }
+</I>&gt;<i> +     // Case 2: Some cells included on left side of CFAR;
+</I>&gt;<i> +     // close to left boundary 
+</I>&gt;<i> +     else if ( (j &gt;= (g + 1)) &amp; (j &lt; (g + c + 1)) )
+</I>&gt;<i> +     {
+</I>&gt;<i> +       gates_used = c + j - (g + 1);
+</I>&gt;<i> +       sum += cpow(dom0, j+g+c, dom2)   - cpow(dom0, j+g, dom2) 
+</I>&gt;<i> +            + cpow(dom0, j-(g+1), dom2);
+</I>&gt;<i> +     }
+</I>&gt;<i> +     // Case 3: All cells included on left and right side of CFAR
+</I>&gt;<i> +     // somewhere in the middle of the range vector
+</I>&gt;<i> +     else if ( (j &gt;= (g + c + 1)) &amp; ((j + (g + c)) &lt; gates) )
+</I>&gt;<i> +     {
+</I>&gt;<i> +       gates_used = 2 * c;
+</I>&gt;<i> +       sum += cpow(dom0, j+g+c, dom2)   - cpow(dom0, j+g, dom2) 
+</I>&gt;<i> +            + cpow(dom0, j-(g+1), dom2) - cpow(dom0, j-(c+g+1), dom2);
+</I>&gt;<i> +     }
+</I>&gt;<i> +     // Case 4: Some cells included on right side of CFAR;
+</I>&gt;<i> +     // close to right boundary
+</I>&gt;<i> +     else if ( (j + (g + c) &gt;= gates) &amp; ((j + g) &lt; gates) )
+</I>&gt;<i> +     {
+</I>&gt;<i> +       gates_used = c + gates - (j + g);
+</I>&gt;<i> +       sum +=                           - cpow(dom0, j+g, dom2) 
+</I>&gt;<i> +            + cpow(dom0, j-(g+1), dom2) - cpow(dom0, j-(c+g+1), dom2);
+</I>&gt;<i> +     }
+</I>&gt;<i> +     // Case 5: No cell included on right side of CFAR; 
+</I>&gt;<i> +     // very close to right boundary 
+</I>&gt;<i> +     else if (j + g &gt;= gates)
+</I>&gt;<i> +     {
+</I>&gt;<i> +       gates_used = c;
+</I>&gt;<i> +       sum += cpow(dom0, j-(g+1), dom2) - cpow(dom0, j-(c+g+1), dom2);
+</I>&gt;<i> +     }    
+</I>&gt;<i> +     else
+</I>&gt;<i> +     {
+</I>&gt;<i> +       cerr &lt;&lt; &quot;Error: fell through if statements in Cfar detection - &quot; &lt;&lt; 
+</I>&gt;<i> +         j &lt;&lt; endl;
+</I>&gt;<i> +       test_assert(0);
+</I>&gt;<i> +     }
+</I>&gt;<i> + 
+</I>&gt;<i> +     pow_slice = cpow(dom0, j, dom2);
+</I>&gt;<i> +     cfar_find_targets(sum, gates_used, pow_slice, mu, found, next_found, j);
+</I>&gt;<i> +   }
+</I>&gt;<i> + }
+</I>
+&gt;<i> Index: benchmarks/loop.hpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: /home/cvs/Repository/vpp/benchmarks/loop.hpp,v
+</I>&gt;<i> retrieving revision 1.17
+</I>&gt;<i> diff -c -p -r1.17 loop.hpp
+</I>&gt;<i> *** benchmarks/loop.hpp	13 Apr 2006 19:21:07 -0000	1.17
+</I>&gt;<i> --- benchmarks/loop.hpp	2 May 2006 00:26:12 -0000
+</I>&gt;<i> *************** Loop1P::sweep(Functor fcn)
+</I>&gt;<i> *** 286,292 ****
+</I>&gt;<i>   
+</I>&gt;<i>       float factor = goal_sec_ / time;
+</I>&gt;<i>       if (factor &lt; 1.0) factor += 0.1 * (1.0 - factor);
+</I>&gt;<i> !     loop = (int)(factor * loop);
+</I>&gt;<i>   
+</I>&gt;<i>       if (factor &gt;= 0.75 &amp;&amp; factor &lt;= 1.25)
+</I>&gt;<i>         break;
+</I>&gt;<i> --- 286,299 ----
+</I>&gt;<i>   
+</I>&gt;<i>       float factor = goal_sec_ / time;
+</I>&gt;<i>       if (factor &lt; 1.0) factor += 0.1 * (1.0 - factor);
+</I>&gt;<i> !     if ( loop == (int)(factor * loop) )
+</I>&gt;<i> !       break;          // Avoid getting stuck when factor ~= 1 and loop is small
+</I>&gt;<i> !     else
+</I>&gt;<i> !       loop = (int)(factor * loop);
+</I>&gt;<i> !     if ( loop == 0 ) 
+</I>&gt;<i> !       loop = 1; 
+</I>&gt;<i> !     if ( loop == 1 )  // Quit if loop cannot get smaller
+</I>&gt;<i> !       break;
+</I>
+I was a little confused by this logic at first, but after considering 
+it, it seems OK.
+
+I've thought about always starting the loop count at 1 for calibration 
+and only letting it grow.  If the new loop is ever smaller than the old 
+one, that would end calibration (calibration would also end of 0.75 &lt;= 
+factor &lt;= 1.25 as currently).  Do you think that would work?
+
+
+&gt;<i>   
+</I>&gt;<i>       if (factor &gt;= 0.75 &amp;&amp; factor &lt;= 1.25)
+</I>&gt;<i>         break;
+</I>
+
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">jules at codesourcery.com</A>
+(650) 331-3385 x705
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000393.html">[patch] HPEC CFAR Detection benchmark
+</A></li>
+	<LI>Next message: <A HREF="000451.html">[patch] HPEC CFAR Detection benchmark
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#395">[ date ]</a>
+              <a href="thread.html#395">[ thread ]</a>
+              <a href="subject.html#395">[ subject ]</a>
+              <a href="author.html#395">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">More information about the vsipl++
+mailing list</a><br>
+</body></html>

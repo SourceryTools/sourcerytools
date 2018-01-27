@@ -1,0 +1,600 @@
+From BCassanova at weather.com  Tue Jul 13 20:24:31 2010
+From: BCassanova at weather.com (Cassanova, Bill)
+Date: Tue, 13 Jul 2010 16:24:31 -0400
+Subject: Example of parallel processing
+Message-ID: <1D5F4E64B8C04F4C868B94AC9A532AF80DE5AA93@ATLMAIL01.corp.weather.com>
+
+Hi all,
+
+ 
+
+I was just wondering if there is a good example available of the
+foreach_vector method for parallel processing.
+
+ 
+
+In particular I am thinking of a case with the following constraints:
+
+ 
+
+(1)    A very large matrix.  Each row or block of rows should be
+processed by a single processor.  The assumption is there will be
+multiple processors and that using a parallel processing scheme makes
+"sense".
+
+(2)    The primary thread, or using MPI terminology, the root process
+will initialize or otherwise acquire the data.
+
+(3)    The secondary thread or threads, assuming again MPI methodology,
+mpirun was started with -np of greater than 1.
+
+(4)    The secondary threads do the "work" on the matrix, a row or group
+of rows at a time.
+
+(5)    The main thread waits until all processing is complete.
+
+ 
+
+I have searched the VSIPL++ distribution and have a working example of
+more than one thread doing "work".  I am having trouble understanding
+how the main thread waits until all other processing is done.  Using MPI
+terminology, how does one determine when the rank of the process is 0
+and considered the root process and if so wait.
+
+ 
+
+Example program:
+
+ 
+
+template <typename T>
+
+class matrix_walker
+
+{
+
+  Vector<T> my_replica;
+
+  //Vector<T> my_tmp;
+
+ 
+
+  public:
+
+    template < typename Block >
+
+    matrix_walker( Vector<T,Block> replica ):my_replica( replica )
+
+    {
+
+    }
+
+ 
+
+    template<typename Block1, typename Block2, dimension_type Dim>
+
+    void operator()
+
+    (
+
+      Vector<T, Block1 > in,
+
+      Vector<T,Block2> out,
+
+      Index<Dim>
+
+    )
+
+ 
+
+    {
+
+      out = in * my_replica;
+
+    }
+
+ 
+
+int main(int argc, char** argv)
+
+{
+
+  // Initialize the library.
+
+  vsipl init(argc, argv);
+
+ 
+
+  unsigned int num_rows = 5;
+
+  unsigned int num_columns = 10;
+
+ 
+
+  vsip_csl::impl::Communicator comm =
+vsip_csl::impl::default_communicator();
+
+ 
+
+   typedef float value_type;
+
+ 
+
+  typedef Map<Block_dist, Whole_dist> map_type;
+
+ 
+
+  typedef Dense<2, value_type, row2_type, map_type > block_type;
+
+ 
+
+  typedef Dense<1, value_type, row1_type, Replicated_map<1> >
+replica_block_type;
+
+ 
+
+  typedef Vector<value_type, replica_block_type > VEC;
+
+ 
+
+  typedef Matrix< value_type, block_type > MATRIX;
+
+ 
+
+  Replicated_map<1> replica_map;
+
+ 
+
+  boost::shared_ptr< VEC > vec( new VEC( num_columns, replica_map ) );
+
+ 
+
+  map_type map = map_type( num_processors(), 1);
+
+ 
+
+  boost::shared_ptr< MATRIX > matrix( new MATRIX( num_rows, num_columns,
+map ) );
+
+  boost::shared_ptr< MATRIX > tmp_matrix( new MATRIX( num_rows,
+num_columns, map ) );
+
+ 
+
+  value_type idx = 0;
+
+ 
+
+  for( index_type r = 0; r < matrix->size(0); ++r )
+
+  {
+
+    for( index_type c = 0; c < matrix->size(1); ++c )
+
+    {
+
+      matrix->put( r, c, idx+= 10 );
+
+    }
+
+  }
+
+ 
+
+  (*vec) = 5;
+
+ 
+
+(*tmp_matrix) = 0;
+
+ 
+
+   matrix_walker< value_type > mw( vec->local() );
+
+ 
+
+   foreach_vector< tuple<0,1> >( mw, (*matrix) );
+
+ 
+
+// This prints out for as many threads as I started.  What I really want
+is a way of determining when the worker threads are complete
+
+//The process was started as mpirun -np 4
+
+std::cout << (*matrix) << std::endl;  
+
+ 
+
+// A second version of the program used:
+
+// vsip_csl::impl::Communicator comm =
+vsip_csl::impl::default_communicator();
+
+// but the process only prints out the values that were assigned to that
+processor
+
+// If( comm..rank() == 0 )
+
+// {
+
+  // std::cout << (*matrix) << std::endl;
+
+// }
+
+ 
+
+Thanks,
+
+Bill
+
+-------------- next part --------------
+An HTML attachment was scrubbed...
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20100713/18456d8e/attachment.html>
+
+From stefan at codesourcery.com  Tue Jul 13 22:04:37 2010
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Tue, 13 Jul 2010 18:04:37 -0400
+Subject: [vsipl++] Example of parallel processing
+In-Reply-To: <1D5F4E64B8C04F4C868B94AC9A532AF80DE5AA93@ATLMAIL01.corp.weather.com>
+References: <1D5F4E64B8C04F4C868B94AC9A532AF80DE5AA93@ATLMAIL01.corp.weather.com>
+Message-ID: <4C3CE2F5.2080405@codesourcery.com>
+
+Hi Bill,
+
+On 07/13/2010 04:24 PM, Cassanova, Bill wrote:
+> Hi all,
+>
+> I was just wondering if there is a good example available of the
+> foreach_vector method for parallel processing.
+
+Please be aware that the foreach_vector function is not part of the 
+public Sourcery VSIPL++ API, and neither is part of the VSIPL++ 
+specification.
+
+We don't recommend to use functions or types from the vsip::impl 
+namespace, as we can't make any guarantees about their stability or support.
+
+That being said, we are right now experimenting with new APIs to address 
+similar problems, and expect those to be published soon.
+
+> In particular I am thinking of a case with the following constraints:
+>
+> (1) A very large matrix. Each row or block of rows should be processed
+> by a single processor. The assumption is there will be multiple
+> processors and that using a parallel processing scheme makes ?sense?.
+
+OK.
+
+
+> (2) The primary thread, or using MPI terminology, the root process will
+> initialize or otherwise acquire the data.
+
+OK.
+
+> (3) The secondary thread or threads, assuming again MPI methodology,
+> mpirun was started with ?np of greater than 1.
+>
+> (4) The secondary threads do the ?work? on the matrix, a row or group of
+> rows at a time.
+>
+> (5) The main thread waits until all processing is complete.
+
+You are using a vocabulary from multi-threading that is not quite 
+accurate in this context: While you may identify a single process as the 
+"main" process (typically the one with rank=0), there really is nothing 
+particular about that, as far as its work-flow is concerned.
+
+All processes normally process the exact same code. This is the "Single 
+Program Multiple Data" model, which is different from the worker thread 
+or thread pool pattern.
+
+Thus, the line
+
+     foreach_vector< tuple<0,1> >( mw, (*matrix) );
+
+is executed by all processes, and there is typically no need to "wait" 
+for other processes to reach the same point.
+
+> I have searched the VSIPL++ distribution and have a working example of
+> more than one thread doing ?work?. I am having trouble understanding how
+> the main thread waits until all other processing is done. Using MPI
+> terminology, how does one determine when the rank of the process is 0
+> and considered the root process and if so wait.
+
+[...]
+
+> foreach_vector< tuple<0,1> >( mw, (*matrix) );
+
+After this line you can assume that all processes have finished this 
+function. You may insert a barrier, but that shouldn't actually be 
+needed in most cases:
+
+   comm.barrier();
+
+To print out the result, you should indeed use the "if (comm.rank() == 
+0)" idiom.
+
+I'm not sure whether I actually answered any of your questions. If not, 
+let me know.
+
+Thanks,
+		Stefan
+
+
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+
+
+From BCassanova at weather.com  Wed Jul 14 14:51:28 2010
+From: BCassanova at weather.com (Cassanova, Bill)
+Date: Wed, 14 Jul 2010 10:51:28 -0400
+Subject: [vsipl++] Example of parallel processing
+In-Reply-To: <4C3CE2F5.2080405@codesourcery.com>
+References: <1D5F4E64B8C04F4C868B94AC9A532AF80DE5AA93@ATLMAIL01.corp.weather.com> <4C3CE2F5.2080405@codesourcery.com>
+Message-ID: <1D5F4E64B8C04F4C868B94AC9A532AF80DE5ACA2@ATLMAIL01.corp.weather.com>
+
+Your response does help although I need to clarify a few things a bit
+further if I may.
+
+(1) You stated that foreach_vector is not recommended.  My presumption
+is that the recommended way is to code an explicit loop as was done in
+the 8.2 section of the users-guide.pdf file using local subviews
+instead.
+
+(2) You stated that each process runs the exact same code.  Let's take a
+distributed scenario where, for example I have 4 individual machines
+named A,B,C, and D.  Each of these machines has 4 processors.  So...I
+have 16 processors on which "work" can be done.  However, only Node A
+has a particular input file on disk that contains the data that must be
+first read in before being processed.
+
+   (A) Is my understanding correct that the actual binary program must
+physically exist on each and every machine or does VSIPL++/MPI 
+       "take care of" sending the necessary instruction codes from the
+master Node to the slave nodes...In this case Node A, to each of the 
+        machines.
+
+   (B) Does the input file have to exist on all 4 nodes or is it
+possible to read the data in on Node A, load the data into an
+appropriate 
+       data structure and then let VSIPL++ "distribute" the processing
+using either foreach_vector or using the explicitly coded loop.
+
+(3) Is there a complete example somewhere of running an parallel
+program?  I found directory ../sourceryvsipl++-2.2/src/tests/parallel
+and there are good example of coding parallel programs.  At this point,
+however, I have found scant documentation on actually running these
+program in a parallel mode.  I had to figure out on my own that a
+program must be invoked using mpirun and had I no prior knowledge of
+mpirun I probably wouldn't have even tried it...Just a
+documentation/example suggestion for those of us who are just starting
+to learn parallel programming.  I haven't yet delved into the CUDA parts
+of vsipl++ either so an example runner script would be quite handy and
+probably cut down on some questions.
+
+VSIPL++ shows great promise and at this point at least it seems a bit
+easier than trying to code an MPI program from scratch.
+
+Thanks,
+Bill
+-----Original Message-----
+From: Stefan Seefeld [mailto:stefan at codesourcery.com] 
+Sent: Tuesday, July 13, 2010 6:05 PM
+To: vsipl++ at codesourcery.com
+Subject: Re: [vsipl++] Example of parallel processing
+
+Hi Bill,
+
+On 07/13/2010 04:24 PM, Cassanova, Bill wrote:
+> Hi all,
+>
+> I was just wondering if there is a good example available of the
+> foreach_vector method for parallel processing.
+
+Please be aware that the foreach_vector function is not part of the 
+public Sourcery VSIPL++ API, and neither is part of the VSIPL++ 
+specification.
+
+We don't recommend to use functions or types from the vsip::impl 
+namespace, as we can't make any guarantees about their stability or
+support.
+
+That being said, we are right now experimenting with new APIs to address
+
+similar problems, and expect those to be published soon.
+
+> In particular I am thinking of a case with the following constraints:
+>
+> (1) A very large matrix. Each row or block of rows should be processed
+> by a single processor. The assumption is there will be multiple
+> processors and that using a parallel processing scheme makes "sense".
+
+OK.
+
+
+> (2) The primary thread, or using MPI terminology, the root process
+will
+> initialize or otherwise acquire the data.
+
+OK.
+
+> (3) The secondary thread or threads, assuming again MPI methodology,
+> mpirun was started with -np of greater than 1.
+>
+> (4) The secondary threads do the "work" on the matrix, a row or group
+of
+> rows at a time.
+>
+> (5) The main thread waits until all processing is complete.
+
+You are using a vocabulary from multi-threading that is not quite 
+accurate in this context: While you may identify a single process as the
+
+"main" process (typically the one with rank=0), there really is nothing 
+particular about that, as far as its work-flow is concerned.
+
+All processes normally process the exact same code. This is the "Single 
+Program Multiple Data" model, which is different from the worker thread 
+or thread pool pattern.
+
+Thus, the line
+
+     foreach_vector< tuple<0,1> >( mw, (*matrix) );
+
+is executed by all processes, and there is typically no need to "wait" 
+for other processes to reach the same point.
+
+> I have searched the VSIPL++ distribution and have a working example of
+> more than one thread doing "work". I am having trouble understanding
+how
+> the main thread waits until all other processing is done. Using MPI
+> terminology, how does one determine when the rank of the process is 0
+> and considered the root process and if so wait.
+
+[...]
+
+> foreach_vector< tuple<0,1> >( mw, (*matrix) );
+
+After this line you can assume that all processes have finished this 
+function. You may insert a barrier, but that shouldn't actually be 
+needed in most cases:
+
+   comm.barrier();
+
+To print out the result, you should indeed use the "if (comm.rank() == 
+0)" idiom.
+
+I'm not sure whether I actually answered any of your questions. If not, 
+let me know.
+
+Thanks,
+		Stefan
+
+
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+
+
+From stefan at codesourcery.com  Wed Jul 14 15:10:17 2010
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Wed, 14 Jul 2010 11:10:17 -0400
+Subject: [vsipl++] Example of parallel processing
+In-Reply-To: <1D5F4E64B8C04F4C868B94AC9A532AF80DE5ACA2@ATLMAIL01.corp.weather.com>
+References: <1D5F4E64B8C04F4C868B94AC9A532AF80DE5AA93@ATLMAIL01.corp.weather.com> <4C3CE2F5.2080405@codesourcery.com> <1D5F4E64B8C04F4C868B94AC9A532AF80DE5ACA2@ATLMAIL01.corp.weather.com>
+Message-ID: <4C3DD359.4030006@codesourcery.com>
+
+Hi Bill,
+
+On 07/14/2010 10:51 AM, Cassanova, Bill wrote:
+> Your response does help although I need to clarify a few things a bit
+> further if I may.
+>
+> (1) You stated that foreach_vector is not recommended.
+
+I need to correct what I said a little: The foreach_vector function is 
+indeed exposed as part of the vsip:: namespace (and documented as such 
+in the Users Guide).
+
+We need to correct that, since in fact the vsip:: namespace is reserved 
+for functions and types provided by the VSIPL++ specification.
+
+> My presumption
+> is that the recommended way is to code an explicit loop as was done in
+> the 8.2 section of the users-guide.pdf file using local subviews
+> instead.
+
+Not quite. The new API we are working on, and which I alluded to in my 
+mail yesterday, provides a means for implicit parallelism. Instead of 
+writing an explicit loop, you would write things like:
+
+   Matrix<> input = ...;
+   Matrix<> output = ...;
+
+   Iterator<> i;
+   output.row(i) = function(input.row(i));
+
+This should be intuitively clear: The intent is, similar to 
+foreach_vector, to apply "function" to each row of the input.
+Using such a compact notation gives much more latitude to the library to 
+implement this efficiently (for example by evaluating different rows in 
+parallel).
+
+Such "Parallel Iterator" expressions are also much more powerful since 
+there are many more things that can be expressed than with a "foreach" 
+construct.
+
+But, to be clear: this is still in development. It will be included in 
+future Sourcery VSIPL++ releases.
+
+
+> (2) You stated that each process runs the exact same code.  Let's take a
+> distributed scenario where, for example I have 4 individual machines
+> named A,B,C, and D.  Each of these machines has 4 processors.  So...I
+> have 16 processors on which "work" can be done.  However, only Node A
+> has a particular input file on disk that contains the data that must be
+> first read in before being processed.
+>
+>     (A) Is my understanding correct that the actual binary program must
+> physically exist on each and every machine or does VSIPL++/MPI
+>         "take care of" sending the necessary instruction codes from the
+> master Node to the slave nodes...In this case Node A, to each of the
+>          machines.
+
+The binary must exist on all nodes. The program then is started using 
+the standard "mpirun" command, which, suitably configured, will spawn 
+the 16 processes on the 4 machines.
+
+>     (B) Does the input file have to exist on all 4 nodes or is it
+> possible to read the data in on Node A, load the data into an
+> appropriate
+>         data structure and then let VSIPL++ "distribute" the processing
+> using either foreach_vector or using the explicitly coded loop.
+
+File I/O is typically done by only one process (such as you have done 
+using the conditional "if (rank == 0)"), so you only need the input 
+locally to that process.
+
+> (3) Is there a complete example somewhere of running an parallel
+> program?  I found directory ../sourceryvsipl++-2.2/src/tests/parallel
+> and there are good example of coding parallel programs.  At this point,
+> however, I have found scant documentation on actually running these
+> program in a parallel mode.  I had to figure out on my own that a
+> program must be invoked using mpirun and had I no prior knowledge of
+> mpirun I probably wouldn't have even tried it...Just a
+> documentation/example suggestion for those of us who are just starting
+> to learn parallel programming.  I haven't yet delved into the CUDA parts
+> of vsipl++ either so an example runner script would be quite handy and
+> probably cut down on some questions.
+
+We do have plans to improve our documentation on parallelism with 
+Sourcery VSIPL++ (including how to program as well as deploy it). Thank 
+you for reminding us how useful this is. Such feedback definitely helps 
+us assigning the appropriate priorities to such documentation tasks.
+
+> VSIPL++ shows great promise and at this point at least it seems a bit
+> easier than trying to code an MPI program from scratch.
+
+I'm glad to hear that.
+
+Thanks for your interest,
+
+		Stefan
+
+
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+
+

@@ -1,0 +1,128 @@
+From boo at terekhov.de  Tue May 18 11:11:23 2004
+From: boo at terekhov.de (Alexander Terekhov)
+Date: Tue, 18 May 2004 13:11:23 +0200
+Subject: [PATCH] thread cancellation via C++ exception
+Message-ID: <40A9EF5B.CCA8C0B5@terekhov.de>
+
+
+http://www.redhat.com/archives/phil-list/2004-May/msg00016.html
+
+<quote>
+
+Cancellation, as the word already suggests, is final.  There mustn't 
+be any catch without rethrow.  The thread library does, and will 
+probably even more so in future, alter the state of the library once 
+a thread is canceled and this is not reversible.
+
+</quote>
+
+This is utter crap. The only "state" affected by thread cancel 
+request delivery is the cancellation state and mode. They must be 
+set to PTHREAD_CANCEL_DISABLE and PTHREAD_CANCEL_DEFERRED 
+respectively. There's no rational reason whatsoever for thread 
+cancel (and even exit) exceptions [std::thread_cancel_request and 
+std::thread_exit_request; both "is a" 
+std::thread_termination_request) to NOT be finalizable by some
+user's catch()-without-rethrow. 
+
+regards,
+alexander.
+
+
+From David.Butenhof at hp.com  Tue May 18 11:26:53 2004
+From: David.Butenhof at hp.com (Dave Butenhof)
+Date: Tue, 18 May 2004 07:26:53 -0400
+Subject: [c++-pthreads] Re: [PATCH] thread cancellation via C++ exception
+In-Reply-To: <40A9EF5B.CCA8C0B5@terekhov.de>
+References: <40A9EF5B.CCA8C0B5@terekhov.de>
+Message-ID: <40A9F2FD.4090900@hp.com>
+
+Alexander Terekhov wrote:
+
+>http://www.redhat.com/archives/phil-list/2004-May/msg00016.html
+>
+><quote>
+>
+>Cancellation, as the word already suggests, is final.  There mustn't 
+>be any catch without rethrow.  The thread library does, and will 
+>probably even more so in future, alter the state of the library once 
+>a thread is canceled and this is not reversible.
+>
+></quote>
+>
+>This is utter crap. The only "state" affected by thread cancel 
+>request delivery is the cancellation state and mode. They must be 
+>set to PTHREAD_CANCEL_DISABLE and PTHREAD_CANCEL_DEFERRED 
+>respectively. There's no rational reason whatsoever for thread 
+>cancel (and even exit) exceptions [std::thread_cancel_request and 
+>std::thread_exit_request; both "is a" 
+>std::thread_termination_request) to NOT be finalizable by some
+>user's catch()-without-rethrow.
+>  
+>
+This is a philosophical issue, not technical.
+
+Yes, Alexander, there's no reason a cancel exception cannot be 
+finalized, once it's been made an exception. In fact, once you've made 
+it a standard system exception, you'll need to add special case code 
+(probably in several places) to prevent it from being finalized using 
+normal exception mechanisms like 'catch(...)'. On the other hand, it 
+should be a fairly strong policy that only in rare cases SHOULD you 
+finalize a cancel. You'd need to KNOW, absolutely, that this particular 
+cancellation intended to cancel a "subsystem" rather than "the thread".
+
+On the other hand, "POSIX cancel" cannot be finalized -- POSIX provides 
+no mechanism. POSIX does not require that it be an exception (though it 
+is suggested and implied as strongly as we possibly could without adding 
+exceptions to the C language), even for a platform that already has 
+exceptions. (Though it's foolish to implement cancellation using 
+anything other than true exceptions, and even more so if you've already 
+got real exceptions; but that of course remains a personal opinion. ;-) )
+
+So it's not so much "utter crap" as merely a bizarre opinion with which 
+you (and I) happen to disagree. ;-)
+
+-- 
+/--------------------[ David.Butenhof at hp.com ]--------------------\
+| Hewlett-Packard Company       Tru64 UNIX & VMS Thread Architect |
+|     My book: http://www.awl.com/cseng/titles/0-201-63392-2/     |
+\----[ http://homepage.mac.com/dbutenhof/Threads/Threads.html ]---/
+
+
+
+From boo at terekhov.de  Tue May 18 12:06:26 2004
+From: boo at terekhov.de (Alexander Terekhov)
+Date: Tue, 18 May 2004 14:06:26 +0200
+Subject: [c++-pthreads] Re: [PATCH] thread cancellation via C++ exception
+References: <40A9EF5B.CCA8C0B5@terekhov.de> <40A9F2FD.4090900@hp.com>
+Message-ID: <40A9FC42.2CE67AFF@terekhov.de>
+
+Dave Butenhof wrote:
+[...]
+> Yes, Alexander, there's no reason a cancel exception cannot be
+> finalized, once it's been made an exception. In fact, once you've made
+> it a standard system exception, you'll need to add special case code
+> (probably in several places) to prevent it from being finalized using
+> normal exception mechanisms like 'catch(...)'. 
+
+catch(...) {
+  try { 
+    throw; 
+  } 
+  catch(std::thread_termination_request const &) { 
+    throw; // std::thread_cancel_request or std::thread_exit_request
+  }
+  ...
+}
+
+>                                                On the other hand, it
+> should be a fairly strong policy that only in rare cases SHOULD you
+> finalize a cancel. You'd need to KNOW, absolutely, that this particular
+> cancellation intended to cancel a "subsystem" rather than "the thread".
+
+DS calls it a "job". ;-)
+
+regards,
+alexander.
+
+

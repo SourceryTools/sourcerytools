@@ -1,0 +1,143 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [vsipl++] Matlab IO
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20Matlab%20IO&In-Reply-To=%3C4492D27A.2030400%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000520.html">
+   <LINK REL="Next"  HREF="000529.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[vsipl++] Matlab IO</H1>
+    <B>Stefan Seefeld</B> 
+    <A HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20Matlab%20IO&In-Reply-To=%3C4492D27A.2030400%40codesourcery.com%3E"
+       TITLE="[vsipl++] Matlab IO">stefan at codesourcery.com
+       </A><BR>
+    <I>Fri Jun 16 15:47:06 UTC 2006</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000520.html">Matlab IO
+</A></li>
+        <LI>Next message: <A HREF="000529.html">[vsipl++] Matlab IO
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#522">[ date ]</a>
+              <a href="thread.html#522">[ thread ]</a>
+              <a href="subject.html#522">[ subject ]</a>
+              <a href="author.html#522">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Assem,
+
+I just checked in my png bits, so your patch may already get a bit smaller.
+
+Assem Salama wrote:
+
+&gt;<i> +  // generic reader that allows us to read a generic type and cast to another
+</I>&gt;<i> +  
+</I>&gt;<i> +  // the read function for real or complex depending of the view that was
+</I>&gt;<i> +  // passed in
+</I>&gt;<i> +  template &lt;typename T1,
+</I>&gt;<i> +            typename T2,
+</I>&gt;<i> +	    typename ViewT&gt;
+</I>&gt;<i> +  void read(std::istream&amp; is,ViewT v)
+</I>&gt;<i> +  {
+</I>&gt;<i> +    vsip::dimension_type const View_dim = ViewT::dim;
+</I>&gt;<i> +    vsip::Index&lt;View_dim&gt; my_index;
+</I>&gt;<i> +    vsip::impl::Length&lt;View_dim&gt; v_extent = extent(v);
+</I>&gt;<i> +    T1 data;
+</I>&gt;<i> +
+</I>&gt;<i> +    // get num_points
+</I>&gt;<i> +    vsip::length_type num_points = v.size();
+</I>&gt;<i> +
+</I>&gt;<i> +    // read all the points
+</I>&gt;<i> +    for(vsip::index_type i=0;i&lt;num_points;i++) {
+</I>&gt;<i> +      is.read(reinterpret_cast&lt;char*&gt;(&amp;data),sizeof(data));
+</I>&gt;<i> +      put(v,my_index,T2(data));
+</I>&gt;<i> +
+</I>&gt;<i> +      // increment index
+</I>&gt;<i> +      my_index = vsip::impl::next(v_extent,my_index);
+</I>&gt;<i> +    }
+</I>&gt;<i> +
+</I>&gt;<i> +  }
+</I>
+What's the reason for you using the 'put' function here, instead of
+some v method ? And, why are you casting to T2 in that call, instead
+of casting to ViewT::value_type ? As it stands, the above read function
+takes three distinct type parameters: T1, T2, and ViewT::value_type.
+I think only two are required (and the first may default to ViewT::value_type,
+actually).
+
+How portable is the above code ? It doesn't appear to care for endianness,
+i.e. you cast between 'char *' and T2 without any endianness check. If you
+write on a big-endian machine, and read it back on a little-endian
+machine, you will thus get different values.
+
+&gt;<i> +  // a write function to output a view to a matlab file.
+</I>&gt;<i> +  template &lt;typename T,
+</I>&gt;<i> +	    typename ViewT&gt;
+</I>&gt;<i> +  void write(std::ostream&amp; os,ViewT v)
+</I>&gt;<i> +  {
+</I>&gt;<i> +    vsip::dimension_type const View_dim = ViewT::dim;
+</I>&gt;<i> +    vsip::Index&lt;View_dim&gt; my_index;
+</I>&gt;<i> +    vsip::impl::Length&lt;View_dim&gt; v_extent = extent(v);
+</I>&gt;<i> +    T data;
+</I>&gt;<i> +
+</I>&gt;<i> +    // get num_points
+</I>&gt;<i> +    vsip::length_type num_points = v.size();
+</I>&gt;<i> +
+</I>&gt;<i> +    // write all the points
+</I>&gt;<i> +    for(vsip::index_type i=0;i&lt;num_points;i++) {
+</I>&gt;<i> +      data = get(v,my_index);
+</I>&gt;<i> +      os.write(reinterpret_cast&lt;char*&gt;(&amp;data),sizeof(data));
+</I>
+The same point about endianness applies here.
+
+
+&gt;<i> +
+</I>&gt;<i> +      // increment index
+</I>&gt;<i> +      my_index = vsip::impl::next(v_extent,my_index);
+</I>&gt;<i> +    }
+</I>&gt;<i> +
+</I>&gt;<i> +  }
+</I>
+Thanks,
+		Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">stefan at codesourcery.com</A>
+(650) 331-3385 x718
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000520.html">Matlab IO
+</A></li>
+	<LI>Next message: <A HREF="000529.html">[vsipl++] Matlab IO
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#522">[ date ]</a>
+              <a href="thread.html#522">[ thread ]</a>
+              <a href="subject.html#522">[ subject ]</a>
+              <a href="author.html#522">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">More information about the vsipl++
+mailing list</a><br>
+</body></html>

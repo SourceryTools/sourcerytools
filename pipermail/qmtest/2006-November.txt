@@ -1,0 +1,415 @@
+From jtc at acorntoolworks.com  Wed Nov 29 19:37:29 2006
+From: jtc at acorntoolworks.com (J.T. Conklin)
+Date: Wed, 29 Nov 2006 11:37:29 -0800
+Subject: supporting unsupported tests
+Message-ID: <87u00if3ie.fsf@orac.acorntoolworks.com>
+
+Hi folks,
+
+We've moved our system to a second platform and some of the tests are
+appropriate for one system but not the other.  
+
+What method is typically used to mark a test as not to be run for one
+platform?  Should I be thinking about having the test run but always
+pass (perhaps by replacing all my use of ExecTest and ShellCommandTest
+with subclasses that check a "platform type" property before either
+forwarding to the base class or always returning success), or is their
+a concept of a "UNTESTABLE" state separate from "PASS" and "FAIL".
+
+    --jtc
+
+-- 
+J.T. Conklin
+
+
+From jtc at acorntoolworks.com  Wed Nov 29 19:26:47 2006
+From: jtc at acorntoolworks.com (J.T. Conklin)
+Date: Wed, 29 Nov 2006 11:26:47 -0800
+Subject: qmtest targets: I'm missing something...
+Message-ID: <87y7puf408.fsf@orac.acorntoolworks.com>
+
+Hi Folks,
+
+I've been reading the documentation, but I seem to be missing
+something obvious wrt. qmtest's targets.
+
+I understand that with "qmtest create-target" you can create 
+a new qmtest target or target group with a set of attributes.
+By default database of targets is stored in QMTest/Targets.
+
+I understand that "qmtest run" can select a specific target
+database with the -T option, but it defaults to QMTest/Targets.
+
+What I don't understand is how you run a test suite against a
+target or target group within the target database.
+
+    --jtc
+
+-- 
+J.T. Conklin
+
+
+From seefeld at sympatico.ca  Wed Nov 29 19:54:42 2006
+From: seefeld at sympatico.ca (Stefan Seefeld)
+Date: Wed, 29 Nov 2006 14:54:42 -0500
+Subject: [qmtest] supporting unsupported tests
+In-Reply-To: <87u00if3ie.fsf@orac.acorntoolworks.com>
+References: <87u00if3ie.fsf@orac.acorntoolworks.com>
+Message-ID: <456DE582.3070304@sympatico.ca>
+
+J.T. Conklin wrote:
+> Hi folks,
+> 
+> We've moved our system to a second platform and some of the tests are
+> appropriate for one system but not the other.  
+> 
+> What method is typically used to mark a test as not to be run for one
+> platform?  Should I be thinking about having the test run but always
+> pass (perhaps by replacing all my use of ExecTest and ShellCommandTest
+> with subclasses that check a "platform type" property before either
+> forwarding to the base class or always returning success), or is their
+> a concept of a "UNTESTABLE" state separate from "PASS" and "FAIL".
+
+I think the UNTESTED pseudo result is most suitable to indicate that.
+However, in order for the  test database to generate such outcomes,
+you either need a custom test database, or you need to make all your
+tests depend on a common 'resource' that will fail on some platforms,
+and thus cause dependent tests not to get run.
+(Tests themselves are only able to set PASS or FAIL.)
+
+
+Regards,
+		Stefan
+
+-- 
+
+      ...ich hab' noch einen Koffer in Berlin...
+
+
+From seefeld at sympatico.ca  Wed Nov 29 19:59:00 2006
+From: seefeld at sympatico.ca (Stefan Seefeld)
+Date: Wed, 29 Nov 2006 14:59:00 -0500
+Subject: [qmtest] qmtest targets: I'm missing something...
+In-Reply-To: <87y7puf408.fsf@orac.acorntoolworks.com>
+References: <87y7puf408.fsf@orac.acorntoolworks.com>
+Message-ID: <456DE684.7090403@sympatico.ca>
+
+J.T. Conklin wrote:
+> Hi Folks,
+> 
+> I've been reading the documentation, but I seem to be missing
+> something obvious wrt. qmtest's targets.
+> 
+> I understand that with "qmtest create-target" you can create 
+> a new qmtest target or target group with a set of attributes.
+> By default database of targets is stored in QMTest/Targets.
+
+(This is 'QMTest/targets' with a lowercase 't'. At least on
+ platforms where it matters.)
+
+> I understand that "qmtest run" can select a specific target
+> database with the -T option, but it defaults to QMTest/Targets.
+> 
+> What I don't understand is how you run a test suite against a
+> target or target group within the target database.
+
+I'm not sure I understand the question. Targets are a means to
+run tests in parallel. However, when assigning multiple hosts
+to targets, not all hosts may be suitably equipped to run all
+test instances, so the test-specific 'taret_group' attribute
+contains a pattern against which indidual targets are matched.
+
+May be you are trying to use targets for something else, such
+as run on multiple platforms ?
+
+Regards,
+		Stefan
+
+-- 
+
+      ...ich hab' noch einen Koffer in Berlin...
+
+
+From mark at codesourcery.com  Wed Nov 29 19:59:49 2006
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Wed, 29 Nov 2006 11:59:49 -0800
+Subject: [qmtest] supporting unsupported tests
+In-Reply-To: <456DE582.3070304@sympatico.ca>
+References: <87u00if3ie.fsf@orac.acorntoolworks.com> <456DE582.3070304@sympatico.ca>
+Message-ID: <456DE6B5.8030803@codesourcery.com>
+
+Stefan Seefeld wrote:
+
+>> What method is typically used to mark a test as not to be run for one
+>> platform?  Should I be thinking about having the test run but always
+>> pass (perhaps by replacing all my use of ExecTest and ShellCommandTest
+>> with subclasses that check a "platform type" property before either
+>> forwarding to the base class or always returning success), or is their
+>> a concept of a "UNTESTABLE" state separate from "PASS" and "FAIL".
+> 
+> I think the UNTESTED pseudo result is most suitable to indicate that.
+> However, in order for the  test database to generate such outcomes,
+> you either need a custom test database, or you need to make all your
+> tests depend on a common 'resource' that will fail on some platforms,
+> and thus cause dependent tests not to get run.
+
+I don't think that's true; I think that if the tests are marked as being
+for a particular target, and then run on another target, QMTest will
+automatically skip them.  I might be wrong about that, but that's my
+recollection.
+
+I think that the right thing to do is to create a target file containing
+only the current target (i.e., the one for the machine on which you're
+actually running), and use "qmtest run -T that_file".
+
+-- 
+Mark Mitchell
+CodeSourcery
+mark at codesourcery.com
+(650) 331-3385 x713
+
+
+From lucaskeli at fastmail.fm  Wed Nov 29 21:18:50 2006
+From: lucaskeli at fastmail.fm (Kelly Lucas)
+Date: Wed, 29 Nov 2006 13:18:50 -0800
+Subject: [qmtest] supporting unsupported tests
+In-Reply-To: <456DE6B5.8030803@codesourcery.com>
+References: <87u00if3ie.fsf@orac.acorntoolworks.com> <456DE582.3070304@sympatico.ca> <456DE6B5.8030803@codesourcery.com>
+Message-ID: <456DF93A.2050306@fastmail.fm>
+
+What I do is create separate suites for different platforms, and then 
+run the suite that matches the platform.
+
+I have a shell script execute qmtest, and it goes in and looks at the 
+target before qmtest gets run, and then it runs the suite that matches 
+the platform.
+
+kdl
+
+Kelly D. Lucas
+lucaskeli at fastmail.fm
+
+
+
+Mark Mitchell wrote:
+> Stefan Seefeld wrote:
+>
+>   
+>>> What method is typically used to mark a test as not to be run for one
+>>> platform?  Should I be thinking about having the test run but always
+>>> pass (perhaps by replacing all my use of ExecTest and ShellCommandTest
+>>> with subclasses that check a "platform type" property before either
+>>> forwarding to the base class or always returning success), or is their
+>>> a concept of a "UNTESTABLE" state separate from "PASS" and "FAIL".
+>>>       
+>> I think the UNTESTED pseudo result is most suitable to indicate that.
+>> However, in order for the  test database to generate such outcomes,
+>> you either need a custom test database, or you need to make all your
+>> tests depend on a common 'resource' that will fail on some platforms,
+>> and thus cause dependent tests not to get run.
+>>     
+>
+> I don't think that's true; I think that if the tests are marked as being
+> for a particular target, and then run on another target, QMTest will
+> automatically skip them.  I might be wrong about that, but that's my
+> recollection.
+>
+> I think that the right thing to do is to create a target file containing
+> only the current target (i.e., the one for the machine on which you're
+> actually running), and use "qmtest run -T that_file".
+>
+>   
+
+
+From jtc at acorntoolworks.com  Wed Nov 29 22:40:19 2006
+From: jtc at acorntoolworks.com (J.T. Conklin)
+Date: Wed, 29 Nov 2006 14:40:19 -0800
+Subject: [qmtest] qmtest targets: I'm missing something...
+In-Reply-To: <456DE684.7090403@sympatico.ca> (Stefan Seefeld's message of
+ "Wed, 29 Nov 2006 14:59:00 -0500")
+References: <87y7puf408.fsf@orac.acorntoolworks.com>
+	<456DE684.7090403@sympatico.ca>
+Message-ID: <87d575g9m4.fsf@orac.acorntoolworks.com>
+
+Stefan Seefeld <seefeld at sympatico.ca> writes:
+>> Hi Folks,
+>> 
+>> I've been reading the documentation, but I seem to be missing
+>> something obvious wrt. qmtest's targets.
+>> 
+>> I understand that with "qmtest create-target" you can create 
+>> a new qmtest target or target group with a set of attributes.
+>> By default database of targets is stored in QMTest/Targets.
+>
+> (This is 'QMTest/targets' with a lowercase 't'. At least on
+>  platforms where it matters.)
+
+You're correct. 
+My bad, I was doing this from memory.
+
+>> I understand that "qmtest run" can select a specific target
+>> database with the -T option, but it defaults to QMTest/Targets.
+>> 
+>> What I don't understand is how you run a test suite against a
+>> target or target group within the target database.
+>
+> I'm not sure I understand the question. Targets are a means to
+> run tests in parallel. However, when assigning multiple hosts
+> to targets, not all hosts may be suitably equipped to run all
+> test instances, so the test-specific 'taret_group' attribute
+> contains a pattern against which indidual targets are matched.
+>
+> May be you are trying to use targets for something else, such
+> as run on multiple platforms ?
+
+No, my other question about multiple platforms is a separate issue 
+(at least for now).
+
+Our development system architecture is one multi-core, multi-cpu box
+that everyone logs into to do builds, and a cluster of "build" nodes
+where compile tasks are performed.  Compile tasks are dispatched to
+the nodes with distcc.
+
+But unit tests are run on the master box, which isn't scaling with the
+number of developers and the number of tests.  So what I'd like to do
+is set up a pool of "test" nodes, where qmtest dispatches the tests.
+But what I really want to do is to set up several pools.  Development
+Engineering has their pool that is shared among all, but Release
+Engineering has an dedicated pool so they have more predicable behavior.
+
+My question was if I add the set of all development and release test
+nodes as targets to the QMTest/targets file, perhaps like:
+
+        $ qmtest create-target riptide rsh_target.RSHTarget
+        $ qmtest create-target ebbtide.rsh_target.RSHTarget
+        $ qmtest create-target hogtied.rsh_target.RSHTarget
+
+How do I select what subset of these are actually used?  Or is the
+something obvious I'm missing that a target database represents a
+pool, and to do what I want is a simple matter of creating two of
+the target databases?
+
+Since target_group filtering has been mentioned, how does that work?
+I'm not seeing anything that mentions what (attribute?) needs to be
+set for the Test class/instance for this to occur.
+
+Many thanks in advance,
+
+    --jtc
+
+-- 
+J.T. Conklin
+
+
+From stefan at codesourcery.com  Thu Nov 30 02:24:58 2006
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Wed, 29 Nov 2006 21:24:58 -0500
+Subject: patch: Fix deletion of 'qmtest.id' context variable if resource setup
+ fails.
+Message-ID: <456E40FA.5000905@codesourcery.com>
+
+The attached patch moves the deletion of the 'qmtest.id' context variable
+to a place where it is safe to delete it. This fix is checked in.
+
+Thanks,
+		Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: target.patch
+Type: text/x-patch
+Size: 1979 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/qmtest/attachments/20061129/560379ac/attachment.bin>
+
+From stefan at codesourcery.com  Thu Nov 30 04:22:17 2006
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Wed, 29 Nov 2006 23:22:17 -0500
+Subject: [qmtest] qmtest targets: I'm missing something...
+In-Reply-To: <87d575g9m4.fsf@orac.acorntoolworks.com>
+References: <87y7puf408.fsf@orac.acorntoolworks.com>	<456DE684.7090403@sympatico.ca> <87d575g9m4.fsf@orac.acorntoolworks.com>
+Message-ID: <456E5C79.9000904@codesourcery.com>
+
+J.T. Conklin wrote:
+
+> But unit tests are run on the master box, which isn't scaling with the
+> number of developers and the number of tests.  So what I'd like to do
+> is set up a pool of "test" nodes, where qmtest dispatches the tests.
+> But what I really want to do is to set up several pools.  Development
+> Engineering has their pool that is shared among all, but Release
+> Engineering has an dedicated pool so they have more predicable behavior.
+> 
+> My question was if I add the set of all development and release test
+> nodes as targets to the QMTest/targets file, perhaps like:
+> 
+>         $ qmtest create-target riptide rsh_target.RSHTarget
+>         $ qmtest create-target ebbtide.rsh_target.RSHTarget
+>         $ qmtest create-target hogtied.rsh_target.RSHTarget
+> 
+> How do I select what subset of these are actually used?  Or is the
+> something obvious I'm missing that a target database represents a
+> pool, and to do what I want is a simple matter of creating two of
+> the target databases?
+
+Yes, I think what you want is multiple target files, each describing
+the set of nodes that are part of the different pools.
+Then, one team runs 'qmtest -t devel', and the other 'qmtest -t release',
+or somesuch.
+
+> Since target_group filtering has been mentioned, how does that work?
+> I'm not seeing anything that mentions what (attribute?) needs to be
+> set for the Test class/instance for this to occur.
+
+The tutorial describes (briefly) the concept of a 'target group':
+
+http://www.codesourcery.com/public/qmtest/qm-snapshot/share/doc/qmtest/html/tutorial/concepts-targets.html
+
+Also, the API docs may be of some help (here the Test base class):
+
+http://www.codesourcery.com/public/qmtest/qm-snapshot/share/doc/qmtest/html/manual/public/qm.test.test.Test-class.html
+
+As Mark mentions, if you set a test's 'target_group' parameter to
+something other than '*', it will be used to match targets against
+(from the currently selected target file), so the test gets dispatched
+to an appropriate target (or skipped if there is no match).
+
+Regards,
+		Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+
+
+From mark at codesourcery.com  Thu Nov 30 19:30:29 2006
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Thu, 30 Nov 2006 11:30:29 -0800
+Subject: [qmtest] qmtest targets: I'm missing something...
+In-Reply-To: <87d575g9m4.fsf@orac.acorntoolworks.com>
+References: <87y7puf408.fsf@orac.acorntoolworks.com>	<456DE684.7090403@sympatico.ca> <87d575g9m4.fsf@orac.acorntoolworks.com>
+Message-ID: <456F3155.7030808@codesourcery.com>
+
+J.T. Conklin wrote:
+
+> How do I select what subset of these are actually used?  Or is the
+> something obvious I'm missing that a target database represents a
+> pool, and to do what I want is a simple matter of creating two of
+> the target databases?
+
+Yes, that's right; create two separate target databases, and use the one
+that applies to your machine when you run the tests.
+
+-- 
+Mark Mitchell
+CodeSourcery
+mark at codesourcery.com
+(650) 331-3385 x713
+
+

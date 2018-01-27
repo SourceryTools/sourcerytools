@@ -1,0 +1,1012 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> Patch: Permit NoGeometry Field to Instantiate
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20Patch%3A%20Permit%20NoGeometry%20Field%20to%20Instantiate&In-Reply-To=%3C20010514141456.A18315%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000332.html">
+   <LINK REL="Next"  HREF="000334.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>Patch: Permit NoGeometry Field to Instantiate</H1>
+    <B>Jeffrey Oldham</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20Patch%3A%20Permit%20NoGeometry%20Field%20to%20Instantiate&In-Reply-To=%3C20010514141456.A18315%40codesourcery.com%3E"
+       TITLE="Patch: Permit NoGeometry Field to Instantiate">oldham at codesourcery.com
+       </A><BR>
+    <I>Mon May 14 21:14:56 UTC 2001</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000332.html">[pooma-dev] RFA: Permit NoGeometry Fields to Instantiate
+</A></li>
+        <LI>Next message: <A HREF="000334.html">[pooma-cvs] CVS update: pooma
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#333">[ date ]</a>
+              <a href="thread.html#333">[ thread ]</a>
+              <a href="subject.html#333">[ subject ]</a>
+              <a href="author.html#333">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>This patch permits compiling this program:
+
+    #include &quot;Pooma/NewFields.h&quot;
+
+    #define T1 NoGeometry&lt;(int)3&gt;
+    #define T2 int
+    #define T3 CompressibleBrick
+    #define T4 Interval&lt;(int)3&gt;
+    template class Field&lt;T1,T2,T3&gt;;
+    template class View1&lt;Field&lt;T1,T2,T3&gt;,T4&gt;;
+
+This program adds the &quot;class Field&quot; line to what Dave Nystrom
+originally requested.  This reflects circular references in the
+definition of View1.  Next, I will work on eliminating the need to add
+the line.
+
+2001-05-14  Jeffrey D. Oldham  &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">oldham at codesourcery.com</A>&gt;
+
+        * Array/Array.h: Add View0 to comment listing implemented classes.
+        (Array::innerDomain): Remove the function since engines do not
+        implement it.
+        * Domain/DomainTraits.Region.h
+        (DomainTraits&lt;Region&lt;1,POOMA_DEFAULT_POSITION_TYPE&gt; &gt;::empty():
+        Remove name of unused parameter.
+        * Engine/CompressibleBlock.h
+        (CompressibleBlockController::CompressibleBlockController):
+        Reorder member initialization order.
+        * Engine/CompressibleBrick.cpp
+        (Engine&lt;Dim,T,CompressibleBrickView&gt;::makeOwnCopy()): New
+        function.
+        * Engine/CompressibleBrick.h (Engine&lt;Dim, T,
+        CompressibleBrick&gt;::domain()): Likewise.
+        (Engine&lt;Dim,T,CompressibleBrickView&gt;::domain()): Likewise.
+        (Engine&lt;Dim,T,CompressibleBrickView&gt;::makeOwnCopy()): New
+        declaration.
+        (ElementProperties&lt;Engine&lt;Dim, T, CompressibleBrickView&gt; &gt;): New
+        definition.
+        * Engine/RemoteEngine.h (Engine&lt;Dim, T, Remote&lt;Tag&gt; &gt;::Engine):
+        Likewise.
+        * Layout/Node.h (Node::Node): Reorder member initialization order.
+        * NewField/Field.h (Field::physicalCellDomain): Remove unnecessary
+        return reference.
+        * NewField/FieldEngine/FieldEngine.NoGeometry.h
+        (FieldEngine&lt;NoGeometry&lt;Dim&gt;, T, EngineTag&gt;): Add a default
+        constructor.
+        (FieldEngine&lt;NoGeometry&lt;Dim&gt;, T, EngineTag&gt;::physicalCellDomain):
+        s/shrink/shrinkRight/
+        (FieldEngine&lt;NoGeometry&lt;Dim&gt;, T, EngineTag&gt;::totalCellDomain):
+        Likewise.
+        (FieldEngine&lt;NoGeometry&lt;Dim&gt;, T, EngineTag&gt;)::physicalDomain): New
+        function.
+        (FieldEngine&lt;NoGeometry&lt;Dim&gt;, T, EngineTag&gt;)::totalDomain):
+        Likewise.
+        * NewField/FieldEngine/FieldEngineBase.ExprEngine.h
+        (FieldEngineBase::physicalCellDomain): Likewise.
+        * NewField/FieldEngine/FieldEngineBase.h
+        (FieldEngineBase::physicalCellDomain): Likewise.
+        * Tulip/RemoteProxy.h (RemoteProxy::RemoteProxy): Conditionally
+        declaration variable.
+        * Utilities/RefCountedBlockPtr.h
+        (RefBlockController::RefBlockController): Reorder member
+        initializations to reflect declaration order.
+
+Tested on       sequential Linux gcc 3.0 by compiling Pooma library and the
++above program
+Approved by     Scott Haney (<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">swhaney at earthlink.net</A>)
+
+Thanks,
+Jeffrey D. Oldham
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">oldham at codesourcery.com</A>
+-------------- next part --------------
+Index: Array/Array.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/Array/Array.h,v
+retrieving revision 1.139
+diff -c -p -r1.139 Array.h
+*** Array/Array.h	2001/04/20 21:16:23	1.139
+--- Array/Array.h	2001/05/14 19:56:51
+***************
+*** 29,34 ****
+--- 29,35 ----
+  //-----------------------------------------------------------------------------
+  // Classes: 
+  //   Array
++ //   View0
+  //   View[1-7]&lt;Array,various domains&gt;
+  //   LeafFunctor&lt;Array, DomainFunctorTag&gt;
+  //   LeafFunctor&lt;Array, ViewFunctorTag&lt;Domain&gt; &gt;
+*************** public:
+*** 1763,1773 ****
+    inline Domain_t domain() const 
+      {
+        return engine_m.domain();
+-     }
+- 
+-   inline Domain_t innerDomain() const 
+-     {
+-       return engine_m.innerDomain();
+      }
+  
+    inline Domain_t physicalDomain() const 
+--- 1764,1769 ----
+Index: Domain/DomainTraits.Region.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/Domain/DomainTraits.Region.h,v
+retrieving revision 1.12
+diff -c -p -r1.12 DomainTraits.Region.h
+*** Domain/DomainTraits.Region.h	2001/04/13 02:12:59	1.12
+--- Domain/DomainTraits.Region.h	2001/05/14 19:56:53
+*************** struct DomainTraits&lt; Region&lt;1,POOMA_DEFA
+*** 407,413 ****
+    static Element_t max(const Storage_t &amp;d)    {
+      return (length(d) &gt;= 0 ? last(d) : first(d));
+    }
+!   static bool      empty(const Storage_t &amp;d)  { return false; }
+    static int       loop(const Storage_t &amp;)    { return 0; }
+  
+    // get the Nth value of the domain, where value # 0 is first(), etc.
+--- 407,413 ----
+    static Element_t max(const Storage_t &amp;d)    {
+      return (length(d) &gt;= 0 ? last(d) : first(d));
+    }
+!   static bool      empty(const Storage_t &amp;)  { return false; }
+    static int       loop(const Storage_t &amp;)    { return 0; }
+  
+    // get the Nth value of the domain, where value # 0 is first(), etc.
+Index: Engine/CompressibleBlock.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/Engine/CompressibleBlock.h,v
+retrieving revision 1.27
+diff -c -p -r1.27 CompressibleBlock.h
+*** Engine/CompressibleBlock.h	2000/07/11 22:13:00	1.27
+--- Engine/CompressibleBlock.h	2001/05/14 19:56:53
+*************** private:
+*** 451,463 ****
+      explicit
+      CompressibleBlockController(int size)
+        : Observable&lt;T*&gt;(ptr_m),
+          size_m(size),
+- 	compressible_m(true),
+  	ptr_m(&amp;compressedData_m), 
+! 	dataObject_m(-1), 
+! 	ucOffset_m(-1),
+! 	viewcount_m(0),
+! 	countUncompressed_m(0)
+      { 
+        ElementProperties&lt;T&gt;::construct(&amp;compressedData_m);
+        
+--- 451,463 ----
+      explicit
+      CompressibleBlockController(int size)
+        : Observable&lt;T*&gt;(ptr_m),
++         compressible_m(true),
++         countUncompressed_m(0),
++ 	viewcount_m(0),
++ 	dataObject_m(-1), 
+          size_m(size),
+  	ptr_m(&amp;compressedData_m), 
+! 	ucOffset_m(-1)
+      { 
+        ElementProperties&lt;T&gt;::construct(&amp;compressedData_m);
+        
+*************** private:
+*** 474,486 ****
+      
+      CompressibleBlockController(int size, int affinity)
+        : Observable&lt;T*&gt;(ptr_m),
+-         size_m(size),
+  	compressible_m(true),
+! 	ptr_m(&amp;compressedData_m), 
+! 	dataObject_m(affinity), 
+! 	ucOffset_m(-1),
+  	viewcount_m(0),
+! 	countUncompressed_m(0)
+      { 
+        ElementProperties&lt;T&gt;::construct(&amp;compressedData_m);
+        
+--- 474,486 ----
+      
+      CompressibleBlockController(int size, int affinity)
+        : Observable&lt;T*&gt;(ptr_m),
+  	compressible_m(true),
+!         countUncompressed_m(0),
+  	viewcount_m(0),
+! 	dataObject_m(affinity), 
+!         size_m(size),
+! 	ptr_m(&amp;compressedData_m), 
+! 	ucOffset_m(-1)
+      { 
+        ElementProperties&lt;T&gt;::construct(&amp;compressedData_m);
+        
+*************** private:
+*** 497,509 ****
+  
+      CompressibleBlockController(int size, int affinity, const T&amp; value)
+        : Observable&lt;T*&gt;(ptr_m),
+-         size_m(size),
+  	compressible_m(true),
+! 	ptr_m(&amp;compressedData_m),
+! 	dataObject_m(affinity), 
+! 	ucOffset_m(-1),
+  	viewcount_m(0),
+! 	countUncompressed_m(0)
+      { 
+        ElementProperties&lt;T&gt;::construct(&amp;compressedData_m,value);
+  
+--- 497,509 ----
+  
+      CompressibleBlockController(int size, int affinity, const T&amp; value)
+        : Observable&lt;T*&gt;(ptr_m),
+  	compressible_m(true),
+!         countUncompressed_m(0),
+  	viewcount_m(0),
+! 	dataObject_m(affinity), 
+!         size_m(size),
+! 	ptr_m(&amp;compressedData_m),
+! 	ucOffset_m(-1)
+      { 
+        ElementProperties&lt;T&gt;::construct(&amp;compressedData_m,value);
+  
+*************** private:
+*** 531,541 ****
+      
+      CompressibleBlockController(const CompressibleBlockController&amp; model)
+        : Observable&lt;T*&gt;(ptr_m),
+-         size_m(model.size_m),
+          compressible_m(!Pooma::neverCompress()),
+          dataObject_m(model.dataObject_m.affinity()), 
+! 	ucOffset_m(model.ucOffset_m),
+! 	viewcount_m(0)
+      {
+        // Lock the model while we get information pertaining to it
+        // being compressed or not (such data can't be initialized in
+--- 531,541 ----
+      
+      CompressibleBlockController(const CompressibleBlockController&amp; model)
+        : Observable&lt;T*&gt;(ptr_m),
+          compressible_m(!Pooma::neverCompress()),
++ 	viewcount_m(0),
+          dataObject_m(model.dataObject_m.affinity()), 
+!         size_m(model.size_m),
+! 	ucOffset_m(model.ucOffset_m)
+      {
+        // Lock the model while we get information pertaining to it
+        // being compressed or not (such data can't be initialized in
+Index: Engine/CompressibleBrick.cpp
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/Engine/CompressibleBrick.cpp,v
+retrieving revision 1.24
+diff -c -p -r1.24 CompressibleBrick.cpp
+*** Engine/CompressibleBrick.cpp	2000/07/11 23:06:40	1.24
+--- Engine/CompressibleBrick.cpp	2001/05/14 19:56:54
+*************** Engine(const Engine&lt;Dim,T,CompressibleBr
+*** 501,506 ****
+--- 501,542 ----
+  
+  //-----------------------------------------------------------------------------
+  //
++ // Engine&lt;Dim,T,CompressibleBrickView&gt; &amp; makeOwnCopy()
++ //
++ // Causes the CompressibleBrickView-Engine to obtain a private copy of the data
++ // that it refers to.
++ //
++ //-----------------------------------------------------------------------------
++ 
++ template &lt;int Dim, class T&gt;
++ Engine&lt;Dim,T,CompressibleBrickView&gt; &amp;Engine&lt;Dim,T,CompressibleBrickView&gt;::makeOwnCopy()
++ {
++   // JIM: This is probably not thread safe??? 
++   // There is a race from checking isShared to getting into cblock's
++   // makeOwnCopy, which is thread safe. As a result, this should only
++   // be called after a blockAndEvaluate() to ensure that nobody else
++   // is messing with the underlying CBC while this is
++   // occuring. (Logically, this is necessary anyway since you probably
++   // want a copy of the data that results from all previous
++   // computations having taken place.)  Also, as mentioned elsewhere,
++   // the current implementation results in copying uncompressed data
++   // in the parse thread, which will result in incorrect memory
++   // affinity.
++   
++   if (cblock_m.isControllerValidUnlocked() &amp;&amp; cblock_m.isShared()) 
++     {
++       cblock_m.detach(this);
++       cblock_m.makeOwnCopy();
++       cblock_m.attach(this);
++ 
++       data0_m = cblock_m.data() + (cblock_m.compressed() ? 0 : baseOffset());
++     }
++ 
++   return *this;
++ }
++ 
++ //-----------------------------------------------------------------------------
++ //
+  // Engine&lt;Dim, T, CompressibleBrickView&gt;::
+  // elementsCompressed() const
+  //
+Index: Engine/CompressibleBrick.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/Engine/CompressibleBrick.h,v
+retrieving revision 1.67
+diff -c -p -r1.67 CompressibleBrick.h
+*** Engine/CompressibleBrick.h	2000/07/11 23:06:40	1.67
+--- Engine/CompressibleBrick.h	2001/05/14 19:56:54
+*************** public:
+*** 237,242 ****
+--- 237,250 ----
+  
+    inline Layout_t layout() const { return Layout_t(domain_m); }
+  
++   //---------------------------------------------------------------------------
++   // Return the domain and base domain.
++ 
++   inline const Domain_t &amp;domain() const
++   {
++     return layout().domain();
++   }
++ 
+    // Get a private copy of data viewed by this Engine.
+  
+    Engine_t &amp;makeOwnCopy();
+*************** public:
+*** 557,562 ****
+--- 565,582 ----
+    ElementRef_t operator()(const Loc&lt;Dim&gt; &amp;) const;
+    Element_t read(const Loc&lt;Dim&gt; &amp;) const;
+    
++   //---------------------------------------------------------------------------
++   // Return the domain and base domain.
++ 
++   inline const Domain_t &amp;domain() const
++   {
++     return Layout_t(domain_m).domain();
++   }
++ 
++   // Get a private copy of data viewed by this Engine.
++ 
++   Engine_t &amp;makeOwnCopy();
++ 
+    // Return the block controller (uncompressed). 
+    // See comments in CompressibleBrick above.
+    
+*************** struct NewEngine&lt;Engine&lt;Dim,T,Compressib
+*** 801,806 ****
+--- 821,831 ----
+  template &lt;int Dim, class T&gt;
+  struct ElementProperties&lt;Engine&lt;Dim, T, CompressibleBrick&gt; &gt; 
+    : public MakeOwnCopyProperties&lt;Engine&lt;Dim, T, CompressibleBrick&gt; &gt;
++ { };
++ 
++ template &lt;int Dim, class T&gt;
++ struct ElementProperties&lt;Engine&lt;Dim, T, CompressibleBrickView&gt; &gt; 
++   : public MakeOwnCopyProperties&lt;Engine&lt;Dim, T, CompressibleBrickView&gt; &gt;
+  { };
+  
+  
+Index: Engine/RemoteEngine.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/Engine/RemoteEngine.h,v
+retrieving revision 1.31
+diff -c -p -r1.31 RemoteEngine.h
+*** Engine/RemoteEngine.h	2001/03/29 00:41:21	1.31
+--- Engine/RemoteEngine.h	2001/05/14 19:56:55
+*************** Engine&lt;Dim, T, Remote&lt;Tag&gt; &gt;::Engine()
+*** 609,616 ****
+  
+  template &lt;int Dim, class T, class Tag&gt;
+  Engine&lt;Dim, T, Remote&lt;Tag&gt; &gt;::Engine(const Node&lt;Domain_t&gt; &amp;node)
+!   : owningContext_m(node.context()),
+!     domain_m(node.allocated())
+  {
+    PAssert(owningContext_m &lt; Pooma::contexts());
+  
+--- 609,616 ----
+  
+  template &lt;int Dim, class T, class Tag&gt;
+  Engine&lt;Dim, T, Remote&lt;Tag&gt; &gt;::Engine(const Node&lt;Domain_t&gt; &amp;node)
+!   : domain_m(node.allocated()),
+!     owningContext_m(node.context())
+  {
+    PAssert(owningContext_m &lt; Pooma::contexts());
+  
+*************** Engine&lt;Dim, T, Remote&lt;Tag&gt; &gt;::Engine(con
+*** 634,641 ****
+  
+  template &lt;int Dim, class T, class Tag&gt;
+  Engine&lt;Dim, T, Remote&lt;Tag&gt; &gt;::Engine(const Layout_t &amp;layout)
+!   : owningContext_m(0),
+!     domain_m(layout.node().allocated())
+  {
+    PAssert(owningContext_m &lt; Pooma::contexts());
+  
+--- 634,641 ----
+  
+  template &lt;int Dim, class T, class Tag&gt;
+  Engine&lt;Dim, T, Remote&lt;Tag&gt; &gt;::Engine(const Layout_t &amp;layout)
+!   : domain_m(layout.node().allocated()),
+!     owningContext_m(0)
+  {
+    PAssert(owningContext_m &lt; Pooma::contexts());
+  
+*************** Engine&lt;Dim, T, Remote&lt;Tag&gt; &gt;::Engine(con
+*** 659,665 ****
+  
+  template &lt;int Dim, class T, class Tag&gt;
+  Engine&lt;Dim, T, Remote&lt;Tag&gt; &gt;::Engine(const Domain_t &amp;dom)
+!   : owningContext_m(0), domain_m(dom)
+  {
+    if (engineIsLocal())
+    {
+--- 659,665 ----
+  
+  template &lt;int Dim, class T, class Tag&gt;
+  Engine&lt;Dim, T, Remote&lt;Tag&gt; &gt;::Engine(const Domain_t &amp;dom)
+!   : domain_m(dom), owningContext_m(0)
+  {
+    if (engineIsLocal())
+    {
+*************** Engine&lt;Dim, T, Remote&lt;Tag&gt; &gt;::Engine(con
+*** 676,683 ****
+  
+  template &lt;int Dim, class T, class Tag&gt;
+  Engine&lt;Dim, T, Remote&lt;Tag&gt; &gt;::Engine(int owningContext, const Domain_t &amp;dom)
+!   : owningContext_m(owningContext),
+!     domain_m(dom)
+  {
+    if (engineIsLocal())
+    {
+--- 676,683 ----
+  
+  template &lt;int Dim, class T, class Tag&gt;
+  Engine&lt;Dim, T, Remote&lt;Tag&gt; &gt;::Engine(int owningContext, const Domain_t &amp;dom)
+!   : domain_m(dom),
+!     owningContext_m(owningContext)
+  {
+    if (engineIsLocal())
+    {
+*************** Engine&lt;Dim, T, Remote&lt;Tag&gt; &gt;::Engine(int
+*** 698,704 ****
+  
+  template &lt;int Dim, class T, class Tag&gt;
+  Engine&lt;Dim, T, Remote&lt;Tag&gt; &gt;::Engine(const Domain_t &amp;dom, const T&amp; model)
+!   : owningContext_m(0), domain_m(dom)
+  {
+    if (engineIsLocal())
+    {
+--- 698,704 ----
+  
+  template &lt;int Dim, class T, class Tag&gt;
+  Engine&lt;Dim, T, Remote&lt;Tag&gt; &gt;::Engine(const Domain_t &amp;dom, const T&amp; model)
+!   : domain_m(dom), owningContext_m(0)
+  {
+    if (engineIsLocal())
+    {
+*************** Engine&lt;Dim, T, Remote&lt;Tag&gt; &gt;::Engine(con
+*** 718,725 ****
+  template &lt;int Dim, class T, class Tag&gt;
+  Engine&lt;Dim, T, Remote&lt;Tag&gt; &gt;::
+  Engine(const Engine&lt;Dim, T, Remote&lt;Tag&gt; &gt; &amp;modelEngine)
+!   : owningContext_m(modelEngine.owningContext()),
+!     domain_m(modelEngine.domain()),
+      localEnginePtr_m(modelEngine.localEnginePtr_m)
+  {
+  }
+--- 718,725 ----
+  template &lt;int Dim, class T, class Tag&gt;
+  Engine&lt;Dim, T, Remote&lt;Tag&gt; &gt;::
+  Engine(const Engine&lt;Dim, T, Remote&lt;Tag&gt; &gt; &amp;modelEngine)
+!   : domain_m(modelEngine.domain()),
+!     owningContext_m(modelEngine.owningContext()),
+      localEnginePtr_m(modelEngine.localEnginePtr_m)
+  {
+  }
+*************** template &lt;int Dim, class T, class Tag&gt;
+*** 728,735 ****
+  Engine&lt;Dim, T, Remote&lt;Tag&gt; &gt;::
+  Engine(const Engine&lt;Dim, T, Remote&lt;Tag&gt; &gt; &amp;modelEngine,
+         const EngineConstructTag &amp;)
+!   : owningContext_m(modelEngine.owningContext()),
+!     domain_m(modelEngine.domain()),
+      localEnginePtr_m(modelEngine.localEnginePtr_m)
+  {
+  }
+--- 728,735 ----
+  Engine&lt;Dim, T, Remote&lt;Tag&gt; &gt;::
+  Engine(const Engine&lt;Dim, T, Remote&lt;Tag&gt; &gt; &amp;modelEngine,
+         const EngineConstructTag &amp;)
+!   : domain_m(modelEngine.domain()),
+!     owningContext_m(modelEngine.owningContext()),
+      localEnginePtr_m(modelEngine.localEnginePtr_m)
+  {
+  }
+Index: Layout/Node.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/Layout/Node.h,v
+retrieving revision 1.35
+diff -c -p -r1.35 Node.h
+*** Layout/Node.h	2001/05/04 15:41:28	1.35
+--- Layout/Node.h	2001/05/14 19:56:55
+*************** public:
+*** 121,128 ****
+    Node(const Domain_t &amp;owned, const AllocatedDomain_t &amp;allocated, 
+         Context_t c, ID_t gid, ID_t lid = (-1))
+      : domain_m(owned), allocated_m(allocated), 
+!       context_m(c), global_m(gid), local_m(lid),
+!       affinity_m(-1)
+    {
+      PAssert(owned.size() &gt;= 0);
+      PAssert(allocated.size() &gt;= 0);
+--- 121,128 ----
+    Node(const Domain_t &amp;owned, const AllocatedDomain_t &amp;allocated, 
+         Context_t c, ID_t gid, ID_t lid = (-1))
+      : domain_m(owned), allocated_m(allocated), 
+!       local_m(lid), global_m(gid),
+!       context_m(c), affinity_m(-1)
+    {
+      PAssert(owned.size() &gt;= 0);
+      PAssert(allocated.size() &gt;= 0);
+*************** public:
+*** 130,137 ****
+    }
+  
+    Node(const Domain_t &amp;d, Context_t c, ID_t gid, ID_t lid = (-1))
+!     : domain_m(d), allocated_m(d), context_m(c), global_m(gid), local_m(lid),
+!       affinity_m(-1)
+    {
+      PAssert(d.size() &gt;= 0);
+      PAssert(gid &gt;= 0);
+--- 130,138 ----
+    }
+  
+    Node(const Domain_t &amp;d, Context_t c, ID_t gid, ID_t lid = (-1))
+!     : domain_m(d), allocated_m(d),
+!       local_m(lid), global_m(gid),
+!       context_m(c), affinity_m(-1)
+    {
+      PAssert(d.size() &gt;= 0);
+      PAssert(gid &gt;= 0);
+*************** public:
+*** 152,159 ****
+  
+    Node(int affinity, const Domain_t &amp;d,
+         Context_t c, ID_t gid, ID_t lid = (-1))
+!     : domain_m(d), allocated_m(d), context_m(c), global_m(gid), local_m(lid),
+!       affinity_m(affinity)
+    {
+      PAssert(d.size() &gt;= 0);
+      PAssert(gid &gt;= 0);
+--- 153,161 ----
+  
+    Node(int affinity, const Domain_t &amp;d,
+         Context_t c, ID_t gid, ID_t lid = (-1))
+!     : domain_m(d), allocated_m(d),
+!       local_m(lid), global_m(gid),
+!       context_m(c), affinity_m(affinity)
+    {
+      PAssert(d.size() &gt;= 0);
+      PAssert(gid &gt;= 0);
+*************** public:
+*** 172,180 ****
+    
+    template&lt;class ODom, class OAlloc&gt;
+    Node(const Node&lt;ODom,OAlloc&gt; &amp;n)
+!     : domain_m(n.domain()), context_m(n.context()), allocated_m(n.allocated()),
+!       global_m(n.globalID()), local_m(n.localID()),
+!       affinity_m(n.affinity())
+    {
+    }
+  
+--- 174,182 ----
+    
+    template&lt;class ODom, class OAlloc&gt;
+    Node(const Node&lt;ODom,OAlloc&gt; &amp;n)
+!     : domain_m(n.domain()), allocated_m(n.allocated()),
+!       local_m(n.localID()), global_m(n.globalID()),
+!       context_m(n.context()), affinity_m(n.affinity())
+    {
+    }
+  
+Index: NewField/Field.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/NewField/Field.h,v
+retrieving revision 1.12
+diff -c -p -r1.12 Field.h
+*** NewField/Field.h	2001/04/27 22:52:44	1.12
+--- NewField/Field.h	2001/05/14 19:56:56
+*************** public:
+*** 933,939 ****
+        return fieldEngine_m.numSubFields();
+      }
+          
+!   inline const Domain_t &amp;physicalCellDomain() const
+      {
+        return fieldEngine_m.physicalCellDomain();
+      }
+--- 933,939 ----
+        return fieldEngine_m.numSubFields();
+      }
+          
+!   inline const Domain_t physicalCellDomain() const
+      {
+        return fieldEngine_m.physicalCellDomain();
+      }
+Index: NewField/FieldEngine/FieldEngine.NoGeometry.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/NewField/FieldEngine/FieldEngine.NoGeometry.h,v
+retrieving revision 1.4
+diff -c -p -r1.4 FieldEngine.NoGeometry.h
+*** NewField/FieldEngine/FieldEngine.NoGeometry.h	2001/04/10 23:13:25	1.4
+--- NewField/FieldEngine/FieldEngine.NoGeometry.h	2001/05/14 19:56:56
+*************** public:
+*** 129,134 ****
+--- 129,141 ----
+    // There is no sub-field constructor because this field-engine can't have
+    // subfields.
+  
++   // Default constructor.
++   FieldEngine()
++   : engine_m(Pooma::NoInit()),
++     guards_m(0),
++     updaters_m()
++     { }
++ 
+    // Copy constructor.
+    
+    FieldEngine(const This_t &amp;model)
+*************** public:
+*** 254,267 ****
+    // This field-engine always has vert-centering and the total domain is
+    // given by the engine.
+          
+!   inline const Domain_t &amp;physicalCellDomain() const
+      {
+!       return shrink(physicalDomain(), 1);
+      }
+          
+    inline Domain_t totalCellDomain() const
+      {
+!       return shrink(engine_m.domain(), 1);
+      }
+  
+    Domain_t physicalDomain() const
+--- 261,274 ----
+    // This field-engine always has vert-centering and the total domain is
+    // given by the engine.
+          
+!   inline const Domain_t physicalCellDomain() const
+      {
+!       return shrinkRight(physicalDomain(), 1);
+      }
+          
+    inline Domain_t totalCellDomain() const
+      {
+!       return shrinkRight(engine_m.domain(), 1);
+      }
+  
+    Domain_t physicalDomain() const
+*************** public:
+*** 274,280 ****
+        return engine_m.domain();
+      }
+  
+!   
+    //---------------------------------------------------------------------------
+    // Make a distinct copy of this fieldEngineBase.   
+   
+--- 281,301 ----
+        return engine_m.domain();
+      }
+  
+!   Domain_t physicalDomain(int iSubField) const
+!     {
+!       // This field engine cannot have subfields.
+!       PAssert(iSubField == 0);
+!       return physicalDomain();
+!     }
+! 
+!   Domain_t totalDomain(int iSubField) const
+!     {
+!       // This field engine cannot have subfields.
+!       PAssert(iSubField == 0);
+!       return engine_m.domain();
+!     }
+! 
+! 
+    //---------------------------------------------------------------------------
+    // Make a distinct copy of this fieldEngineBase.   
+   
+Index: NewField/FieldEngine/FieldEngineBase.ExprEngine.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/NewField/FieldEngine/FieldEngineBase.ExprEngine.h,v
+retrieving revision 1.10
+diff -c -p -r1.10 FieldEngineBase.ExprEngine.h
+*** NewField/FieldEngine/FieldEngineBase.ExprEngine.h	2000/12/13 20:48:29	1.10
+--- NewField/FieldEngine/FieldEngineBase.ExprEngine.h	2001/05/14 19:56:56
+*************** public:
+*** 261,267 ****
+    //---------------------------------------------------------------------------
+    // Domain accessor functions. 
+          
+!   inline const Domain_t &amp;physicalCellDomain() const
+      {
+        return referenceField_m.physicalCellDomain();
+      }
+--- 261,267 ----
+    //---------------------------------------------------------------------------
+    // Domain accessor functions. 
+          
+!   inline const Domain_t physicalCellDomain() const
+      {
+        return referenceField_m.physicalCellDomain();
+      }
+Index: NewField/FieldEngine/FieldEngineBase.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/NewField/FieldEngine/FieldEngineBase.h,v
+retrieving revision 1.11
+diff -c -p -r1.11 FieldEngineBase.h
+*** NewField/FieldEngine/FieldEngineBase.h	2001/04/27 22:50:27	1.11
+--- NewField/FieldEngine/FieldEngineBase.h	2001/05/14 19:56:56
+*************** public:
+*** 429,435 ****
+    //---------------------------------------------------------------------------
+    // Domain accessor functions. 
+          
+!   inline const Domain_t &amp;physicalCellDomain() const
+      {
+        return physicalCellDomain_m;
+      }
+--- 429,435 ----
+    //---------------------------------------------------------------------------
+    // Domain accessor functions. 
+          
+!   inline const Domain_t physicalCellDomain() const
+      {
+        return physicalCellDomain_m;
+      }
+Index: NewField/tests/StencilTests.cpp
+===================================================================
+RCS file: StencilTests.cpp
+diff -N StencilTests.cpp
+*** /dev/null	Tue May  5 14:32:27 1998
+--- StencilTests.cpp	Mon May 14 13:56:57 2001
+***************
+*** 0 ****
+--- 1,131 ----
++ // -*- C++ -*-
++ // ACL:license
++ // ----------------------------------------------------------------------
++ // This software and ancillary information (herein called &quot;SOFTWARE&quot;)
++ // called POOMA (Parallel Object-Oriented Methods and Applications) is
++ // made available under the terms described here.  The SOFTWARE has been
++ // approved for release with associated LA-CC Number LA-CC-98-65.
++ // 
++ // Unless otherwise indicated, this SOFTWARE has been authored by an
++ // employee or employees of the University of California, operator of the
++ // Los Alamos National Laboratory under Contract No. W-7405-ENG-36 with
++ // the U.S. Department of Energy.  The U.S. Government has rights to use,
++ // reproduce, and distribute this SOFTWARE. The public may copy, distribute,
++ // prepare derivative works and publicly display this SOFTWARE without 
++ // charge, provided that this Notice and any statement of authorship are 
++ // reproduced on all copies.  Neither the Government nor the University 
++ // makes any warranty, express or implied, or assumes any liability or 
++ // responsibility for the use of this SOFTWARE.
++ // 
++ // If SOFTWARE is modified to produce derivative works, such modified
++ // SOFTWARE should be clearly marked, so as not to confuse it with the
++ // version available from LANL.
++ // 
++ // For more information about POOMA, send e-mail to <A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">pooma at acl.lanl.gov</A>,
++ // or visit the POOMA web page at <A HREF="http://www.acl.lanl.gov/pooma/.">http://www.acl.lanl.gov/pooma/.</A>
++ // ----------------------------------------------------------------------
++ // ACL:license
++ 
++ //-----------------------------------------------------------------------------
++ // Test the use of some field stencils.
++ //-----------------------------------------------------------------------------
++ 
++ //////////////////////////////////////////////////////////////////////
++ 
++ //-----------------------------------------------------------------------------
++ // Overview: 
++ //-----------------------------------------------------------------------------
++ 
++ //-----------------------------------------------------------------------------
++ // Typedefs:
++ //-----------------------------------------------------------------------------
++ 
++ //-----------------------------------------------------------------------------
++ // Includes:
++ //-----------------------------------------------------------------------------
++ 
++ #include &quot;Pooma/Pooma.h&quot;
++ #include &quot;Utilities/Tester.h&quot;
++ #include &quot;Pooma/NewFields.h&quot;
++ 
++ #include &quot;NewField/DiffOps/Div.h&quot;
++ #include &quot;NewField/DiffOps/Div.UR.h&quot;
++ 
++ #include &lt;iostream&gt;
++ #include &lt;math.h&gt;
++ 
++ #if POOMA_CHEETAH
++   typedef DistributedTag LayoutTag_t;
++   typedef Remote&lt;Brick&gt; BrickTag_t;
++ #else
++   typedef ReplicatedTag LayoutTag_t;
++   typedef Brick BrickTag_t;
++ #endif
++ 
++ //-----------------------------------------------------------------------------
++ // Forward Declarations:
++ //-----------------------------------------------------------------------------
++ 
++ int main(int argc, char *argv[])
++ {
++   Pooma::initialize(argc, argv);
++   Pooma::Tester tester(argc, argv);
++ 
++   Interval&lt;2&gt; physicalVertexDomain(10, 10);
++   
++   Loc&lt;2&gt; blocks(2, 2);
++   UniformGridPartition&lt;2&gt; partition(blocks, GuardLayers&lt;2&gt;(1));   
++   UniformGridLayout&lt;2&gt; layout(physicalVertexDomain, partition,
++ 			      LayoutTag_t());
++   
++   // Now, we can declare fields.
++ 
++   AllFace allFace;
++   Cell    cell;
++   Vert    vertex;
++ 
++   typedef UniformRectilinear&lt;2&gt; Geometry_t;
++ 
++   typedef 
++     Field&lt;Geometry_t, double, MultiPatch&lt;UniformTag, BrickTag_t&gt; &gt;
++     Field_t;
++ 
++   typedef 
++     Field&lt;Geometry_t, Vector&lt;2&gt;, MultiPatch&lt;UniformTag, BrickTag_t&gt; &gt;
++     VField_t;
++ 
++   Vector&lt;2&gt; origin(0.0, 0.0);
++   Vector&lt;2&gt; spacings(1.0, 1.0);
++ 
++   VField_t vfield(vertex, layout, origin, spacings);
++   Field_t cfield(cell, layout, origin, spacings);
++   Field_t facefield(allFace, layout, origin, spacings);
++ 
++   DomainLayout&lt;2&gt; layoutDom(physicalVertexDomain, GuardLayers&lt;2&gt;(1));
++   XField&lt;Geometry_t&gt;::Type_t x(vertex, layoutDom, origin, spacings);
++   setXField(x);
++ 
++   vfield = x;
++ 
++   tester.out() &lt;&lt; vfield &lt;&lt; std::endl;
++ 
++   cfield = divVertToCell(vfield);
++ 
++   tester.out() &lt;&lt; cfield &lt;&lt; std::endl;
++ 
++   tester.check(&quot;divergence is 2&quot;, sum(cfield -2) == 0);
++ 
++   int ret = tester.results(&quot;StencilTests&quot;);
++   Pooma::finalize();
++   return ret;
++ }
++ 
++ 
++ 
++ 
++ // ACL:rcsinfo
++ // ----------------------------------------------------------------------
++ // $RCSfile: WhereTest.cpp,v $   $Author: sasmith $
++ // $Revision: 1.3 $   $Date: 2001/04/10 23:13:25 $
++ // ----------------------------------------------------------------------
++ // ACL:rcsinfo
+Index: NewField/tests/makefile
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/NewField/tests/makefile,v
+retrieving revision 1.9
+diff -c -p -r1.9 makefile
+*** NewField/tests/makefile	2001/04/10 23:13:25	1.9
+--- NewField/tests/makefile	2001/05/14 19:56:57
+*************** run_tests: tests
+*** 52,57 ****
+--- 52,58 ----
+  	$(ODIR)/WhereTest $(TSTOPTS) 1&gt;WhereTest.out 2&gt;&amp;1
+  	$(ODIR)/VectorTest $(TSTOPTS) 1&gt;VectorTest.out 2&gt;&amp;1
+  	$(ODIR)/ScalarCode $(TSTOPTS) 1&gt;ScalarCode.out 2&gt;&amp;1
++ 	$(ODIR)/StencilTests $(TSTOPTS) 1&gt;StencilTests.out 2&gt;&amp;1
+  	$(ODIR)/ExpressionTest $(TSTOPTS) 1&gt;ExpressionTest.out 2&gt;&amp;1
+  
+  field_tests:: $(ODIR)/BasicTest1 $(ODIR)/BasicTest2 \
+*************** $(ODIR)/CrossBox: $(ODIR)/CrossBox.o
+*** 130,135 ****
+--- 131,143 ----
+  ScalarCode: $(ODIR)/ScalarCode
+  
+  $(ODIR)/ScalarCode: $(ODIR)/ScalarCode.o
++ 	$(LinkToSuite)
++ 
++ .PHONY: StencilTests
++ 
++ StencilTests: $(ODIR)/StencilTests
++ 
++ $(ODIR)/StencilTests: $(ODIR)/StencilTests.o
+  	$(LinkToSuite)
+  
+  
+Index: Tulip/RemoteProxy.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/Tulip/RemoteProxy.h,v
+retrieving revision 1.13
+diff -c -p -r1.13 RemoteProxy.h
+*** Tulip/RemoteProxy.h	2000/06/08 22:16:59	1.13
+--- Tulip/RemoteProxy.h	2001/05/14 19:56:57
+*************** public:
+*** 112,118 ****
+--- 112,120 ----
+  
+    RemoteProxy(T &amp;val, int owningContext = 0)
+    {
++ #if POOMA_CHEETAH
+      int tag = RemoteProxyBase::tag_m++;
++ #endif
+      if (Pooma::context() == owningContext)
+      {
+        value_m = &val;
+Index: Utilities/RefCountedBlockPtr.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/Utilities/RefCountedBlockPtr.h,v
+retrieving revision 1.60
+diff -c -p -r1.60 RefCountedBlockPtr.h
+*** Utilities/RefCountedBlockPtr.h	2001/05/04 15:41:29	1.60
+--- Utilities/RefCountedBlockPtr.h	2001/05/14 19:56:57
+*************** public: 
+*** 145,151 ****
+    }
+  
+    RefBlockController(size_t size, const T &amp; model)
+!     : dealloc_m(false), pBegin_m(0), pEnd_m(0), pEndOfStorage_m(0)
+    {
+      // Allocate memory, and set pointers to beginning and ending.  This
+      // also sets the dealloc_m flag to true.
+--- 145,151 ----
+    }
+  
+    RefBlockController(size_t size, const T &amp; model)
+!     : pBegin_m(0), pEnd_m(0), pEndOfStorage_m(0), dealloc_m(false)
+    {
+      // Allocate memory, and set pointers to beginning and ending.  This
+      // also sets the dealloc_m flag to true.
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000332.html">[pooma-dev] RFA: Permit NoGeometry Fields to Instantiate
+</A></li>
+	<LI>Next message: <A HREF="000334.html">[pooma-cvs] CVS update: pooma
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#333">[ date ]</a>
+              <a href="thread.html#333">[ thread ]</a>
+              <a href="subject.html#333">[ subject ]</a>
+              <a href="author.html#333">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

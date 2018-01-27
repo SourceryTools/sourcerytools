@@ -1,0 +1,1764 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [pooma-dev] Is Default Constructable really required?
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bpooma-dev%5D%20Is%20Default%20Constructable%20really%20required%3F&In-Reply-To=%3C20020311152552.A5149%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000929.html">
+   <LINK REL="Next"  HREF="000930.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[pooma-dev] Is Default Constructable really required?</H1>
+    <B>Jeffrey Oldham</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bpooma-dev%5D%20Is%20Default%20Constructable%20really%20required%3F&In-Reply-To=%3C20020311152552.A5149%40codesourcery.com%3E"
+       TITLE="[pooma-dev] Is Default Constructable really required?">oldham at codesourcery.com
+       </A><BR>
+    <I>Mon Mar 11 23:25:52 UTC 2002</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000929.html">[pooma-dev] Is Default Constructable really required?
+</A></li>
+        <LI>Next message: <A HREF="000930.html">MakeOwnCopy problem
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#932">[ date ]</a>
+              <a href="thread.html#932">[ thread ]</a>
+              <a href="subject.html#932">[ subject ]</a>
+              <a href="author.html#932">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>On Thu, Mar 07, 2002 at 05:36:37PM -0700, John H. Hall wrote:
+&gt;<i> Gang:
+</I>&gt;<i> In the notes on Relations (in relations.h, copied below) it states &quot;The 
+</I>&gt;<i> RelationFunctor must be Default Constructable...&quot;, yet from the use of 
+</I>&gt;<i> it, I don't see any actual requirement for this. It seems we just pass 
+</I>&gt;<i> around const references and use the alternate required constructor 
+</I>&gt;<i> mentioned below, along with a copy constructor. I need to set up some 
+</I>&gt;<i> state in my RelationFunctors and I would prefer to do it during 
+</I>&gt;<i> construction, along with providing the correct copy constructors and a 
+</I>&gt;<i> version of this required constructor which is essentially a copy 
+</I>&gt;<i> constructor++.
+</I>&gt;<i> 
+</I>&gt;<i> So I guess my question boils down to: &quot;How do I set and keep state in 
+</I>&gt;<i> RelationFunctors?&quot; Any non-trivial use of Relations will require this.
+</I>
+I concur with your analysis.  See src/Field/Relations/PeriodicFaceBC.h
+for an example.  It does not have a default constructor but does have
+a non-default, non-copy constructor.
+
+I have attached a patch aligning the comments to the extant source
+code.  Would someone (Scott? Stephen?) approve these changes?  I also
+added the (gratituous) change of s/L/Target/.
+
+Thanks,
+Jeffrey D. Oldham
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">oldham at codesourcery.com</A>
+
+2002Mar11  Jeffrey D. Oldham  &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">oldham at codesourcery.com</A>&gt;
+
+	This patch corrects functor requirement comments and improves them
+	by replacing &quot;L&quot; by &quot;Target&quot;.
+	
+	* Relations.h (Relation[0-6]): Change introductory comment, replacing
+	&quot;Default Constructable&quot; with &quot;Copy Constructible.&quot;  Change
+	constructor specification to list &quot;RelationFunctor&quot; first.  Change
+	&quot;L&quot; to &quot;Target&quot;.
+	(RelationFunctionPtr[0-6]): Change template parameter's name from
+	&quot;L&quot; to &quot;Target&quot;.
+	(RelationMemberPtr[0-6]): Likewise.
+	(newRelation): Likewise.
+	(functionPtr): Likewise.
+	(memberPtr): Likewise.
+
+Tested on sequential Linux using g++ by compiling Pooma library and
+	running all Field tests.
+Approved by	??you??
+Applied to	mainline
+-------------- next part --------------
+Index: Relations.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/Field/Relations/Relations.h,v
+retrieving revision 1.2
+diff -c -p -r1.2 Relations.h
+*** Relations.h	2001/10/12 17:58:43	1.2
+--- Relations.h	2002/03/11 23:11:51
+*************** private:
+*** 105,122 ****
+  // ----------------------------------------------------------------------------
+  // Relation0 is a template used to construct relations, such as boundary
+  // conditions, that do not depend on additional fields. The Target must be
+! // a Field. The RelationFunctor must be Default Constructable and Assignable.
+  // In addition, it must provide the constructor
+  //
+! //   template&lt;class L&gt;
+! //   RelationFunctor(const L &amp;, const RelationFunctor &amp;)
+  //
+  // and the member function
+  //
+! //   template&lt;class L&gt;
+! //   void operator()(const L &amp;) const
+  //
+! // where L is a Field. The constructor should use the arguments to
+  // initialize itself and the function should apply the relation.
+  // ----------------------------------------------------------------------------
+  
+--- 105,122 ----
+  // ----------------------------------------------------------------------------
+  // Relation0 is a template used to construct relations, such as boundary
+  // conditions, that do not depend on additional fields. The Target must be
+! // a Field. The RelationFunctor must be Copy Constructible and Assignable.
+  // In addition, it must provide the constructor
+  //
+! //   template&lt;class Target&gt;
+! //   RelationFunctor(const RelationFunctor &amp;, const Target &amp;)
+  //
+  // and the member function
+  //
+! //   template&lt;class Target&gt;
+! //   void operator()(const Target &amp;) const
+  //
+! // where Target is a Field. The constructor should use the arguments to
+  // initialize itself and the function should apply the relation.
+  // ----------------------------------------------------------------------------
+  
+*************** public:
+*** 159,177 ****
+  // ----------------------------------------------------------------------------
+  // Relation1 is a template used to construct relations that depend on one
+  // additional field (e.g., a = b). The Target must be
+! // a Field. The RelationFunctor must be Default Constructable and Assignable.
+  // In addition, it must provide the constructor
+  //
+! //   template&lt;class L, class R1, class R2&gt;
+! //   RelationFunctor(const L &amp;, const R1 &amp;, 
+! //                   const RelationFunctor &amp;)
+  //
+  // and the member function
+  //
+! //   template&lt;class L, class R1&gt;
+! //   void operator()(const L &amp;const R1 &amp;) const
+  //
+! // where L and R1 are Fields. The constructor should use the arguments to
+  // initialize itself and the function should apply the relation.
+  // ----------------------------------------------------------------------------
+  
+--- 159,177 ----
+  // ----------------------------------------------------------------------------
+  // Relation1 is a template used to construct relations that depend on one
+  // additional field (e.g., a = b). The Target must be
+! // a Field. The RelationFunctor must be Copy Constructible and Assignable.
+  // In addition, it must provide the constructor
+  //
+! //   template&lt;class Target, class R1, class R2&gt;
+! //   RelationFunctor(const RelationFunctor &amp;, const Target &amp;, const R1 &amp;)
+! //
+  //
+  // and the member function
+  //
+! //   template&lt;class Target, class R1&gt;
+! //   void operator()(const Target &amp;, const R1 &amp;) const
+  //
+! // where Target and R1 are Fields. The constructor should use the arguments to
+  // initialize itself and the function should apply the relation.
+  // ----------------------------------------------------------------------------
+  
+*************** protected:
+*** 221,240 ****
+  // ----------------------------------------------------------------------------
+  // Relation2 is a template used to construct relations that depend on two
+  // additional fields (e.g., a = b + c). The Target must be
+! // a Field. The RelationFunctor must be Default Constructable and Assignable.
+  // In addition, it must provide the constructor
+  //
+! //   template&lt;class L, class R1, class R2&gt;
+! //   RelationFunctor(const L &amp;, const R1 &amp;, const R2 &amp;, 
+! //                   const RelationFunctor &amp;)
+  //
+  // and the member function
+  //
+! //   template&lt;class L, class R1, class R2&gt;
+! //   void operator()(const L &amp;const R1 &amp;, const R2 &amp;) const
+  //
+! // where L, R1, and R2 are Fields. The constructor should use the arguments to
+! // initialize itself and the function should apply the relation.
+  // ----------------------------------------------------------------------------
+  
+  template&lt;class Target, class R1, class R2, class RelationFunctor&gt;
+--- 221,241 ----
+  // ----------------------------------------------------------------------------
+  // Relation2 is a template used to construct relations that depend on two
+  // additional fields (e.g., a = b + c). The Target must be
+! // a Field. The RelationFunctor must be Copy Constructible and Assignable.
+  // In addition, it must provide the constructor
+  //
+! //   template&lt;class Target, class R1, class R2&gt;
+! //   RelationFunctor(const RelationFunctor &amp;,
+! //	             const Target &amp;, const R1 &amp;, const R2 &amp;)
+  //
+  // and the member function
+  //
+! //   template&lt;class Target, class R1, class R2&gt;
+! //   void operator()(const Target &amp;, const R1 &amp;, const R2 &amp;) const
+  //
+! // where Target, R1, and R2 are Fields. The constructor should use the
+! // arguments to initialize itself and the function should apply the
+! // relation.
+  // ----------------------------------------------------------------------------
+  
+  template&lt;class Target, class R1, class R2, class RelationFunctor&gt;
+*************** protected:
+*** 285,303 ****
+  // ----------------------------------------------------------------------------
+  // Relation3 is a template used to construct relations that depend on three
+  // additional fields (e.g., a = b + c + d). The Target must be
+! // a Field. The RelationFunctor must be Default Constructable and Assignable.
+  // In addition, it must provide the constructor
+  //
+! //   template&lt;class L, class R1, class R2, class R3&gt;
+! //   RelationFunctor(const L &amp;, const R1 &amp;, const R2 &amp;, const R3 &amp;,
+  //                   const RelationFunctor &amp;)
+  //
+  // and the member function
+  //
+! //   template&lt;class L, class R1, class R2, class R3&gt;
+! //   void operator()(const L &amp;const R1 &amp;, const R2 &amp;, const R3 &amp;) const
+  //
+! // where L, R1, R2, and R3 are Fields. The constructor should use 
+  // the arguments to initialize itself and the function should apply the 
+  // relation.
+  // ----------------------------------------------------------------------------
+--- 286,304 ----
+  // ----------------------------------------------------------------------------
+  // Relation3 is a template used to construct relations that depend on three
+  // additional fields (e.g., a = b + c + d). The Target must be
+! // a Field. The RelationFunctor must be Copy Constructible and Assignable.
+  // In addition, it must provide the constructor
+  //
+! //   template&lt;class Target, class R1, class R2, class R3&gt;
+! //   RelationFunctor(const Target &amp;, const R1 &amp;, const R2 &amp;, const R3 &amp;,
+  //                   const RelationFunctor &amp;)
+  //
+  // and the member function
+  //
+! //   template&lt;class Target, class R1, class R2, class R3&gt;
+! //   void operator()(const Target &amp;const R1 &amp;, const R2 &amp;, const R3 &amp;) const
+  //
+! // where Target, R1, R2, and R3 are Fields. The constructor should use 
+  // the arguments to initialize itself and the function should apply the 
+  // relation.
+  // ----------------------------------------------------------------------------
+*************** protected:
+*** 355,374 ****
+  // ----------------------------------------------------------------------------
+  // Relation4 is a template used to construct relations that depend on four
+  // additional fields (e.g., a = b + c + d + e). The Target must be
+! // a Field. The RelationFunctor must be Default Constructable and Assignable.
+  // In addition, it must provide the constructor
+  //
+! //   template&lt;class L, class R1, class R2, class R3, class R4&gt;
+! //   RelationFunctor(const L &amp;, const R1 &amp;, const R2 &amp;, const R3 &amp;,
+! //                   const R4 &amp;, const RelationFunctor &amp;)
+  //
+  // and the member function
+  //
+! //   template&lt;class L, class R1, class R2, class R3, class R4&gt;
+! //   void operator()(const L &amp;const R1 &amp;, const R2 &amp;, const R3 &amp;,
+  //                   const R4 &amp;) const
+  //
+! // where L, R1, R2, R3, and R4 are Fields. The constructor should use 
+  // the arguments to initialize itself and the function should apply the 
+  // relation.
+  // ----------------------------------------------------------------------------
+--- 356,376 ----
+  // ----------------------------------------------------------------------------
+  // Relation4 is a template used to construct relations that depend on four
+  // additional fields (e.g., a = b + c + d + e). The Target must be
+! // a Field. The RelationFunctor must be Copy Constructible and Assignable.
+  // In addition, it must provide the constructor
+  //
+! //   template&lt;class Target, class R1, class R2, class R3, class R4&gt;
+! //   RelationFunctor(const RelationFunctor &amp;,
+! //                   const Target &amp;, const R1 &amp;, const R2 &amp;, const R3 &amp;,
+! //                   const R4 &amp;)
+  //
+  // and the member function
+  //
+! //   template&lt;class Target, class R1, class R2, class R3, class R4&gt;
+! //   void operator()(const Target &amp;, const R1 &amp;, const R2 &amp;, const R3 &amp;,
+  //                   const R4 &amp;) const
+  //
+! // where Target, R1, R2, R3, and R4 are Fields. The constructor should use 
+  // the arguments to initialize itself and the function should apply the 
+  // relation.
+  // ----------------------------------------------------------------------------
+*************** protected:
+*** 430,449 ****
+  // ----------------------------------------------------------------------------
+  // Relation5 is a template used to construct relations that depend on five
+  // additional fields (e.g., a = b + c + d + e + f). The Target must be
+! // a Field. The RelationFunctor must be Default Constructable and Assignable.
+  // In addition, it must provide the constructor
+  //
+! //   template&lt;class L, class R1, class R2, class R3, class R4, class R5&gt;
+! //   RelationFunctor(const L &amp;, const R1 &amp;, const R2 &amp;, const R3 &amp;,
+! //                   const R4 &amp;, const R5 &amp;, const RelationFunctor &amp;)
+  //
+  // and the member function
+  //
+! //   template&lt;class L, class R1, class R2, class R3, class R4, class R5&gt;
+! //   void operator()(const L &amp;const R1 &amp;, const R2 &amp;, const R3 &amp;,
+  //                   const R4 &amp;, const R5 &amp;) const
+  //
+! // where L, R1, R2, R3, R4, and R5 are Fields. The constructor should use 
+  // the arguments to initialize itself and the function should apply the 
+  // relation.
+  // ----------------------------------------------------------------------------
+--- 432,452 ----
+  // ----------------------------------------------------------------------------
+  // Relation5 is a template used to construct relations that depend on five
+  // additional fields (e.g., a = b + c + d + e + f). The Target must be
+! // a Field. The RelationFunctor must be Copy Constructible and Assignable.
+  // In addition, it must provide the constructor
+  //
+! //   template&lt;class Target, class R1, class R2, class R3, class R4, class R5&gt;
+! //   RelationFunctor(const RelationFunctor &amp;,
+! //		     const Target &amp;, const R1 &amp;, const R2 &amp;, const R3 &amp;,
+! //                   const R4 &amp;, const R5 &amp;)
+  //
+  // and the member function
+  //
+! //   template&lt;class Target, class R1, class R2, class R3, class R4, class R5&gt;
+! //   void operator()(const Target &amp;, const R1 &amp;, const R2 &amp;, const R3 &amp;,
+  //                   const R4 &amp;, const R5 &amp;) const
+  //
+! // where Target, R1, R2, R3, R4, and R5 are Fields. The constructor should use 
+  // the arguments to initialize itself and the function should apply the 
+  // relation.
+  // ----------------------------------------------------------------------------
+*************** protected:
+*** 508,532 ****
+  // ----------------------------------------------------------------------------
+  // Relation6 is a template used to construct relations that depend on six
+  // additional fields (e.g., a = b + c + d + e + f + g). The Target must be
+! // a Field. The RelationFunctor must be Default Constructable and Assignable.
+  // In addition, it must provide the constructor
+  //
+! //   template&lt;class L, class R1, class R2, class R3, class R4, class R5,
+  //            class R6&gt;
+! //   RelationFunctor(const L &amp;, const R1 &amp;, const R2 &amp;, const R3 &amp;,
+! //                   const R4 &amp;, const R5 &amp;, const R6 &amp;, 
+! //                   const RelationFunctor &amp;)
+  //
+  // and the member function
+  //
+! //   template&lt;class L, class R1, class R2, class R3, class R4, class R5,
+  //            class R6&gt;
+! //   void operator()(const L &amp;const R1 &amp;, const R2 &amp;, const R3 &amp;,
+  //                   const R4 &amp;, const R5 &amp;, const R6 &amp;) const
+  //
+! // where L, R1, R2, R3, R4, R5, and R6 are Fields. The constructor should use 
+! // the arguments to initialize itself and the function should apply the 
+! // relation.
+  // ----------------------------------------------------------------------------
+  
+  template&lt;class Target, class R1, class R2, class R3, class R4, class R5,
+--- 511,535 ----
+  // ----------------------------------------------------------------------------
+  // Relation6 is a template used to construct relations that depend on six
+  // additional fields (e.g., a = b + c + d + e + f + g). The Target must be
+! // a Field. The RelationFunctor must be Copy Constructible and Assignable.
+  // In addition, it must provide the constructor
+  //
+! //   template&lt;class Target, class R1, class R2, class R3, class R4, class R5,
+  //            class R6&gt;
+! //   RelationFunctor(const RelationFunctor &amp;,
+! //		     const Target &amp;, const R1 &amp;, const R2 &amp;, const R3 &amp;,
+! //                   const R4 &amp;, const R5 &amp;, const R6 &amp;)
+  //
+  // and the member function
+  //
+! //   template&lt;class Target, class R1, class R2, class R3, class R4, class R5,
+  //            class R6&gt;
+! //   void operator()(const Target &amp;, const R1 &amp;, const R2 &amp;, const R3 &amp;,
+  //                   const R4 &amp;, const R5 &amp;, const R6 &amp;) const
+  //
+! // where Target, R1, R2, R3, R4, R5, and R6 are Fields. The
+! // constructor should use the arguments to initialize itself and the
+! // function should apply the relation.
+  // ----------------------------------------------------------------------------
+  
+  template&lt;class Target, class R1, class R2, class R3, class R4, class R5,
+*************** protected:
+*** 593,679 ****
+  // Relation functors supporting the use of function pointers.
+  //-----------------------------------------------------------------------------
+  
+! template&lt;class L&gt;
+  class RelationFunctionPtr0 {
+  public:
+  
+!   RelationFunctionPtr0(void (*f)(const L &amp;)) 
+    : f_m(f) 
+    { }
+!   RelationFunctionPtr0(const RelationFunctionPtr0&lt;L&gt; &amp;init, const L &amp;)
+    : f_m(init.f_m) 
+    { }
+      
+!   inline void operator()(const L &amp;l)
+    {
+      f_m(l);
+    }
+  
+  private:
+  
+!   void (*f_m)(const L &amp;);
+  };
+  
+! template&lt;class L, class R1&gt;
+  class RelationFunctionPtr1 {
+  public:
+  
+!   RelationFunctionPtr1(void (*f)(const L &amp;, const R1 &amp;)) 
+    : f_m(f) 
+    { }
+!   RelationFunctionPtr1(const RelationFunctionPtr1&lt;L, R1&gt; &amp;init, const L &amp;)
+    : f_m(init.f_m) 
+    { }
+      
+!   inline void operator()(const L &amp;l, const R1 &amp;r1)
+    {
+      f_m(l, r1);
+    }
+  
+  private:
+  
+!   void (*f_m)(const L &amp;, const R1 &amp;);
+  };
+  
+! template&lt;class L, class R1, class R2&gt;
+  class RelationFunctionPtr2 {
+  public:
+  
+!   RelationFunctionPtr2(void (*f)(const L &amp;, const R1 &amp;, const R2 &amp;)) 
+    : f_m(f) 
+    { }
+!   RelationFunctionPtr2(const RelationFunctionPtr2&lt;L, R1, R2&gt; &amp;init, const L &amp;)
+    : f_m(init.f_m) 
+    { }
+      
+!   inline void operator()(const L &amp;l, const R1 &amp;r1, const R2 &amp;r2)
+    {
+      f_m(l, r1, r2);
+    }
+  
+  private:
+  
+!   void (*f_m)(const L &amp;, const R1 &amp;, const R2 &amp;);
+  };
+  
+! template&lt;class L, class R1, class R2, class R3&gt;
+  class RelationFunctionPtr3 {
+  public:
+  
+!   RelationFunctionPtr3(void (*f)(const L &amp;, 
+      const R1 &amp;, const R2 &amp;, const R3 &amp;)) 
+    : f_m(f) 
+    { }
+    RelationFunctionPtr3(
+!     const RelationFunctionPtr3&lt;L, R1, R2, R3&gt; &amp;model)
+    : f_m(model.f_m)
+    { }
+    RelationFunctionPtr3(
+!     const RelationFunctionPtr3&lt;L, R1, R2, R3&gt; &amp;init, const L &amp;)
+    : f_m(init.f_m) 
+    { }
+      
+!   inline void operator()(const L &amp;l, const R1 &amp;r1, const R2 &amp;r2, 
+      const R3 &amp;r3)
+    {
+      f_m(l, r1, r2, r3);
+--- 596,682 ----
+  // Relation functors supporting the use of function pointers.
+  //-----------------------------------------------------------------------------
+  
+! template&lt;class Target&gt;
+  class RelationFunctionPtr0 {
+  public:
+  
+!   RelationFunctionPtr0(void (*f)(const Target &amp;)) 
+    : f_m(f) 
+    { }
+!   RelationFunctionPtr0(const RelationFunctionPtr0&lt;Target&gt; &amp;init, const Target &amp;)
+    : f_m(init.f_m) 
+    { }
+      
+!   inline void operator()(const Target &amp;l)
+    {
+      f_m(l);
+    }
+  
+  private:
+  
+!   void (*f_m)(const Target &amp;);
+  };
+  
+! template&lt;class Target, class R1&gt;
+  class RelationFunctionPtr1 {
+  public:
+  
+!   RelationFunctionPtr1(void (*f)(const Target &amp;, const R1 &amp;)) 
+    : f_m(f) 
+    { }
+!   RelationFunctionPtr1(const RelationFunctionPtr1&lt;Target, R1&gt; &amp;init, const Target &amp;)
+    : f_m(init.f_m) 
+    { }
+      
+!   inline void operator()(const Target &amp;l, const R1 &amp;r1)
+    {
+      f_m(l, r1);
+    }
+  
+  private:
+  
+!   void (*f_m)(const Target &amp;, const R1 &amp;);
+  };
+  
+! template&lt;class Target, class R1, class R2&gt;
+  class RelationFunctionPtr2 {
+  public:
+  
+!   RelationFunctionPtr2(void (*f)(const Target &amp;, const R1 &amp;, const R2 &amp;)) 
+    : f_m(f) 
+    { }
+!   RelationFunctionPtr2(const RelationFunctionPtr2&lt;Target, R1, R2&gt; &amp;init, const Target &amp;)
+    : f_m(init.f_m) 
+    { }
+      
+!   inline void operator()(const Target &amp;l, const R1 &amp;r1, const R2 &amp;r2)
+    {
+      f_m(l, r1, r2);
+    }
+  
+  private:
+  
+!   void (*f_m)(const Target &amp;, const R1 &amp;, const R2 &amp;);
+  };
+  
+! template&lt;class Target, class R1, class R2, class R3&gt;
+  class RelationFunctionPtr3 {
+  public:
+  
+!   RelationFunctionPtr3(void (*f)(const Target &amp;, 
+      const R1 &amp;, const R2 &amp;, const R3 &amp;)) 
+    : f_m(f) 
+    { }
+    RelationFunctionPtr3(
+!     const RelationFunctionPtr3&lt;Target, R1, R2, R3&gt; &amp;model)
+    : f_m(model.f_m)
+    { }
+    RelationFunctionPtr3(
+!     const RelationFunctionPtr3&lt;Target, R1, R2, R3&gt; &amp;init, const Target &amp;)
+    : f_m(init.f_m) 
+    { }
+      
+!   inline void operator()(const Target &amp;l, const R1 &amp;r1, const R2 &amp;r2, 
+      const R3 &amp;r3)
+    {
+      f_m(l, r1, r2, r3);
+*************** public:
+*** 681,707 ****
+  
+  private:
+  
+!   void (*f_m)(const L &amp;, const R1 &amp;, const R2 &amp;, const R3 &amp;);
+  };
+  
+! template&lt;class L, class R1, class R2, class R3, class R4&gt;
+  class RelationFunctionPtr4 {
+  public:
+  
+!   RelationFunctionPtr4(void (*f)(const L &amp;, 
+      const R1 &amp;, const R2 &amp;, const R3 &amp;, const R4 &amp;)) 
+    : f_m(f) 
+    { }
+    RelationFunctionPtr4(
+!     const RelationFunctionPtr4&lt;L, R1, R2, R3, R4&gt; &amp;model)
+    : f_m(model.f_m)
+    { }
+    RelationFunctionPtr4(
+!     const RelationFunctionPtr4&lt;L, R1, R2, R3, R4&gt; &amp;init, const L &amp;)
+    : f_m(init.f_m) 
+    { }
+      
+!   inline void operator()(const L &amp;l, const R1 &amp;r1, const R2 &amp;r2, 
+      const R3 &amp;r3, const R4 &amp;r4)
+    {
+      f_m(l, r1, r2, r3, r4);
+--- 684,710 ----
+  
+  private:
+  
+!   void (*f_m)(const Target &amp;, const R1 &amp;, const R2 &amp;, const R3 &amp;);
+  };
+  
+! template&lt;class Target, class R1, class R2, class R3, class R4&gt;
+  class RelationFunctionPtr4 {
+  public:
+  
+!   RelationFunctionPtr4(void (*f)(const Target &amp;, 
+      const R1 &amp;, const R2 &amp;, const R3 &amp;, const R4 &amp;)) 
+    : f_m(f) 
+    { }
+    RelationFunctionPtr4(
+!     const RelationFunctionPtr4&lt;Target, R1, R2, R3, R4&gt; &amp;model)
+    : f_m(model.f_m)
+    { }
+    RelationFunctionPtr4(
+!     const RelationFunctionPtr4&lt;Target, R1, R2, R3, R4&gt; &amp;init, const Target &amp;)
+    : f_m(init.f_m) 
+    { }
+      
+!   inline void operator()(const Target &amp;l, const R1 &amp;r1, const R2 &amp;r2, 
+      const R3 &amp;r3, const R4 &amp;r4)
+    {
+      f_m(l, r1, r2, r3, r4);
+*************** public:
+*** 709,737 ****
+  
+  private:
+  
+!   void (*f_m)(const L &amp;, const R1 &amp;, const R2 &amp;, 
+      const R3 &amp;, const R4 &amp;);
+  };
+  
+! template&lt;class L, 
+    class R1, class R2, class R3, class R4, class R5&gt;
+  class RelationFunctionPtr5 {
+  public:
+  
+!   RelationFunctionPtr5(void (*f)(const L &amp;, 
+      const R1 &amp;, const R2 &amp;, const R3 &amp;, const R4 &amp;, const R5 &amp;)) 
+    : f_m(f) 
+    { }
+    RelationFunctionPtr5(
+!     const RelationFunctionPtr5&lt;L, R1, R2, R3, R4, R5&gt; &amp;model)
+    : f_m(model.f_m)
+    { }
+    RelationFunctionPtr5(
+!     const RelationFunctionPtr5&lt;L, R1, R2, R3, R4, R5&gt; &amp;init, const L &amp;)
+    : f_m(init.f_m) 
+    { }
+      
+!   inline void operator()(const L &amp;l, const R1 &amp;r1, const R2 &amp;r2, 
+      const R3 &amp;r3, const R4 &amp;r4, const R5 &amp;r5)
+    {
+      f_m(l, r1, r2, r3, r4, r5);
+--- 712,740 ----
+  
+  private:
+  
+!   void (*f_m)(const Target &amp;, const R1 &amp;, const R2 &amp;, 
+      const R3 &amp;, const R4 &amp;);
+  };
+  
+! template&lt;class Target, 
+    class R1, class R2, class R3, class R4, class R5&gt;
+  class RelationFunctionPtr5 {
+  public:
+  
+!   RelationFunctionPtr5(void (*f)(const Target &amp;, 
+      const R1 &amp;, const R2 &amp;, const R3 &amp;, const R4 &amp;, const R5 &amp;)) 
+    : f_m(f) 
+    { }
+    RelationFunctionPtr5(
+!     const RelationFunctionPtr5&lt;Target, R1, R2, R3, R4, R5&gt; &amp;model)
+    : f_m(model.f_m)
+    { }
+    RelationFunctionPtr5(
+!     const RelationFunctionPtr5&lt;Target, R1, R2, R3, R4, R5&gt; &amp;init, const Target &amp;)
+    : f_m(init.f_m) 
+    { }
+      
+!   inline void operator()(const Target &amp;l, const R1 &amp;r1, const R2 &amp;r2, 
+      const R3 &amp;r3, const R4 &amp;r4, const R5 &amp;r5)
+    {
+      f_m(l, r1, r2, r3, r4, r5);
+*************** public:
+*** 739,767 ****
+  
+  private:
+  
+!   void (*f_m)(const L &amp;, const R1 &amp;, const R2 &amp;, 
+      const R3 &amp;, const R4 &amp;, const R5 &amp;);
+  };
+  
+! template&lt;class L, 
+    class R1, class R2, class R3, class R4, class R5, class R6&gt;
+  class RelationFunctionPtr6 {
+  public:
+  
+!   RelationFunctionPtr6(void (*f)(const L &amp;, 
+      const R1 &amp;, const R2 &amp;, const R3 &amp;, const R4 &amp;, const R5 &amp;, const R6 &amp;)) 
+    : f_m(f) 
+    { }
+    RelationFunctionPtr6(
+!     const RelationFunctionPtr6&lt;L, R1, R2, R3, R4, R5, R6&gt; &amp;model)
+    : f_m(model.f_m)
+    { }
+    RelationFunctionPtr6(
+!     const RelationFunctionPtr6&lt;L, R1, R2, R3, R4, R5, R6&gt; &amp;init, const L &amp;)
+    : f_m(init.f_m) 
+    { }
+      
+!   inline void operator()(const L &amp;l, const R1 &amp;r1, const R2 &amp;r2, 
+      const R3 &amp;r3, const R4 &amp;r4, const R5 &amp;r5, const R6 &amp;r6)
+    {
+      f_m(l, r1, r2, r3, r4, r5, r6);
+--- 742,770 ----
+  
+  private:
+  
+!   void (*f_m)(const Target &amp;, const R1 &amp;, const R2 &amp;, 
+      const R3 &amp;, const R4 &amp;, const R5 &amp;);
+  };
+  
+! template&lt;class Target, 
+    class R1, class R2, class R3, class R4, class R5, class R6&gt;
+  class RelationFunctionPtr6 {
+  public:
+  
+!   RelationFunctionPtr6(void (*f)(const Target &amp;, 
+      const R1 &amp;, const R2 &amp;, const R3 &amp;, const R4 &amp;, const R5 &amp;, const R6 &amp;)) 
+    : f_m(f) 
+    { }
+    RelationFunctionPtr6(
+!     const RelationFunctionPtr6&lt;Target, R1, R2, R3, R4, R5, R6&gt; &amp;model)
+    : f_m(model.f_m)
+    { }
+    RelationFunctionPtr6(
+!     const RelationFunctionPtr6&lt;Target, R1, R2, R3, R4, R5, R6&gt; &amp;init, const Target &amp;)
+    : f_m(init.f_m) 
+    { }
+      
+!   inline void operator()(const Target &amp;l, const R1 &amp;r1, const R2 &amp;r2, 
+      const R3 &amp;r3, const R4 &amp;r4, const R5 &amp;r5, const R6 &amp;r6)
+    {
+      f_m(l, r1, r2, r3, r4, r5, r6);
+*************** public:
+*** 769,775 ****
+  
+  private:
+  
+!   void (*f_m)(const L &amp;, const R1 &amp;, const R2 &amp;, 
+      const R3 &amp;, const R4 &amp;, const R5 &amp;, const R6 &amp;);
+  };
+  
+--- 772,778 ----
+  
+  private:
+  
+!   void (*f_m)(const Target &amp;, const R1 &amp;, const R2 &amp;, 
+      const R3 &amp;, const R4 &amp;, const R5 &amp;, const R6 &amp;);
+  };
+  
+*************** private:
+*** 778,798 ****
+  // Relation functors supporting the use of member function pointers.
+  //-----------------------------------------------------------------------------
+  
+! template&lt;class C, class L&gt;
+  class RelationMemberPtr0 {
+  public:
+  
+!   RelationMemberPtr0(const C &amp;obj, void (C::*f)(const L &amp;)) 
+    : obj_m(obj), f_m(f) 
+    { }
+!   RelationMemberPtr0(const RelationMemberPtr0&lt;C, L&gt; &amp;model)
+    : obj_m(model.obj_m), f_m(model.f_m)
+    { }
+!   RelationMemberPtr0(const RelationMemberPtr0&lt;C, L&gt; &amp;init, const L &amp;)
+    : obj_m(init.obj_m), f_m(init.f_m) 
+    { }
+      
+!   inline void operator()(const L &amp;l)
+    {
+      (obj_m.*f_m)(l);
+    }
+--- 781,801 ----
+  // Relation functors supporting the use of member function pointers.
+  //-----------------------------------------------------------------------------
+  
+! template&lt;class C, class Target&gt;
+  class RelationMemberPtr0 {
+  public:
+  
+!   RelationMemberPtr0(const C &amp;obj, void (C::*f)(const Target &amp;)) 
+    : obj_m(obj), f_m(f) 
+    { }
+!   RelationMemberPtr0(const RelationMemberPtr0&lt;C, Target&gt; &amp;model)
+    : obj_m(model.obj_m), f_m(model.f_m)
+    { }
+!   RelationMemberPtr0(const RelationMemberPtr0&lt;C, Target&gt; &amp;init, const Target &amp;)
+    : obj_m(init.obj_m), f_m(init.f_m) 
+    { }
+      
+!   inline void operator()(const Target &amp;l)
+    {
+      (obj_m.*f_m)(l);
+    }
+*************** public:
+*** 800,824 ****
+  private:
+  
+    C obj_m;
+!   void (C::*f_m)(const L &amp;);
+  };
+  
+! template&lt;class C, class L, class R1&gt;
+  class RelationMemberPtr1 {
+  public:
+  
+!   RelationMemberPtr1(const C &amp;obj, void (C::*f)(const L &amp;, 
+      const R1 &amp;)) 
+    : obj_m(obj), f_m(f) 
+    { }
+!   RelationMemberPtr1(const RelationMemberPtr1&lt;C, L, R1&gt; &amp;model)
+    : obj_m(model.obj_m), f_m(model.f_m)
+    { }
+!   RelationMemberPtr1(const RelationMemberPtr1&lt;C, L, R1&gt; &amp;init, const L &amp;)
+    : obj_m(init.obj_m), f_m(init.f_m) 
+    { }
+      
+!   inline void operator()(const L &amp;l, const R1 &amp;r1)
+    {
+      (obj_m.*f_m)(l, r1);
+    }
+--- 803,827 ----
+  private:
+  
+    C obj_m;
+!   void (C::*f_m)(const Target &amp;);
+  };
+  
+! template&lt;class C, class Target, class R1&gt;
+  class RelationMemberPtr1 {
+  public:
+  
+!   RelationMemberPtr1(const C &amp;obj, void (C::*f)(const Target &amp;, 
+      const R1 &amp;)) 
+    : obj_m(obj), f_m(f) 
+    { }
+!   RelationMemberPtr1(const RelationMemberPtr1&lt;C, Target, R1&gt; &amp;model)
+    : obj_m(model.obj_m), f_m(model.f_m)
+    { }
+!   RelationMemberPtr1(const RelationMemberPtr1&lt;C, Target, R1&gt; &amp;init, const Target &amp;)
+    : obj_m(init.obj_m), f_m(init.f_m) 
+    { }
+      
+!   inline void operator()(const Target &amp;l, const R1 &amp;r1)
+    {
+      (obj_m.*f_m)(l, r1);
+    }
+*************** public:
+*** 826,850 ****
+  private:
+  
+    C obj_m;
+!   void (C::*f_m)(const L &amp;, const R1 &amp;);
+  };
+  
+! template&lt;class C, class L, class R1, class R2&gt;
+  class RelationMemberPtr2 {
+  public:
+  
+!   RelationMemberPtr2(const C &amp;obj, void (C::*f)(const L &amp;, 
+      const R1 &amp;, const R2 &amp;)) 
+    : obj_m(obj), f_m(f) 
+    { }
+!   RelationMemberPtr2(const RelationMemberPtr2&lt;C, L, R1, R2&gt; &amp;model)
+    : obj_m(model.obj_m), f_m(model.f_m)
+    { }
+!   RelationMemberPtr2(const RelationMemberPtr2&lt;C, L, R1, R2&gt; &amp;init, const L &amp;)
+    : obj_m(init.obj_m), f_m(init.f_m) 
+    { }
+      
+!   inline void operator()(const L &amp;l, const R1 &amp;r1, const R2 &amp;r2)
+    {
+      (obj_m.*f_m)(l, r1, r2);
+    }
+--- 829,853 ----
+  private:
+  
+    C obj_m;
+!   void (C::*f_m)(const Target &amp;, const R1 &amp;);
+  };
+  
+! template&lt;class C, class Target, class R1, class R2&gt;
+  class RelationMemberPtr2 {
+  public:
+  
+!   RelationMemberPtr2(const C &amp;obj, void (C::*f)(const Target &amp;, 
+      const R1 &amp;, const R2 &amp;)) 
+    : obj_m(obj), f_m(f) 
+    { }
+!   RelationMemberPtr2(const RelationMemberPtr2&lt;C, Target, R1, R2&gt; &amp;model)
+    : obj_m(model.obj_m), f_m(model.f_m)
+    { }
+!   RelationMemberPtr2(const RelationMemberPtr2&lt;C, Target, R1, R2&gt; &amp;init, const Target &amp;)
+    : obj_m(init.obj_m), f_m(init.f_m) 
+    { }
+      
+!   inline void operator()(const Target &amp;l, const R1 &amp;r1, const R2 &amp;r2)
+    {
+      (obj_m.*f_m)(l, r1, r2);
+    }
+*************** public:
+*** 852,878 ****
+  private:
+  
+    C obj_m;
+!   void (C::*f_m)(const L &amp;, const R1 &amp;, const R2 &amp;);
+  };
+  
+! template&lt;class C, class L, class R1, class R2, class R3&gt;
+  class RelationMemberPtr3 {
+  public:
+  
+!   RelationMemberPtr3(const C &amp;obj, void (C::*f)(const L &amp;, 
+      const R1 &amp;, const R2 &amp;, const R3 &amp;)) 
+    : obj_m(obj), f_m(f) 
+    { }
+    RelationMemberPtr3(
+!     const RelationMemberPtr3&lt;C, L, R1, R2, R3&gt; &amp;model)
+    : obj_m(model.obj_m), f_m(model.f_m)
+    { }
+    RelationMemberPtr3(
+!     const RelationMemberPtr3&lt;C, L, R1, R2, R3&gt; &amp;init, const L &amp;)
+    : obj_m(init.obj_m), f_m(init.f_m) 
+    { }
+      
+!   inline void operator()(const L &amp;l, const R1 &amp;r1, const R2 &amp;r2, 
+      const R3 &amp;r3)
+    {
+      (obj_m.*f_m)(l, r1, r2, r3);
+--- 855,881 ----
+  private:
+  
+    C obj_m;
+!   void (C::*f_m)(const Target &amp;, const R1 &amp;, const R2 &amp;);
+  };
+  
+! template&lt;class C, class Target, class R1, class R2, class R3&gt;
+  class RelationMemberPtr3 {
+  public:
+  
+!   RelationMemberPtr3(const C &amp;obj, void (C::*f)(const Target &amp;, 
+      const R1 &amp;, const R2 &amp;, const R3 &amp;)) 
+    : obj_m(obj), f_m(f) 
+    { }
+    RelationMemberPtr3(
+!     const RelationMemberPtr3&lt;C, Target, R1, R2, R3&gt; &amp;model)
+    : obj_m(model.obj_m), f_m(model.f_m)
+    { }
+    RelationMemberPtr3(
+!     const RelationMemberPtr3&lt;C, Target, R1, R2, R3&gt; &amp;init, const Target &amp;)
+    : obj_m(init.obj_m), f_m(init.f_m) 
+    { }
+      
+!   inline void operator()(const Target &amp;l, const R1 &amp;r1, const R2 &amp;r2, 
+      const R3 &amp;r3)
+    {
+      (obj_m.*f_m)(l, r1, r2, r3);
+*************** public:
+*** 881,907 ****
+  private:
+  
+    C obj_m;
+!   void (C::*f_m)(const L &amp;, const R1 &amp;, const R2 &amp;, const R3 &amp;);
+  };
+  
+! template&lt;class C, class L, class R1, class R2, class R3, class R4&gt;
+  class RelationMemberPtr4 {
+  public:
+  
+!   RelationMemberPtr4(const C &amp;obj, void (C::*f)(const L &amp;, 
+      const R1 &amp;, const R2 &amp;, const R3 &amp;, const R4 &amp;)) 
+    : obj_m(obj), f_m(f) 
+    { }
+    RelationMemberPtr4(
+!     const RelationMemberPtr4&lt;C, L, R1, R2, R3, R4&gt; &amp;model)
+    : obj_m(model.obj_m), f_m(model.f_m)
+    { }
+    RelationMemberPtr4(
+!     const RelationMemberPtr4&lt;C, L, R1, R2, R3, R4&gt; &amp;init, const L &amp;)
+    : obj_m(init.obj_m), f_m(init.f_m) 
+    { }
+      
+!   inline void operator()(const L &amp;l, const R1 &amp;r1, const R2 &amp;r2, 
+      const R3 &amp;r3, const R4 &amp;r4)
+    {
+      (obj_m.*f_m)(l, r1, r2, r3, r4);
+--- 884,910 ----
+  private:
+  
+    C obj_m;
+!   void (C::*f_m)(const Target &amp;, const R1 &amp;, const R2 &amp;, const R3 &amp;);
+  };
+  
+! template&lt;class C, class Target, class R1, class R2, class R3, class R4&gt;
+  class RelationMemberPtr4 {
+  public:
+  
+!   RelationMemberPtr4(const C &amp;obj, void (C::*f)(const Target &amp;, 
+      const R1 &amp;, const R2 &amp;, const R3 &amp;, const R4 &amp;)) 
+    : obj_m(obj), f_m(f) 
+    { }
+    RelationMemberPtr4(
+!     const RelationMemberPtr4&lt;C, Target, R1, R2, R3, R4&gt; &amp;model)
+    : obj_m(model.obj_m), f_m(model.f_m)
+    { }
+    RelationMemberPtr4(
+!     const RelationMemberPtr4&lt;C, Target, R1, R2, R3, R4&gt; &amp;init, const Target &amp;)
+    : obj_m(init.obj_m), f_m(init.f_m) 
+    { }
+      
+!   inline void operator()(const Target &amp;l, const R1 &amp;r1, const R2 &amp;r2, 
+      const R3 &amp;r3, const R4 &amp;r4)
+    {
+      (obj_m.*f_m)(l, r1, r2, r3, r4);
+*************** public:
+*** 910,938 ****
+  private:
+  
+    C obj_m;
+!   void (C::*f_m)(const L &amp;, const R1 &amp;, const R2 &amp;, 
+      const R3 &amp;, const R4 &amp;);
+  };
+  
+! template&lt;class C, class L, 
+    class R1, class R2, class R3, class R4, class R5&gt;
+  class RelationMemberPtr5 {
+  public:
+  
+!   RelationMemberPtr5(const C &amp;obj, void (C::*f)(const L &amp;, 
+      const R1 &amp;, const R2 &amp;, const R3 &amp;, const R4 &amp;, const R5 &amp;)) 
+    : obj_m(obj), f_m(f) 
+    { }
+    RelationMemberPtr5(
+!     const RelationMemberPtr5&lt;C, L, R1, R2, R3, R4, R5&gt; &amp;model)
+    : obj_m(model.obj_m), f_m(model.f_m)
+    { }
+    RelationMemberPtr5(
+!     const RelationMemberPtr5&lt;C, L, R1, R2, R3, R4, R5&gt; &amp;init, const L &amp;)
+    : obj_m(init.obj_m), f_m(init.f_m) 
+    { }
+      
+!   inline void operator()(const L &amp;l, const R1 &amp;r1, const R2 &amp;r2, 
+      const R3 &amp;r3, const R4 &amp;r4, const R5 &amp;r5)
+    {
+      (obj_m.*f_m)(l, r1, r2, r3, r4, r5);
+--- 913,941 ----
+  private:
+  
+    C obj_m;
+!   void (C::*f_m)(const Target &amp;, const R1 &amp;, const R2 &amp;, 
+      const R3 &amp;, const R4 &amp;);
+  };
+  
+! template&lt;class C, class Target, 
+    class R1, class R2, class R3, class R4, class R5&gt;
+  class RelationMemberPtr5 {
+  public:
+  
+!   RelationMemberPtr5(const C &amp;obj, void (C::*f)(const Target &amp;, 
+      const R1 &amp;, const R2 &amp;, const R3 &amp;, const R4 &amp;, const R5 &amp;)) 
+    : obj_m(obj), f_m(f) 
+    { }
+    RelationMemberPtr5(
+!     const RelationMemberPtr5&lt;C, Target, R1, R2, R3, R4, R5&gt; &amp;model)
+    : obj_m(model.obj_m), f_m(model.f_m)
+    { }
+    RelationMemberPtr5(
+!     const RelationMemberPtr5&lt;C, Target, R1, R2, R3, R4, R5&gt; &amp;init, const Target &amp;)
+    : obj_m(init.obj_m), f_m(init.f_m) 
+    { }
+      
+!   inline void operator()(const Target &amp;l, const R1 &amp;r1, const R2 &amp;r2, 
+      const R3 &amp;r3, const R4 &amp;r4, const R5 &amp;r5)
+    {
+      (obj_m.*f_m)(l, r1, r2, r3, r4, r5);
+*************** public:
+*** 941,969 ****
+  private:
+  
+    C obj_m;
+!   void (C::*f_m)(const L &amp;, const R1 &amp;, const R2 &amp;, 
+      const R3 &amp;, const R4 &amp;, const R5 &amp;);
+  };
+  
+! template&lt;class C, class L, 
+    class R1, class R2, class R3, class R4, class R5, class R6&gt;
+  class RelationMemberPtr6 {
+  public:
+  
+!   RelationMemberPtr6(const C &amp;obj, void (C::*f)(const L &amp;, 
+      const R1 &amp;, const R2 &amp;, const R3 &amp;, const R4 &amp;, const R5 &amp;, const R6 &amp;)) 
+    : obj_m(obj), f_m(f) 
+    { }
+    RelationMemberPtr6(
+!     const RelationMemberPtr6&lt;C, L, R1, R2, R3, R4, R5, R6&gt; &amp;model)
+    : obj_m(model.obj_m), f_m(model.f_m)
+    { }
+    RelationMemberPtr6(
+!     const RelationMemberPtr6&lt;C, L, R1, R2, R3, R4, R5, R6&gt; &amp;init, const L &amp;)
+    : obj_m(init.obj_m), f_m(init.f_m) 
+    { }
+      
+!   inline void operator()(const L &amp;l, const R1 &amp;r1, const R2 &amp;r2, 
+      const R3 &amp;r3, const R4 &amp;r4, const R5 &amp;r5, const R6 &amp;r6)
+    {
+      (obj_m.*f_m)(l, r1, r2, r3, r4, r5, r6);
+--- 944,972 ----
+  private:
+  
+    C obj_m;
+!   void (C::*f_m)(const Target &amp;, const R1 &amp;, const R2 &amp;, 
+      const R3 &amp;, const R4 &amp;, const R5 &amp;);
+  };
+  
+! template&lt;class C, class Target, 
+    class R1, class R2, class R3, class R4, class R5, class R6&gt;
+  class RelationMemberPtr6 {
+  public:
+  
+!   RelationMemberPtr6(const C &amp;obj, void (C::*f)(const Target &amp;, 
+      const R1 &amp;, const R2 &amp;, const R3 &amp;, const R4 &amp;, const R5 &amp;, const R6 &amp;)) 
+    : obj_m(obj), f_m(f) 
+    { }
+    RelationMemberPtr6(
+!     const RelationMemberPtr6&lt;C, Target, R1, R2, R3, R4, R5, R6&gt; &amp;model)
+    : obj_m(model.obj_m), f_m(model.f_m)
+    { }
+    RelationMemberPtr6(
+!     const RelationMemberPtr6&lt;C, Target, R1, R2, R3, R4, R5, R6&gt; &amp;init, const Target &amp;)
+    : obj_m(init.obj_m), f_m(init.f_m) 
+    { }
+      
+!   inline void operator()(const Target &amp;l, const R1 &amp;r1, const R2 &amp;r2, 
+      const R3 &amp;r3, const R4 &amp;r4, const R5 &amp;r5, const R6 &amp;r6)
+    {
+      (obj_m.*f_m)(l, r1, r2, r3, r4, r5, r6);
+*************** public:
+*** 972,978 ****
+  private:
+  
+    C obj_m;
+!   void (C::*f_m)(const L &amp;, const R1 &amp;, const R2 &amp;, 
+      const R3 &amp;, const R4 &amp;, const R5 &amp;, const R6 &amp;);
+  };
+        
+--- 975,981 ----
+  private:
+  
+    C obj_m;
+!   void (C::*f_m)(const Target &amp;, const R1 &amp;, const R2 &amp;, 
+      const R3 &amp;, const R4 &amp;, const R5 &amp;, const R6 &amp;);
+  };
+        
+*************** namespace Pooma {
+*** 999,1049 ****
+    //---------------------------------------------------------------------------
+    // Functor versions
+    
+!   template&lt;class RelationFunctor, class L&gt;
+!   void newRelation(const RelationFunctor &amp;f, const L &amp;l)
+    {
+      for (int m = 0; m &lt; l.numMaterials(); ++m)
+        {
+          for (int c = 0; c &lt; l.centeringSize(); ++c)
+            {
+!             const L &amp;lsub = l.subField(m, c);
+!             RelationListItem *r = new Relation0&lt;L, RelationFunctor&gt;(lsub, f);
+              r-&gt;setPriority(RelationFunctorTraits&lt;RelationFunctor&gt;::defaultPriority);
+              lsub.addRelation(r);
+            }
+        }
+    }
+    
+!   template&lt;class RelationFunctor, class L, class R1&gt;
+!   void newRelation(const RelationFunctor &amp;f, const L &amp;l, 
+                     const R1 &amp;r1)
+    {
+      for (int m = 0; m &lt; l.numMaterials(); ++m)
+        {
+          for (int c = 0; c &lt; l.centeringSize(); ++c)
+            {
+!             const L &amp;lsub = l.subField(m, c);
+              const R1 &amp;r1sub = r1.subField(m, c);
+              
+              r1sub.addRelation(new InfluenceRelation(lsub));
+    
+              RelationListItem *r = new 
+!               Relation1&lt;L, R1, RelationFunctor&gt;
+                  (lsub, r1sub, f);
+              lsub.addRelation(r);
+            }
+        }
+    }
+    
+!   template&lt;class RelationFunctor, class L, class R1, class R2&gt;
+!   void newRelation(const RelationFunctor &amp;f, const L &amp;l, 
+                     const R1 &amp;r1, const R2 &amp;r2)
+    {
+      for (int m = 0; m &lt; l.numMaterials(); ++m)
+        {
+          for (int c = 0; c &lt; l.centeringSize(); ++c)
+            {
+!             const L &amp;lsub = l.subField(m, c);
+              const R1 &amp;r1sub = r1.subField(m, c);
+              const R2 &amp;r2sub = r2.subField(m, c);
+              
+--- 1002,1052 ----
+    //---------------------------------------------------------------------------
+    // Functor versions
+    
+!   template&lt;class RelationFunctor, class Target&gt;
+!   void newRelation(const RelationFunctor &amp;f, const Target &amp;l)
+    {
+      for (int m = 0; m &lt; l.numMaterials(); ++m)
+        {
+          for (int c = 0; c &lt; l.centeringSize(); ++c)
+            {
+!             const Target &amp;lsub = l.subField(m, c);
+!             RelationListItem *r = new Relation0&lt;Target, RelationFunctor&gt;(lsub, f);
+              r-&gt;setPriority(RelationFunctorTraits&lt;RelationFunctor&gt;::defaultPriority);
+              lsub.addRelation(r);
+            }
+        }
+    }
+    
+!   template&lt;class RelationFunctor, class Target, class R1&gt;
+!   void newRelation(const RelationFunctor &amp;f, const Target &amp;l, 
+                     const R1 &amp;r1)
+    {
+      for (int m = 0; m &lt; l.numMaterials(); ++m)
+        {
+          for (int c = 0; c &lt; l.centeringSize(); ++c)
+            {
+!             const Target &amp;lsub = l.subField(m, c);
+              const R1 &amp;r1sub = r1.subField(m, c);
+              
+              r1sub.addRelation(new InfluenceRelation(lsub));
+    
+              RelationListItem *r = new 
+!               Relation1&lt;Target, R1, RelationFunctor&gt;
+                  (lsub, r1sub, f);
+              lsub.addRelation(r);
+            }
+        }
+    }
+    
+!   template&lt;class RelationFunctor, class Target, class R1, class R2&gt;
+!   void newRelation(const RelationFunctor &amp;f, const Target &amp;l, 
+                     const R1 &amp;r1, const R2 &amp;r2)
+    {
+      for (int m = 0; m &lt; l.numMaterials(); ++m)
+        {
+          for (int c = 0; c &lt; l.centeringSize(); ++c)
+            {
+!             const Target &amp;lsub = l.subField(m, c);
+              const R1 &amp;r1sub = r1.subField(m, c);
+              const R2 &amp;r2sub = r2.subField(m, c);
+              
+*************** namespace Pooma {
+*** 1051,1071 ****
+              r2sub.addRelation(new InfluenceRelation(lsub));
+    
+              RelationListItem *r = 
+!               new Relation2&lt;L, R1, R2, RelationFunctor&gt;(lsub, r1sub, r2sub, f);
+              lsub.addRelation(r);
+            }
+        }
+    }
+    
+!   template&lt;class RelationFunctor, class L, class R1, class R2, class R3&gt;
+!   void newRelation(const RelationFunctor &amp;f, const L &amp;l, 
+                     const R1 &amp;r1, const R2 &amp;r2, const R3 &amp;r3)
+    {
+      for (int m = 0; m &lt; l.numMaterials(); ++m)
+        {
+          for (int c = 0; c &lt; l.centeringSize(); ++c)
+            {
+!             const L &amp;lsub = l.subField(m, c);
+              const R1 &amp;r1sub = r1.subField(m, c);
+              const R2 &amp;r2sub = r2.subField(m, c);
+              const R3 &amp;r3sub = r3.subField(m, c);
+--- 1054,1074 ----
+              r2sub.addRelation(new InfluenceRelation(lsub));
+    
+              RelationListItem *r = 
+!               new Relation2&lt;Target, R1, R2, RelationFunctor&gt;(lsub, r1sub, r2sub, f);
+              lsub.addRelation(r);
+            }
+        }
+    }
+    
+!   template&lt;class RelationFunctor, class Target, class R1, class R2, class R3&gt;
+!   void newRelation(const RelationFunctor &amp;f, const Target &amp;l, 
+                     const R1 &amp;r1, const R2 &amp;r2, const R3 &amp;r3)
+    {
+      for (int m = 0; m &lt; l.numMaterials(); ++m)
+        {
+          for (int c = 0; c &lt; l.centeringSize(); ++c)
+            {
+!             const Target &amp;lsub = l.subField(m, c);
+              const R1 &amp;r1sub = r1.subField(m, c);
+              const R2 &amp;r2sub = r2.subField(m, c);
+              const R3 &amp;r3sub = r3.subField(m, c);
+*************** namespace Pooma {
+*** 1075,1090 ****
+              r3sub.addRelation(new InfluenceRelation(lsub));
+    
+              RelationListItem *r = new 
+!               Relation3&lt;L, R1, R2, R3, RelationFunctor&gt;
+                  (lsub, r1sub, r2sub, r3sub, f);
+              lsub.addRelation(r);
+            }
+        }
+    }
+    
+!   template&lt;class RelationFunctor, class L, class R1, class R2, class R3,
+      class R4&gt;
+!   void newRelation(const RelationFunctor &amp;f, const L &amp;l, 
+                     const R1 &amp;r1, const R2 &amp;r2, 
+                     const R3 &amp;r3, const R4 &amp;r4)
+    {
+--- 1078,1093 ----
+              r3sub.addRelation(new InfluenceRelation(lsub));
+    
+              RelationListItem *r = new 
+!               Relation3&lt;Target, R1, R2, R3, RelationFunctor&gt;
+                  (lsub, r1sub, r2sub, r3sub, f);
+              lsub.addRelation(r);
+            }
+        }
+    }
+    
+!   template&lt;class RelationFunctor, class Target, class R1, class R2, class R3,
+      class R4&gt;
+!   void newRelation(const RelationFunctor &amp;f, const Target &amp;l, 
+                     const R1 &amp;r1, const R2 &amp;r2, 
+                     const R3 &amp;r3, const R4 &amp;r4)
+    {
+*************** namespace Pooma {
+*** 1092,1098 ****
+        {
+          for (int c = 0; c &lt; l.centeringSize(); ++c)
+            {
+!             const L &amp;lsub = l.subField(m, c);
+              const R1 &amp;r1sub = r1.subField(m, c);
+              const R2 &amp;r2sub = r2.subField(m, c);
+              const R3 &amp;r3sub = r3.subField(m, c);
+--- 1095,1101 ----
+        {
+          for (int c = 0; c &lt; l.centeringSize(); ++c)
+            {
+!             const Target &amp;lsub = l.subField(m, c);
+              const R1 &amp;r1sub = r1.subField(m, c);
+              const R2 &amp;r2sub = r2.subField(m, c);
+              const R3 &amp;r3sub = r3.subField(m, c);
+*************** namespace Pooma {
+*** 1104,1119 ****
+              r4sub.addRelation(new InfluenceRelation(lsub));
+    
+              RelationListItem *r = new 
+!               Relation4&lt;L, R1, R2, R3, R4, RelationFunctor&gt;
+                  (lsub, r1sub, r2sub, r3sub, r4sub, f);
+              lsub.addRelation(r);
+            }
+        }
+    }
+    
+!   template&lt;class RelationFunctor, class L, class R1, class R2, class R3,
+      class R4, class R5&gt;
+!   void newRelation(const RelationFunctor &amp;f, const L &amp;l, 
+                     const R1 &amp;r1, const R2 &amp;r2, 
+                     const R3 &amp;r3, const R4 &amp;r4, const R5 &amp;r5)
+    {
+--- 1107,1122 ----
+              r4sub.addRelation(new InfluenceRelation(lsub));
+    
+              RelationListItem *r = new 
+!               Relation4&lt;Target, R1, R2, R3, R4, RelationFunctor&gt;
+                  (lsub, r1sub, r2sub, r3sub, r4sub, f);
+              lsub.addRelation(r);
+            }
+        }
+    }
+    
+!   template&lt;class RelationFunctor, class Target, class R1, class R2, class R3,
+      class R4, class R5&gt;
+!   void newRelation(const RelationFunctor &amp;f, const Target &amp;l, 
+                     const R1 &amp;r1, const R2 &amp;r2, 
+                     const R3 &amp;r3, const R4 &amp;r4, const R5 &amp;r5)
+    {
+*************** namespace Pooma {
+*** 1121,1127 ****
+        {
+          for (int c = 0; c &lt; l.centeringSize(); ++c)
+            {
+!             const L &amp;lsub = l.subField(m, c);
+              const R1 &amp;r1sub = r1.subField(m, c);
+              const R2 &amp;r2sub = r2.subField(m, c);
+              const R3 &amp;r3sub = r3.subField(m, c);
+--- 1124,1130 ----
+        {
+          for (int c = 0; c &lt; l.centeringSize(); ++c)
+            {
+!             const Target &amp;lsub = l.subField(m, c);
+              const R1 &amp;r1sub = r1.subField(m, c);
+              const R2 &amp;r2sub = r2.subField(m, c);
+              const R3 &amp;r3sub = r3.subField(m, c);
+*************** namespace Pooma {
+*** 1135,1150 ****
+              r5sub.addRelation(new InfluenceRelation(lsub));
+    
+              RelationListItem *r = new 
+!               Relation5&lt;L, R1, R2, R3, R4, R5, RelationFunctor&gt;
+                  (lsub, r1sub, r2sub, r3sub, r4sub, r5sub, f);
+              lsub.addRelation(r);
+            }
+        }
+    }
+    
+!   template&lt;class RelationFunctor, class L, class R1, class R2, class R3,
+      class R4, class R5, class R6&gt;
+!   void newRelation(const RelationFunctor &amp;f, const L &amp;l, 
+                     const R1 &amp;r1, const R2 &amp;r2, 
+                     const R3 &amp;r3, const R4 &amp;r4, const R5 &amp;r5, const R6 &amp;r6)
+    {
+--- 1138,1153 ----
+              r5sub.addRelation(new InfluenceRelation(lsub));
+    
+              RelationListItem *r = new 
+!               Relation5&lt;Target, R1, R2, R3, R4, R5, RelationFunctor&gt;
+                  (lsub, r1sub, r2sub, r3sub, r4sub, r5sub, f);
+              lsub.addRelation(r);
+            }
+        }
+    }
+    
+!   template&lt;class RelationFunctor, class Target, class R1, class R2, class R3,
+      class R4, class R5, class R6&gt;
+!   void newRelation(const RelationFunctor &amp;f, const Target &amp;l, 
+                     const R1 &amp;r1, const R2 &amp;r2, 
+                     const R3 &amp;r3, const R4 &amp;r4, const R5 &amp;r5, const R6 &amp;r6)
+    {
+*************** namespace Pooma {
+*** 1152,1158 ****
+        {
+          for (int c = 0; c &lt; l.centeringSize(); ++c)
+            {
+!             const L &amp;lsub = l.subField(m, c);
+              const R1 &amp;r1sub = r1.subField(m, c);
+              const R2 &amp;r2sub = r2.subField(m, c);
+              const R3 &amp;r3sub = r3.subField(m, c);
+--- 1155,1161 ----
+        {
+          for (int c = 0; c &lt; l.centeringSize(); ++c)
+            {
+!             const Target &amp;lsub = l.subField(m, c);
+              const R1 &amp;r1sub = r1.subField(m, c);
+              const R2 &amp;r2sub = r2.subField(m, c);
+              const R3 &amp;r3sub = r3.subField(m, c);
+*************** namespace Pooma {
+*** 1168,1174 ****
+              r6sub.addRelation(new InfluenceRelation(lsub));
+    
+              RelationListItem *r = new 
+!               Relation6&lt;L, R1, R2, R3, R4, R5, R6, RelationFunctor&gt;
+                  (lsub, r1sub, r2sub, r3sub, r4sub, r5sub, r6sub, f);
+              lsub.addRelation(r);
+            }
+--- 1171,1177 ----
+              r6sub.addRelation(new InfluenceRelation(lsub));
+    
+              RelationListItem *r = new 
+!               Relation6&lt;Target, R1, R2, R3, R4, R5, R6, RelationFunctor&gt;
+                  (lsub, r1sub, r2sub, r3sub, r4sub, r5sub, r6sub, f);
+              lsub.addRelation(r);
+            }
+*************** namespace Pooma {
+*** 1178,1297 ****
+    //---------------------------------------------------------------------------
+    // Function pointer versions
+    
+!   template&lt;class L&gt;
+!   RelationFunctionPtr0&lt;L&gt; 
+!   functionPtr(void (*f)(const L &amp;))
+    {
+!     return RelationFunctionPtr0&lt;L&gt;(f);
+    }
+    
+!   template&lt;class L, class R1&gt;
+!   RelationFunctionPtr1&lt;L, R1&gt; 
+!   functionPtr(void (*f)(const L &amp;, const R1 &amp;))
+    {
+!     return RelationFunctionPtr1&lt;L, R1&gt;(f);
+    }
+    
+!   template&lt;class L, class R1, class R2&gt;
+!   RelationFunctionPtr2&lt;L, R1, R2&gt;
+!   functionPtr(void (*f)(const L &amp;, const R1 &amp;, const R2 &amp;))
+    {
+!     return RelationFunctionPtr2&lt;L, R1, R2&gt;(f);
+    }
+    
+!   template&lt;class L, class R1, class R2, class R3&gt;
+!   RelationFunctionPtr3&lt;L, R1, R2, R3&gt;
+!   functionPtr(void (*f)(const L &amp;, const R1 &amp;, const R2 &amp;, const R3 &amp;))
+    {
+!     return RelationFunctionPtr3&lt;L, R1, R2, R3&gt;(f);
+    }
+     
+!   template&lt;class L, class R1, class R2, class R3, class R4&gt;
+!   RelationFunctionPtr4&lt;L, R1, R2, R3, R4&gt;
+!   functionPtr(void (*f)(const L &amp;, const R1 &amp;, const R2 &amp;, const R3 &amp;, 
+      const R4 &amp;r4))
+    {
+!     return RelationFunctionPtr4&lt;L, R1, R2, R3, R4&gt;(f);
+    }
+   
+!   template&lt;class L, class R1, class R2, class R3,
+      class R4, class R5&gt;
+!   RelationFunctionPtr5&lt;L, R1, R2, R3, R4, R5&gt;
+!   functionPtr(void (*f)(const L &amp;, const R1 &amp;, const R2 &amp;, const R3 &amp;, 
+      const R4 &amp;r4, const R5 &amp;r5))
+    {
+!     return RelationFunctionPtr5&lt;L, R1, R2, R3, R4, R5&gt;(f);
+    }
+    
+!   template&lt;class L, class R1, class R2, class R3,
+      class R4, class R5, class R6&gt;
+!   RelationFunctionPtr6&lt;L, R1, R2, R3, R4, R5, R6&gt;
+!   functionPtr(void (*f)(const L &amp;, const R1 &amp;, const R2 &amp;, const R3 &amp;, 
+      const R4 &amp;r4, const R5 &amp;r5, const R6 &amp;r6))
+    {
+!     return RelationFunctionPtr6&lt;L, R1, R2, R3, R4, R5, R6&gt;(f);
+    }
+  
+    //---------------------------------------------------------------------------
+    // Member function pointer versions
+    
+!   template&lt;class C, class L&gt;
+!   RelationMemberPtr0&lt;C, L&gt; 
+!   memberPtr(const C &amp;obj, void (C::*f)(const L &amp;))
+    {
+!     return RelationMemberPtr0&lt;C, L&gt;(obj, f);
+    }
+    
+!   template&lt;class C, class L, class R1&gt;
+!   RelationMemberPtr1&lt;C, L, R1&gt; 
+!   memberPtr(const C &amp;obj, void (C::*f)(const L &amp;, const R1 &amp;))
+    {
+!     return RelationMemberPtr1&lt;C, L, R1&gt;(obj, f);
+    }
+    
+!   template&lt;class C, class L, class R1, class R2&gt;
+!   RelationMemberPtr2&lt;C, L, R1, R2&gt; 
+!   memberPtr(const C &amp;obj,  void (C::*f)(const L &amp;, const R1 &amp;, const R2 &amp;))
+    {
+!     return RelationMemberPtr2&lt;C, L, R1, R2&gt;(obj, f);
+    }
+    
+!   template&lt;class C, class L, class R1, class R2, class R3&gt;
+!   RelationMemberPtr3&lt;C, L, R1, R2, R3&gt; 
+    memberPtr(const C &amp;obj, 
+!     void (C::*f)(const L &amp;, const R1 &amp;, const R2 &amp;, const R3 &amp;))
+    {
+!     return RelationMemberPtr3&lt;C, L, R1, R2, R3&gt;(obj, f);
+    }
+    
+!   template&lt;class C, class L, class R1, class R2, class R3,
+      class R4&gt;
+!   RelationMemberPtr4&lt;C, L, R1, R2, R3, R4&gt; 
+    memberPtr(const C &amp;obj, 
+!     void (C::*f)(const L &amp;, const R1 &amp;, const R2 &amp;, const R3 &amp;, 
+      const R4 &amp;r4))
+    {
+!     return RelationMemberPtr4&lt;C, L, R1, R2, R3, R4&gt;(obj, f);
+    }
+    
+!   template&lt;class C, class L, class R1, class R2, class R3,
+      class R4, class R5&gt;
+!   RelationMemberPtr5&lt;C, L, R1, R2, R3, R4, R5&gt; 
+    memberPtr(const C &amp;obj, 
+!     void (C::*f)(const L &amp;, const R1 &amp;, const R2 &amp;, const R3 &amp;, 
+      const R4 &amp;r4, const R5 &amp;r5))
+    {
+!     return RelationMemberPtr5&lt;C, L, R1, R2, R3, R4, R5&gt;(obj, f);
+    }
+    
+!   template&lt;class C, class L, class R1, class R2, class R3,
+      class R4, class R5, class R6&gt;
+!   RelationMemberPtr6&lt;C, L, R1, R2, R3, R4, R5, R6&gt; 
+    memberPtr(const C &amp;obj, 
+!     void (C::*f)(const L &amp;, const R1 &amp;, const R2 &amp;, const R3 &amp;, 
+      const R4 &amp;r4, const R5 &amp;r5, const R6 &amp;r6))
+    {
+!     return RelationMemberPtr6&lt;C, L, R1, R2, R3, R4, R5, R6&gt;(obj, f);
+    }
+    
+  } // namespace Pooma
+--- 1181,1300 ----
+    //---------------------------------------------------------------------------
+    // Function pointer versions
+    
+!   template&lt;class Target&gt;
+!   RelationFunctionPtr0&lt;Target&gt; 
+!   functionPtr(void (*f)(const Target &amp;))
+    {
+!     return RelationFunctionPtr0&lt;Target&gt;(f);
+    }
+    
+!   template&lt;class Target, class R1&gt;
+!   RelationFunctionPtr1&lt;Target, R1&gt; 
+!   functionPtr(void (*f)(const Target &amp;, const R1 &amp;))
+    {
+!     return RelationFunctionPtr1&lt;Target, R1&gt;(f);
+    }
+    
+!   template&lt;class Target, class R1, class R2&gt;
+!   RelationFunctionPtr2&lt;Target, R1, R2&gt;
+!   functionPtr(void (*f)(const Target &amp;, const R1 &amp;, const R2 &amp;))
+    {
+!     return RelationFunctionPtr2&lt;Target, R1, R2&gt;(f);
+    }
+    
+!   template&lt;class Target, class R1, class R2, class R3&gt;
+!   RelationFunctionPtr3&lt;Target, R1, R2, R3&gt;
+!   functionPtr(void (*f)(const Target &amp;, const R1 &amp;, const R2 &amp;, const R3 &amp;))
+    {
+!     return RelationFunctionPtr3&lt;Target, R1, R2, R3&gt;(f);
+    }
+     
+!   template&lt;class Target, class R1, class R2, class R3, class R4&gt;
+!   RelationFunctionPtr4&lt;Target, R1, R2, R3, R4&gt;
+!   functionPtr(void (*f)(const Target &amp;, const R1 &amp;, const R2 &amp;, const R3 &amp;, 
+      const R4 &amp;r4))
+    {
+!     return RelationFunctionPtr4&lt;Target, R1, R2, R3, R4&gt;(f);
+    }
+   
+!   template&lt;class Target, class R1, class R2, class R3,
+      class R4, class R5&gt;
+!   RelationFunctionPtr5&lt;Target, R1, R2, R3, R4, R5&gt;
+!   functionPtr(void (*f)(const Target &amp;, const R1 &amp;, const R2 &amp;, const R3 &amp;, 
+      const R4 &amp;r4, const R5 &amp;r5))
+    {
+!     return RelationFunctionPtr5&lt;Target, R1, R2, R3, R4, R5&gt;(f);
+    }
+    
+!   template&lt;class Target, class R1, class R2, class R3,
+      class R4, class R5, class R6&gt;
+!   RelationFunctionPtr6&lt;Target, R1, R2, R3, R4, R5, R6&gt;
+!   functionPtr(void (*f)(const Target &amp;, const R1 &amp;, const R2 &amp;, const R3 &amp;, 
+      const R4 &amp;r4, const R5 &amp;r5, const R6 &amp;r6))
+    {
+!     return RelationFunctionPtr6&lt;Target, R1, R2, R3, R4, R5, R6&gt;(f);
+    }
+  
+    //---------------------------------------------------------------------------
+    // Member function pointer versions
+    
+!   template&lt;class C, class Target&gt;
+!   RelationMemberPtr0&lt;C, Target&gt; 
+!   memberPtr(const C &amp;obj, void (C::*f)(const Target &amp;))
+    {
+!     return RelationMemberPtr0&lt;C, Target&gt;(obj, f);
+    }
+    
+!   template&lt;class C, class Target, class R1&gt;
+!   RelationMemberPtr1&lt;C, Target, R1&gt; 
+!   memberPtr(const C &amp;obj, void (C::*f)(const Target &amp;, const R1 &amp;))
+    {
+!     return RelationMemberPtr1&lt;C, Target, R1&gt;(obj, f);
+    }
+    
+!   template&lt;class C, class Target, class R1, class R2&gt;
+!   RelationMemberPtr2&lt;C, Target, R1, R2&gt; 
+!   memberPtr(const C &amp;obj,  void (C::*f)(const Target &amp;, const R1 &amp;, const R2 &amp;))
+    {
+!     return RelationMemberPtr2&lt;C, Target, R1, R2&gt;(obj, f);
+    }
+    
+!   template&lt;class C, class Target, class R1, class R2, class R3&gt;
+!   RelationMemberPtr3&lt;C, Target, R1, R2, R3&gt; 
+    memberPtr(const C &amp;obj, 
+!     void (C::*f)(const Target &amp;, const R1 &amp;, const R2 &amp;, const R3 &amp;))
+    {
+!     return RelationMemberPtr3&lt;C, Target, R1, R2, R3&gt;(obj, f);
+    }
+    
+!   template&lt;class C, class Target, class R1, class R2, class R3,
+      class R4&gt;
+!   RelationMemberPtr4&lt;C, Target, R1, R2, R3, R4&gt; 
+    memberPtr(const C &amp;obj, 
+!     void (C::*f)(const Target &amp;, const R1 &amp;, const R2 &amp;, const R3 &amp;, 
+      const R4 &amp;r4))
+    {
+!     return RelationMemberPtr4&lt;C, Target, R1, R2, R3, R4&gt;(obj, f);
+    }
+    
+!   template&lt;class C, class Target, class R1, class R2, class R3,
+      class R4, class R5&gt;
+!   RelationMemberPtr5&lt;C, Target, R1, R2, R3, R4, R5&gt; 
+    memberPtr(const C &amp;obj, 
+!     void (C::*f)(const Target &amp;, const R1 &amp;, const R2 &amp;, const R3 &amp;, 
+      const R4 &amp;r4, const R5 &amp;r5))
+    {
+!     return RelationMemberPtr5&lt;C, Target, R1, R2, R3, R4, R5&gt;(obj, f);
+    }
+    
+!   template&lt;class C, class Target, class R1, class R2, class R3,
+      class R4, class R5, class R6&gt;
+!   RelationMemberPtr6&lt;C, Target, R1, R2, R3, R4, R5, R6&gt; 
+    memberPtr(const C &amp;obj, 
+!     void (C::*f)(const Target &amp;, const R1 &amp;, const R2 &amp;, const R3 &amp;, 
+      const R4 &amp;r4, const R5 &amp;r5, const R6 &amp;r6))
+    {
+!     return RelationMemberPtr6&lt;C, Target, R1, R2, R3, R4, R5, R6&gt;(obj, f);
+    }
+    
+  } // namespace Pooma
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000929.html">[pooma-dev] Is Default Constructable really required?
+</A></li>
+	<LI>Next message: <A HREF="000930.html">MakeOwnCopy problem
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#932">[ date ]</a>
+              <a href="thread.html#932">[ thread ]</a>
+              <a href="subject.html#932">[ subject ]</a>
+              <a href="author.html#932">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

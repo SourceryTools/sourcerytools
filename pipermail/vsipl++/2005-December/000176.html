@@ -1,0 +1,91 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [patch] fix for outer product when using BLAS (issue #95)
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bpatch%5D%20fix%20for%20outer%20product%20when%20using%20BLAS%20%28issue%20%2395%29&In-Reply-To=%3C439495D9.50904%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000175.html">
+   <LINK REL="Next"  HREF="000178.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[patch] fix for outer product when using BLAS (issue #95)</H1>
+    <B>Jules Bergmann</B> 
+    <A HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bpatch%5D%20fix%20for%20outer%20product%20when%20using%20BLAS%20%28issue%20%2395%29&In-Reply-To=%3C439495D9.50904%40codesourcery.com%3E"
+       TITLE="[patch] fix for outer product when using BLAS (issue #95)">jules at codesourcery.com
+       </A><BR>
+    <I>Mon Dec  5 19:32:41 UTC 2005</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000175.html">[patch] Update parallel support functions to match spec.
+</A></li>
+        <LI>Next message: <A HREF="000178.html">[vsipl++] [patch] fix for outer product when using BLAS (issue #95)
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#176">[ date ]</a>
+              <a href="thread.html#176">[ thread ]</a>
+              <a href="subject.html#176">[ subject ]</a>
+              <a href="author.html#176">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Don,
+
+This patch changes how complex outer products using BLAS to compute a 
+row-major matrix are done.
+
+The current implementation modifies one of the input vectors to perform 
+conjugation.  This causes the wrong results if the two input vectors 
+overlap.  Since it is possible for input vectors to overlap even if they 
+aren't the same vector (for example, a row and column from a matrix), we 
+can't make this safe by checking that the pointers are different.
+
+The patch changes the outer implementation to modify the output matrix 
+instead.  Alas, this is more costly -- O(n^2) vs O(n), which is why we 
+didn't do it this way to begin with -- but safe.
+
+As I type this email, another solution comes to mind that would allow us 
+to safely check between the original version and the new version.  We
+could do some modulo arithmetic to check for overlap (i.e. solve A_ptr + 
+i * A_stride == B_ptr + j * B_stride for a solution i, j where i &lt; 
+A_size and j &lt; B_size).
+
+I think the safe thing to do is go with this patch for correctness, and 
+then perform the more complex modulo arithmetic check as an optimization.
+
+OK to commit?
+
+					-- Jules
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: 95.diff
+URL: &lt;<A HREF="http://sourcerytools.com/pipermail/vsipl++/attachments/20051205/5827b8b3/attachment.ksh">http://sourcerytools.com/pipermail/vsipl++/attachments/20051205/5827b8b3/attachment.ksh</A>&gt;
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000175.html">[patch] Update parallel support functions to match spec.
+</A></li>
+	<LI>Next message: <A HREF="000178.html">[vsipl++] [patch] fix for outer product when using BLAS (issue #95)
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#176">[ date ]</a>
+              <a href="thread.html#176">[ thread ]</a>
+              <a href="subject.html#176">[ subject ]</a>
+              <a href="author.html#176">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">More information about the vsipl++
+mailing list</a><br>
+</body></html>

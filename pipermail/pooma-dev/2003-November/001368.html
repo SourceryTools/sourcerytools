@@ -1,0 +1,285 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [PATCH] Use new sub-field constructors, fix centering view of expression
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20Use%20new%20sub-field%20constructors%2C%20fix%20centering%20view%20of%0A%20expression&In-Reply-To=%3CPine.LNX.4.58.0311092219000.827%40goofy%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001367.html">
+   <LINK REL="Next"  HREF="001369.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[PATCH] Use new sub-field constructors, fix centering view of expression</H1>
+    <B>Richard Guenther</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20Use%20new%20sub-field%20constructors%2C%20fix%20centering%20view%20of%0A%20expression&In-Reply-To=%3CPine.LNX.4.58.0311092219000.827%40goofy%3E"
+       TITLE="[PATCH] Use new sub-field constructors, fix centering view of expression">rguenth at tat.physik.uni-tuebingen.de
+       </A><BR>
+    <I>Sun Nov  9 21:27:00 UTC 2003</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001367.html">How is FieldEngine.ExprEngine.h supposed to work?
+</A></li>
+        <LI>Next message: <A HREF="001369.html">[PATCH] fix CanonicalCentering missing pre-instantiation
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1368">[ date ]</a>
+              <a href="thread.html#1368">[ thread ]</a>
+              <a href="subject.html#1368">[ subject ]</a>
+              <a href="author.html#1368">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Hi!
+
+This patch uses the new sub-field constructors from Field::centering() and
+Field::material() fixing taking centering views of expressions like
+(a+b).center(c). It disambiguates possibly other viewing constructors also
+by constructing the expression rather than the expression engine in the
+FieldEngine&lt;,,ExpressionTag&gt; viewing constructors.
+
+I'd like to remove all unused sub-field viewing constructors as a follow
+up patch now.  Also the Field::subField() viewing method should be now
+either removed or made honouring centerings and materials, which needs
+adjusting of f.i. FieldEngine::numSubFields() to return
+materials*centerings and similar changes elsewhere.  These changes will
+kill backward compatibility for some apps - is this feasible? I think yes,
+as the current code doesnt seem to have gotten wide testing/appliance.
+
+Tested on ppc, for Field and Evaluator, including previous changes.
+
+Ok?
+
+Richard.
+
+
+2003Nov09  Richard Guenther &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">richard.guenther at uni-tuebingen.de</A>&gt;
+
+	* src/Field/FieldEngine/FieldEngine.ExprEngine.h: add sub-field
+	viewing constructors for centerings and materials. Construct
+	expression rather than engine.
+	src/Field/Field.h: use new sub-field viewing constructors for
+	centerings and materials. Adjust Field constructors accordingly.
+
+===== Field.h 1.13 vs edited =====
+--- 1.13/r2/src/Field/Field.h	Mon Oct 27 11:43:23 2003
++++ edited/Field.h	Sun Nov  9 21:35:00 2003
+@@ -184,21 +184,29 @@
+   inline static Type_t make(const Type_t &amp;s, int m, int c)
+   {
+ #if POOMA_BOUNDS_CHECK
+-    PInsist(m &gt;= 0 &amp;&amp; m &lt; s.numMaterials(),
+-            &quot;Field::subField(m, c) indexing error.&quot;);
+-    PInsist(c &gt;= 0 &amp;&amp; c &lt; s.centeringSize(),
++    PInsist(m &gt;= 0 &amp;&amp; m &lt; s.numMaterials()
++	    &amp;&amp; c &gt;= 0 &amp;&amp; c &lt; s.centeringSize(),
+             &quot;Field::subField(m, c) indexing error.&quot;);
+ #endif
+     return Type_t(s, m, c);
+   }
+
+-  inline static Type_t make(int c, const Type_t &amp;s)
++  inline static Type_t make(const Type_t &amp;s, int c, const Pooma::CenteringViewTag &amp;tag)
+   {
+ #if POOMA_BOUNDS_CHECK
+     PInsist(c &gt;= 0 &amp;&amp; c &lt; s.centeringSize(),
+-            &quot;Field::subField(m, c) indexing error.&quot;);
++            &quot;Field::center(c) indexing error.&quot;);
+ #endif
+-    return Type_t(c, s);
++    return Type_t(s, c, tag);
++  }
++
++  inline static Type_t make(const Type_t &amp;s, int m, const Pooma::MaterialViewTag &amp;tag)
++  {
++#if POOMA_BOUNDS_CHECK
++    PInsist(m &gt;= 0 &amp;&amp; m &lt; s.numMaterials(),
++            &quot;Field::material(m) indexing error.&quot;);
++#endif
++    return Type_t(s, m, tag);
+   }
+ };
+
+@@ -229,21 +237,29 @@
+   inline static Type_t make(const Subject_t &amp;s, int m, int c)
+   {
+ #if POOMA_BOUNDS_CHECK
+-    PInsist(m &gt;= 0 &amp;&amp; m &lt; s.numMaterials(),
+-            &quot;Field::subField(m, c) indexing error.&quot;);
+-    PInsist(c &gt;= 0 &amp;&amp; c &lt; s.centeringSize(),
++    PInsist(m &gt;= 0 &amp;&amp; m &lt; s.numMaterials()
++	    &amp;&amp; c &gt;= 0 &amp;&amp; c &lt; s.centeringSize(),
+             &quot;Field::subField(m, c) indexing error.&quot;);
+ #endif
+     return Type_t(s, m, c);
+   }
+
+-  inline static Type_t make(int c, const Subject_t &amp;s)
++  inline static Type_t make(const Subject_t &amp;s, int c, const Pooma::CenteringViewTag &amp;tag)
+   {
+ #if POOMA_BOUNDS_CHECK
+     PInsist(c &gt;= 0 &amp;&amp; c &lt; s.centeringSize(),
+-            &quot;Field::subField(m, c) indexing error.&quot;);
++            &quot;Field::center(c) indexing error.&quot;);
++#endif
++    return Type_t(s, c, tag);
++  }
++
++  inline static Type_t make(const Subject_t &amp;s, int m, const Pooma::MaterialViewTag &amp;tag)
++  {
++#if POOMA_BOUNDS_CHECK
++    PInsist(m &gt;= 0 &amp;&amp; m &lt; s.numMaterials(),
++            &quot;Field::material(m) indexing error.&quot;);
+ #endif
+-    return Type_t(c, s);
++    return Type_t(s, m, tag);
+   }
+ };
+
+@@ -1248,6 +1264,16 @@
+     : fieldEngine_m(c, model.fieldEngine())
+   { }
+
++  template&lt;class ET2&gt;
++  Field(const Field&lt;Mesh, T, ET2&gt; &amp;model, int c, const Pooma::CenteringViewTag &amp;tag)
++    : fieldEngine_m(model.fieldEngine(), c, tag)
++  { }
++
++  template&lt;class ET2&gt;
++  Field(const Field&lt;Mesh, T, ET2&gt; &amp;model, int m, const Pooma::MaterialViewTag &amp;tag)
++    : fieldEngine_m(model.fieldEngine(), m, tag)
++  { }
++
+   //---------------------------------------------------------------------------
+   /// Empty destructor is fine for us.
+
+@@ -1408,7 +1434,7 @@
+   center(int c) const
+   {
+     typedef SubFieldView&lt;This_t&gt; Ret_t;
+-    return Ret_t::make(c, *this);
++    return Ret_t::make(*this, c, Pooma::CenteringViewTag());
+   }
+
+   inline typename SubFieldView&lt;This_t&gt;::Type_t
+@@ -1416,7 +1442,7 @@
+   {
+     PAssert(numMaterials() &gt; 1);
+     typedef SubFieldView&lt;This_t&gt; Ret_t;
+-    return Ret_t::make(*this, m);
++    return Ret_t::make(*this, m, Pooma::MaterialViewTag());
+   }
+   //@}
+
+===== FieldEngine/FieldEngine.ExprEngine.h 1.2 vs edited =====
+--- 1.2/r2/src/Field/FieldEngine/FieldEngine.ExprEngine.h	Sun Oct 26 14:35:21 2003
++++ edited/FieldEngine/FieldEngine.ExprEngine.h	Sun Nov  9 21:23:12 2003
+@@ -53,6 +53,7 @@
+ #include &quot;Engine/ExpressionEngine.h&quot;
+ #include &quot;Layout/GuardLayers.h&quot;
+ #include &quot;Utilities/PAssert.h&quot;
++#include &quot;Field/FieldEngine/FieldEngine.h&quot;
+
+
+ //-----------------------------------------------------------------------------
+@@ -215,38 +216,59 @@
+     referenceField_m(
+       forEachRef(engine_m.expression(), FarLeftTag(), FarLeftTag()))
+     { }
+-
+-  // Sub-field view constructor. This is when we want to construct a view of
+-  // one of the subFields in our top-level list.
+-  // All these constructors take ints.  We distinguish the sub-material view
+-  // from the sub-center view by the order of the arguments.
+
+-  // Version that takes a material and centering.
++  ///@name Sub-field view constructors
++  //@{
++
++  /// This is when we want to construct a view of
++  /// one of the subFields in our top-level list from material and centering.
+
+   template&lt;class Expr2&gt;
+   FieldEngine(const FieldEngine&lt;Mesh, T, ExpressionTag&lt;Expr2&gt; &gt; &amp;model, int m, int c)
+-    : engine_m(model.engine(), m, c),
++    : engine_m(Expr(model.engine().expression(), m, c)),
+       referenceField_m(forEachRef(engine_m.expression(),
+                                   FarLeftTag(), FarLeftTag()))
+   { }
+
+-  // sub-material view.
++  /// Sub-field view for a material.
++
++  template&lt;class Expr2&gt;
++  FieldEngine(const FieldEngine&lt;Mesh, T, ExpressionTag&lt;Expr2&gt; &gt; &amp;model, int m,
++	      const Pooma::MaterialViewTag&amp; tag)
++    : engine_m(Expr(model.engine().expression(), m, tag)),
++      referenceField_m(forEachRef(engine_m.expression(),
++                                  FarLeftTag(), FarLeftTag()))
++  { }
++
++  /// Sub-field view for a centering.
+
+   template&lt;class Expr2&gt;
+-  FieldEngine(const FieldEngine&lt;Mesh, T, ExpressionTag&lt;Expr2&gt; &gt; &amp;model, const int &amp;m)
+-    : engine_m(model.engine(), m),
++  FieldEngine(const FieldEngine&lt;Mesh, T, ExpressionTag&lt;Expr2&gt; &gt; &amp;model, int c,
++	      const Pooma::CenteringViewTag&amp; tag)
++    : engine_m(Expr(model.engine().expression(), c, tag)),
+       referenceField_m(forEachRef(engine_m.expression(),
+                                   FarLeftTag(), FarLeftTag()))
+   { }
+
+-  // sub-center view.
++  /// sub-material view. Deprecated.
++
++  template&lt;class Expr2&gt;
++  FieldEngine(const FieldEngine&lt;Mesh, T, ExpressionTag&lt;Expr2&gt; &gt; &amp;model, int m)
++    : engine_m(Expr(model.engine().expression, m)),
++      referenceField_m(forEachRef(engine_m.expression(),
++                                  FarLeftTag(), FarLeftTag()))
++  { }
++
++  /// sub-center view. Deprecated.
+
+   template&lt;class Expr2&gt;
+   FieldEngine(int c, const FieldEngine&lt;Mesh, T, ExpressionTag&lt;Expr2&gt; &gt; &amp;model)
+-    : engine_m(c, model.engine()),
++    : engine_m(Expr(c, model.engine().expression())),
+       referenceField_m(forEachRef(engine_m.expression(),
+                                   FarLeftTag(), FarLeftTag()))
+   { }
++
++  //@}
+
+   // Very important! Copy constructor is needed so that referenceField_m
+   // doesn't refer to someone else's expression.
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001367.html">How is FieldEngine.ExprEngine.h supposed to work?
+</A></li>
+	<LI>Next message: <A HREF="001369.html">[PATCH] fix CanonicalCentering missing pre-instantiation
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1368">[ date ]</a>
+              <a href="thread.html#1368">[ thread ]</a>
+              <a href="subject.html#1368">[ subject ]</a>
+              <a href="author.html#1368">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

@@ -1,0 +1,1556 @@
+From mark at codesourcery.com  Thu Dec  1 06:49:34 2005
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Wed, 30 Nov 2005 22:49:34 -0800
+Subject: PATCH: Refine Host.UploadAndRun
+Message-ID: <200512010649.jB16nY6Z015359@sethra.codesourcery.com>
+
+
+When using Host.UploadAndRun, the file was left on the target system.
+Then, CompilerTest would delete it.  As a result, when running on a
+local machine, for a compiler test, the object files, but not the
+final executable would be retained after the test.  It makes no sense
+to save one and not the other, and is often convenient to have the
+executable around.
+
+So, this patch changes UploadAndRun to upload the file, run it, and
+then remove it.  (The point of removing the file is that the target
+may well have limited disk space; it's not a good idea just to leave
+the program on the target.)  Then, CompilerTest._RunExecutable doesn't
+have to call DeleteFile.  Finally, for a LocalHost, UploadAndRun is
+just Run -- because no uploading is required, and, as a result, no
+deleting.
+
+Applied. 
+
+--
+Mark Mitchell
+CodeSourcery, LLC
+mark at codesourcery.com
+
+2005-11-30  Mark Mitchell  <mark at codesourcery.com>
+
+	* qm/host.py (Host.UploadAndRun): Delete the file after running
+	it.
+	* qm/test/classes/local_host.py (LocalHost.UploadAndRun): New
+	method.
+	* qm/test/classes/compiler_test.py (CompilerTest._RunExecutable):
+	Do not delete executables after running them.
+
+Index: qm/host.py
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/host.py,v
+retrieving revision 1.1
+diff -c -5 -p -r1.1 host.py
+*** qm/host.py	13 Jun 2005 22:41:18 -0000	1.1
+--- qm/host.py	1 Dec 2005 06:42:59 -0000
+*************** class Host(Extension):
+*** 139,156 ****
+          'timeout' -- As for 'Run'.
+  
+          returns -- As for 'Run'.
+  
+          The program is uploaded to the default directory on the remote
+!         host.""" 
+          
+          self.UploadFile(path)
+!         return self.Run(os.path.join(os.path.curdir,
+!                                      os.path.basename(path)),
+!                         arguments,
+!                         environment,
+!                         timeout)
+          
+          
+      def DeleteFile(self, remote_file):
+          """Delete the 'remote_file'.
+  
+--- 139,159 ----
+          'timeout' -- As for 'Run'.
+  
+          returns -- As for 'Run'.
+  
+          The program is uploaded to the default directory on the remote
+!         host, run, and then deleted."""
+          
+          self.UploadFile(path)
+!         result = self.Run(os.path.join(os.path.curdir,
+!                                        os.path.basename(path)),
+!                           arguments,
+!                           environment,
+!                           timeout)
+!         self.DeleteFile(path)
+!         return result
+!         
+          
+          
+      def DeleteFile(self, remote_file):
+          """Delete the 'remote_file'.
+  
+Index: qm/test/classes/local_host.py
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/test/classes/local_host.py,v
+retrieving revision 1.2
+diff -c -5 -p -r1.2 local_host.py
+*** qm/test/classes/local_host.py	13 Jun 2005 22:41:19 -0000	1.2
+--- qm/test/classes/local_host.py	1 Dec 2005 06:42:59 -0000
+*************** class LocalHost(Host):
+*** 49,58 ****
+--- 49,66 ----
+          # Do not copy the files if they are the same.
+          if not self._SameFile(local_file, remote_file):
+              shutil.copy(local_file, remote_file)
+  
+  
++     def UploadAndRun(self, path, arguments, environment = None,
++                      timeout = -1):
++ 
++         # There is no need to actually upload the file, since it is
++         # running on the local machine.
++         return self.Run(path, arguments, environment, timeout)
++ 
++ 
+      def DownloadFile(self, remote_file, local_file = None):
+  
+          return self.UploadFile(remote_file, local_file)
+  
+  
+Index: qm/test/classes/compiler_test.py
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/test/classes/compiler_test.py,v
+retrieving revision 1.3
+diff -c -5 -p -r1.3 compiler_test.py
+*** qm/test/classes/compiler_test.py	26 Oct 2005 02:55:21 -0000	1.3
+--- qm/test/classes/compiler_test.py	1 Dec 2005 06:45:21 -0000
+*************** class CompilerTest(Test, CompilerBase):
+*** 296,306 ****
+          timeout = context.get("CompilerTest.execution_timeout", -1)
+          status, output = target.UploadAndRun(path,
+                                               [],
+                                               environment,
+                                               timeout)
+-         target.DeleteFile(path)
+          # Record the output.
+          result[prefix + "output"] = result.Quote(output)
+          # Check the output status.
+          result.CheckExitStatus(prefix, "Executable", status)
+  
+--- 296,305 ----
+
+
+From mark at codesourcery.com  Thu Dec  1 06:52:06 2005
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Wed, 30 Nov 2005 22:52:06 -0800
+Subject: PATCH: Fix typos in CheckExitStatus
+Message-ID: <200512010652.jB16q6jH015415@sethra.codesourcery.com>
+
+
+When CheckExitStatus got moved into the Result class, some of the
+places where it used "result" were not updated; these are now "self".
+
+Applied.
+
+--
+Mark Mitchell
+CodeSourcery, LLC
+mark at codesourcery.com
+
+2005-11-30  Mark Mitchell  <mark at codesourcery.com>
+
+	* qm/test/result.py (Result.CheckExitStatus): Fix typos.
+
+Index: qm/test/result.py
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/test/result.py,v
+retrieving revision 1.29
+diff -c -5 -p -r1.29 result.py
+*** qm/test/result.py	26 Oct 2005 02:55:21 -0000	1.29
+--- qm/test/result.py	1 Dec 2005 06:49:54 -0000
+*************** class Result:
+*** 329,340 ****
+  
+          
+      def CheckExitStatus(self, prefix, desc, status, non_zero_exit_ok = 0):
+          """Check the exit status from a command.
+  
+-         'result' -- The 'Result' object to update.
+- 
+          'prefix' -- The prefix that should be used when creating
+          result annotations.
+  
+          'desc' -- A description of the executing program.
+          
+--- 329,338 ----
+*************** class Result:
+*** 351,371 ****
+                  exit_code = status
+              else:
+                  exit_code = os.WEXITSTATUS(status)
+              # If the exit code is non-zero, the test fails.
+              if exit_code != 0 and not non_zero_exit_ok:
+!                 result.Fail("%s failed with exit code %d." % (desc, exit_code))
+                  # Record the exit code in the result.
+!                 result[prefix + "exit_code"] = str(exit_code)
+                  return False
+          
+          elif os.WIFSIGNALED(status):
+              # Obtain the signal number.
+              signal = os.WTERMSIG(status)
+              # If the program gets a fatal signal, the test fails .
+!             result.Fail("%s received fatal signal %d." % (desc, signal))
+!             result[prefix + "signal"] = str(signal)
+              return False
+          else:
+              # A process should only be able to stop by exiting, or
+              # by being terminated with a signal.
+              assert None
+--- 349,369 ----
+                  exit_code = status
+              else:
+                  exit_code = os.WEXITSTATUS(status)
+              # If the exit code is non-zero, the test fails.
+              if exit_code != 0 and not non_zero_exit_ok:
+!                 self.Fail("%s failed with exit code %d." % (desc, exit_code))
+                  # Record the exit code in the result.
+!                 self[prefix + "exit_code"] = str(exit_code)
+                  return False
+          
+          elif os.WIFSIGNALED(status):
+              # Obtain the signal number.
+              signal = os.WTERMSIG(status)
+              # If the program gets a fatal signal, the test fails .
+!             self.Fail("%s received fatal signal %d." % (desc, signal))
+!             self[prefix + "signal"] = str(signal)
+              return False
+          else:
+              # A process should only be able to stop by exiting, or
+              # by being terminated with a signal.
+              assert None
+
+
+From mark at codesourcery.com  Thu Dec  1 06:57:27 2005
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Wed, 30 Nov 2005 22:57:27 -0800
+Subject: PATCH: Fix minor thinko in Compiler.ParseOutput
+Message-ID: <200512010657.jB16vRnv015481@sethra.codesourcery.com>
+
+
+If a diagnostic from a compiler has one severity, then it cannot also
+have other severities.  So, we can exit the loop over severities
+without checking them all, if we find a match.
+
+Applied.
+
+--
+Mark Mitchell
+CodeSourcery, LLC
+mark at codesourcery.com
+
+2005-11-30  Mark Mitchell  <mark at codesourcery.com>
+
+	* qm/test/compiler.py (Compiler.ParseOutput): Do not try to match
+	an error message against multiple severities.
+
+Index: qm/test/classes/compiler.py
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/test/classes/compiler.py,v
+retrieving revision 1.4
+diff -c -5 -p -r1.4 compiler.py
+*** qm/test/classes/compiler.py	10 Jun 2005 21:23:21 -0000	1.4
+--- qm/test/classes/compiler.py	1 Dec 2005 06:55:52 -0000
+*************** class GCC(Compiler):
+*** 526,536 ****
+                                                   column_number)
+                  diagnostic = Diagnostic(source_position,
+                                          severity,
+                                          message)
+                  diagnostics.append(diagnostic)
+! 
+  
+          return diagnostics
+  
+  
+  
+--- 526,536 ----
+                                                   column_number)
+                  diagnostic = Diagnostic(source_position,
+                                          severity,
+                                          message)
+                  diagnostics.append(diagnostic)
+!                 break
+  
+          return diagnostics
+  
+  
+  
+
+
+From mark at codesourcery.com  Thu Dec  1 07:34:01 2005
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Wed, 30 Nov 2005 23:34:01 -0800
+Subject: PATCH: Improve CompilerTest
+Message-ID: <200512010734.jB17Y14C017792@sethra.codesourcery.com>
+
+
+This patch contains several little tweaks to CompilerTest:
+
+* You can now provide arguments to the program generated by the
+  compiler, e.g., if the compiler generates a program named "foo", you
+  can run it like "foo arg1 arg2".
+
+* You can now decide that "foo" need not exit with code zero, without
+  causing the test to fail.
+
+* You can validate that the output from the executable is what you
+  expect by implementing _CheckExecutableOutput.
+
+--
+Mark Mitchell
+CodeSourcery, LLC
+mark at codesourcery.com
+
+2005-11-30  Mark Mitchell  <mark at codesourcery.com>
+
+	* qm/test/classes/compiler_test.py (CompilationStep): Provide default 
+	values.
+	(CompilerBase._MakeDirectory): Do not create the temporary build
+	directory if it already exists.
+	(CompilerTest.Run):  Create the temporary build directory.  Record
+	the output from the compiler here.
+	(CompilerTest._GetExecutableArguments): New function.
+	(CompilerTest._MustExecutableExitSuccessfully): New function.
+	(CompilerTest._RunExecutable): Use new functions.
+	(CompilerTest._CheckOutput): Do not record the output here.
+	Adjust use of _DiagnosticsToString.
+	(CompilerTest._CheckExecutableOutput): New function.
+	(CompilerTest._DiagnosticsToString): Add annotation parameter.
+
+Index: qm/test/classes/compiler_test.py
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/test/classes/compiler_test.py,v
+retrieving revision 1.4
+diff -c -5 -p -r1.4 compiler_test.py
+*** qm/test/classes/compiler_test.py	1 Dec 2005 06:46:43 -0000	1.4
+--- qm/test/classes/compiler_test.py	1 Dec 2005 07:29:30 -0000
+*************** import os, string
+*** 23,33 ****
+  ########################################################################
+  
+  class CompilationStep:
+      """A single compilation step."""
+  
+!     def __init__(self, mode, files, options, output, diagnostics):
+          """Construct a new 'CompilationStep'.
+  
+          'mode' -- As for 'Compiler.Compile'.
+  
+          'files' -- As for 'Compiler.Compile'.
+--- 23,34 ----
+  ########################################################################
+  
+  class CompilationStep:
+      """A single compilation step."""
+  
+!     def __init__(self, mode, files, options = [],
+!                  output = None , diagnostics = []):
+          """Construct a new 'CompilationStep'.
+  
+          'mode' -- As for 'Compiler.Compile'.
+  
+          'files' -- As for 'Compiler.Compile'.
+*************** class CompilerBase:
+*** 76,87 ****
+          returns -- The name of the directory."""
+  
+          # Get the directory name.
+          directory = self._GetDirectory(context)
+          # Create it.
+!         os.makedirs(directory)
+! 
+          return directory
+  
+  
+      def _RemoveDirectory(self, context, result):
+          """Remove the directory in which generated files are placed.
+--- 77,88 ----
+          returns -- The name of the directory."""
+  
+          # Get the directory name.
+          directory = self._GetDirectory(context)
+          # Create it.
+!         if not os.path.exists(directory):
+!             os.makedirs(directory)
+          return directory
+  
+  
+      def _RemoveDirectory(self, context, result):
+          """Remove the directory in which generated files are placed.
+*************** class CompilerTest(Test, CompilerBase):
+*** 143,152 ****
+--- 144,155 ----
+          executable_path = None
+          # See what we need to run this test.
+          steps = self._GetCompilationSteps(context)
+          # See if we need to run this test.
+          is_execution_required = self._IsExecutionRequired()
++         # Create the temporary build directory.
++         self._MakeDirectory(context)
+          
+          # Keep track of which compilation step we are performing so
+          # that we can annotate the result appropriately.
+          step_index = 1
+  
+*************** class CompilerTest(Test, CompilerBase):
+*** 164,174 ****
+              # Run the compiler.
+              timeout = context.get("CompilerTest.compilation_timeout", -1)
+              (status, output) \
+                  = compiler.ExecuteCommand(self._GetDirectory(context),
+                                            command, timeout)
+! 
+               # Make sure that the output is OK.
+              if not self._CheckOutput(context, result, prefix, output,
+                                       step.diagnostics):
+                  # If there were errors, do not try to run the program.
+                  is_execution_required = 0
+--- 167,179 ----
+              # Run the compiler.
+              timeout = context.get("CompilerTest.compilation_timeout", -1)
+              (status, output) \
+                  = compiler.ExecuteCommand(self._GetDirectory(context),
+                                            command, timeout)
+!             # Annotate the result with the output.
+!             if output:
+!                 result[prefix + "output"] = result.Quote(output)
+               # Make sure that the output is OK.
+              if not self._CheckOutput(context, result, prefix, output,
+                                       step.diagnostics):
+                  # If there were errors, do not try to run the program.
+                  is_execution_required = 0
+*************** class CompilerTest(Test, CompilerBase):
+*** 232,241 ****
+--- 237,266 ----
+  
+          returns -- True if the generated executable should be run."""
+  
+          return 0
+          
++ 
++     def _GetExecutableArguments(self):
++         """Returns the arguments to the generated executable.
++ 
++         returns -- A list of strings, to be passed as argumensts to
++         the generated executable.""" 
++ 
++         return []
++ 
++     
++     def _MustExecutableExitSuccessfully(self):
++         """Returns true if the executable must exit with code zero.
++ 
++         returns -- True if the generated executable (if any) must exit
++         with code zero.  Note that the executable will not be run at
++         all (and so the return value of this function will be ignored)
++         if '_IsExecutionRequired' does not return true."""
++ 
++         return True
++         
+          
+      def _GetAnnotationPrefix(self):
+          """Return the prefix to use for result annotations.
+  
+          returns -- The prefix to use for result annotations."""
+*************** class CompilerTest(Test, CompilerBase):
+*** 270,280 ****
+  
+          # Compute the result annotation prefix.
+          prefix = self._GetAnnotationPrefix() + "execution_"
+          # Record the command line.
+          path = os.path.join(self._GetDirectory(context), path)
+!         result[prefix + "command"] = "<tt>" + path + "</tt>"
+  
+          # Compute the environment.
+          library_dirs = self._GetLibraryDirectories(context)
+          if library_dirs:
+              # Update LD_LIBRARY_PATH.  On IRIX 6, this variable
+--- 295,307 ----
+  
+          # Compute the result annotation prefix.
+          prefix = self._GetAnnotationPrefix() + "execution_"
+          # Record the command line.
+          path = os.path.join(self._GetDirectory(context), path)
+!         arguments = self._GetExecutableArguments()
+!         result[prefix + "command"] \
+!            = "<tt>" + path + " " + " ".join(arguments) + "</tt>"
+  
+          # Compute the environment.
+          library_dirs = self._GetLibraryDirectories(context)
+          if library_dirs:
+              # Update LD_LIBRARY_PATH.  On IRIX 6, this variable
+*************** class CompilerTest(Test, CompilerBase):
+*** 293,309 ****
+              environment = None
+  
+          target = self._GetTarget(context)
+          timeout = context.get("CompilerTest.execution_timeout", -1)
+          status, output = target.UploadAndRun(path,
+!                                              [],
+                                               environment,
+                                               timeout)
+          # Record the output.
+          result[prefix + "output"] = result.Quote(output)
+          # Check the output status.
+!         result.CheckExitStatus(prefix, "Executable", status)
+  
+  
+      def _CheckOutput(self, context, result, prefix, output, diagnostics):
+          """Check that the 'output' contains appropriate diagnostics.
+  
+--- 320,338 ----
+              environment = None
+  
+          target = self._GetTarget(context)
+          timeout = context.get("CompilerTest.execution_timeout", -1)
+          status, output = target.UploadAndRun(path,
+!                                              arguments,
+                                               environment,
+                                               timeout)
+          # Record the output.
+          result[prefix + "output"] = result.Quote(output)
++         self._CheckExecutableOutput(result, output)
+          # Check the output status.
+!         result.CheckExitStatus(prefix, "Executable", status,
+!                                not self._MustExecutableExitSuccessfully())
+  
+  
+      def _CheckOutput(self, context, result, prefix, output, diagnostics):
+          """Check that the 'output' contains appropriate diagnostics.
+  
+*************** class CompilerTest(Test, CompilerBase):
+*** 321,335 ****
+          compilation.
+  
+          returns -- True if there were no errors so severe as to
+          prevent execution of the test."""
+  
+-         # Annotate the result with the output.
+-         if output:
+-             result[prefix + "output"] \
+-                 = result.Quote(output)
+- 
+          # Get the compiler to use to parse the output.
+          compiler = self._GetCompiler(context)
+          
+          # Parse the output.
+          emitted_diagnostics \
+--- 350,359 ----
+*************** class CompilerTest(Test, CompilerBase):
+*** 383,403 ****
+              else:
+                  result.Fail("Spurious diagnostics.")
+  
+              # Add annotations showing the problem.
+              if spurious_diagnostics:
+!                 result[self._GetAnnotationPrefix() + "spurious_diagnostics"] \
+!                   = self._DiagnosticsToString(spurious_diagnostics)
+              if missing_diagnostics:
+!                 result[self._GetAnnotationPrefix() + "missing_diagnostics"] \
+!                   = self._DiagnosticsToString(missing_diagnostics)
+  
+          # If errors occurred, there is no point in trying to run
+          # the executable.
+          return not errors_occurred
+  
+  
+      def _IsDiagnosticExpected(self, emitted, expected):
+          """Returns true if 'emitted' matches 'expected'.
+  
+          'emitted' -- A 'Diagnostic emitted by the compiler.
+          
+--- 407,442 ----
+              else:
+                  result.Fail("Spurious diagnostics.")
+  
+              # Add annotations showing the problem.
+              if spurious_diagnostics:
+!                 self._DiagnosticsToString(result, 
+!                                           "spurious_diagnostics",
+!                                           spurious_diagnostics)
+              if missing_diagnostics:
+!                 self._DiagnosticsToString(result, 
+!                                           "missing_diagnostics",
+!                                           missing_diagnostics)
+  
+          # If errors occurred, there is no point in trying to run
+          # the executable.
+          return not errors_occurred
+  
+  
++     def _CheckExecutableOutput(self, result, output):
++         """Checks the output from the generated executable.
++ 
++         'result' -- The 'Result' object for this test.
++ 
++         'output' -- The output generated by the executable.
++ 
++         If the output is unsatisfactory, 'result' is modified
++         appropriately."""
++         
++         pass
++ 
++     
+      def _IsDiagnosticExpected(self, emitted, expected):
+          """Returns true if 'emitted' matches 'expected'.
+  
+          'emitted' -- A 'Diagnostic emitted by the compiler.
+          
+*************** class CompilerTest(Test, CompilerBase):
+*** 430,446 ****
+  
+          # There's a match.
+          return 1
+  
+  
+!     def _DiagnosticsToString(self, diagnostics):
+          """Return a string representing the 'diagnostics'.
+  
+          'diagnostics' -- A sequence of 'Diagnostic' instances.
+  
+          returns -- A string representing the 'Diagnostic's, with one
+          diagnostic message per line."""
+  
+          # Compute the string representation of each diagnostic.
+          diagnostic_strings = map(str, diagnostics)
+          # Insert a newline between each string.
+!         return Result.Quote("\n".join(diagnostic_strings))
+--- 469,486 ----
+  
+          # There's a match.
+          return 1
+  
+  
+!     def _DiagnosticsToString(self, result, annotation, diagnostics):
+          """Return a string representing the 'diagnostics'.
+  
+          'diagnostics' -- A sequence of 'Diagnostic' instances.
+  
+          returns -- A string representing the 'Diagnostic's, with one
+          diagnostic message per line."""
+  
+          # Compute the string representation of each diagnostic.
+          diagnostic_strings = map(str, diagnostics)
+          # Insert a newline between each string.
+!         result[self._GetAnnotationPrefix() + annotation] \
+!             = result.Quote("\n".join(diagnostic_strings))
+
+
+From mark at codesourcery.com  Thu Dec  1 08:32:44 2005
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Thu, 1 Dec 2005 00:32:44 -0800
+Subject: PATCH: Two small issues
+Message-ID: <200512010832.jB18WiKp023096@sethra.codesourcery.com>
+
+
+This patch fixes two small issues: (a) the name returned by
+get_extension_class_name didn't match the user-visible name of
+extension classes if the module name used an extended path, and (b)
+Database.GetIds didn't have an implementation for the new generic
+databases, even though that's easy to do.
+
+Applied.
+
+--
+Mark Mitchell
+CodeSourcery, LLC
+mark at codesourcery.com
+
+2005-11-30  Mark Mitchell  <mark at codesourcery.com>
+
+	* qm/extension.py (get_extension_class_name): Use only the final
+	component of the module in forming the extension class name.  
+	* qm/test/database.py (Database.GetIds): Handle generic
+	databases. 
+
+Index: qm/extension.py
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/extension.py,v
+retrieving revision 1.19
+diff -c -5 -p -r1.19 extension.py
+*** qm/extension.py	21 Jul 2005 08:10:13 -0000	1.19
+--- qm/extension.py	1 Dec 2005 08:21:24 -0000
+*************** def get_extension_class_name(extension_c
+*** 301,311 ****
+      returns -- The name of 'extension_class'.  This is the name that
+      is used when users refer to the class."""
+  
+      assert issubclass(extension_class, Extension)
+  
+!     return extension_class.__module__ + "." + extension_class.__name__
+      
+      
+  def validate_arguments(extension_class, arguments):
+      """Validate the 'arguments' to the 'extension_class'.
+  
+--- 301,312 ----
+      returns -- The name of 'extension_class'.  This is the name that
+      is used when users refer to the class."""
+  
+      assert issubclass(extension_class, Extension)
+  
+!     module = extension_class.__module__.split(".")[-1]
+!     return module + "." + extension_class.__name__
+      
+      
+  def validate_arguments(extension_class, arguments):
+      """Validate the 'arguments' to the 'extension_class'.
+  
+Index: qm/test/database.py
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/test/database.py,v
+retrieving revision 1.46
+diff -c -5 -p -r1.46 database.py
+*** qm/test/database.py	14 Sep 2005 13:24:46 -0000	1.46
+--- qm/test/database.py	1 Dec 2005 08:21:25 -0000
+*************** class Database(qm.extension.Extension):
+*** 896,905 ****
+--- 896,911 ----
+          returns -- A list of all items of the indicated 'kind' located
+          within 'directory', as absolute labels.
+  
+          Derived classes may override this method."""
+  
++         if self._is_generic_database:
++             extensions = self.GetExtensions(directory, scan_subdirs)
++             extensions = filter(lambda e: e.kind == kind,
++                                 extensions.values())
++             return map(lambda e: e.GetId(), extensions)
++         
+          return []
+  
+  
+      def GetItem(self, kind, item_id):
+          """Return the item of the indicated 'kind' with indicated 'item_id'.
+
+
+From mark at codesourcery.com  Thu Dec  1 21:17:01 2005
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Thu, 1 Dec 2005 13:17:01 -0800
+Subject: PATCH: Enhance summarize command
+Message-ID: <200512012117.jB1LH1Ni025956@sethra.codesourcery.com>
+
+
+This patch improves the output from commands like:
+
+  qmtest summarize results.qmr foo bar
+
+This command asks for just the results pertaining to the tests for
+"foo" and "bar".  Previously, if "foo" was UNTESTED because it
+depended on a resource which was not set up successfully, the
+"summarize" output did not show the resource result for the failing
+resource.  This patch teaches "qmtest summarize" to show the resource
+reuslt in that case.
+
+Also, I created standardized names for the C and C++ programming
+languages in CompilerTable.
+
+Applied.
+
+--
+Mark Mitchell
+CodeSourcery, LLC
+mark at codesourcery.com
+
+2005-12-01  Mark Mitchell  <mark at codesourcery.com>
+
+	* qm/test/cmdline.py (QMTest.__ExecuteSummarize): Print resource
+	results for UNTESTED tests.
+	
+	* qm/test/classes/compiler_table.py: Provide standard names for
+	the C and C++ programming languages.
+
+Index: qm/test/cmdline.py
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/test/cmdline.py,v
+retrieving revision 1.117
+diff -c -5 -p -r1.117 cmdline.py
+*** qm/test/cmdline.py	4 Nov 2005 22:07:28 -0000	1.117
+--- qm/test/cmdline.py	1 Dec 2005 21:08:28 -0000
+*************** Valid formats are %s.
+*** 1465,1475 ****
+              filter = 0
+  
+          # Get an iterator over the results.
+          try:
+              results = base.load_results(results_path, database)
+!         except (IOError, xml.sax.SAXException), exception:
+              raise QMException, \
+                    qm.error("invalid results file",
+                             path=results_path,
+                             problem=str(exception))
+  
+--- 1465,1475 ----
+              filter = 0
+  
+          # Get an iterator over the results.
+          try:
+              results = base.load_results(results_path, database)
+!         except Exception, exception:
+              raise QMException, \
+                    qm.error("invalid results file",
+                             path=results_path,
+                             problem=str(exception))
+  
+*************** Valid formats are %s.
+*** 1484,1515 ****
+              s.WriteAllAnnotations(results.GetAnnotations())
+  
+          # Get the expected outcomes.
+          outcomes = self.__GetExpectedOutcomes()
+  
+!         # Our filtering function.  Should use itertools.ifilter, once
+!         # we can depend on having Python 2.3.
+!         def good(r):
+!             return r.GetKind() == Result.TEST \
+!                    and r.GetId() in test_ids
+! 
+!         # Simulate the events that would have occurred during an
+!         # actual test run.
+          for r in results:
+!             if not filter or good(r):
+!                 for s in streams:
+!                     s.WriteResult(r)
+!                 if (r.GetOutcome()
+!                     != outcomes.get(r.GetId(), Result.PASS)):
+                      any_unexpected_outcomes = 1
+          for s in streams:
+              s.Summarize()
+  
+!         if any_unexpected_outcomes:
+!             return 1
+!         
+!         return 0
+          
+  
+      def __ExecuteRemote(self):
+          """Execute the 'remote' command."""
+  
+--- 1484,1530 ----
+              s.WriteAllAnnotations(results.GetAnnotations())
+  
+          # Get the expected outcomes.
+          outcomes = self.__GetExpectedOutcomes()
+  
+!         resource_results = {}
+          for r in results:
+!             if filter and r.GetKind() == Result.RESOURCE_SETUP:
+!                 resource_results[r.GetId()] = r
+!             if r.GetKind() != Result.TEST:
+!                 if not filter:
+!                     for s in streams:
+!                         s.WriteResult(r)
+!                 continue
+!             # We now known that r is test result.  If it's not one
+!             # that interests us, we're done.
+!             if filter and r.GetId() not in test_ids:
+!                 continue
+!             # If we're filtering, and this test was not run because it
+!             # depended on a resource that was not set up, emit the
+!             # resource result here.
+!             if (filter
+!                 and r.GetOutcome() == Result.UNTESTED
+!                 and r.has_key(Result.RESOURCE)):
+!                 rid = r[Result.RESOURCE]
+!                 rres = resource_results.get(rid)
+!                 if rres:
+!                     del resource_results[rid]
+!                     for s in streams:
+!                         s.WriteResult(rres)
+!             # Write out the test result.             
+!             for s in streams:
+!                 s.WriteResult(r)
+!                 if (not any_unexpected_outcomes
+!                     and r.GetOutcome() != outcomes.get(r.GetId(),
+!                                                        Result.PASS)):
+                      any_unexpected_outcomes = 1
++         # Shut down the streams.            
+          for s in streams:
+              s.Summarize()
+  
+!         return any_unexpected_outcomes
+          
+  
+      def __ExecuteRemote(self):
+          """Execute the 'remote' command."""
+  
+Index: qm/test/classes/compiler_table.py
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/test/classes/compiler_table.py,v
+retrieving revision 1.5
+diff -c -5 -p -r1.5 compiler_table.py
+*** qm/test/classes/compiler_table.py	16 Nov 2005 20:41:38 -0000	1.5
+--- qm/test/classes/compiler_table.py	1 Dec 2005 21:08:42 -0000
+*************** class CompilerTable(Resource):
+*** 38,48 ****
+      compiler tests should arrange for the tests they compain to depend
+      on a 'CompilerTable' resource.
+  
+      The first context variable which is examined is
+      'CompilerTable.languages'.  The value should be a
+!     whitespace-separated list of programming language names.
+  
+      Then, for each language 'l' in the list of languages, the
+      following context variables are examined:
+  
+      - 'CompilerTable.l_kind'
+--- 38,49 ----
+      compiler tests should arrange for the tests they compain to depend
+      on a 'CompilerTable' resource.
+  
+      The first context variable which is examined is
+      'CompilerTable.languages'.  The value should be a
+!     whitespace-separated list of programming language names.  (See
+!     below for standardized names for some languages.)
+  
+      Then, for each language 'l' in the list of languages, the
+      following context variables are examined:
+  
+      - 'CompilerTable.l_kind'
+*************** class CompilerTable(Resource):
+*** 79,88 ****
+--- 80,95 ----
+      - 'CompilerTable.target'
+  
+         An instance of 'Host' that can be used to run compiler
+         programs."""
+  
++     LANG_C = "c"
++     """The name of the C programming language."""
++     
++     LANG_CPLUSPLUS = "cplusplus"
++     """The name of the C++ programming language."""
++     
+      def SetUp(self, context, result):
+  
+          # There are no compilers yet.
+          compilers = {}
+          
+
+
+From stefan at codesourcery.com  Sat Dec  3 03:06:33 2005
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Fri, 02 Dec 2005 22:06:33 -0500
+Subject: PATCH: Standardize directory for QMTest extensions
+Message-ID: <43910BB9.4000606@codesourcery.com>
+
+This patch lets QMTest search in <prefix>/share/qm/site-extensions-<python-version>/
+for QMTest extensions, and provides the necessary infrastructure for users to install
+their own extensions there.
+
+Using this mechanism there should be little reason to use the QMTEST_CLASS_PATH
+environment variable.
+
+Regards,
+		Stefan
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: site-extensions.patch
+Type: text/x-patch
+Size: 15495 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/qmtest/attachments/20051202/ff8139a5/attachment.bin>
+
+From dimock at cag.csail.mit.edu  Mon Dec  5 20:35:40 2005
+From: dimock at cag.csail.mit.edu (Allyn Dimock)
+Date: Mon, 5 Dec 2005 15:35:40 -0500 (EST)
+Subject: Occasional Errno 10 with RedirectedExecutable
+Message-ID: <Pine.LNX.4.61.0512051511490.28183@cag.csail.mit.edu>
+
+
+Using unmodified qmtest 2.3, python 2.2 I am testing some programs as
+
+class RunProgramTest(qm.test.test.Test):
+   ...
+   def Run(self, context, result):
+   ...
+    e = qm.executable.RedirectedExecutable(self.timeout)
+    status = e.Run(arguments, dir=test_home_dir, path=path)
+
+where self.timeout > 0
+
+I occasionally get
+   File "/home/bits8/streamit/regtest/20051203.220013.Sat/streams/QMTest/streamit.py", 
+line 310, in Run
+     status = e.Run(arguments, dir=test_home_dir, path=path)
+   File "/usr/uns/encap/qm-2.3/lib/python2.2/site-packages/qm/executable.py", line 548, in Run
+     path)
+   File "/usr/uns/encap/qm-2.3/lib/python2.2/site-packages/qm/executable.py", line 268, in Run
+     status = os.waitpid(child, 0)[1]
+
+This happens with a subset of the tested programs, some of the time.
+
+The programs that it happens to are all ones that spawn multiple threads 
+and communicate through sockets (they are designed to run on up to 1 CPU 
+per thread across a cluster, but are built for this test to all run on a 
+single CPU).  I don't know if this is relevant:  I looked at /proc during 
+one failing run and didn't see socket used getting anywhere close to the 
+maximum, nor memory usage or anything else that I could think of.
+
+The actual run command on a 686 system with 2 hyperthreaded CPUs is:
+
+qmtest run -j4
+
+The OS environment is RHEL3 and the kernel is 2.4.21-32.0.1.ELsmp
+
+If anyone else has reported a similar problem and / or you have an idea as 
+to what is going on, please let me know.  I am sending this unoficially, 
+because I seem to have misplaced the URL and my password for your 
+bugzilla.
+
+-- Allyn Dimock
+
+
+From stefan at codesourcery.com  Mon Dec  5 21:06:45 2005
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Mon, 05 Dec 2005 16:06:45 -0500
+Subject: [qmtest] Occasional Errno 10 with RedirectedExecutable
+In-Reply-To: <Pine.LNX.4.61.0512051511490.28183@cag.csail.mit.edu>
+References: <Pine.LNX.4.61.0512051511490.28183@cag.csail.mit.edu>
+Message-ID: <4394ABE5.7080807@codesourcery.com>
+
+Allyn,
+
+the issue tracker URL is https://support.codesourcery.com/QMTest .
+Let me know if you want me to reset your password. Please submit a bug report
+there so we can follow up in detail.
+
+Allyn Dimock wrote:
+
+[...]
+
+> This happens with a subset of the tested programs, some of the time.
+> 
+> The programs that it happens to are all ones that spawn multiple threads 
+> and communicate through sockets (they are designed to run on up to 1 CPU 
+> per thread across a cluster, but are built for this test to all run on a 
+> single CPU).  I don't know if this is relevant:  I looked at /proc 
+> during one failing run and didn't see socket used getting anywhere close 
+> to the maximum, nor memory usage or anything else that I could think of.
+
+waitpid() generates an ECHILD error if the specified pid eiher doesn't exist
+or does not refer to a child process of the calling process (i.e. qmtest
+itself). It may also happen if the parent process masks SIGCHLD. Apparently
+on some platforms spawning multiple threads will modify the thread-specific
+signal masks...
+
+Until we can figure out the cause of the problem, could you consider using
+the ProcessTarget instead of the ThreadTarget that the '-j' option implies ?
+
+Regards,
+		Stefan
+
+
+From stefan at codesourcery.com  Mon Dec  5 21:12:20 2005
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Mon, 05 Dec 2005 16:12:20 -0500
+Subject: [qmtest] Occasional Errno 10 with RedirectedExecutable
+In-Reply-To: <4394ABE5.7080807@codesourcery.com>
+References: <Pine.LNX.4.61.0512051511490.28183@cag.csail.mit.edu> <4394ABE5.7080807@codesourcery.com>
+Message-ID: <4394AD34.4040002@codesourcery.com>
+
+Stefan Seefeld wrote:
+
+> Until we can figure out the cause of the problem, could you consider using
+> the ProcessTarget instead of the ThreadTarget that the '-j' option 
+> implies ?
+
+Sorry, I meant to add this link here:
+
+http://www.codesourcery.com/public/qmtest/qm-snapshot/qm/test/doc/html/sec-ref-targets.html#sec-target-classes
+
+Regards,
+		Stefan
+
+
+
+From mark at codesourcery.com  Wed Dec 14 17:38:40 2005
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Wed, 14 Dec 2005 09:38:40 -0800
+Subject: PATCH: Add --enable-maintainer-mode
+Message-ID: <200512141738.jBEHcebv004374@sethra.codesourcery.com>
+
+
+This patch adds an --enable-maintainter-mode switch.  When maintainer
+mode is disabled, we do not try to build documentation, even if it
+seems like the right rules are available.
+
+Stefan, this moves the tutorial build logic around -- and I may have
+gotten it wrong.  If so, I apologize!  It's important that the logic
+respect the same build-or-copy semantics used by csl-docbook; the
+version you had ran even if XSLTPROC was not defined, for example.
+
+--
+Mark Mitchell
+CodeSourcery, LLC
+mark at codesourcery.com
+
+2005-12-14  Mark Mitchell  <mark at codesourcery.com>
+
+	* GNUmakefile.in (maintainer_mode): New variable.  Do not define
+	documentation variables in maintainer mode.
+	(subdirs): Remove doc/tutorial.
+	* configure.ac (maintainer-mode): New variable.
+	(cpu_mhz): Fix typo in help string.
+	* doc/GNUmakefile.inc.in: Build the tutorial here too.
+	* doc/tutorial/tutorial.css: Remove.
+	* doc/tutorial/GNUmakefile.inc.in: Likewise.
+
+2005-12-14  Mark Mitchell  <mark at codesourcery.com>
+
+	* GNUmakefile.inc (%.html): Use our stylsheet.
+	* css/cs.css: New file.
+	
+Index: GNUmakefile.in
+===================================================================
+RCS file: /home/cvs/Repository/vpp/GNUmakefile.in,v
+retrieving revision 1.29
+diff -c -5 -p -r1.29 GNUmakefile.in
+*** GNUmakefile.in	13 Dec 2005 01:34:47 -0000	1.29
+--- GNUmakefile.in	14 Dec 2005 17:15:43 -0000
+*************** all::
+*** 26,35 ****
+--- 26,39 ----
+  
+  # Variables in this section can be set by the user on the command line.
+  
+  srcdir := @srcdir@
+  
++ # Test this variable with "ifdef" to determine whether or not to 
++ # perform actions needed by maintainers.
++ maintainer_mode := @maintainer_mode@
++ 
+  ### Installation ###
+  
+  # Order matters for the various directory variables, as autoconf makes some
+  # of the variables depend on the values of others.
+  prefix := @prefix@
+*************** USE_PAR := @USE_PAR@
+*** 72,81 ****
+--- 76,94 ----
+  MPI_CPPFLAGS := @MPI_CPPFLAGS@
+  MPI_LIBS := @MPI_LIBS@
+  
+  ### Documentation ### 
+  
++ # The location of the csl-docbook directory.
++ csldocbookdir := $(srcdir)/doc/csl-docbook
++ 
++ # Documentation is only built in maintainer mode.  Many ordinary users
++ # do not have these tools, and some versions do not work very well.
++ # So, our source distributions contain pre-built versions of the
++ # documentation; the build prcoess will copy the pre-built versions if
++ # these tools are not available.
++ ifdef maintainer_mode
+  # The Doxygen command.
+  DOXYGEN := @DOXYGEN@ 
+  # The Synopsis command.
+  SYNOPSIS := python synopsis.py
+  # The command used to turn DocBook into TeX.
+*************** JADE := 
+*** 84,95 ****
+  PDFJADETEX := 
+  # The command used to turn XSL-FO into PDF.
+  XEP := @XEP@
+  # The command used to turn DocBook into HTML or XSL-FO.
+  XSLTPROC := @XSLTPROC@
+! # The location of the csl-docbook directory.
+! csldocbookdir := $(srcdir)/doc/csl-docbook
+  
+  ########################################################################
+  # Subdirectory Variables
+  ########################################################################
+  
+--- 97,107 ----
+  PDFJADETEX := 
+  # The command used to turn XSL-FO into PDF.
+  XEP := @XEP@
+  # The command used to turn DocBook into HTML or XSL-FO.
+  XSLTPROC := @XSLTPROC@
+! endif
+  
+  ########################################################################
+  # Subdirectory Variables
+  ########################################################################
+  
+*************** cxx_sources :=
+*** 101,111 ****
+  # The subdirectories in which we can find sub-Makefiles.
+  subdirs := \
+  	apps \
+  	benchmarks \
+  	doc \
+- 	doc/tutorial \
+  	examples \
+  	src \
+  	src/vsip \
+  	tests \
+  	tools \
+--- 113,122 ----
+Index: configure.ac
+===================================================================
+RCS file: /home/cvs/Repository/vpp/configure.ac,v
+retrieving revision 1.57
+diff -c -5 -p -r1.57 configure.ac
+*** configure.ac	6 Dec 2005 03:42:38 -0000	1.57
+--- configure.ac	14 Dec 2005 17:15:43 -0000
+*************** dnl Autoconf initialization
+*** 11,23 ****
+  dnl ------------------------------------------------------------------
+  AC_PREREQ(2.56)
+  AC_REVISION($Revision: 1.57 $)
+  AC_INIT(VSIPL++, 1.0, vsipl++ at codesourcery.com)
+  
+! #
+  # Configure command line arguments.
+! #
+  AC_ARG_WITH(obj_ext,
+    AS_HELP_STRING([--with-obj-ext=EXT],
+                   [Specify the file extension to be used for object files.
+                    Object files will be named file.$EXT]),
+    [obj_ext=$withval])
+--- 11,42 ----
+  dnl ------------------------------------------------------------------
+  AC_PREREQ(2.56)
+  AC_REVISION($Revision: 1.57 $)
+  AC_INIT(VSIPL++, 1.0, vsipl++ at codesourcery.com)
+  
+! ######################################################################
+  # Configure command line arguments.
+! ######################################################################
+! 
+! ### Overall options.
+! 
+! # Set maintainer_mode to either "true" or the empty string.
+! AC_ARG_ENABLE(maintainer-mode,
+!   AS_HELP_STRING([--enable-maintainer-mode],
+!                  [Activate features required by developers modifying
+!                   Sourcery VSIPL++ itself.  If you will be using Sourcery 
+!                   VSIPL++, but do not plan to modify Sourcery VSIPL++,
+!                   you should not use this option.]),
+!   [case x"$enableval" in
+!     xyes) maintainer_mode=true ;;
+!     xno)  maintainer_mode= ;;
+!     *)   AC_MSG_ERROR([Invalid argument to --enable-maintainer-mode.])
+!    esac],
+!   [maintainer_mode=]) 
+! AC_SUBST(maintainer_mode)
+!  
+! ### Filename extensions. 
+  AC_ARG_WITH(obj_ext,
+    AS_HELP_STRING([--with-obj-ext=EXT],
+                   [Specify the file extension to be used for object files.
+                    Object files will be named file.$EXT]),
+    [obj_ext=$withval])
+*************** AC_ARG_WITH(mpi_prefix,
+*** 41,50 ****
+--- 60,70 ----
+                   [Specify the installation prefix of the MPI library.  Headers
+                    must be in PATH/include; libraries in PATH/lib.]),
+    dnl If the user specified --with-mpi-prefix, they mean to use MPI for sure.
+    [enable_mpi=yes])
+  
++ ### Mecury Scientific Algorithm (SAL)
+  AC_ARG_ENABLE([sal],
+    AS_HELP_STRING([--enable-sal],
+                   [use SAL if found (default is to not search for it)]),,
+    [enable_sal=no])
+  AC_ARG_WITH(sal_include,
+*************** AC_ARG_WITH(sal_lib,
+*** 56,65 ****
+--- 76,86 ----
+    AS_HELP_STRING([--with-sal-lib=PATH],
+                   [Specify the installation path of the SAL library.]),
+    dnl If the user specified --with-sal-lib, they mean to use SAL for sure.
+    [enable_sal=yes])
+  
++ ### Intel Performance Primitives (IPP)
+  AC_ARG_ENABLE([ipp],
+    AS_HELP_STRING([--enable-ipp],
+                   [use IPP if found (default is to not search for it)]),,
+    [enable_ipp=no])
+  AC_ARG_WITH(ipp_prefix,
+*************** AC_ARG_ENABLE([profile_timer],
+*** 157,167 ****
+                   [set profile timer type.  Choices include none, posix, realtime, pentiumtsc, x86_64_tsc]),,
+    [enable_profile_timer=none])
+  
+  AC_ARG_ENABLE([cpu_mhz],
+    AS_HELP_STRING([--enable-cpu-mhz=speed],
+!                  [set CPU speed in MHz.  Only necessary for TSC and if /proc/cpuinfo does nto exist or is wrong]),,
+    [enable_cpu_mhz=none])
+  
+  
+  #
+  # Files to generate.
+--- 178,188 ----
+                   [set profile timer type.  Choices include none, posix, realtime, pentiumtsc, x86_64_tsc]),,
+    [enable_profile_timer=none])
+  
+  AC_ARG_ENABLE([cpu_mhz],
+    AS_HELP_STRING([--enable-cpu-mhz=speed],
+!                  [set CPU speed in MHz.  Only necessary for TSC and if /proc/cpuinfo does not exist or is wrong]),,
+    [enable_cpu_mhz=none])
+  
+  
+  #
+  # Files to generate.
+Index: doc/GNUmakefile.inc.in
+===================================================================
+RCS file: /home/cvs/Repository/vpp/doc/GNUmakefile.inc.in,v
+retrieving revision 1.9
+diff -c -5 -p -r1.9 GNUmakefile.inc.in
+*** doc/GNUmakefile.inc.in	10 Nov 2005 05:44:02 -0000	1.9
+--- doc/GNUmakefile.inc.in	14 Dec 2005 17:15:43 -0000
+***************
+*** 10,23 ****
+  
+  ########################################################################
+  # Variables
+  ########################################################################
+  
+! doc_pdf_manuals := doc/quickstart/quickstart.pdf
+! doc_html_manuals := doc/quickstart/quickstart.html
+  doc_manuals := $(doc_pdf_manuals) $(doc_html_manuals)
+  
+  ########################################################################
+  # Rules
+  ########################################################################
+  
+  doc:: $(doc_html_manuals) $(doc_pdf_manuals)
+--- 10,29 ----
+  
+  ########################################################################
+  # Variables
+  ########################################################################
+  
+! doc_pdf_manuals := \
+! 	doc/quickstart/quickstart.pdf \
+! 	doc/tutorial/tutorial.pdf
+! doc_html_manuals := $(doc_pdf_manuals:%.pdf=%.html)
+  doc_manuals := $(doc_pdf_manuals) $(doc_html_manuals)
+  
++ tutorial_images := \
++ 	$(wildcard $(srcdir)/doc/tutorial/images/*.png) \
++ 	$(wildcard $(srcdir)/doc/tutorial/images/callouts/*.png) \
++ 
+  ########################################################################
+  # Rules
+  ########################################################################
+  
+  doc:: $(doc_html_manuals) $(doc_pdf_manuals)
+*************** $(doc_manuals): \
+*** 31,55 ****
+  	doc/csl-docbook/fragments/gpl.xml
+  
+  doc/html/index.html:
+  	$(DOXYGEN) doc/Doxyfile
+  
+  clean::
+  	rm -f $(doc_manuals)
+  	rm -rf doc/html
+  
+! # Install the manuals.  They may be present in the build directory,
+! # or, if we could not build them, in the source directory.
+  install::
+  	$(INSTALL) -d $(docdir)
+  	for f in $(doc_pdf_manuals); do \
+  		if test -r $$f; then \
+  			$(INSTALL_DATA) $$f $(docdir); \
+  		fi; \
+  	done
+  	# HTML manuals go in their own subdirectories.
+! 	$(INSTALL) -d $(docdir)/html/quickstart
+! 	if test -r doc/quickstart/html/index.html; then \
+! 		$(INSTALL_DATA) doc/quickstart/html/*.html \
+! 			$(docdir)/html/quickstart; \
+! 	fi
+! 		
+--- 37,81 ----
+  	doc/csl-docbook/fragments/gpl.xml
+  
+  doc/html/index.html:
+  	$(DOXYGEN) doc/Doxyfile
+  
++ doc/tutorial/tutorial.html: \
++         $(patsubst $(srcdir)/doc/tutorial/%,doc/tutorial/html/%,$(tutorial_images))
++ 
++ doc/tutorial/html/images/%.png: $(srcdir)/doc/tutorial/images/%.png
++ 	mkdir -p $(@D)
++ 	cp $< $@
++ 
+  clean::
+  	rm -f $(doc_manuals)
+  	rm -rf doc/html
+  
+! # Install the manuals.
+  install::
+  	$(INSTALL) -d $(docdir)
+  	for f in $(doc_pdf_manuals); do \
+  		if test -r $$f; then \
+  			$(INSTALL_DATA) $$f $(docdir); \
+  		fi; \
+  	done
+  	# HTML manuals go in their own subdirectories.
+! 	for dir in quickstart tutorial; do \
+! 		if test -r doc/$$dir/html/index.html; then \
+! 			$(INSTALL) -d $(docdir)/html/$$dir; \
+! 			$(INSTALL_DATA) doc/$$dir/html/*.html \
+! 				$(docdir)/html/$$dir; \
+! 			$(INSTALL_DATA) doc/$$dir/html/*.css \
+! 				$(docdir)/html/$$dir; \
+! 		fi; \
+! 	        if test -d doc/$$dir/html/images; then \
+! 			$(INSTALL) -d $(docdir)/html/$$dir/images; \
+! 			$(INSTALL_DATA) doc/$$dir/images/*.png \
+! 				$(docdir)/html/$$dir/images; \
+! 		fi; \
+! 	        if test -d doc/$$dir/html/images/callouts; then \
+! 			$(INSTALL) -d \
+! 				$(docdir)/html/$$dir/images/callouts; \
+! 			$(INSTALL_DATA) doc/$$dir/images/callouts/*.png \
+! 				$(docdir)/html/$$dir/images/callouts; \
+! 		fi; \
+! 	done		
+Index: doc/csl-docbook/GNUmakefile.inc
+===================================================================
+RCS file: /home/cvs/Repository/csl-docbook/GNUmakefile.inc,v
+retrieving revision 1.2
+diff -c -5 -p -r1.2 GNUmakefile.inc
+*** doc/csl-docbook/GNUmakefile.inc	13 Dec 2005 01:38:13 -0000	1.2
+--- doc/csl-docbook/GNUmakefile.inc	14 Dec 2005 17:15:43 -0000
+*************** XML_DCL := xml.dcl
+*** 63,77 ****
+  # Implicit Rules
+  ########################################################################
+  
+  ifdef XSLTPROC
+  # Generate HTML from DocBook. 
+! %.html: %.xml $(csldocbookdir)/xsl/html/csl.xsl
+! 	rm -rf $(@D)/html
+  	mkdir -p $(@D)/html
+  	$(XSLTPROC) \
+  	    --stringparam csl_docbook.root $(csldocbookdir) \
+  	    --output $(@D)/html/index.html \
+  	    $(csldocbookdir)/xsl/html/csl.xsl \
+  	    $<
+  	touch $@
+  
+--- 63,82 ----
+  # Implicit Rules
+  ########################################################################
+  
+  ifdef XSLTPROC
+  # Generate HTML from DocBook. 
+! %.html: %.xml \
+! 	$(csldocbookdir)/xsl/html/csl.xsl \
+! 	$(csldocbookdir)/css/cs.css
+  	mkdir -p $(@D)/html
++ 	cp $(csldocbookdir)/css/cs.css $(@D)/html
+  	$(XSLTPROC) \
++ 	    --xinclude \
+  	    --stringparam csl_docbook.root $(csldocbookdir) \
++ 	    --stringparam html.stylesheet cs.css \
++ 	    --stringparam keep.relative.image.uris 1 \
+  	    --output $(@D)/html/index.html \
+  	    $(csldocbookdir)/xsl/html/csl.xsl \
+  	    $<
+  	touch $@
+  
+Index: doc/csl-docbook/css/cs.css
+===================================================================
+RCS file: doc/csl-docbook/css/cs.css
+diff -N doc/csl-docbook/css/cs.css
+*** /dev/null	1 Jan 1970 00:00:00 -0000
+--- doc/csl-docbook/css/cs.css	14 Dec 2005 17:15:43 -0000
+***************
+*** 0 ****
+--- 1,10 ----
++ @import url("http://www.codesourcery.com/codesourcerystyles.css");
++ 
++ pre.programlisting
++ {
++   font-size: smaller;
++   border: 1px solid #aaaaaa;
++   background-color: #eeeeee;
++   margin: 20px;
++   padding: 10px;
++ }
+Index: doc/tutorial/tutorial.css
+===================================================================
+RCS file: doc/tutorial/tutorial.css
+diff -N doc/tutorial/tutorial.css
+*** doc/tutorial/tutorial.css	10 Nov 2005 05:44:02 -0000	1.1
+--- /dev/null	1 Jan 1970 00:00:00 -0000
+***************
+*** 1,9 ****
+- @import url("http://www.codesourcery.com/codesourcerystyles.css");
+- pre.programlisting
+- {
+-   font-size: smaller;
+-   border: 1px solid #aaaaaa;
+-   background-color: #eeeeee;
+-   margin: 20px;
+-   padding: 10px;
+- }
+--- 0 ----
+
+
+From david.t.hawkins at lmco.com  Tue Dec 20 15:23:32 2005
+From: david.t.hawkins at lmco.com (Hawkins, David T)
+Date: Tue, 20 Dec 2005 09:23:32 -0600
+Subject: std-out comparisons under windows
+Message-ID: <E5BD2B3860980D4899B731AD0205C9380DAE19D8@emss07m11.us.lmco.com>
+
+QMTest,
+I am running QMTest under Windows (XP).  When I try to do something like
+a command.ExecTest (where there is an expectation of certain std-out
+and/or exit codes), the test always fails.  QMTest always insists that
+the std-out and/or std-err and/or exit code do not match the expected
+values.  
+I've scanned the mailing list index and the listings suggest that I'm
+dealing with a problem that was fixed quite awhile ago.  NOTE: I am
+working with QMTest 2.3 (I downloaded qm-2.3.win32.exe).
+Can you help me?
+Thank you
+
+
+
+From stefan at codesourcery.com  Tue Dec 20 16:17:42 2005
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Tue, 20 Dec 2005 11:17:42 -0500
+Subject: [qmtest] std-out comparisons under windows
+In-Reply-To: <E5BD2B3860980D4899B731AD0205C9380DAE19D8@emss07m11.us.lmco.com>
+References: <E5BD2B3860980D4899B731AD0205C9380DAE19D8@emss07m11.us.lmco.com>
+Message-ID: <43A82EA6.9020105@codesourcery.com>
+
+Hawkins, David T wrote:
+> QMTest,
+> I am running QMTest under Windows (XP).  When I try to do something like
+> a command.ExecTest (where there is an expectation of certain std-out
+> and/or exit codes), the test always fails.  QMTest always insists that
+> the std-out and/or std-err and/or exit code do not match the expected
+> values.  
+> I've scanned the mailing list index and the listings suggest that I'm
+> dealing with a problem that was fixed quite awhile ago.  NOTE: I am
+> working with QMTest 2.3 (I downloaded qm-2.3.win32.exe).
+> Can you help me?
+> Thank you
+
+How do you define your test (i.e., assuming you are using a qmt file
+to specify the test, what does it contain) ? What is the specific
+cause of the failure, as printed by qmtest ?
+
+Regards,
+		Stefan
+
+
+
+
+

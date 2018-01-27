@@ -1,0 +1,82 @@
+Index: src/vsip/core/parallel/expr.hpp
+===================================================================
+--- src/vsip/core/parallel/expr.hpp	(revision 169800)
++++ src/vsip/core/parallel/expr.hpp	(working copy)
+@@ -182,6 +182,58 @@
+   typename View_block_storage<BlockT>::expr_type blk_;
+ };
+ 
++template <typename RetBlock>
++struct Create_subblock;
++
++template <typename BlockT>
++struct Create_subblock<Subset_block<BlockT> >
++{
++  template <typename MapT>
++  static Subset_block<BlockT> exec(MapT const& map, BlockT const& blk)
++  {
++    dimension_type const dim = BlockT::dim;
++    return Subset_block<BlockT>
++      (map.template impl_global_domain<dim>(map.subblock(),0),blk);
++  }
++};
++
++template <typename MapT, typename BlockT>
++struct Create_subblock<Map_subset_block<BlockT,MapT> >
++{
++  static Map_subset_block<BlockT,MapT> exec(MapT const& map, BlockT const& blk)
++  {
++    return Map_subset_block<BlockT,MapT>(blk,map);
++  }
++};
++
++template <typename MapT, typename BlockT>
++struct Choose_local_block;
++
++template <typename BlockT, dimension_type Dim>
++struct Choose_local_block<Replicated_map<Dim>, BlockT>
++{
++  typedef Subset_block<BlockT> block_type;
++};
++
++template <typename BlockT, dimension_type Dim>
++struct Choose_local_block<Global_map<Dim>, BlockT>
++{
++  typedef Subset_block<BlockT> block_type;
++};
++
++template <typename BlockT>
++struct Choose_local_block<Map<Block_dist,Block_dist,Block_dist>, BlockT>
++{
++  typedef Subset_block<BlockT> block_type;
++};
++
++template <typename MapT, typename BlockT>
++struct Choose_local_block
++{
++  typedef Map_subset_block<BlockT,MapT> block_type;
++};
++
++
+ template <dimension_type Dim,
+ 	  typename       MapT,
+ 	  typename       BlockT>
+@@ -196,7 +248,8 @@
+   typedef MapT                                  map_type;
+ 
+ 
+-  typedef Map_subset_block<BlockT const, MapT>  local_block_type;
++  typedef typename Choose_local_block<MapT, BlockT const>::block_type
++                                                local_block_type;
+   typedef typename View_block_storage<local_block_type>::plain_type
+                                                 local_block_ret_type;
+ 
+@@ -204,7 +257,7 @@
+   Par_expr_block(MapT const& map, BlockT const& block)
+     : map_     (map),
+       blk_     (block),
+-      subblock_(blk_,map_)
++      subblock_(Create_subblock<local_block_type>::exec(map_,blk_))
+   {}
+ 
+   ~Par_expr_block() {}

@@ -1,0 +1,120 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [c++-pthreads] Re: thread-safety definition
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:c%2B%2B-pthreads%40codesourcery.com?Subject=Re%3A%20%5Bc%2B%2B-pthreads%5D%20Re%3A%20thread-safety%20definition&In-Reply-To=%3C20040112164533.GA10141%40diablo.name%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000207.html">
+   <LINK REL="Next"  HREF="000225.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[c++-pthreads] Re: thread-safety definition</H1>
+    <B>Ted Baker</B> 
+    <A HREF="mailto:c%2B%2B-pthreads%40codesourcery.com?Subject=Re%3A%20%5Bc%2B%2B-pthreads%5D%20Re%3A%20thread-safety%20definition&In-Reply-To=%3C20040112164533.GA10141%40diablo.name%3E"
+       TITLE="[c++-pthreads] Re: thread-safety definition">baker at cs.fsu.edu
+       </A><BR>
+    <I>Mon Jan 12 16:45:33 UTC 2004</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000207.html">[c++-pthreads] Re: thread-safety definition
+</A></li>
+        <LI>Next message: <A HREF="000225.html">[c++-pthreads] Re: thread-safety definition
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#220">[ date ]</a>
+              <a href="thread.html#220">[ thread ]</a>
+              <a href="subject.html#220">[ subject ]</a>
+              <a href="author.html#220">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>&gt;<i> &gt; This cannot happen if cancellation is automagically disabled during
+</I>&gt;<i> &gt; execution of (all) destructors, along with the stack unwinding code
+</I>&gt;<i> &gt; that is performed during exception processing.
+</I>&gt;<i> 
+</I>&gt;<i> Except that it would pretty much preclude SAFE exploitation of 
+</I>&gt;<i> cancellation in the destructors (stuff ala &quot;~temp_dataset()&quot; which 
+</I>&gt;<i> can simply catch cancel request exception and &quot;re-enable/re-inject&quot;). 
+</I>
+There is no need for a destructor to be aware of cancellation.
+Either the cancellation happens before the destructor, and the
+destructor executes as part of the cancellation processing
+(obliviously), or if the cancellation is called for while a
+destructor is executing (or an exception propagating) the
+cancellation processing begins after destructor has finished
+(or the exception has been handled successfully).
+
+The issues of delaying processing the cancellation is not
+significant here, because you will need to finish executing the
+destructor in any case.  Even in the case of some (other)
+exception being in flight, it makes sense to allow the other
+exception processing to finish before cancelling (even if
+the other exception ends up terminating the thread).
+
+&gt;<i> Burning processing cycles on cancel enable/disable is another issue 
+</I>&gt;<i> here, BTW. 
+</I>
+Yes, but it need not be a *huge* amount of cycles.  Protection
+against cancellation can be done via the equivalent of setting one
+bit in a thread descriptor.  The cancellation protection bit is
+per-thread, and only accessed by the thread itself, and so does
+not require any form of lock to protect it.  Likewise, a pending
+cancellation bit is per-thread and monotonic, so though it may be
+set from zero to one by any thread, it does not need a lock.
+Protection can be done very efficiency if the compiler knows how
+to get the current thread's descriptor efficiently.  For example,
+on Solaris threads this can be done as a single store operation
+(there was, maybe still is, a register that always points to a
+per-thread location that can be used with appropriate offset to
+access such state).  Unprotecting takes a bit longer, since you
+also need to check whether cancellation has been attempted while
+the protect bit was set, essentially a load, store, and
+conditional branch.
+
+You can also cut it down by doing only one disable/enable pair
+per *chain* of destructors, when you have a bunch of them being
+executed together.
+
+BTW, on general principles one generally would not like to have
+cancellation occur during operations that manipulate global storage,
+and in particular during execution of destructors.
+
+&gt;<i> Intelligent cancellation that would check the dynamic 
+</I>&gt;<i> context (2-pase ES with exception specs acting like &quot;fences&quot; NOT 
+</I>&gt;<i> causing unnecessary unwinding) would work much better, I guess.
+</I>&gt;<i> 
+</I>&gt;<i> regards,
+</I>&gt;<i> alexander.
+</I>
+--Ted
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000207.html">[c++-pthreads] Re: thread-safety definition
+</A></li>
+	<LI>Next message: <A HREF="000225.html">[c++-pthreads] Re: thread-safety definition
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#220">[ date ]</a>
+              <a href="thread.html#220">[ thread ]</a>
+              <a href="subject.html#220">[ subject ]</a>
+              <a href="author.html#220">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/c++-pthreads">More information about the c++-pthreads
+mailing list</a><br>
+</body></html>

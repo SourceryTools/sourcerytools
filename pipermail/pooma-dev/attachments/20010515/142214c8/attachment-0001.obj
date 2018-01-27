@@ -1,0 +1,146 @@
+// -*- C++ -*-
+// ACL:license
+// ----------------------------------------------------------------------
+// This software and ancillary information (herein called "SOFTWARE")
+// called POOMA (Parallel Object-Oriented Methods and Applications) is
+// made available under the terms described here.  The SOFTWARE has been
+// approved for release with associated LA-CC Number LA-CC-98-65.
+// 
+// Unless otherwise indicated, this SOFTWARE has been authored by an
+// employee or employees of the University of California, operator of the
+// Los Alamos National Laboratory under Contract No. W-7405-ENG-36 with
+// the U.S. Department of Energy.  The U.S. Government has rights to use,
+// reproduce, and distribute this SOFTWARE. The public may copy, distribute,
+// prepare derivative works and publicly display this SOFTWARE without 
+// charge, provided that this Notice and any statement of authorship are 
+// reproduced on all copies.  Neither the Government nor the University 
+// makes any warranty, express or implied, or assumes any liability or 
+// responsibility for the use of this SOFTWARE.
+// 
+// If SOFTWARE is modified to produce derivative works, such modified
+// SOFTWARE should be clearly marked, so as not to confuse it with the
+// version available from LANL.
+// 
+// For more information about POOMA, send e-mail to pooma@acl.lanl.gov,
+// or visit the POOMA web page at http://www.acl.lanl.gov/pooma/.
+// ----------------------------------------------------------------------
+// ACL:license
+//-----------------------------------------------------------------------------
+// ump_test2
+//-----------------------------------------------------------------------------
+
+#include "Pooma/Pooma.h"
+#include "Pooma/UMPArrays.h"
+#include "Engine/RemoteEngine.h"
+#include "Engine/DynamicEngine.h"
+#include "Engine/RemoteDynamicEngine.h"
+#include "Utilities/Tester.h"
+
+int main(int argc, char *argv[])
+{
+  Pooma::initialize(argc,argv);
+  Pooma::Tester tester(argc,argv);
+
+  int i;
+  
+  // Create the total domain.
+  
+  Interval<1> domain(12);
+  
+  // Create the block sizes.
+  
+  Loc<1> blocks(3);
+
+  // Create the layouts.
+  
+  UniformGridLayout<1> layout(domain, blocks, ReplicatedTag());
+  
+  // Make some UMP arrays and fill them.
+  
+  Array<1, double, MultiPatch<UniformTag,Brick> > a(layout);
+  Array<1, double, MultiPatch<UniformTag,Brick> > b(a);
+
+  b.makeOwnCopy();
+  a = 2;
+  b = 3;
+
+  Pooma::blockAndEvaluate();
+
+  tester.check("multipatch make own copy", sum(b - a - 1) == 0);
+
+  tester.out() << a << b << std::endl;
+
+  // dynamic array:
+
+  Array<1, double, Dynamic > ad(domain);
+  Array<1, double, Dynamic > bd(ad);
+
+  bd.makeOwnCopy();
+  ad = 2;
+  bd = 3;
+
+  Pooma::blockAndEvaluate();
+
+  tester.check("dynamic make own copy", sum(bd - ad - 1) == 0);
+
+  tester.out() << ad << bd << std::endl;
+
+#if POOMA_CHEETAH
+
+  // Create the layouts.
+  
+  UniformGridLayout<1> layout2(domain, blocks, DistributedTag());
+  
+  // Make some UMP arrays and fill them.
+  
+  Array<1, double, MultiPatch<UniformTag, Remote<Brick> > > a2(layout2);
+  Array<1, double, MultiPatch<UniformTag, Remote<Brick> > > b2(a2);
+
+  b2.makeOwnCopy();
+  a2 = 2;
+  b2 = 3;
+
+  Pooma::blockAndEvaluate();
+
+  tester.check("remote multipatch make own copy", sum(b2 - a2 - 1) == 0);
+
+  tester.out() << a2 << b2 << std::endl;
+
+  // remote dynamic array:
+
+  Array<1, double, Remote<Dynamic> > ard(domain);
+  Array<1, double, Remote<Dynamic> > brd(ard);
+
+  brd.makeOwnCopy();
+  ard = 2;
+  brd = 3;
+
+  Pooma::blockAndEvaluate();
+
+  tester.check("remote dynamic make own copy", sum(brd - ard - 1) == 0);
+
+  tester.out() << ard << brd << std::endl;
+
+#endif // POOMA_CHEETAH
+  
+  int ret = tester.results("makeOwnCopy");
+  Pooma::finalize();
+  return ret;
+}
+	     
+//-----------------------------------------------------------------------------
+// Traits class telling RefCountedBlockPointer that this class has
+// shallow semantics and a makeOwnCopy method.
+//-----------------------------------------------------------------------------
+
+template <int Dim, class T, class Eng>
+struct ElementProperties<Engine<Dim, T, Remote<Eng> > > 
+  : public MakeOwnCopyProperties<Engine<Dim, T, Remote<Eng> > >
+{ };
+
+// ACL:rcsinfo
+// ----------------------------------------------------------------------
+// $RCSfile: ump_test2.cpp,v $   $Author: luchini $
+// $Revision: 1.15 $   $Date: 2000/05/31 21:49:12 $
+// ----------------------------------------------------------------------
+// ACL:rcsinfo

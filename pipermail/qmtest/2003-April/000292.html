@@ -1,0 +1,266 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [PATCH] Removing ExtensionClass dependency
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:qmtest%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20Removing%20ExtensionClass%20dependency&In-Reply-To=%3C20030410053021.GA23519%40njs.dhis.org%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000297.html">
+   <LINK REL="Next"  HREF="000293.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[PATCH] Removing ExtensionClass dependency</H1>
+    <B>Nathaniel Smith</B> 
+    <A HREF="mailto:qmtest%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20Removing%20ExtensionClass%20dependency&In-Reply-To=%3C20030410053021.GA23519%40njs.dhis.org%3E"
+       TITLE="[PATCH] Removing ExtensionClass dependency">njs at pobox.com
+       </A><BR>
+    <I>Thu Apr 10 05:30:21 UTC 2003</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000297.html">[qmtest] Subclassing Executable
+</A></li>
+        <LI>Next message: <A HREF="000293.html">[qmtest] [PATCH] Removing ExtensionClass dependency
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#292">[ date ]</a>
+              <a href="thread.html#292">[ thread ]</a>
+              <a href="subject.html#292">[ subject ]</a>
+              <a href="author.html#292">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>One of the barriers to installing qmtest into the normal Python search
+path is that it includes local copies of Zope's ExtensionClass and
+DocumentTemplate, which may interfere with user-installed versions of
+the same packages.  Also, it's a bit ugly.
+
+As it turns out, though, ExtensionClass is entirely superfluous --
+it's only used for some DocumentTemplate optimizations, and if one
+simply doesn't compile cDocumentTemplate.c, it will fall back on
+Python versions of the same code.  Since rendering web pages is hardly
+a hotspot for qmtest, this isn't a problem.
+
+The attached patch removes ExtensionClass entirely, and moves the
+DocumentTemplate package to qm/external/.  As a result, qmtest no
+longer runs the risk of bumping into other packages if, at some future
+date, it is changed to install into the default library location.
+Also, a C compiler is no longer required to install qmtest.
+
+The only downside is that two tiny changes to DocumentTemplate were
+required; you can see them in the patch.  Both are bug-fixes that
+should probably be taken up-stream, but that would require more tuits
+than I have lying around at the moment.  Besides which, upstream now
+has extra dependencies that mean qmtest probably doesn't want to
+remerge anyway.  I've stuck the required patch in
+qm/external/local-DocumentTemplate-patch, though, so it will be
+available to anyone who does decide to re-merge later.
+
+The patch is not quite a normal patch; just doing a plain diff gave a
+800+KiB patch!  To apply:
+  $ cd $QM_CHECKOUT_ROOT
+  $ mkdir qm/external
+  $ mv zope-dtml/DocumentTemplate qm/external/
+  $ rm -rf zope-dtml
+  $ patch -p1 &lt; qmtest-remove-ExtensionClass.patch
+
+I'm not sure whether any copyright assignment is necessary,
+considering that there is basically nothing copyrightable in this
+patch.
+
+-- Nathaniel
+
+-- 
+Damn the Solar System.  Bad light; planets too distant; pestered with
+comets; feeble contrivance; could make a better one myself.
+  -- Lord Jeffrey
+
+This email may be read aloud.
+-------------- next part --------------
+diff --exclude='*~' --exclude=CVS --exclude=build -urN qm-mved/ChangeLog qm-modified/ChangeLog
+--- qm-mved/ChangeLog	2003-03-28 09:19:11.000000000 -0800
++++ qm-modified/ChangeLog	2003-04-09 21:05:43.000000000 -0700
+@@ -1,3 +1,20 @@
++2003-04-09  Nathaniel Smith  &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">njs at pobox.com</A>&gt;
++
++	* zope-dtml/ExtensionClass/: Remove.
++	* qm/external/: New directory.
++	* qm/external/__init__.py: New file.
++	* zope-dtml/DocumentTemplate/: Move to...
++	* qm/external/DocumentTemplate/: ...here.
++	* qm/external/DocumentTemplate/DT_String.py (String._ParseTag):
++	Tweak so it can find modules in the same directory.
++	* qm/external/DocumentTemplate/__init__.py: Tweak to work even if
++	ExtensionClass doesn't exist.
++	* qm/external/local-DocumentTemplate-patch: Record the above two
++	changes to ease future upgrades of DocumentTemplate.
++	* GNUMakefile.in (PYTHONDIRS): Remove mention of zope-dtml/.
++	(PYTHON_PACKAGES): Likewise.
++	* qm/web.py: Import DocumentTemplate from new location.
++
+ 2003-03-28  Mark Mitchell  &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">mark at codesourcery.com</A>&gt;
+ 
+ 	* qm/test/classes/process_target.py (ProcessTarget.__init):  Move
+diff --exclude='*~' --exclude=CVS --exclude=build -urN qm-mved/GNUmakefile.in qm-modified/GNUmakefile.in
+--- qm-mved/GNUmakefile.in	2003-03-27 11:48:42.000000000 -0800
++++ qm-modified/GNUmakefile.in	2003-04-09 21:01:23.000000000 -0700
+@@ -33,15 +33,10 @@
+ PYTHON_VERSION	= @PYTHON_VERSION@
+ PYTHON_PREFIX   = @PYTHON_PREFIX@
+ PYTHON_PLATFORM = @PYTHON_PLATFORM@
+-PYTHONDIRS	= $(TOPDIR) \
+-                  $(TOPDIR)/zope-dtml \
+-                  $(TOPDIR)/zope-dtml/ExtensionClass
++PYTHONDIRS	= $(TOPDIR)
+ 
+ # Python packages with installation scripts.
+-PYTHON_PACKAGES = \
+-	qm \
+-	zope-dtml/DocumentTemplate \
+-	zope-dtml/ExtensionClass
++PYTHON_PACKAGES = qm
+ # The names of rules to install the PYTHON_PACKAGES.
+ PYTHON_PACKAGES_INSTALL = $(PYTHON_PACKAGES:=-install)
+ 
+diff --exclude='*~' --exclude=CVS --exclude=build -urN qm-mved/qm/external/DocumentTemplate/DT_String.py qm-modified/qm/external/DocumentTemplate/DT_String.py
+--- qm-mved/qm/external/DocumentTemplate/DT_String.py	2001-02-08 12:19:22.000000000 -0800
++++ qm-modified/qm/external/DocumentTemplate/DT_String.py	2003-04-09 20:56:37.000000000 -0700
+@@ -170,10 +170,13 @@
+         if type(command) is tt:
+             cname, module, name = command
+             d={}
++            # subtlety: in these calls, globals() is not modified, but it
++            # provides module context for the import statement (so it knows
++            # to check the same directory as this file was found in).
+             try:
+-                exec 'from %s import %s' % (module, name) in d
++                exec 'from %s import %s' % (module, name) in globals(), d
+             except ImportError:
+-                exec 'from DocumentTemplate.%s import %s' % (module, name) in d
++                exec 'from DocumentTemplate.%s import %s' % (module, name) in globals(), d
+             command=d[name]
+             self.commands[cname]=command
+         return tag, args, command, coname
+diff --exclude='*~' --exclude=CVS --exclude=build -urN qm-mved/qm/external/DocumentTemplate/__init__.py qm-modified/qm/external/DocumentTemplate/__init__.py
+--- qm-mved/qm/external/DocumentTemplate/__init__.py	2001-02-08 12:19:26.000000000 -0800
++++ qm-modified/qm/external/DocumentTemplate/__init__.py	2003-04-09 20:57:15.000000000 -0700
+@@ -90,6 +90,8 @@
+ $Id: __init__.py,v 1.1.1.1 2001/02/08 20:19:26 samuel Exp $'''
+ __version__='$Revision: 1.1.1.1 $'[11:-2]
+ 
+-import ExtensionClass # work-around for import bug.
++try:
++    import ExtensionClass # work-around for import bug.
++except ImportError: pass
+ from DocumentTemplate import String, File, HTML, HTMLDefault, HTMLFile
+ from DocumentTemplate import html_quote
+diff --exclude='*~' --exclude=CVS --exclude=build -urN qm-mved/qm/external/__init__.py qm-modified/qm/external/__init__.py
+--- qm-mved/qm/external/__init__.py	1969-12-31 16:00:00.000000000 -0800
++++ qm-modified/qm/external/__init__.py	2003-04-09 21:31:42.000000000 -0700
+@@ -0,0 +1,23 @@
++########################################################################
++#
++# File:   __init__.py
++# Author: Nathaniel Smith
++# Date:   2003-04-09
++#
++# Contents:
++#   Empty file to make external packages importable.
++#
++# Copyright (c) 2001, 2002 by CodeSourcery, LLC.  All rights reserved. 
++#
++# For license terms see the file COPYING.
++#
++########################################################################
++
++# Nothing here!
++
++########################################################################
++# Local Variables:
++# mode: python
++# indent-tabs-mode: nil
++# fill-column: 72
++# End:
+diff --exclude='*~' --exclude=CVS --exclude=build -urN qm-mved/qm/external/local-DocumentTemplate-patch qm-modified/qm/external/local-DocumentTemplate-patch
+--- qm-mved/qm/external/local-DocumentTemplate-patch	1969-12-31 16:00:00.000000000 -0800
++++ qm-modified/qm/external/local-DocumentTemplate-patch	2003-04-09 20:58:48.000000000 -0700
+@@ -0,0 +1,32 @@
++diff -ur DocumentTemplate-old/DT_String.py DocumentTemplate-new/DT_String.py
++--- DocumentTemplate-old/DT_String.py	2001-02-08 12:19:22.000000000 -0800
+++++ DocumentTemplate-new/DT_String.py	2003-04-09 20:56:37.000000000 -0700
++@@ -170,10 +170,13 @@
++         if type(command) is tt:
++             cname, module, name = command
++             d={}
+++            # subtlety: in these calls, globals() is not modified, but it
+++            # provides module context for the import statement (so it knows
+++            # to check the same directory as this file was found in).
++             try:
++-                exec 'from %s import %s' % (module, name) in d
+++                exec 'from %s import %s' % (module, name) in globals(), d
++             except ImportError:
++-                exec 'from DocumentTemplate.%s import %s' % (module, name) in d
+++                exec 'from DocumentTemplate.%s import %s' % (module, name) in globals(), d
++             command=d[name]
++             self.commands[cname]=command
++         return tag, args, command, coname
++diff -ur DocumentTemplate-old/__init__.py DocumentTemplate-new/__init__.py
++--- DocumentTemplate-old/__init__.py	2001-02-08 12:19:26.000000000 -0800
+++++ DocumentTemplate-new/__init__.py	2003-04-09 20:57:15.000000000 -0700
++@@ -90,6 +90,8 @@
++ $Id: __init__.py,v 1.1.1.1 2001/02/08 20:19:26 samuel Exp $'''
++ __version__='$Revision: 1.1.1.1 $'[11:-2]
++ 
++-import ExtensionClass # work-around for import bug.
+++try:
+++    import ExtensionClass # work-around for import bug.
+++except ImportError: pass
++ from DocumentTemplate import String, File, HTML, HTMLDefault, HTMLFile
++ from DocumentTemplate import html_quote
+diff --exclude='*~' --exclude=CVS --exclude=build -urN qm-mved/qm/web.py qm-modified/qm/web.py
+--- qm-mved/qm/web.py	2002-11-28 20:11:28.000000000 -0800
++++ qm-modified/qm/web.py	2003-04-09 21:26:25.000000000 -0700
+@@ -45,14 +45,7 @@
+ import user
+ import whrandom
+ 
+-# If the binary modules that are used in the DTML implementation are
+-# linked against more recent versions of the C library than are found on
+-# the present system, we will get an ImportError.  Catch the exception
+-# and pass it on.
+-try:
+-    import DocumentTemplate
+-except ImportError, message:
+-    raise common.QMException, message
++import qm.external.DocumentTemplate as DocumentTemplate
+ 
+ ########################################################################
+ # constants
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000297.html">[qmtest] Subclassing Executable
+</A></li>
+	<LI>Next message: <A HREF="000293.html">[qmtest] [PATCH] Removing ExtensionClass dependency
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#292">[ date ]</a>
+              <a href="thread.html#292">[ thread ]</a>
+              <a href="subject.html#292">[ subject ]</a>
+              <a href="author.html#292">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">More information about the qmtest
+mailing list</a><br>
+</body></html>

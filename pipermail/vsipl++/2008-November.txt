@@ -1,0 +1,1495 @@
+From jules at codesourcery.com  Wed Nov  5 22:36:29 2008
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Wed, 05 Nov 2008 17:36:29 -0500
+Subject: Sourcery VSIPL++ 2.0 Available
+Message-ID: <49121FED.70901@codesourcery.com>
+
+CodeSourcery is pleased to announce the availability of Sourcery VSIPL
+2.0, Sourcery VSIPL++ 2.0, and Sourcery VSIPL++ 2.0 Lite.  Sourcery
+VSIPL is an entirely new library that implements the VSIPL API and is
+interoperable with Sourcery VSIPL++.  Sourcery VSIPL++ is a new
+version that offers a number of improvements and new features.
+
+Sourcery VSIPL++ and Sourcery VSIPL are a full implementations of the
+VSIPL++ and VSIL APIs, respectively, open standards for
+platform-independent signal and image-processing developed by the DOD
+High Performance Embedded Computing Software Initiative (HPEC-SI) and
+the VSIPL Forum. Both provide many high-level routines used in SIP
+computing, such as FFTs, FIR filters, SVD and QR decomposition, and
+linear algebra. Sourcery VSIPL++ offers the added benefits of greater
+productivity and performance through C++'s high-level syntax, and
+support for multiple processor systems.
+
+For more information about Sourcery VSIPL++, including information
+about receiving a free 30-day evaluation, please visit our website:
+
+    http://www.codesourcery.com/vsiplplusplus
+
+For more information on the new features in this release, please
+visit:
+
+    http://www.codesourcery.com/vsiplplusplus/2.0/news.html
+
+Sourcery VSIPL++ 2.0 Lite is a freely available open-source version
+available under the GPL license.  For download information, please
+visit:
+
+    http://www.codesourcery.com/vsiplplusplus/2.0/download.html
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From gmendola at mbigroup.it  Thu Nov  6 11:54:15 2008
+From: gmendola at mbigroup.it (Gaetano Mendola)
+Date: Thu, 06 Nov 2008 12:54:15 +0100
+Subject: vsip::Vector and mlock
+Message-ID: <4912DAE7.3050203@mbigroup.it>
+
+-----BEGIN PGP SIGNED MESSAGE-----
+Hash: SHA1
+
+Hi all,
+in my application I'm used to do something like:
+
+std::vector<T> myVector;
+...
+mlock(&myVector[0], sizeof(t)*myVector.size());
+
+yes I know, c++98 doesn't guaranteed that all elements
+in std::vector at contiguous memory location but c++03 does
+and anyway all stl implemantation I know guarantees it.
+
+I need to do the same with vsip::vector<T> becouse I'm
+replacing in my application that std::vector with a
+vsip::Vector (I need to perform an FFT on it), is it
+safe do:
+
+vsip::Vector<T> myVector;
+...
+mlock(&myVector(0), sizeof(t)*myVector.size());
+
+
+Regards
+Gaetano Mendola
+
+-----BEGIN PGP SIGNATURE-----
+Version: GnuPG v1.4.6 (GNU/Linux)
+Comment: Using GnuPG with Mozilla - http://enigmail.mozdev.org
+
+iD8DBQFJEtrn7UpzwH2SGd4RAu29AKDUC6SqTd/qi7DO13cY71sIYtT1CgCg+T3J
+NssISFsOl7w0rTvaMEQ6qdY=
+=jY/9
+-----END PGP SIGNATURE-----
+
+
+From stefan at codesourcery.com  Thu Nov  6 13:21:10 2008
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Thu, 06 Nov 2008 08:21:10 -0500
+Subject: [vsipl++] vsip::Vector and mlock
+In-Reply-To: <4912DAE7.3050203@mbigroup.it>
+References: <4912DAE7.3050203@mbigroup.it>
+Message-ID: <4912EF46.7060305@codesourcery.com>
+
+Gaetano Mendola wrote:
+
+> I need to do the same with vsip::vector<T> becouse I'm
+> replacing in my application that std::vector with a
+> vsip::Vector (I need to perform an FFT on it), is it
+> safe do:
+> 
+> vsip::Vector<T> myVector;
+> ...
+> mlock(&myVector(0), sizeof(t)*myVector.size());
+
+While Sourcery VSIPL++ provides direct data access, this is quite a bit 
+more involved than the above, as VSIPL++ views encapsulate memory 
+management quite differently compared to std::vector<>.
+
+I certainly wouldn't expect you to be able to replace std::vector by 
+vsip::Vector in your program without any additional porting effort.
+
+Sourcery VSIPL++ provides its own means to control memory management, if 
+you really want (memory pools, NUMA, etc.).
+
+However, before trying to apply a very specific optimization strategy 
+such as the above, I would suggest you profile the application once it 
+is ported to VSIPL++, to get a clear idea where the bottlenecks are. May 
+be  locking memory is indeed helpful, but chances are there are other 
+places that have a bigger impact.
+
+Regards,
+		Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+
+
+From jules at codesourcery.com  Thu Nov  6 15:17:40 2008
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Thu, 06 Nov 2008 10:17:40 -0500
+Subject: [vsipl++] vsip::Vector and mlock
+In-Reply-To: <4912EF46.7060305@codesourcery.com>
+References: <4912DAE7.3050203@mbigroup.it> <4912EF46.7060305@codesourcery.com>
+Message-ID: <49130A94.2070900@codesourcery.com>
+
+Stefan Seefeld wrote:
+> Gaetano Mendola wrote:
+> 
+>> I need to do the same with vsip::vector<T> becouse I'm
+>> replacing in my application that std::vector with a
+>> vsip::Vector (I need to perform an FFT on it), is it
+>> safe do:
+>>
+>> vsip::Vector<T> myVector;
+>> ...
+>> mlock(&myVector(0), sizeof(t)*myVector.size());
+> 
+> While Sourcery VSIPL++ provides direct data access, this is quite a bit 
+> more involved than the above, as VSIPL++ views encapsulate memory 
+> management quite differently compared to std::vector<>.
+
+Sourcery VSIPL++ also has a feature called user-specified storage that 
+binds a VSIPL++ view to memory allocated outside the library.  This 
+would allow you to allocate the memory in any way you choose (including 
+locking it down).  Here's an example of what this might look like:
+
+allocate your data outside of VSIPL++:
+
+	T* myPtr = new T[size];
+	mlock(myPtr, sizeof(T)*size);
+
+then create a VSIPL++ view/block that refers to it:
+
+	Dense<T> block(size, myPtr);
+	Vector<T> view(block);
+
+before you use view/block in VSIPL++, you need to admit the data into 
+the library:
+
+	block.admit();
+
+at this point, you can use 'view' like any other VSIPL++ view, 
+performing FFTs on it, etc.
+
+	fft(view);
+
+Finally, when you're done, you need to release the data:
+
+	block.release();
+
+Also, different VSIPL++ backends have requirements on data layout, 
+primarily for alignment.  To be safest, you'll want to make sure the 
+data you allocate has SIMD or cache line alignment, typically 32 B on x86.
+
+				-- Jules
+
+
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From don at codesourcery.com  Thu Nov  6 18:42:19 2008
+From: don at codesourcery.com (Don McCoy)
+Date: Thu, 06 Nov 2008 11:42:19 -0700
+Subject: [patch] Use new dispatch for matvec functions
+Message-ID: <49133A8B.5090506@codesourcery.com>
+
+The attached patch only addresses the C-VSIPL and the default (generic) 
+backends for these functions.  It is intended to as a precursor to a 
+patch that would fix the remaining backends (for CML, BLAS and SAL) once 
+this is approved.  To avoid breakage, (and once approved) I can hold 
+this patch until the remaining ones have been converted and tested.
+
+This patch has been tested with all backends disabled, so it effectively 
+only covers the default (fallback) implementations.
+
+How does this look?
+
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: mvd.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20081106/0e87ffc1/attachment.ksh>
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: mvd.diff
+Type: text/x-diff
+Size: 26397 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20081106/0e87ffc1/attachment.diff>
+
+From don at codesourcery.com  Fri Nov  7 00:48:42 2008
+From: don at codesourcery.com (Don McCoy)
+Date: Thu, 06 Nov 2008 17:48:42 -0700
+Subject: [vsipl++] [patch] Use new dispatch for matvec functions
+In-Reply-To: <49133A8B.5090506@codesourcery.com>
+References: <49133A8B.5090506@codesourcery.com>
+Message-ID: <4913906A.6050007@codesourcery.com>
+
+I'm reposting this patch now that the C-VSIPL backend has been fixed (as 
+a result of Jules' discovery of the dropped 'const' used with 
+Ext_data).  This patch corrects that problem and has been tested against 
+a normal build as well as the full 'ref-impl' set of tests (for the case 
+of being built as the reference implementation using the C-VSIPL backend).
+
+This patch completely replaces the previous one.  Note also that the 
+special evaluator used by the C-VSIPL backend to handle dot(a, conj(b)) 
+and cvjdot(a, b) is no longer needed with the way the Ext_data 
+constructor is now being called.  As a side note, expressions like 
+dot(conj(a), b) would have also run into the same compilation error 
+(even with the old dispatch, if I understand correctly).  Should that 
+case (and similar ones) be added as regression tests?
+
+Ok to commit?
+
+Don
+
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: mvd2.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20081106/c62e278e/attachment.ksh>
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: mvd2.diff
+Type: text/x-patch
+Size: 27829 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20081106/c62e278e/attachment.bin>
+
+From stefan at codesourcery.com  Fri Nov  7 17:27:43 2008
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Fri, 07 Nov 2008 12:27:43 -0500
+Subject: [vsipl++] [patch] Use new dispatch for matvec functions
+In-Reply-To: <4913906A.6050007@codesourcery.com>
+References: <49133A8B.5090506@codesourcery.com> <4913906A.6050007@codesourcery.com>
+Message-ID: <49147A8F.8040605@codesourcery.com>
+
+Don McCoy wrote:
+
+> Index: src/vsip/core/cvsip/matvec.hpp
+> ===================================================================
+> --- src/vsip/core/cvsip/matvec.hpp	(revision 225932)
+> +++ src/vsip/core/cvsip/matvec.hpp	(working copy)
+> @@ -158,31 +158,34 @@
+>  
+>  } // namespace vsip::impl::cvsip
+>  
+> +namespace dispatcher
+> +{
+> +
+>  template <typename T,
+> -          typename Block1,
+> -          typename Block2>
+> -struct Evaluator<Op_prod_vv_dot, Return_scalar<T>, Op_list_2<Block1, Block2>,
+> -                 Cvsip_tag>
+> +          typename Block0,
+> +          typename Block1>
+> +struct Evaluator<Op_prod_vv_dot, Cvsip_tag,
+> +                 Return_scalar<T>(Block0 const&, Block1 const&)>
+>  {
+>    typedef cvsip::Op_traits<T> traits;
+>  
+>    static bool const ct_valid = 
+>      traits::valid &&
+> +    Type_equal<T, typename Block0::value_type>::value &&
+>      Type_equal<T, typename Block1::value_type>::value &&
+> -    Type_equal<T, typename Block2::value_type>::value &&
+>      // check that direct access is supported
+> -    Ext_data_cost<Block1>::value == 0 &&
+> -    Ext_data_cost<Block2>::value == 0;
+> +    Ext_data_cost<Block0>::value == 0 &&
+> +    Ext_data_cost<Block1>::value == 0;
+>  
+> -  static bool rt_valid(Block1 const&, Block2 const&) { return true;}
+> +  static bool rt_valid(Block0 const&, Block1 const&) { return true;}
+>  
+> -  static T exec(Block1 const& a, Block2 const& b)
+> +  static T exec(Block0 const& a, Block1 const& b)
+>    {
+>      VSIP_IMPL_COVER_FCN("Op_prod_vv_dot/cvsip", exec);
+>      assert(a.size(1, 0) == b.size(1, 0));
+>  
+> -    Ext_data<Block1> ext_a(const_cast<Block1&>(a));
+> -    Ext_data<Block2> ext_b(const_cast<Block2&>(b));
+> +    Ext_data<Block0 const> ext_a(a);
+
+I suggest to put documentation comments into the above to clarify what 
+is happening:
+
+The ct_valid expression evaluates whether this backend can be used 
+without temporaries (Ext_data_cost<>::value == 0). However, the 
+evaluator remains usable ('valid') even if that isn't the case, as 
+Ext_data<> will evaluate expressions prior to the actual operation is run.
+
+> Index: src/vsip/core/general_evaluator.hpp
+> ===================================================================
+> --- src/vsip/core/general_evaluator.hpp	(revision 225932)
+> +++ src/vsip/core/general_evaluator.hpp	(working copy)
+> @@ -61,6 +61,40 @@
+>    static bool const ct_valid = false;
+>  };
+>  
+
+I'd propose we start with a new file instead of lumping parts of two 
+dispatcher harnesses into the same. That will only confuse us, even 
+though in the long run we aim at eliminating one of the two entirely.
+
+What about simply /src/vsip/core/dispatch.hpp ? (We already do similar 
+things in other cases, e.g. core/profile.hpp and opt/profile.hpp...)
+
+Thanks,
+		Stefan
+
+
+From jules at codesourcery.com  Fri Nov 14 21:59:35 2008
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Fri, 14 Nov 2008 16:59:35 -0500
+Subject: [patch] SSAR optimizations for HPEC
+Message-ID: <491DF4C7.50902@codesourcery.com>
+
+This patch includes the optimizations done for HPEC
+  - use half-fast convolution
+  - 128-byte alignment of data
+  - place large data sets in huge page memory
+  - remove fftshifts from compute sections
+
+Ok to apply?
+
+			-- Jules
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: ssar.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20081114/1765c111/attachment.ksh>
+
+From don at codesourcery.com  Tue Nov 18 02:42:22 2008
+From: don at codesourcery.com (Don McCoy)
+Date: Mon, 17 Nov 2008 19:42:22 -0700
+Subject: [vsipl++] [patch] Use new dispatch for matvec functions
+In-Reply-To: <4913906A.6050007@codesourcery.com>
+References: <49133A8B.5090506@codesourcery.com> <4913906A.6050007@codesourcery.com>
+Message-ID: <49222B8E.909@codesourcery.com>
+
+This patch has been expanded to include SAL and CML matvec functions and 
+it completely replaces previous versions.  It also incorporates the 
+feedback received from Stefan.  BLAS modifications will be posted in a 
+later patch.
+
+Ok to commit?
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: mvd3.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20081117/6ab12f2b/attachment.ksh>
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: mvd3.diff
+Type: text/x-diff
+Size: 49913 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20081117/6ab12f2b/attachment.diff>
+
+From don at codesourcery.com  Tue Nov 18 04:58:56 2008
+From: don at codesourcery.com (Don McCoy)
+Date: Mon, 17 Nov 2008 21:58:56 -0700
+Subject: [vsipl++] [patch] Use new dispatch for matvec functions
+In-Reply-To: <49222B8E.909@codesourcery.com>
+References: <49133A8B.5090506@codesourcery.com> <4913906A.6050007@codesourcery.com> <49222B8E.909@codesourcery.com>
+Message-ID: <49224B90.8040306@codesourcery.com>
+
+This patch completes the matvec changes by converting BLAS functions 
+over to using the new dispatch.
+
+Ok to commit?
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: mvd_blas.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20081117/bf609afb/attachment.ksh>
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: mvd_blas.diff
+Type: text/x-diff
+Size: 7424 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20081117/bf609afb/attachment.diff>
+
+From stefan at codesourcery.com  Tue Nov 18 13:35:57 2008
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Tue, 18 Nov 2008 08:35:57 -0500
+Subject: [vsipl++] [patch] Use new dispatch for matvec functions
+In-Reply-To: <49222B8E.909@codesourcery.com>
+References: <49133A8B.5090506@codesourcery.com> <4913906A.6050007@codesourcery.com> <49222B8E.909@codesourcery.com>
+Message-ID: <4922C4BD.40503@codesourcery.com>
+
+Don McCoy wrote:
+> This patch has been expanded to include SAL and CML matvec functions and 
+> it completely replaces previous versions.  It also incorporates the 
+> feedback received from Stefan.  BLAS modifications will be posted in a 
+> later patch.
+> 
+> Ok to commit?
+
+Don, this looks good. I have a couple of minor issues, and one 
+high-level question (to the group):
+
+It is noteworthy that the C-VSIPL backends set ct_valid to false if the 
+block types don't allow direct data access (i.e. Ext_data_cost > 0), yet 
+for the reference implementation we call them explicitly, since the 
+Ext_data handles the layout adjustments. Could you please add comments 
+to point that out ?
+
+> Index: src/vsip/core/dispatch.hpp
+> ===================================================================
+> --- src/vsip/core/dispatch.hpp	(revision 0)
+> +++ src/vsip/core/dispatch.hpp	(revision 0)
+> @@ -0,0 +1,71 @@
+> +/* Copyright (c) 2008 by CodeSourcery.  All rights reserved. */
+> +
+> +/** @file    vsip/core/dispatch.hpp
+> +    @author  Stefan Seefeld
+> +    @date    2006-11-03
+> +    @brief   VSIPL++ Library: Dispatcher harness.
+> +*/
+> +
+> +#ifndef VSIP_CORE_DISPATCH_HPP
+> +#define VSIP_CORE_DISPATCH_HPP
+> +
+> +
+> +/***********************************************************************
+> +  Declarations
+> +***********************************************************************/
+> +
+> +namespace vsip
+> +{
+> +namespace impl
+> +{
+> +
+> +// Operation Tags.
+> +//
+> +// Each operation (dot-product, matrix-matrix product, etc) has a 
+> +// unique operation tag.
+> +
+> +struct Op_prod_vv_dot;    // vector-vector dot-product
+> +struct Op_prod_vv_outer;  // vector-vector outer-product
+> +struct Op_prod_mm;        // matrix-matrix product
+> +struct Op_prod_mm_conj;   // matrix-matrix conjugate product
+> +struct Op_prod_mv;        // matrix-vector product
+> +struct Op_prod_vm;        // vector-matrix product
+> +struct Op_prod_gemp;      // generalized matrix-matrix product
+> +
+> +
+> +namespace dispatcher
+> +{
+
+I don't think these operation tags belong into this file, but I'm not 
+sure where to put them instead. We (sort of) maintain a back-end 
+repository in the vsip/core/impl_tags.hpp file. May be we could add 
+operation tags there, too ?
+Also, as all these tags are always and exclusively used in conjunction 
+with the dispatcher, I'd suggest we put them into the dispatcher 
+namespace, too, in an effort to clean up the vsip::impl namespace.
+And, as the above tags are now (with your two patches) only used with 
+the new dispatcher, this seems to be the right moment to do this.
+
+
+> Index: src/vsip/core/matvec.hpp
+> ===================================================================
+> --- src/vsip/core/matvec.hpp	(revision 225932)
+> +++ src/vsip/core/matvec.hpp	(working copy)
+> @@ -19,8 +19,11 @@
+>  #include <vsip/matrix.hpp>
+>  #include <vsip/core/promote.hpp>
+>  #include <vsip/core/fns_elementwise.hpp>
+> +#include <vsip/core/general_evaluator.hpp>
+> +#include <vsip/core/dispatch.hpp>
+> +#include <vsip/core/impl_tags.hpp>
+>  #ifndef VSIP_IMPL_REF_IMPL
+> -# include <vsip/opt/general_dispatch.hpp>
+> +# include <vsip/opt/dispatch.hpp>
+>  # ifdef VSIP_IMPL_CBE_SDK
+>  #  include <vsip/opt/cbe/cml/matvec.hpp>
+>  # endif
+
+I believe the general_evaluator.hpp file is obsolete (for the matvec 
+operations) now, and thus shouldn't be included any longer.
+
+> -// Dot product dispatch.  This is intentionally not named 'dot' to avoid
+> -// conflicting with vsip::dot, which shares the same signature, forcing
+> -// the user to resolve the call themselves.
+> -
+> +/// Dot product dispatch.  This is intentionally not named 'dot' to avoid
+> +/// conflicting with vsip::dot, which shares the same signature, forcing
+> +/// the user to resolve the call themselves.
+>  template <typename T0, typename T1, typename Block0, typename Block1>
+>  typename Promotion<T0, T1>::type
+>  impl_dot(
+
+Is this comment really meant to be put into the manual ? While I 
+appreciate the comment as a hint for people working on the code, I don't 
+think it belongs into documentation, and so should remain a simple '//' 
+comment.
+
+Thanks,
+		Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+
+
+From stefan at codesourcery.com  Tue Nov 18 13:38:38 2008
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Tue, 18 Nov 2008 08:38:38 -0500
+Subject: [vsipl++] [patch] Use new dispatch for matvec functions
+In-Reply-To: <49224B90.8040306@codesourcery.com>
+References: <49133A8B.5090506@codesourcery.com> <4913906A.6050007@codesourcery.com> <49222B8E.909@codesourcery.com> <49224B90.8040306@codesourcery.com>
+Message-ID: <4922C55E.6040001@codesourcery.com>
+
+Don McCoy wrote:
+> This patch completes the matvec changes by converting BLAS functions 
+> over to using the new dispatch.
+> 
+> Ok to commit?
+
+This looks good, modulo the hidden printf() call. :-)
+
+Thanks,
+		Stefan
+
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+
+
+From jules at codesourcery.com  Tue Nov 18 17:27:44 2008
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Tue, 18 Nov 2008 12:27:44 -0500
+Subject: [vsipl++] [patch] Use new dispatch for matvec functions
+In-Reply-To: <49222B8E.909@codesourcery.com>
+References: <49133A8B.5090506@codesourcery.com> <4913906A.6050007@codesourcery.com> <49222B8E.909@codesourcery.com>
+Message-ID: <4922FB10.6090303@codesourcery.com>
+
+Don McCoy wrote:
+> This patch has been expanded to include SAL and CML matvec functions and 
+> it completely replaces previous versions.  It also incorporates the 
+> feedback received from Stefan.  BLAS modifications will be posted in a 
+> later patch.
+> 
+> Ok to commit?
+
+Don,
+
+I have several comments below.  Otherwise it looks good.
+
+			thanks,
+			-- Jules
+
+
+
+> Index: src/vsip/core/cvsip/matvec.hpp
+> ===================================================================
+> --- src/vsip/core/cvsip/matvec.hpp	(revision 225932)
+> +++ src/vsip/core/cvsip/matvec.hpp	(working copy)
+> @@ -158,82 +158,47 @@
+>  
+>  } // namespace vsip::impl::cvsip
+>  
+> +namespace dispatcher
+> +{
+> +
+>  template <typename T,
+> -          typename Block1,
+> -          typename Block2>
+> -struct Evaluator<Op_prod_vv_dot, Return_scalar<T>, Op_list_2<Block1, Block2>,
+> -                 Cvsip_tag>
+> +          typename Block0,
+> +          typename Block1>
+> +struct Evaluator<Op_prod_vv_dot, Cvsip_tag,
+> +                 Return_scalar<T>(Block0 const&, Block1 const&)>
+
+[1] I don't think the new dispatcher needs the Return_scalar<T>.  Just
+T should be fine.
+
+Return_scalar helped general dispatch determine wehther the exec
+function gave its result as a return value (mostly scalars) or as a
+by-reference variable (mostly blocks).  The new dispatcher uses
+function type to indicate this without ambiguity.
+
+
+
+>  
+> -template <typename T,
+> -          typename Block1,
+> -          typename Block2>
+> -struct Evaluator<Op_prod_vv_dot, Return_scalar<std::complex<T> >,
+> -                 Op_list_2<Block1, 
+> -                           Unary_expr_block<1, conj_functor,
+> -                                            Block2, std::complex<T> > const>,
+> -                 Cvsip_tag>
+
+[2] Why is this evaluator being removed?
+
+> -{
+> -  typedef cvsip::Op_traits<std::complex<T> > traits;
+> -  typedef Unary_expr_block<1, conj_functor, Block2, complex<T> > block2_type;
+>  
+> -  static bool const ct_valid = 
+> -    traits::valid &&
+> -    Type_equal<complex<T>, typename Block1::value_type>::value &&
+> -    Type_equal<complex<T>, typename Block2::value_type>::value &&
+> -    // check that direct access is supported
+> -    Ext_data_cost<Block1>::value == 0 &&
+> -    Ext_data_cost<Block2>::value == 0;
+> -
+> -  static bool rt_valid(Block1 const&, block2_type const&)
+> -  { return true; }
+> -
+> -  static complex<T> exec(Block1 const& a, block2_type const& b)
+> -  {
+> -    VSIP_IMPL_COVER_FCN("Op_prod_vv_dot(conj)/cvsip", exec);
+> -    assert(a.size(1, 0) == b.size(1, 0));
+> -
+> -    Ext_data<Block1> ext_a(const_cast<Block1&>(a));
+> -    Ext_data<Block2> ext_b(const_cast<Block2&>(b.op()));
+> -    cvsip::View<1, std::complex<T> >
+> -      aview(ext_a.data(), 0, ext_a.stride(0), a.size(1, 0));
+> -    cvsip::View<1, std::complex<T> >
+> -      bview(ext_b.data(), 0, ext_b.stride(0), b.size(1, 0));
+> -    return traits::cvjdot(aview.ptr(), bview.ptr());
+> -  }
+> -};
+> -
+
+> +/* Copyright (c) 2008 by CodeSourcery.  All rights reserved. */
+> +
+> +/** @file    vsip/core/dispatch.hpp
+> +    @author  Stefan Seefeld
+> +    @date    2006-11-03
+> +    @brief   VSIPL++ Library: Dispatcher harness.
+
+[3] Can you adjust the author/date and mention that this file contains
+a simplified dispatch harness for the reference implementation and
+that the real slim shady is in opt/dispatch.hpp.
+
+
+
+> +/// Generic evaluator for vector-vector dot-product.
+> +template <typename T,
+> +	  typename Block0,
+> +	  typename Block1>
+> +struct Evaluator<Op_prod_vv_dot, Generic_tag,
+> +                 T(Block0 const&, Block1 const&)>
+> +{
+> +  static bool const ct_valid = true;
+> +  static bool rt_valid(Block0 const&, Block1 const&) { return true; }
+> +
+> +  static T exec(Block0 const& a, Block1 const& b)
+> +  {
+> +    assert(a.size(1, 0) == b.size(1, 0));
+> +
+> +    T r = T();
+> +    for ( index_type i = 0; i < a.size(); ++i )
+> +      r += a.get(i) * b.get(i);
+> +    return r;
+> +  }
+> +};
+> +
+> +template <typename T,
+> +	  typename Block0,
+> +	  typename Block1>
+> +struct Evaluator<Op_prod_vv_dot, Generic_tag,
+> +                 std::complex<T>(Block0 const&, 
+> +                   Unary_expr_block<1, conj_functor, Block1, std::complex<T> > const&)>
+
+[4] Why is this evaluator necessary?  The Unar_expr_block specialization
+isn't used at all: the exec() body is identical to the more generic
+evaluator above.
+
+> +{
+> +  typedef Unary_expr_block<1, conj_functor, Block1, std::complex<T> > block1_type;
+> +
+> +  static bool const ct_valid = true;
+> +  static bool rt_valid(Block0 const&, block1_type const&) { return true; }
+> +
+> +  static std::complex<T> exec(Block0 const& a, block1_type const& b)
+> +  {
+> +    assert(a.size(1, 0) == b.size(1, 0));
+> +
+> +    std::complex<T> r = std::complex<T>();
+> +    for ( index_type i = 0; i < a.size(); ++i )
+> +      r += a.get(i) * b.get(i);
+> +    return r;
+> +  }
+> +};
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From jules at codesourcery.com  Tue Nov 18 17:34:04 2008
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Tue, 18 Nov 2008 12:34:04 -0500
+Subject: [vsipl++] [patch] Use new dispatch for matvec functions
+In-Reply-To: <4922C4BD.40503@codesourcery.com>
+References: <49133A8B.5090506@codesourcery.com> <4913906A.6050007@codesourcery.com> <49222B8E.909@codesourcery.com> <4922C4BD.40503@codesourcery.com>
+Message-ID: <4922FC8C.6010408@codesourcery.com>
+
+
+> one high-level question (to the group):
+
+What was the high-level question?
+
+> I don't think these operation tags belong into this file, but I'm not 
+> sure where to put them instead. We (sort of) maintain a back-end 
+> repository in the vsip/core/impl_tags.hpp file. May be we could add 
+> operation tags there, too ?
+
+vsip/core/impl_tags.hpp would be good.
+
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From stefan at codesourcery.com  Tue Nov 18 17:39:59 2008
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Tue, 18 Nov 2008 12:39:59 -0500
+Subject: [vsipl++] [patch] Use new dispatch for matvec functions
+In-Reply-To: <4922FC8C.6010408@codesourcery.com>
+References: <49133A8B.5090506@codesourcery.com> <4913906A.6050007@codesourcery.com> <49222B8E.909@codesourcery.com> <4922C4BD.40503@codesourcery.com> <4922FC8C.6010408@codesourcery.com>
+Message-ID: <4922FDEF.9090006@codesourcery.com>
+
+Jules Bergmann wrote:
+> 
+>> one high-level question (to the group):
+> 
+> What was the high-level question?
+> 
+>> I don't think these operation tags belong into this file, but I'm not 
+>> sure where to put them instead. We (sort of) maintain a back-end 
+>> repository in the vsip/core/impl_tags.hpp file. May be we could add 
+>> operation tags there, too ?
+> 
+> vsip/core/impl_tags.hpp would be good.
+
+This one. :-)
+
+Thanks,
+		Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+
+
+From don at codesourcery.com  Tue Nov 18 20:44:53 2008
+From: don at codesourcery.com (Don McCoy)
+Date: Tue, 18 Nov 2008 13:44:53 -0700
+Subject: [vsipl++] [patch] Use new dispatch for matvec functions
+In-Reply-To: <4922FB10.6090303@codesourcery.com>
+References: <49133A8B.5090506@codesourcery.com> <4913906A.6050007@codesourcery.com> <49222B8E.909@codesourcery.com> <4922FB10.6090303@codesourcery.com>
+Message-ID: <49232945.7020500@codesourcery.com>
+
+Jules Bergmann wrote:
+>
+>>  
+>> -template <typename T,
+>> -          typename Block1,
+>> -          typename Block2>
+>> -struct Evaluator<Op_prod_vv_dot, Return_scalar<std::complex<T> >,
+>> -                 Op_list_2<Block1, -                           
+>> Unary_expr_block<1, conj_functor,
+>> -                                            Block2, std::complex<T> 
+>> > const>,
+>> -                 Cvsip_tag>
+>
+> [2] Why is this evaluator being removed?
+>
+Because, as I understood it, the only time it is invoked is when it is 
+called directly (reference implementation), rather than through the 
+dispatch mechanism, and as such, the Ext_data object would perform the 
+copy needed in order to apply the conjugate functor.
+
+Now I'm not sure that was correct.  I'll restore the evaluator.  Can you 
+solidify my understanding of how this works though?  Will it not perform 
+the conjugate operation twice as a result of 'b.op()' followed by 
+'cvjdot()'?
+
+
+
+>
+>> +/* Copyright (c) 2008 by CodeSourcery.  All rights reserved. */
+>> +
+>> +/** @file    vsip/core/dispatch.hpp
+>> +    @author  Stefan Seefeld
+>> +    @date    2006-11-03
+>> +    @brief   VSIPL++ Library: Dispatcher harness.
+>
+> [3] Can you adjust the author/date and mention that this file contains
+> a simplified dispatch harness for the reference implementation and
+> that the real slim shady is in opt/dispatch.hpp.
+>
+Done.  :)
+
+
+>
+>> +template <typename T,
+>> +      typename Block0,
+>> +      typename Block1>
+>> +struct Evaluator<Op_prod_vv_dot, Generic_tag,
+>> +                 std::complex<T>(Block0 const&, +                   
+>> Unary_expr_block<1, conj_functor, Block1, std::complex<T> > const&)>
+>
+> [4] Why is this evaluator necessary?  The Unar_expr_block specialization
+> isn't used at all: the exec() body is identical to the more generic
+> evaluator above.
+
+It probably isn't.  May have been leftover from tests done prior to 
+understanding what was going on with cases where the Unary_expr_block 
+was used and the right specialization was not being seen.
+
+
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+
+
+
+From stefan at codesourcery.com  Tue Nov 18 21:09:53 2008
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Tue, 18 Nov 2008 16:09:53 -0500
+Subject: [vsipl++] [patch] Use new dispatch for matvec functions
+In-Reply-To: <49232945.7020500@codesourcery.com>
+References: <49133A8B.5090506@codesourcery.com> <4913906A.6050007@codesourcery.com> <49222B8E.909@codesourcery.com> <4922FB10.6090303@codesourcery.com> <49232945.7020500@codesourcery.com>
+Message-ID: <49232F21.2060305@codesourcery.com>
+
+Don McCoy wrote:
+> Jules Bergmann wrote:
+
+>> [3] Can you adjust the author/date and mention that this file contains
+>> a simplified dispatch harness for the reference implementation and
+>> that the real slim shady is in opt/dispatch.hpp.
+>>
+> Done.  :)
+
+Actually, let me suggest a slight simplification:
+Make vsip/core/dispatch.hpp unconditionally provide the primary 
+templates for dispatcher::Evaluator and dispatcher::Signature, so 
+vsip/opt/dispatch.hpp only adds specializations (and dispatcher::List) 
+to be able to perform a true dispatch. Obviously, vsip/opt/dispatch.hpp 
+then includes vsip/core/dispatch.hpp.
+
+Thanks,
+		Stefan
+
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+
+
+From jules at codesourcery.com  Tue Nov 18 21:38:03 2008
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Tue, 18 Nov 2008 16:38:03 -0500
+Subject: [vsipl++] [patch] Use new dispatch for matvec functions
+In-Reply-To: <49232945.7020500@codesourcery.com>
+References: <49133A8B.5090506@codesourcery.com> <4913906A.6050007@codesourcery.com> <49222B8E.909@codesourcery.com> <4922FB10.6090303@codesourcery.com> <49232945.7020500@codesourcery.com>
+Message-ID: <492335BB.7080402@codesourcery.com>
+
+Don,
+
+>>> -template <typename T,
+>>> -          typename Block1,
+>>> -          typename Block2>
+>>> -struct Evaluator<Op_prod_vv_dot, Return_scalar<std::complex<T> >,
+>>> -                 Op_list_2<Block1, -                           
+>>> Unary_expr_block<1, conj_functor,
+>>> -                                            Block2, std::complex<T> 
+>>> > const>,
+>>> -                 Cvsip_tag>
+>>
+>> [2] Why is this evaluator being removed?
+>>
+> Because, as I understood it, the only time it is invoked is when it is 
+> called directly (reference implementation), rather than through the 
+> dispatch mechanism, and as such, the Ext_data object would perform the 
+> copy needed in order to apply the conjugate functor.
+> 
+> Now I'm not sure that was correct.  I'll restore the evaluator.  Can you 
+> solidify my understanding of how this works though?  Will it not perform 
+> the conjugate operation twice as a result of 'b.op()' followed by 
+> 'cvjdot()'?
+
+The conjugate is done only once, by the cvjdot routine.
+
+The VSIPL++ expression:
+
+	z = dot(p, conj(q));	// VSIPL++
+
+Gets recognized by the evaluator with
+
+	a = p
+	b = conj(q);
+
+Internally, b.op() == q, so it gets evaluated as:
+
+	z = cvjdot(p, q);
+
+b.op() is probably returns the operand block of b.  It doesn't perform 
+the operation (the name is a bit confusing in that sense).
+
+				-- Jules
+
+
+
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From don at codesourcery.com  Tue Nov 18 21:44:19 2008
+From: don at codesourcery.com (Don McCoy)
+Date: Tue, 18 Nov 2008 14:44:19 -0700
+Subject: [vsipl++] [patch] Use new dispatch for matvec functions
+In-Reply-To: <49232F21.2060305@codesourcery.com>
+References: <49133A8B.5090506@codesourcery.com> <4913906A.6050007@codesourcery.com> <49222B8E.909@codesourcery.com> <4922FB10.6090303@codesourcery.com> <49232945.7020500@codesourcery.com> <49232F21.2060305@codesourcery.com>
+Message-ID: <49233733.4080703@codesourcery.com>
+
+I think all feedback has been addressed with this patch.  Thank you 
+all.  It also includes the BLAS changes and a slight modification to the 
+matvec test (new) because it was running into an error comparing small 
+values on the gemp tests (but only when configured to use C-SAL).
+
+Ok to commit?
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: mvd4.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20081118/f1cbe5c1/attachment.ksh>
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: mvd4.diff
+Type: text/x-diff
+Size: 61080 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20081118/f1cbe5c1/attachment.diff>
+
+From jules at codesourcery.com  Tue Nov 18 22:10:23 2008
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Tue, 18 Nov 2008 17:10:23 -0500
+Subject: [vsipl++] [patch] Use new dispatch for matvec functions
+In-Reply-To: <49233733.4080703@codesourcery.com>
+References: <49133A8B.5090506@codesourcery.com> <4913906A.6050007@codesourcery.com> <49222B8E.909@codesourcery.com> <4922FB10.6090303@codesourcery.com> <49232945.7020500@codesourcery.com> <49232F21.2060305@codesourcery.com> <49233733.4080703@codesourcery.com>
+Message-ID: <49233D4F.7050801@codesourcery.com>
+
+Don McCoy wrote:
+> I think all feedback has been addressed with this patch.  Thank you 
+> all.  It also includes the BLAS changes and a slight modification to the 
+> matvec test (new) because it was running into an error comparing small 
+> values on the gemp tests (but only when configured to use C-SAL).
+> 
+> Ok to commit?
+
+Yes, this looks good, please check it in. -- Jules
+
+> +  // Note: C-VSIPL backends set ct_valid to false if the block types don't 
+> +  // allow direct data access (i.e. Ext_data_cost > 0), which occurs when
+> +  // an operator like conj() is used (see cvjdot()).  This prevents this
+> +  // evaluator from being used if invoked through the normal dispatch 
+> +  // mechanism.  For the reference implementation, we call the backend 
+> +  // explicitly, which is ok, since the Ext_data handles the layout 
+> +  // adjustments.
+
+Nice comment!
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From don at codesourcery.com  Tue Nov 18 23:04:16 2008
+From: don at codesourcery.com (Don McCoy)
+Date: Tue, 18 Nov 2008 16:04:16 -0700
+Subject: [vsipl++] [patch] SSAR optimizations for HPEC
+In-Reply-To: <491DF4C7.50902@codesourcery.com>
+References: <491DF4C7.50902@codesourcery.com>
+Message-ID: <492349F0.3030009@codesourcery.com>
+
+Jules Bergmann wrote:
+> This patch includes the optimizations done for HPEC
+>  - use half-fast convolution
+>  - 128-byte alignment of data
+>  - place large data sets in huge page memory
+>  - remove fftshifts from compute sections
+>
+Some minor comments below.
+
+
+> +  typedef vsip::impl::Layout<2, row2_type, 
+> vsip::impl::Stride_unit_align<128>,
+> +                     vsip::impl::dense_complex_type>
+> +        row_layout_type;
+> +  typedef vsip::impl::Layout<2, col2_type, 
+> vsip::impl::Stride_unit_align<128>,
+> +                 vsip::impl::dense_complex_type>
+> +        col_layout_type;
+
+Is this solely to get the desired alignment?  Aren't we getting that 
+anyway by specifying  --with-alignment=128 at configure time?  Or is 
+there another reason to use Fast_block<>?
+
+
+> @@ -98,16 +131,19 @@
+>  
+>  template <typename T>
+>  Kernel1_base<T>::Kernel1_base(scalar_f scale, length_type n,
+> ...
+> {
+>    using vsip_csl::matlab::fftshift;
+> +  using vsip_csl::matlab::fftshift_0;
+> +  using vsip_csl::matlab::fd_fftshift_1;
+>    using vsip_csl::load_view_as;
+It was not clear to me what these were until I saw the comments in the 
+matlab file.  I'm not sure if we shouldn't either rename them, or just 
+add a comment to make it clear why we are doing half of the shift here 
+(and where the other half of the shift is taking place).  Maybe both?
+
+For example, would it be less confusing to say
+
+    fftshift<row>(...)
+
+to do a swap of the top half of rows with the bottom half?  Likewise 
+with fftshift<col>.  We could fix it so that fftshift() (with no 
+template parameter) would default to doing both (aka a 'normal' fftshift).
+
+Just a suggestion.  If you don't think it more clear that way, then I 
+think a simple comment would suffice.
+
+
+> @@ -253,12 +291,15 @@
+>    typedef Fft<const_Vector, complex<T>, complex<T>, fft_fwd, 
+> by_reference> row_fft_type;
+>    typedef Fft<const_Vector, complex<T>, complex<T>, fft_inv, 
+> by_reference> inv_fft_type;
+>    typedef Fftm<complex<T>, complex<T>, row, fft_fwd, by_reference> 
+> row_fftm_type;
+> +  typedef Fftm<complex<T>, complex<T>, row, fft_fwd, by_value> 
+> val_row_fftm_type;
+>    typedef Fftm<complex<T>, complex<T>, col, fft_fwd, by_reference> 
+> col_fftm_type;
+> +  typedef Fftm<complex<T>, complex<T>, col, fft_fwd, by_value> 
+> val_col_fftm_type;
+>    typedef Fftm<complex<T>, complex<T>, row, fft_inv, by_reference> 
+> inv_row_fftm_type;
+> +  typedef Fftm<complex<T>, complex<T>, row, fft_inv, by_value> 
+> val_inv_row_fftm_type;
+>    typedef Fftm<complex<T>, complex<T>, col, fft_inv, by_reference> 
+> inv_col_fftm_type;
+>  
+If we are not using the by_ref types, can we just get rid of them?
+
+
+
+
+>    // 62. (n by mc array of complex numbers) signal compressed along
+>    //     slow-time (note that to view 'sCompr' it will need to be
+>    //     fftshifted first.)
+> -  s_compr_ = s_filt_ * s_compr_filt_;
+> +  {
+> +    Scope<user> scope("ft-halfast",  fast_time_filter_ops_);
+I think this should be "half-fast" ... as in a few other places.
+
+
+
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+
+
+
+From jules at codesourcery.com  Wed Nov 19 15:41:27 2008
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Wed, 19 Nov 2008 10:41:27 -0500
+Subject: [vsipl++] [patch] SSAR optimizations for HPEC
+In-Reply-To: <492349F0.3030009@codesourcery.com>
+References: <491DF4C7.50902@codesourcery.com> <492349F0.3030009@codesourcery.com>
+Message-ID: <492433A7.5020201@codesourcery.com>
+
+Don,
+
+Thanks for the feedback!
+
+> Some minor comments below.
+> 
+> 
+>> +  typedef vsip::impl::Layout<2, row2_type, 
+>> vsip::impl::Stride_unit_align<128>,
+>> +                     vsip::impl::dense_complex_type>
+>> +        row_layout_type;
+>> +  typedef vsip::impl::Layout<2, col2_type, 
+>> vsip::impl::Stride_unit_align<128>,
+>> +                 vsip::impl::dense_complex_type>
+>> +        col_layout_type;
+> 
+> Is this solely to get the desired alignment?  Aren't we getting that 
+> anyway by specifying  --with-alignment=128 at configure time?  Or is 
+> there another reason to use Fast_block<>?
+
+It also gets each row to start with the desired alignment (padding if 
+necessary.  --with-alignment=128 only gets 128-byte alignment at the 
+start of the matrix.
+
+
+
+> For example, would it be less confusing to say
+> 
+>    fftshift<row>(...)
+> 
+> to do a swap of the top half of rows with the bottom half?  Likewise 
+> with fftshift<col>.  We could fix it so that fftshift() (with no 
+> template parameter) would default to doing both (aka a 'normal' fftshift).
+
+That's a good suggestion, I'll give it a try.
+
+
+> If we are not using the by_ref types, can we just get rid of them?
+
+Will do.
+
+				thanks,
+				-- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From don at codesourcery.com  Wed Nov 19 20:44:36 2008
+From: don at codesourcery.com (Don McCoy)
+Date: Wed, 19 Nov 2008 13:44:36 -0700
+Subject: [patch] Fix for problem compiling as split-complex with newer SAL
+ matvec functions
+Message-ID: <49247AB4.6070908@codesourcery.com>
+
+To reproduce this problem, you must be configured with
+
+    --with-complex=split
+
+and
+
+    CXXFLAGS="... -DVSIP_IMPL_SAL_USE_MAT_MUL=1"
+
+The second option selects the newer (but reportedly slower) SAL 
+functions for matrix multiplication and also enable evaluators for 
+gemp() and outer() functions using SAL. 
+
+There was a bug in the split complex support for the function 
+sal::vsmul() that is fixed with this patch.  Some functions that are no 
+longer used were also removed.
+
+Retested using split and interleaved complex storage using C-SAL.  Ok to 
+commit?
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: vsmul.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20081119/1e1e2238/attachment.ksh>
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: vsmul.diff
+Type: text/x-diff
+Size: 7004 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20081119/1e1e2238/attachment.diff>
+
+From jules at codesourcery.com  Wed Nov 19 20:55:05 2008
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Wed, 19 Nov 2008 15:55:05 -0500
+Subject: [vsipl++] [patch] Fix for problem compiling as split-complex
+ with newer SAL matvec functions
+In-Reply-To: <49247AB4.6070908@codesourcery.com>
+References: <49247AB4.6070908@codesourcery.com>
+Message-ID: <49247D29.6060508@codesourcery.com>
+
+Don McCoy wrote:
+> There was a bug in the split complex support for the function 
+> sal::vsmul() that is fixed with this patch.  Some functions that are no 
+> longer used were also removed.
+> 
+> Retested using split and interleaved complex storage using C-SAL.  Ok to 
+> commit?
+
+Looks good to me.  Thanks for fixing this! -- Jules
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From jules at codesourcery.com  Thu Nov 20 20:04:37 2008
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Thu, 20 Nov 2008 15:04:37 -0500
+Subject: [patch] Fix 64-bit ukernel/interp failure
+Message-ID: <4925C2D5.3040408@codesourcery.com>
+
+Mismatch between size of index_type on PPU and size of int on the SPE. 
+Fix forces the PPU to use a 32-bit int (rather than force the SPE to 
+work on 64-bit int data!)
+
+Patch applied.
+
+				-- Jules
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: uk-interp.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20081120/ab3d8b05/attachment.ksh>
+
+From jules at codesourcery.com  Fri Nov 21 15:59:04 2008
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Fri, 21 Nov 2008 10:59:04 -0500
+Subject: [vsipl++] [patch] SSAR optimizations for HPEC
+In-Reply-To: <492433A7.5020201@codesourcery.com>
+References: <491DF4C7.50902@codesourcery.com> <492349F0.3030009@codesourcery.com> <492433A7.5020201@codesourcery.com>
+Message-ID: <4926DAC8.70502@codesourcery.com>
+
+
+>> For example, would it be less confusing to say
+>>
+>>    fftshift<row>(...)
+>>
+>> to do a swap of the top half of rows with the bottom half?  Likewise 
+>> with fftshift<col>.  We could fix it so that fftshift() (with no 
+>> template parameter) would default to doing both (aka a 'normal' 
+>> fftshift).
+> 
+> That's a good suggestion, I'll give it a try.
+
+This modified patch:
+  - includes changes to the interp kernel missing from the initial
+    patch: optimization (vectorization & unrolling) and freq-domain
+    fftshifting.
+  - Renames to fftshift<row> and fftshfit<col>,
+  - adds a vsip_csl/memory_pool header to make the memory pool
+    extension more cleanly accessible.
+
+Ok to apply?
+
+			-- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: ssar-2.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20081121/85e54368/attachment.ksh>
+
+From don at codesourcery.com  Mon Nov 24 01:34:31 2008
+From: don at codesourcery.com (Don McCoy)
+Date: Sun, 23 Nov 2008 18:34:31 -0700
+Subject: [patch] Update directory path for tutorial tests
+Message-ID: <492A04A7.9010907@codesourcery.com>
+
+Committed as obvious.
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: tut.diff
+Type: text/x-diff
+Size: 6309 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20081123/d7f3e5f4/attachment.diff>
+
+From don at codesourcery.com  Mon Nov 24 01:47:28 2008
+From: don at codesourcery.com (Don McCoy)
+Date: Sun, 23 Nov 2008 18:47:28 -0700
+Subject: [patch] Remove obsolete typedefs
+Message-ID: <492A07B0.8020106@codesourcery.com>
+
+Committed as obvious.
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: mpt.diff
+Type: text/x-diff
+Size: 1528 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20081123/3b9d45a7/attachment.diff>
+
+From don at codesourcery.com  Tue Nov 25 02:07:48 2008
+From: don at codesourcery.com (Don McCoy)
+Date: Mon, 24 Nov 2008 19:07:48 -0700
+Subject: [patch] Use new dispatch for reduction functions
+Message-ID: <492B5DF4.3010103@codesourcery.com>
+
+This patch completes the transition to the new dispatcher for the 
+matrix-vector and reduction functions.
+
+Ok to commit?
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: rd3.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20081124/2924c412/attachment.ksh>
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: rd3.diff
+Type: text/x-diff
+Size: 47297 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20081124/2924c412/attachment.diff>
+
+From stefan at codesourcery.com  Tue Nov 25 03:10:41 2008
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Mon, 24 Nov 2008 22:10:41 -0500
+Subject: [vsipl++] [patch] Use new dispatch for reduction functions
+In-Reply-To: <492B5DF4.3010103@codesourcery.com>
+References: <492B5DF4.3010103@codesourcery.com>
+Message-ID: <492B6CB1.1020400@codesourcery.com>
+
+Don McCoy wrote:
+> This patch completes the transition to the new dispatcher for the 
+> matrix-vector and reduction functions.
+> 
+> Ok to commit?
+
+
+
+> Index: src/vsip/core/reductions/functors.hpp
+> ===================================================================
+> --- src/vsip/core/reductions/functors.hpp	(revision 229176)
+> +++ src/vsip/core/reductions/functors.hpp	(working copy)
+
+> @@ -248,6 +249,7 @@
+>    static bool done(accum_type) { return false; }
+>  };
+>  
+> +//} // namespace vsip::impl::dispatcher
+
+Can you please remove this redundant comment ?
+
+
+> Index: src/vsip/core/cvsip/eval_reductions_idx.hpp
+> ===================================================================
+> --- src/vsip/core/cvsip/eval_reductions_idx.hpp	(revision 229176)
+> +++ src/vsip/core/cvsip/eval_reductions_idx.hpp	(working copy)
+> @@ -14,12 +14,14 @@
+>  /***********************************************************************
+>    Included Files
+>  ***********************************************************************/
+> +#include <iostream>
+> +#include <typeinfo>
+
+...as well as the above two include directives ? (I take it you added 
+the typeinfo only for debugging purposes, i.e. to be able to print out 
+typeid(type).name(), right ?)
+
+Otherwise this looks fine. May I suggest that we now convert the 
+signatures from "void(T &, A, ...)" to "T(A, ...)" ? This is one of the 
+syntactic features of the new dispatcher, and it makes the code easier 
+to understand.
+
+Thanks,
+		Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+
+

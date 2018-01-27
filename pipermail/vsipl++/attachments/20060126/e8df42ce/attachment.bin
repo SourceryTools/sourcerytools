@@ -1,0 +1,710 @@
+Index: ChangeLog
+===================================================================
+RCS file: /home/cvs/Repository/vpp/ChangeLog,v
+retrieving revision 1.389
+diff -u -r1.389 ChangeLog
+--- ChangeLog	24 Jan 2006 17:33:15 -0000	1.389
++++ ChangeLog	26 Jan 2006 20:28:32 -0000
+@@ -1,3 +1,18 @@
++2006-01-26  Jules Bergmann  <jules@codesourcery.com>
++
++	* README.bin-pkg: Update architectural requirements for 32-bit
++	  vs em64t/amd64.
++	* VERSIONS: Document tags for 1.0 release.
++	* benchmarks/loop.hpp: Add option to show loop count.
++	* benchmarks/main.cpp: Likewise.
++	* benchmarks/make.standalone: Add rule to build static benchmarks.
++	* benchmarks/vmul.cpp: Add cases for split-complex.
++	* benchmarks/vmul_c.cpp: New file, benchmark C vmul.
++	* src/vsip/support.hpp (VSIP_IMPL_NOINLINE): Define attribute.
++	* tests/expr-coverage.cpp: Add multiply coverage, add split-complex
++	  coverage.
++	* tests/test-storage.hpp: Support split-complex storage.
++
+ 2006-01-24  Stefan Seefeld  <stefan@codesourcery.com>
+ 
+ 	* GNUmakefile.in: Add 'libs' target.
+Index: README.bin-pkg
+===================================================================
+RCS file: /home/cvs/Repository/vpp/README.bin-pkg,v
+retrieving revision 1.2
+diff -u -r1.2 README.bin-pkg
+--- README.bin-pkg	23 Jan 2006 01:40:54 -0000	1.2
++++ README.bin-pkg	26 Jan 2006 20:28:32 -0000
+@@ -56,12 +56,17 @@
+ downloaded from www.codesourcery.com/gnu_toolchains).
+ 
+ 
+-The binary packages using built-in math libraries
+-(sourceryvsipl++-{ser,par}-builtin-*.tar.bz2) require the following
+-architectural features:
++The 32-bit binary packages using built-in math libraries
++(sourceryvsipl++-{serial,parallel}-builtin-i686.tar.bz2) require the
++following architectural features:
+ 
+ 	* SSE2 instruction set.
+ 
++The 64-bit binary packages using built-in math libraries
++(sourceryvsipl++-{serial,parallel}-builtin-{em64t,amd64}.tar.bz2)
++are targeted to the specific Intel EM64T and AMD Opteron AMD64
++architectures.
++
+ Using these binary packages on processors not implementing these
+ features may result in illegal instruction errors.
+ 
+Index: VERSIONS
+===================================================================
+RCS file: /home/cvs/Repository/vpp/VERSIONS,v
+retrieving revision 1.3
+diff -u -r1.3 VERSIONS
+--- VERSIONS	22 Jan 2006 08:55:44 -0000	1.3
++++ VERSIONS	26 Jan 2006 20:28:32 -0000
+@@ -10,3 +10,6 @@
+ 
+ V_1_0a	1.0 rc2. (Jan 22, 2005)
+ 
++V_1_0b	1.0 rc3. (Jan 22, 2005) This was released to the public as
++	version 1.0.
++
+Index: benchmarks/loop.hpp
+===================================================================
+RCS file: /home/cvs/Repository/vpp/benchmarks/loop.hpp,v
+retrieving revision 1.8
+diff -u -r1.8 loop.hpp
+--- benchmarks/loop.hpp	19 Dec 2005 16:08:55 -0000	1.8
++++ benchmarks/loop.hpp	26 Jan 2006 20:28:32 -0000
+@@ -47,16 +47,17 @@
+   // typedef boost::function<void(unsigned, unsigned, float*)>	TimingFunctor;
+ 
+   Loop1P() :
+-    start_	(2),
+-    stop_	(21),
+-    cal_	(4),
+-    loop_start_	(20),
+-    samples_	(1),
+-    goal_sec_	(1.0),
+-    metric_     (pts_per_sec),
+-    note_       (0),
+-    do_prof_    (false),
+-    what_       (0)
++    start_	 (2),
++    stop_	 (21),
++    cal_	 (4),
++    loop_start_	 (20),
++    samples_	 (1),
++    goal_sec_	 (1.0),
++    metric_      (pts_per_sec),
++    note_        (0),
++    do_prof_     (false),
++    what_        (0),
++    show_loop_   (false)
+   {}
+ 
+   template <typename Functor>
+@@ -79,6 +80,7 @@
+   int           user_param_;
+   bool          do_prof_;
+   int           what_;
++  bool          show_loop_;
+ };
+ 
+ 
+@@ -213,19 +215,22 @@
+     if (rank == 0)
+     {
+       if (this->metric_ == all_per_sec)
+-	printf("%7ld %f %f %f\n", (unsigned long) M,
++	printf("%7ld %f %f %f", (unsigned long) M,
+ 	       this->metric(fcn, M, loop, mtime[(n_time-1)/2], pts_per_sec),
+ 	       this->metric(fcn, M, loop, mtime[(n_time-1)/2], ops_per_sec),
+ 	       this->metric(fcn, M, loop, mtime[(n_time-1)/2], iob_per_sec));
+       else if (n_time > 1)
+ 	// Note: max time is min op/s, and min time is max op/s
+-	printf("%7lu %f %f %f\n", (unsigned long) M,
++	printf("%7lu %f %f %f", (unsigned long) M,
+ 	       this->metric(fcn, M, loop, mtime[(n_time-1)/2], metric_),
+ 	       this->metric(fcn, M, loop, mtime[n_time-1],     metric_),
+ 	       this->metric(fcn, M, loop, mtime[0],            metric_));
+       else
+-	printf("%7lu %f\n", (unsigned long) M,
++	printf("%7lu %f", (unsigned long) M,
+ 	       this->metric(fcn, M, loop, mtime[0], metric_));
++      if (this->show_loop_)
++	printf("  %8lu", (unsigned long)loop);
++      printf("\n");
+     }
+ 
+     time = mtime[(n_time-1)/2];
+Index: benchmarks/main.cpp
+===================================================================
+RCS file: /home/cvs/Repository/vpp/benchmarks/main.cpp,v
+retrieving revision 1.5
+diff -u -r1.5 main.cpp
+--- benchmarks/main.cpp	22 Dec 2005 01:29:25 -0000	1.5
++++ benchmarks/main.cpp	26 Jan 2006 20:28:32 -0000
+@@ -78,6 +78,8 @@
+       loop.metric_ = all_per_sec;
+     else if (!strcmp(argv[i], "-prof"))
+       loop.do_prof_  = true;
++    else if (!strcmp(argv[i], "-show_loop"))
++      loop.show_loop_ = true;
+   }
+ 
+   if (verbose)
+Index: benchmarks/make.standalone
+===================================================================
+RCS file: /home/cvs/Repository/vpp/benchmarks/make.standalone,v
+retrieving revision 1.1
+diff -u -r1.1 make.standalone
+--- benchmarks/make.standalone	20 Jan 2006 03:59:10 -0000	1.1
++++ benchmarks/make.standalone	26 Jan 2006 20:28:32 -0000
+@@ -77,6 +77,8 @@
+ exes    := $(patsubst %.cpp, %$(EXEEXT),  $(sources))
+ tests   := $(patsubst %.cpp, %.test,      $(sources))
+ 
++statics := $(patsubst %.cpp, %.static$(EXEEXT),  $(sources))
++
+ exes_special   := main$(EXEEXT)
+ exes_def_build := $(filter-out $(exes_special), $(exes)) 
+ 
+@@ -108,5 +110,8 @@
+ $(exes_def_build): %$(EXEEXT) : %.$(OBJEXT) main.$(OBJEXT)
+ 	$(CXX) $(LDFLAGS) -o $@ $^ $(LIBS) || rm -f $@
+ 
++$(statics): %.static$(EXEEXT) : %.$(OBJEXT) main.$(OBJEXT)
++	$(CXX) -static $(LDFLAGS) -o $@ $^ $(LIBS) || rm -f $@
++
+ %.o: %.cpp
+ 	$(CXX) -c $(CXXFLAGS) -o $@ $< || rm -f $@
+Index: benchmarks/vmul.cpp
+===================================================================
+RCS file: /home/cvs/Repository/vpp/benchmarks/vmul.cpp,v
+retrieving revision 1.5
+diff -u -r1.5 vmul.cpp
+--- benchmarks/vmul.cpp	22 Dec 2005 01:29:25 -0000	1.5
++++ benchmarks/vmul.cpp	26 Jan 2006 20:28:32 -0000
+@@ -35,6 +35,7 @@
+   int wiob_per_point(length_type) { return 1*sizeof(T); }
+ 
+   void operator()(length_type size, length_type loop, float& time)
++    VSIP_IMPL_NOINLINE
+   {
+     Vector<T>   A(size, T());
+     Vector<T>   B(size, T());
+@@ -62,6 +63,47 @@
+ 
+ 
+ 
++template <typename T, typename ComplexFmt>
++struct t_vmul2
++{
++  char* what() { return "t_vmul2"; }
++  int ops_per_point(length_type)  { return Ops_info<T>::mul; }
++  int riob_per_point(length_type) { return 2*sizeof(T); }
++  int wiob_per_point(length_type) { return 1*sizeof(T); }
++
++  void operator()(length_type size, length_type loop, float& time)
++    __attribute__((noinline))
++  {
++    typedef impl::Layout<1, row1_type, impl::Stride_unit_dense, ComplexFmt>
++		LP;
++    typedef impl::Fast_block<1, T, LP> block_type;
++
++    Vector<T, block_type> A(size, T());
++    Vector<T, block_type> B(size, T());
++    Vector<T, block_type> C(size);
++
++    A(0) = T(3);
++    B(0) = T(4);
++    
++    vsip::impl::profile::Timer t1;
++    
++    t1.start();
++    for (index_type l=0; l<loop; ++l)
++      C = A * B;
++    t1.stop();
++    
++    if (!equal(C(0), T(12)))
++    {
++      std::cout << "t_vmul1: ERROR" << std::endl;
++      abort();
++    }
++    
++    time = t1.delta();
++  }
++};
++
++
++
+ // Benchmark scalar-view vector multiply (Scalar * View)
+ 
+ template <typename T>
+@@ -144,6 +186,8 @@
+   {
+   case  1: loop(t_vmul1<float>()); break;
+   case  2: loop(t_vmul1<complex<float> >()); break;
++  case  3: loop(t_vmul2<complex<float>, impl::Cmplx_inter_fmt>()); break;
++  case  4: loop(t_vmul2<complex<float>, impl::Cmplx_split_fmt>()); break;
+ 
+   case 11: loop(t_svmul1<float>()); break;
+   case 12: loop(t_svmul1<complex<float> >()); break;
+Index: benchmarks/vmul_c.cpp
+===================================================================
+RCS file: benchmarks/vmul_c.cpp
+diff -N benchmarks/vmul_c.cpp
+--- /dev/null	1 Jan 1970 00:00:00 -0000
++++ benchmarks/vmul_c.cpp	26 Jan 2006 20:28:32 -0000
+@@ -0,0 +1,182 @@
++/* Copyright (c) 2006 by CodeSourcery, LLC.  All rights reserved. */
++
++/** @file    benchmarks/vmul.cpp
++    @author  Jules Bergmann
++    @date    2006-01-23
++    @brief   VSIPL++ Library: Benchmark for vector multiply using C arrays.
++
++*/
++
++/***********************************************************************
++  Included Files
++***********************************************************************/
++
++#include <iostream>
++
++#include <vsip/initfin.hpp>
++#include <vsip/support.hpp>
++#include <vsip/math.hpp>
++#include <vsip/impl/profile.hpp>
++
++#include "test.hpp"
++#include "loop.hpp"
++#include "ops_info.hpp"
++#define USE_SSE 1
++#include "sse.h"
++
++using namespace vsip;
++
++
++
++template <typename T>
++inline void
++vmul(
++   int	n,
++   T*	A,
++   T*	B,
++   T*	R)
++{
++  while (n)
++  {
++    *R = *A * *B;
++    R++; A++; B++;
++    n--;
++  }
++}
++
++
++
++template <typename T>
++inline void
++svmul(
++   int	n,
++   T	alpha,
++   T*	B,
++   T*	R)
++{
++  while (n)
++  {
++    *R = alpha * *B;
++    R++; B++;
++    n--;
++  }
++}
++
++
++
++template <typename T>
++struct t_vmul1
++{
++  char* what() { return "t_vmul1"; }
++  int ops_per_point(length_type)  { return Ops_info<T>::mul; }
++  int riob_per_point(length_type) { return 2*sizeof(T); }
++  int wiob_per_point(length_type) { return 1*sizeof(T); }
++
++  void operator()(length_type size, length_type loop, float& time)
++  {
++    typedef Dense<1, T> block_type;
++
++    Vector<T, block_type>   A(size, T());
++    Vector<T, block_type>   B(size, T());
++    Vector<T, block_type>   C(size);
++
++    A(0) = T(3);
++    B(0) = T(4);
++
++    vsip::impl::profile::Timer t1;
++
++    {
++      impl::Ext_data<block_type> ext_a(A.block(), impl::SYNC_IN);
++      impl::Ext_data<block_type> ext_b(B.block(), impl::SYNC_IN);
++      impl::Ext_data<block_type> ext_c(C.block(), impl::SYNC_OUT);
++      
++      T* pa = ext_a.data();
++      T* pb = ext_b.data();
++      T* pc = ext_c.data();
++    
++      t1.start();
++      for (index_type l=0; l<loop; ++l)
++	vmul(size, pa, pb, pc);
++      t1.stop();
++    }
++      
++    if (!equal(C(0), T(12)))
++    {
++      std::cout << "t_vmul1: ERROR" << std::endl
++		<< "       : C(0) = " << C(0) << std::endl;
++      abort();
++    }
++    
++    time = t1.delta();
++  }
++};
++
++
++
++// Benchmark scalar-view vector multiply (Scalar * View)
++
++template <typename T>
++struct t_svmul1
++{
++  char* what() { return "t_svmul1"; }
++  int ops_per_point(length_type)  { return Ops_info<T>::mul; }
++  int riob_per_point(length_type) { return 1*sizeof(T); }
++  int wiob_per_point(length_type) { return 1*sizeof(T); }
++
++  void operator()(length_type size, length_type loop, float& time)
++  {
++    typedef Dense<1, T> block_type;
++
++    Vector<T, block_type>   A(size, T());
++    Vector<T, block_type>   C(size);
++
++    T alpha = T(3);
++
++    A(0) = T(4);
++    
++    vsip::impl::profile::Timer t1;
++
++    {
++      impl::Ext_data<block_type> ext_a(A.block(), impl::SYNC_IN);
++      impl::Ext_data<block_type> ext_c(C.block(), impl::SYNC_OUT);
++      
++      T* pa = ext_a.data();
++      T* pc = ext_c.data();
++    
++      t1.start();
++      for (index_type l=0; l<loop; ++l)
++	svmul(size, alpha, pa, pc);
++      t1.stop();
++    }
++    
++    test_assert(equal(C(0), T(12)));
++    
++    time = t1.delta();
++  }
++};
++
++
++
++void
++defaults(Loop1P&)
++{
++}
++
++
++
++int
++test(Loop1P& loop, int what)
++{
++  switch (what)
++  {
++  case  1: loop(t_vmul1<float>()); break;
++  case  2: loop(t_vmul1<complex<float> >()); break;
++
++  case 11: loop(t_svmul1<float>()); break;
++  case 12: loop(t_svmul1<complex<float> >()); break;
++
++  default:
++    return 0;
++  }
++  return 1;
++}
+Index: src/vsip/support.hpp
+===================================================================
+RCS file: /home/cvs/Repository/vpp/src/vsip/support.hpp,v
+retrieving revision 1.25
+diff -u -r1.25 support.hpp
+--- src/vsip/support.hpp	5 Dec 2005 20:25:05 -0000	1.25
++++ src/vsip/support.hpp	26 Jan 2006 20:28:32 -0000
+@@ -47,6 +47,18 @@
+ #endif
+ 
+ 
++
++/// If the compiler provides a way to annotate functions with an
++/// indication that they should not be inlined, then VSIP_IMPL_NOINLINE
++/// is defined to that annotation, otherwise it is defined to
++/// nothing. 
++#if __GNUC__ >= 2 || defined(__ghs__)
++#  define VSIP_IMPL_NOINLINE __attribute__ ((__noinline__))
++#else
++#  define VSIP_IMPL_NOINLINE
++#endif
++
++
+ /// Loop vectorization pragmas.
+ #if __INTEL_COMPILER
+ #  define PRAGMA_IVDEP _Pragma("ivdep")
+Index: tests/expr-coverage.cpp
+===================================================================
+RCS file: /home/cvs/Repository/vpp/tests/expr-coverage.cpp,v
+retrieving revision 1.3
+diff -u -r1.3 expr-coverage.cpp
+--- tests/expr-coverage.cpp	20 Dec 2005 12:48:40 -0000	1.3
++++ tests/expr-coverage.cpp	26 Jan 2006 20:28:32 -0000
+@@ -68,6 +68,45 @@
+ 
+ 
+ 
++/// Test '*' expression
++
++struct Test_mul
++{
++  template <typename View1,
++	    typename View2,
++	    typename View3>
++  static void
++  exec(
++    View1 view1,
++    View2 view2,
++    View3 view3)
++  {
++    length_type size = get_size(view3);
++    test_assert(Is_scalar<View1>::value || get_size(view1) == size);
++    test_assert(Is_scalar<View2>::value || get_size(view2) == size);
++
++    typedef typename Value_type_of<View1>::type T1;
++    typedef typename Value_type_of<View2>::type T2;
++    typedef typename Value_type_of<View3>::type T3;
++  
++    for (index_type i=0; i<get_size(view1); ++i)
++      put_nth(view1, i, T1(2*i + 1));
++    for (index_type i=0; i<get_size(view2); ++i)
++      put_nth(view2, i, T2(3*i + 2));
++    
++    view3 = view1 * view2;
++
++    for (index_type i=0; i<get_size(view3); ++i)
++    {
++      int expected = (Is_scalar<View1>::value ? (2*0+1) : (2*i+1))
++	           * (Is_scalar<View2>::value ? (3*0+2) : (3*i+2));
++      test_assert(equal(get_nth(view3, i), T3(expected)));
++    }
++  }
++};
++
++
++
+ /// Test ternary 'ma' (and nested */+) expressions
+ 
+ struct Test_ma
+@@ -167,6 +206,8 @@
+ void
+ vector_cases3()
+ {
++  using vsip::impl::Cmplx_split_fmt;
++
+   typedef typename Promotion<T1, T2>::type  T3;
+ 
+   typedef Storage<0, T1>            sca1_t;
+@@ -176,6 +217,10 @@
+   typedef Storage<1, T2>            vec2_t;
+   typedef Storage<1, T3>            vec3_t;
+ 
++  typedef Storage<1, T1, row1_type, Local_map, Cmplx_split_fmt> spl1_t;
++  typedef Storage<1, T2, row1_type, Local_map, Cmplx_split_fmt> spl2_t;
++  typedef Storage<1, T3, row1_type, Local_map, Cmplx_split_fmt> spl3_t;
++
+   typedef Row_vector<T1, row2_type> row1_t;
+   typedef Row_vector<T2, row2_type> row2_t;
+   typedef Row_vector<T3, row2_type> row3_t;
+@@ -196,6 +241,8 @@
+   do_case3<Test_class, vec1_t, vec2_t, row3_t>(dom);
+ 
+   do_case3<Test_class, dia1_t, vec2_t, vec3_t>(dom);
++
++  do_case3<Test_class, spl1_t, spl2_t, spl3_t>(dom);
+ }
+ 
+ 
+@@ -321,6 +368,11 @@
+ {
+   vsipl init(argc, argv);
+ 
++  vector_cases3<Test_mul, float,           float>();
++  vector_cases3<Test_mul, double,          double>();
++  vector_cases3<Test_mul, complex<float>,  complex<float> >();
++  vector_cases3<Test_mul, complex<double>, complex<double> >();
++
+   vector_cases3<Test_add, float, float>();
+   matrix_cases3<Test_add, float, float>();
+ 
+Index: tests/test-storage.hpp
+===================================================================
+RCS file: /home/cvs/Repository/vpp/tests/test-storage.hpp,v
+retrieving revision 1.9
+diff -u -r1.9 test-storage.hpp
+--- tests/test-storage.hpp	11 Jan 2006 16:22:47 -0000	1.9
++++ tests/test-storage.hpp	26 Jan 2006 20:28:32 -0000
+@@ -153,10 +153,23 @@
+ template <> struct Default_order<3> { typedef vsip::row3_type type; };
+ 
+ 
++
++// Indicate that "default" complex format should be used.
++
++// When using Storage, specifying Cmplx_default_fmt causes
++// a Dense block to be used.  Specifying a specific format,
++// CmplInterFmt or CmplxSplitFmt, will cause a Fast_block to
++// be used with an explicit layout policy.
++
++struct Cmplx_default_fmt;
++
++
++
+ template <vsip::dimension_type Dim,
+ 	  typename             T,
+-	  typename             Order = typename Default_order<Dim>::type,
+-          typename             MapT  = vsip::Local_map >
++	  typename             Order      = typename Default_order<Dim>::type,
++          typename             MapT       = vsip::Local_map,
++	  typename             ComplexFmt = Cmplx_default_fmt>
+ class Storage;
+ 
+ template <vsip::dimension_type Dim,
+@@ -166,6 +179,29 @@
+ 
+ 
+ 
++template <vsip::dimension_type Dim,
++	  typename             T,
++	  typename             Order,
++          typename             MapT,
++	  typename             ComplexFmt>
++struct Storage_block
++{
++  typedef vsip::impl::Stride_unit_dense                  ST;
++  typedef vsip::impl::Layout<Dim, Order, ST, ComplexFmt> LP;
++  typedef vsip::impl::Fast_block<Dim, T, LP, MapT>       type;
++};
++
++template <vsip::dimension_type Dim,
++	  typename             T,
++	  typename             Order,
++          typename             MapT>
++struct Storage_block<Dim, T, Order, MapT, Cmplx_default_fmt>
++{
++  typedef vsip::Dense<Dim, T, Order, MapT> type;
++};
++
++
++
+ // -------------------------------------------------------------------- //
+ // Scalar_storage -- provide default scalar storage.
+ template <typename T,
+@@ -230,23 +266,24 @@
+ 
+ 
+ // -------------------------------------------------------------------- //
+-// Vector_storage -- provide default vector storage.
++// Storage<1, ...> -- provide default vector storage.
+ 
+ template <typename T,
+ 	  typename Order,
+-	  typename MapT>
+-class Storage<1, T, Order, MapT>
++	  typename MapT,
++	  typename ComplexFmt>
++class Storage<1, T, Order, MapT, ComplexFmt>
+ {
+   // Compile-time values and typedefs.
+ public:
+   static vsip::dimension_type const
+ 		dim = 1;
+    
+-  typedef T	value_type;
+-   
+-  typedef MapT                                 map_type;
+-  typedef vsip::Dense<dim, T, Order, map_type> block_type;
+-  typedef vsip::Vector<T, block_type>          view_type;
++  typedef T	                                            value_type;
++  typedef MapT                                              map_type;
++  typedef typename Storage_block<dim, T, Order, MapT, ComplexFmt>::type
++                                                            block_type;
++  typedef vsip::Vector<T, block_type>                       view_type;
+ 
+ 
+   // Constructors.
+@@ -333,21 +370,20 @@
+ // Matrix_storage -- provide default vector storage.
+ template <typename T,
+ 	  typename Order,
+-	  typename MapT>
+-class Storage<2, T, Order, MapT>
++	  typename MapT,
++	  typename ComplexFmt>
++class Storage<2, T, Order, MapT, ComplexFmt>
+ {
+   // Compile-time values and typedefs.
+ public:
+   static vsip::dimension_type const
+ 		dim = 2;
+ 
+-  typedef T	value_type;
+-
+-  typedef vsip::Dense<dim, T, Order>
+-		block_type;
+-
+-  typedef vsip::Matrix<T, block_type>
+-		view_type;
++  typedef T	                                            value_type;
++  typedef MapT                                              map_type;
++  typedef typename Storage_block<dim, T, Order, MapT, ComplexFmt>::type
++                                                            block_type;
++  typedef vsip::Matrix<T, block_type>                       view_type;
+ 
+ 
+   // Constructors.
+@@ -431,16 +467,19 @@
+ 
+ template <typename T,
+ 	  typename Order,
+-	  typename MapT>
+-class Storage<3, T, Order, MapT>
++	  typename MapT,
++	  typename ComplexFmt>
++class Storage<3, T, Order, MapT, ComplexFmt>
+ {
+   // Compile-time values and typedefs.
+ public:
+   static vsip::dimension_type const dim = 3;
+ 
+-  typedef T	                      value_type;
+-  typedef vsip::Dense<dim, T, Order>  block_type;
+-  typedef vsip::Tensor<T, block_type> view_type;
++  typedef T	                                            value_type;
++  typedef MapT                                              map_type;
++  typedef typename Storage_block<dim, T, Order, MapT, ComplexFmt>::type
++                                                            block_type;
++  typedef vsip::Tensor<T, block_type>                       view_type;
+ 
+   // Constructors.
+ public:

@@ -1,0 +1,319 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [vsipl++] [patch] Profile_event class
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20%5Bpatch%5D%20Profile_event%20class&In-Reply-To=%3C44BCEBF3.5010801%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000571.html">
+   <LINK REL="Next"  HREF="000587.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[vsipl++] [patch] Profile_event class</H1>
+    <B>Jules Bergmann</B> 
+    <A HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20%5Bpatch%5D%20Profile_event%20class&In-Reply-To=%3C44BCEBF3.5010801%40codesourcery.com%3E"
+       TITLE="[vsipl++] [patch] Profile_event class">jules at codesourcery.com
+       </A><BR>
+    <I>Tue Jul 18 14:10:59 UTC 2006</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000571.html">[vsipl++] [patch] Profile_event class
+</A></li>
+        <LI>Next message: <A HREF="000587.html">[vsipl++] [patch] Profile_event class
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#574">[ date ]</a>
+              <a href="thread.html#574">[ thread ]</a>
+              <a href="subject.html#574">[ subject ]</a>
+              <a href="author.html#574">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Don McCoy wrote:
+ &gt; Jules Bergmann wrote:
+ &gt; ...
+ &gt;
+ &gt;&gt; Also, we should start thinking about how this should be configured
+ &gt;&gt; and controlled.
+ &gt;&gt;
+ &gt; I like the configuration suggestions so far, but would like to put the
+ &gt; one below off until we have the basic stuff implemented first.
+
+Sounds good.
+
+ &gt; For the
+ &gt; record though, I see only a very minor benefit to being able to
+ &gt; selectively turn these on and off.
+
+OK.  I tried to avoid going overboard with the categories.  I think
+the three things that will be most useful:
+
+  - Turn off expression profiling, expressions will be more numerous
+    than the other events, so this may allow longer traces to be
+    collected.
+  - Turn on communication profiling but disable everything else, this
+    way compute times aren't too perturbed by the profiling.
+  - Turn off library profiling but leave user events on.
+
+ &gt;
+ &gt;&gt;  - What types of events are profiled (by broad categories).
+ &gt;&gt;    Categories:
+ &gt;&gt;     - objects: signal processing objects and linear algebra solvers
+ &gt;&gt;     - matvec: linear algebra
+ &gt;&gt;     - expr: element-wise expressions
+ &gt;&gt;     - comm: communications
+ &gt;&gt;     - user events
+ &gt;&gt;
+ &gt;&gt;    New option: --with-profile-cat={no,objects,matvec,expr,user,all}
+ &gt;&gt;
+ &gt;&gt;    Default is {no}.
+ &gt;&gt;
+ &gt;
+ &gt;
+ &gt;&gt;  - Whether performance API (impl_performance) is enabled:
+ &gt;&gt;    New option --[enable,disable]-performance-api
+ &gt;&gt;
+ &gt; Same here, the fewer options, the better...
+ &gt;
+ &gt;
+ &gt;&gt;     --vsipl++-profile-mode={accum,trace,off}
+ &gt;&gt;     --vsipl++-profile-output={filename}
+ &gt;&gt;
+ &gt;&gt;    Probably most useful for tracing very small programs and accumulating
+ &gt;&gt;    larger programs.
+ &gt;
+ &gt; Ok.  Some benefit here.  Sounds like you're already willing to put this
+ &gt; off as a future enhancement.
+
+Yes, low priority for this one.
+
+ &gt;
+ &gt;
+ &gt;&gt;  &gt; # mode: pm_accum
+ &gt;&gt;  &gt; # timer: x86_64_tsc_time
+ &gt;&gt;  &gt; # clocks_per_sec: 3591371008
+ &gt;&gt;  &gt; #
+ &gt;&gt;  &gt; # tag : total ticks : num calls : op count : mflops
+ &gt;&gt;  &gt; fwd fft, cplx-cplx, rbv : 102141 : 1 : 51200 : 1800.24
+ &gt;&gt;  &gt; inv fft, cplx-cplx, rbv : 95490 : 1 : 51200 : 1925.63
+ &gt;&gt;  &gt;
+ &gt;&gt;  &gt; Note: rbv = return by value.  The others should be readable.  Full
+ &gt;&gt;  &gt; documentation will follow soon.
+ &gt;&gt;
+ &gt;&gt; Can you add the FFT size to the tag?
+ &gt;&gt;
+ &gt; I was going to propose adding a second 'value' field.  We had one that
+ &gt; we kind of took over for the op count.  Why not just add one or two more
+ &gt; fields and make them general-purpose?  FFTM could put rows and cols,
+ &gt; etc.  Other routines could put whatever was most relevant...
+
+Putting the size in another field will hurt the utility of the
+accumulate mode.  It will be interesting not only to see how many
+total FFTs a program performs, but also how many FFTs of a given size
+are performed.  Operations of different sizes will have different
+performance.  Aggregating them together will lose this.
+
+For example, if someone was designing an FPGA for a specific VSIPL++
+program to offload FFTs, they would be interested in what size FFTs
+are being performed, and how efficiently those are on the processor.
+
+ &gt; In any case, I don't want to add it to the tag because it is a useful
+ &gt; numerical value, so we should give it first-class status so a
+ &gt; post-processing program can access it more easily.
+
+Making the size part of the name will not make it more difficult to
+post process.  In languages like python and perl it is easy to
+post-process textual output like this, using the delimiters to
+separate different fields and regular-expressions to extract
+information from tags (including size).  Here's how we might
+post-process this in perl:
+
+	while ($line = &lt;FILE&gt;) {
+	   $line =~ s/\s+//g;	# get rid of spaces
+	   my ($tag, $ticks, $calls, $opcount, $mflops) = split(':', $line);
+
+	   # Process the tag
+	   if ($tag =~ /^(fwd|inv)fft,(cplx|real)-(cplx|real),(rbv|rbr),(\d+)$/) {
+	      # 1-D FFT
+	      $dim       = 1;
+	      $dir       = $1;
+	      $from_type = $2;
+	      $to_type   = $3;
+	      $returnby  = $4;
+	      $size[0]   = $5;
+	      }
+	   elsif ($tag =~ 
+/^(fwd|inv)fft,(cplx|real)-(cplx|real),(rbv|rbr),(\d+),(\d+)$/) {
+	      # 2-D FFT
+	      $dim       = 2;
+	      $dir       = $1;
+	      $from_type = $2;
+	      $to_type   = $3;
+	      $returnby  = $4;
+	      $size[0]   = $5;
+	      $size[1]   = $6;
+	      }
+	   }
+	   ...
+	}
+
+ &gt; Plus, I wanted to
+ &gt; keep the tags as short as possible as we use them for searching (maybe
+ &gt; this doesn't matter so much though).
+
+&quot;searching&quot; in the context of using them as keys for the std::map?
+
+ &gt; I also considered removing the
+ &gt; spaces and making it more compact, yet more cryptic.  What's the right
+ &gt; balance here between short-and-cryptic and long-but-readable?
+
+I don't think that removing the spaces will make the tags more
+cryptic.  When trying to visually read a trace file, the biggest
+impediments will be little things like if the columns don't line up,
+if the lines wrap, or if the numbers aren't left-aligned.  However,
+those are things that will be easy to fix in post processing.
+
+The current scheme seems to be about the right level of conciseness,
+perhaps a little on the verbose side for some things.  Things like
+'fwd' and 'fft' are right on.  'cplx' is a little verbose IMHO, also
+how do we distinguish between float and double?  We could use the
+BLAS/LAPACK convention of S - float, C - complex&lt;float&gt;, D - double,
+and Z - complex&lt;double&gt;.
+
+ &gt;
+ &gt;
+ &gt;&gt; Does base_interface have enough context to figure out the event name
+ &gt;&gt; by itself?  If not, it might be worth passing the extra info (i.e.
+ &gt;&gt; adding a template parameter for by_value vs by_reference).  That would
+ &gt;&gt; make it easier to limit the impact of the profiling when it is turned
+ &gt;&gt; off.
+ &gt;&gt;
+ &gt; I'll look at this again, that may be the case.  But I'm not sure how it
+ &gt; affects performance.  Can you explain?  Can we afford the slight
+ &gt; increase in cost for this since it is taking place when the Fft object
+ &gt; is constructed?
+
+There are two issues here.  First, limiting the footprint of the
+profiling code so that it is easier to understand and maintain.  If we
+have enough information to put the name creation in a single place
+(such as base_interface) versus repeated in multiple places (all of
+the FFT objects that derive from base_interface), it makes it easier
+to maintain later (as a general rule, avoiding repetition is a good
+thing).  Putting the name creation together with the construction of
+the Profile_event object that uses the name also improves the
+&quot;locality&quot; of the code, making it easier to understand.
+
+Second, from a performance standpoint, reducing the footprint also
+makes it easier to excise the profiling via #if/#endif if either the
+overhead or other requirements (such as the need to iostream includes)
+ever become problematic.
+
+ &gt;&gt;
+ &gt;&gt; Profile_event should keep track of its accumulated time.  The above
+ &gt;&gt; approach has two problems:
+ &gt;&gt;  - Profile_event (and hence impl_performance) will only work when
+ &gt;&gt;    profiling is turned on in the pm_accum mode.
+ &gt;&gt;  - Objects with the same tag will confound each other's impl_performance
+ &gt;&gt;    results.
+ &gt;&gt;
+ &gt; Both can be perceived as benefits -- at least I viewed them that way!
+ &gt;
+ &gt; My argument would be that it should not do any profiling, or at least
+ &gt; should minimize the effects of the profiling code, when profiling is not
+ &gt; enabled.
+
+That is the intent of the configuration flag for the performance API.
+
+ &gt; Secondly, having the same underlying interface to both is good
+ &gt; because it is simpler.
+
+It is good to be pragmatic about simplicity, but at the same time we
+don't want to create something that is difficult or unintuitive to
+use.
+
+ &gt; Finally, objects having the same tag are doing
+ &gt; the same kind of work.  If however, the user desires, they may profile
+ &gt; each separately by using different log files, or (if in the same scope)
+ &gt; using the profiler in trace mode.
+
+Objects of different sizes are going to have different performance
+characteristics.  Even if size is included in the tag name, there is
+still utility in the impl_performance interface's ability to collect
+the performance of a specific object.  The ability to isolate
+performance information to smaller and smaller contexts is important
+for zeroing in on performance problems.  Of course the trace mode
+offers the ultimate in zeroing in, but the impl_performance is a
+intermediate step between accumulate and trace.
+
+There are two concerns at play here: What functionality will users
+need to optimize the performance of their programs, and how should we
+implement that performance in a clean and intuitive way?
+
+Unfortunately we won't really know what users need to profile their
+programs until they try out what we have and give us feedback.  We can
+make guesses based on requests (AFRL asked for approximately the
+impl_performance interface, LM asked for a impl_performance on
+steroids that collects min/max/histogram -- which might really be done
+by post processing trace output) and our own experience.  Ultimately
+there may not be a single set of things that work for everyone.  We'll
+probably end up expanding the profiling in response to user requests
+to do things like trace a single object, etc
+
+For now, I think the best approach is to define a simple, well defined
+set of tools that users can pick and choose from to fit their own
+needs.
+
+Having something that is well-defined and intuitive is important.  For
+impl_performance, because it is a member function of an individual
+signal processing object, it will be surprising if it returns
+information that is aggregated from other objects.  Side-effects from
+external events, such as turning profiling on and off, or changing
+from accumulate to trace, may also be unintuitive.
+
+ &gt; I'm not overtly attached to the above implementation.  Either way is
+ &gt; good, and now is a good time to decide.  Maybe I've missed something
+ &gt; about how you see impl_performance() being used that I don't.  I'm
+ &gt; looking at it as a different interface into the same basic set of
+ &gt; profiling features.  Do others have thoughts on this?
+ &gt;
+ &gt; Thanks for the feedback!
+
+Thanks, this is coming along well!
+
+				-- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">jules at codesourcery.com</A>
+(650) 331-3385 x705
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000571.html">[vsipl++] [patch] Profile_event class
+</A></li>
+	<LI>Next message: <A HREF="000587.html">[vsipl++] [patch] Profile_event class
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#574">[ date ]</a>
+              <a href="thread.html#574">[ thread ]</a>
+              <a href="subject.html#574">[ subject ]</a>
+              <a href="author.html#574">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">More information about the vsipl++
+mailing list</a><br>
+</body></html>

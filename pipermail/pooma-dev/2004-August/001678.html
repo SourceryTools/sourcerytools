@@ -1,0 +1,356 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [pooma-dev] Re: Cheetah Status
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bpooma-dev%5D%20Re%3A%20Cheetah%20Status&In-Reply-To=%3CPine.LNX.4.44.0408161011100.9036-200000%40alwazn.tat.physik.uni-tuebingen.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001677.html">
+   <LINK REL="Next"  HREF="001680.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[pooma-dev] Re: Cheetah Status</H1>
+    <B>Richard Guenther</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bpooma-dev%5D%20Re%3A%20Cheetah%20Status&In-Reply-To=%3CPine.LNX.4.44.0408161011100.9036-200000%40alwazn.tat.physik.uni-tuebingen.de%3E"
+       TITLE="[pooma-dev] Re: Cheetah Status">rguenth at tat.physik.uni-tuebingen.de
+       </A><BR>
+    <I>Mon Aug 16 08:15:47 UTC 2004</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001677.html">[pooma-dev] Re: Cheetah Status
+</A></li>
+        <LI>Next message: <A HREF="001680.html">[pooma-dev] Re: Cheetah Status
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1678">[ date ]</a>
+              <a href="thread.html#1678">[ thread ]</a>
+              <a href="subject.html#1678">[ subject ]</a>
+              <a href="author.html#1678">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>On Sat, 14 Aug 2004, Richard Guenther wrote:
+
+&gt;<i> Jeffrey D. Oldham wrote:
+</I>&gt;<i> &gt; Richard Guenther wrote:
+</I>&gt;<i> &gt;
+</I>&gt;<i> &gt;&gt; Btw. I have some Cheetah fixes myself, I can collect these together
+</I>&gt;<i> &gt;&gt; and maybe we could provide at least a patch for download along the
+</I>&gt;<i> &gt;&gt; cheetah tarball.
+</I>&gt;<i> &gt;&gt;
+</I>&gt;<i> &gt;&gt; Richard.
+</I>&gt;<i> &gt;
+</I>&gt;<i> &gt;
+</I>&gt;<i> &gt; Yes, let's put together your changes and Steve Nolen's changes into a
+</I>&gt;<i> &gt; new Cheetah 1.1.5 release.  Will you please send them to me?  I'll
+</I>&gt;<i> &gt; create a Cheetah CVS repository.
+</I>&gt;<i>
+</I>&gt;<i> I'll send my local changes to you on Monday.  But I think we shouldn't
+</I>&gt;<i> release until others are reporting success with a set of collected
+</I>&gt;<i> patches.  Obviously I only tested MPI and not the various other means of
+</I>&gt;<i> parallelism in the Cheetah library.
+</I>
+Ok, here's my set of local changes to the Cheetah library.
+
+Sometimes  Richard Guenther &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">richard.guenther at uni-tuebingen.de</A>&gt;
+
+	* BUGS: new.
+	bin/makeinstall: ignore SCCS dirs.
+	config/LINUXGCC.conf: use -g, not -ggdb.
+	config/LINUXICC.conf: new.
+	configure: don't set shmem_locksrc, build-system
+	is broken.
+	src/Controller/ControllerFactory.cpp: build factory
+	with arg not removed.
+	src/Controller/Group.h: reorder initializers.
+	src/Controller/Shmem/MM_Allocator.h: remove broken
+	method.
+	src/Utilities/CheetahRefCountedPtr.h: const pointer
+	by value makes no sense.
+
+This patch is against the cheetah-1.1.4 tarball.
+
+Richard.
+
+--
+Richard Guenther &lt;richard dot guenther at uni-tuebingen dot de&gt;
+WWW: <A HREF="http://www.tat.physik.uni-tuebingen.de/~rguenth/">http://www.tat.physik.uni-tuebingen.de/~rguenth/</A>
+-------------- next part --------------
+diff -Nru a/cheetah-1.1.4/BUGS b/cheetah-1.1.4/BUGS
+--- /dev/null	Wed Dec 31 16:00:00 196900
++++ b/cheetah-1.1.4/BUGS	2004-08-16 10:04:52 +02:00
+@@ -0,0 +1,9 @@
++From Richard Guenther &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">rguenth at tat.physik.uni-tuebingen.de</A>&gt;:
++
++ You may experience problems with passing the controller specification
++ argument using the MPICH mpirun implementation. This one doesnt set
++ up the arguments for the clients before calling MPI_Init.
++ To work around this deficiency store a file called CHEETAH_RUNTIME
++ containing &quot;-mpi&quot; as the first line in the same directory as the
++ executable.
++
+diff -Nru a/cheetah-1.1.4/bin/makeinstall b/cheetah-1.1.4/bin/makeinstall
+--- a/cheetah-1.1.4/bin/makeinstall	2004-08-16 10:04:52 +02:00
++++ b/cheetah-1.1.4/bin/makeinstall	2004-08-16 10:04:52 +02:00
+@@ -46,8 +46,8 @@
+ ### copy the source flies
+ cd $fromsrc
+ echo &quot;Copying source files to $tosrc ...&quot;
+-hflist=`find . -name &quot;*.h&quot; -print`
+-cflist=`find . -name &quot;*.cpp&quot; -print`
++hflist=`find . -name &quot;*.h&quot; -print | grep -v SCCS`
++cflist=`find . -name &quot;*.cpp&quot; -print | grep -v SCCS`
+ tar cf - $hflist $cflist | (cd $tosrc ; tar xvf -)
+ 
+ ### copy the library files
+diff -Nru a/cheetah-1.1.4/config/LINUXGCC.conf b/cheetah-1.1.4/config/LINUXGCC.conf
+--- a/cheetah-1.1.4/config/LINUXGCC.conf	2004-08-16 10:04:52 +02:00
++++ b/cheetah-1.1.4/config/LINUXGCC.conf	2004-08-16 10:04:52 +02:00
+@@ -82,7 +82,7 @@
+ 
+ ### debug or optimized build settings for C++ applications
+ 
+-$cppdbg     = &quot;-ggdb&quot;;
++$cppdbg     = &quot;-g&quot;;
+ 
+ $cppopt     = &quot;-O3 -funroll-loops&quot;;
+ 
+diff -Nru a/cheetah-1.1.4/config/LINUXICC.conf b/cheetah-1.1.4/config/LINUXICC.conf
+--- /dev/null	Wed Dec 31 16:00:00 196900
++++ b/cheetah-1.1.4/config/LINUXICC.conf	2004-08-16 10:04:52 +02:00
+@@ -0,0 +1,128 @@
++###########################################################################
++# Cheetah configuration settings
++#
++# Platform: LINUX
++# Compiler: Intel C++ compiler (icc)
++#
++###########################################################################
++#
++# This file contains specialized settings indicating how to build Cheetah
++# with this platform and compiler.  This is a perl script executed by
++# the 'configure' script at the top level of the Cheetah directory structure.
++# This file has two sections:
++#   1) The locations of include files and libraries for external packages.
++#   3) The specialized settings on how to use this platform and compiler.
++# You should edit the lines in section 1) to the proper location of the
++# external packages.  Do not edit the lines in section 2) unless you
++# know what you're doing.
++#
++###########################################################################
++
++###########################################################################
++# Section 1: external package locations. 
++#   Include search directories should have a '-I' prepended.
++#   Library search directories should have a '-L' prepended.
++#   Library filenames should just list the name or use -l prefix as needed.
++#   Required defines should have -a '-D' prepended.
++###########################################################################
++
++### location of MM files, for shmem controller (if available)
++
++$has_shmem                 = 1;
++$shmem_default_dir         = &quot;/home/cheetah/packages/mm/build/linux&quot;;
++$shmem_inc                 = &quot;-I$shmem_default_dir/include&quot;;
++$shmem_lib                 = &quot;-L$shmem_default_dir/lib -lmm&quot;;
++$shmem_def                 = &quot;&quot;;
++$shmem_locksrc             = &quot;Utilities/i386-lock.s&quot;;
++$shmem_lockobj             = &quot;i386-lock.o&quot;;
++$shmem_as                  = &quot;as&quot;;
++
++### location of ULM files, for ULM controller (if available)
++
++$has_ulm                   = 0;
++
++
++###########################################################################
++# Section 2: compilation settings
++###########################################################################
++
++
++###################
++### characteristics
++###################
++
++### the name of this architecture
++
++$archtype = &quot;linux&quot;;
++$comptype = &quot;icc&quot;;
++
++### are shared libraries supported?
++
++$canmakesharedlib = 1;
++$sharedext = &quot;so&quot;;
++
++
++################
++### C++ settings
++################
++
++### general settings for using the C++ compiler, for both libs and apps
++
++$cpp        = &quot;icc&quot;;
++
++$cppargs    = &quot;-restrict&quot;;
++
++$cppex      = &quot;-Kc++eh&quot;;           # flag to use exceptions
++$cppnoex    = &quot;&quot;;                  # flag to turn off exceptions
++
++$cppverbose = &quot;&quot;;                  # flag for verbose compiler output
++
++$cppshare   = &quot;-KPIC&quot;;             # flag for compiling for shared libs
++
++
++### debug or optimized build settings for C++ applications
++
++$cppdbg     = &quot;-g&quot;;
++
++$cppopt     = &quot;-O3&quot;;
++
++
++###################
++### linker settings
++###################
++
++$link        = &quot;icc&quot;;
++
++$linkargs    = &quot;\$(CHEETAH_CXX_ARGS)&quot;;
++
++$linkverbose = &quot;&quot;;
++
++$linkshare   = &quot;&quot;;
++
++
++#####################
++### archiver settings
++#####################
++
++$ar          = &quot;ar&quot;;
++
++$arargs      = &quot;rcsl&quot;;
++
++$arshare     = &quot;icc&quot;;             # program to make shared lib
++
++$arshareargs = &quot;-shared -o&quot;;      # arguments to make shared lib
++
++
++# ACL:rcsinfo
++#  ----------------------------------------------------------------------
++#  $RCSfile: LINUXGCC.conf,v $   $Author: rasmussn $
++#  $Revision: 1.3 $   $Date: 2000/06/26 22:07:27 $
++#  ----------------------------------------------------------------------
++# ACL:rcsinfo
++
++###########################################################################
++# the last line of this file must be a '1' so that Perl sees a non-zero
++# results from this file
++###########################################################################
++1;
++
+diff -Nru a/cheetah-1.1.4/configure b/cheetah-1.1.4/configure
+--- a/cheetah-1.1.4/configure	2004-08-16 10:04:52 +02:00
++++ b/cheetah-1.1.4/configure	2004-08-16 10:04:52 +02:00
+@@ -846,7 +846,7 @@
+     {
+       # make sure we don't try to set up any assembly file
+       # with mutex lock code
+-      $shmem_locksrc = &quot;&quot;;
++      #$shmem_locksrc = &quot;&quot;;
+     }
+ }
+ 
+diff -Nru a/cheetah-1.1.4/src/Controller/ControllerFactory.cpp b/cheetah-1.1.4/src/Controller/ControllerFactory.cpp
+--- a/cheetah-1.1.4/src/Controller/ControllerFactory.cpp	2004-08-16 10:04:52 +02:00
++++ b/cheetah-1.1.4/src/Controller/ControllerFactory.cpp	2004-08-16 10:04:52 +02:00
+@@ -121,17 +121,21 @@
+ 	  if (p-&gt;first == argv[i])
+ 	    {
+ 	      //
+-	      // We have a match!  Delete this arg from the input
+-	      // list.
++	      // We have a match! Build this factory.
++	      //
++	      ControllerImpl* impl = p-&gt;second(argc, argv);
++
++	      //
++	      // Delete the arg from the input list.
+ 	      //
+ 	      for (int j=i+1; j&lt;argc; ++j)
+ 		argv[j-1] = argv[j];
+ 	      --argc;
+ 
+ 	      //
+-	      // Build this factory and return it.
++	      // Return the factory.
+ 	      //
+-	      return p-&gt;second(argc, argv);
++	      return impl;
+ 	    }
+ 	}
+     }
+diff -Nru a/cheetah-1.1.4/src/Controller/Group.h b/cheetah-1.1.4/src/Controller/Group.h
+--- a/cheetah-1.1.4/src/Controller/Group.h	2004-08-16 10:04:52 +02:00
++++ b/cheetah-1.1.4/src/Controller/Group.h	2004-08-16 10:04:52 +02:00
+@@ -49,7 +49,7 @@
+   // state which must be corrected with the initialize() function.
+   //
+ 
+-  Group() : nContexts_m(-1), myContext_m(NOT_A_MEMBER), ranks_m(0), id_m(0) { }
++  Group() : myContext_m(NOT_A_MEMBER), nContexts_m(-1), ranks_m(0), id_m(0) { }
+   
+   Group(int nContexts, int myContext, int* ranks = 0, int id = 0);
+ 
+diff -Nru a/cheetah-1.1.4/src/Controller/Shmem/MM_Allocator.h b/cheetah-1.1.4/src/Controller/Shmem/MM_Allocator.h
+--- a/cheetah-1.1.4/src/Controller/Shmem/MM_Allocator.h	2004-08-16 10:04:52 +02:00
++++ b/cheetah-1.1.4/src/Controller/Shmem/MM_Allocator.h	2004-08-16 10:04:52 +02:00
+@@ -55,9 +55,6 @@
+   //
+   pointer allocate(int n) { return (pointer)MM_malloc(n*sizeof(T)); }
+ 
+-  template&lt;class P&gt;
+-  void allocate(int n, P) { return (pointer)MM_malloc(n*sizeof(T)); }
+-
+   //
+   // Free back to shared memory.
+   //
+diff -Nru a/cheetah-1.1.4/src/Utilities/CheetahRefCountedPtr.h b/cheetah-1.1.4/src/Utilities/CheetahRefCountedPtr.h
+--- a/cheetah-1.1.4/src/Utilities/CheetahRefCountedPtr.h	2004-08-16 10:04:52 +02:00
++++ b/cheetah-1.1.4/src/Utilities/CheetahRefCountedPtr.h	2004-08-16 10:04:52 +02:00
+@@ -79,7 +79,7 @@
+   // Assignment operators increment the reference count.
+ 
+   RefCountedPtr &amp; operator=(const RefCountedPtr &amp;);
+-  RefCountedPtr &amp; operator=(T * const);
++  RefCountedPtr &amp; operator=(T *);
+ 
+   //============================================================
+   // Accessors and Mutators
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001677.html">[pooma-dev] Re: Cheetah Status
+</A></li>
+	<LI>Next message: <A HREF="001680.html">[pooma-dev] Re: Cheetah Status
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1678">[ date ]</a>
+              <a href="thread.html#1678">[ thread ]</a>
+              <a href="subject.html#1678">[ subject ]</a>
+              <a href="author.html#1678">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

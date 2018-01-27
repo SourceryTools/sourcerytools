@@ -1,0 +1,705 @@
+From mark at codesourcery.com  Thu Sep  1 23:21:43 2005
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Thu, 1 Sep 2005 16:21:43 -0700
+Subject: PATCH: Create resource classes from test classes
+Message-ID: <200509012321.j81NLhYw004157@sparrowhawk.codesourcery.com>
+
+
+Several people have suggested that it should be possible to reuse a
+Test class as if it were a Resource.  In particular, the resource
+SetUp method would be the same as the test Run method; the resource
+fails if the test fails.  For example, this allows you to use
+CompilerTest as a resource to build a program, and then have a bunch
+of tests that depend on the existence of the program (to run it, for
+example).  I'll be checking in some follow-on changes to CompilerTest
+in the near future to implement some of that.
+
+Here's the basic infrastructure.
+
+Committed.
+
+--
+Mark Mitchell
+CodeSourcery, LLC
+mark at codesourcery.com
+
+2005-09-01  Mark Mitchell  <mark at codesourcery.com>
+
+	* qm/test/resource.py (resource_adapter): New function.
+
+Index: qm/test/resource.py
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/test/resource.py,v
+retrieving revision 1.10
+diff -c -5 -p -r1.10 resource.py
+*** qm/test/resource.py	17 Apr 2003 22:48:48 -0000	1.10
+--- qm/test/resource.py	1 Sep 2005 23:18:57 -0000
+***************
+*** 17,29 ****
+  # Imports
+  ########################################################################
+  
+  import qm
+  import qm.test.runnable
+  
+  ########################################################################
+! # classes
+  ########################################################################
+  
+  class Resource(qm.test.runnable.Runnable):
+      """A 'Resource' sets up before a test and cleans up afterwards.
+  
+--- 17,30 ----
+  # Imports
+  ########################################################################
+  
+  import qm
+  import qm.test.runnable
++ from   qm.test.test import Test
+  
+  ########################################################################
+! # Classes
+  ########################################################################
+  
+  class Resource(qm.test.runnable.Runnable):
+      """A 'Resource' sets up before a test and cleans up afterwards.
+  
+*************** class Resource(qm.test.runnable.Runnable
+*** 103,107 ****
+--- 104,147 ----
+          This method should not return a value.
+  
+          Derived classes may override this method."""
+  
+          pass
++ 
++ 
++ 
++ ########################################################################
++ # Functions
++ ########################################################################
++ 
++ def resource_adapter(test_class):
++     """Return a resource class based on 'test_class'.
++ 
++     'test_class' -- A 'Test' class.  This argument is not the name of
++     a 'Test' class; it is the actuall class object itself.
++ 
++     returns -- A 'Resource' class.  The 'Resource' class 'SetUp'
++     method is equivalent to the 'Test' class 'Run' method.  The
++     'CleanUp' action is empty.
++ 
++     If this function is called more than once with the same
++     'test_class', it will return a new class each time."""
++ 
++     assert test_class.kind == Test.kind
++ 
++     # Construct a new class.  By listing 'Resource' first, we ensure
++     # that the 'kind' field for the new class is 'Resource.kind'.
++     class ResourceAdapter(Resource, test_class):
++         """A 'ResourceAdapter' is a resource based on a 'Test' class.
++ 
++         The 'SetUp' method for this class behaves just like the 'Run'
++         method for the test class on which this resource is based.""" 
++ 
++         def SetUp(self, context, result):
++ 
++             # To set up the resource, just run the underlying test class.
++             self.Run(context, result)
++ 
++ 
++ 
++     # Return the new class.        
++     return ResourceAdapter
+
+
+From seefeld at sympatico.ca  Fri Sep  2 02:45:19 2005
+From: seefeld at sympatico.ca (Stefan Seefeld)
+Date: Thu, 01 Sep 2005 22:45:19 -0400
+Subject: [qmtest] PATCH: Create resource classes from test classes
+In-Reply-To: <200509012321.j81NLhYw004157@sparrowhawk.codesourcery.com>
+References: <200509012321.j81NLhYw004157@sparrowhawk.codesourcery.com>
+Message-ID: <4317BCBF.5060406@sympatico.ca>
+
+Mark Mitchell wrote:
+> Several people have suggested that it should be possible to reuse a
+> Test class as if it were a Resource.  In particular, the resource
+> SetUp method would be the same as the test Run method; the resource
+> fails if the test fails.
+
+Mark,
+
+your new ResourceAdapter looks very useful to me.
+
+However, I'm not quite sure how to actually use (i.e. access) it.
+A ResourceDescriptor takes a resource id and a Resource class' name
+and then instantiates it as any other extension. How would that work with
+resource.resource_adapter() ?
+If the goal is to allow a Test class name to be passed to a ResourceDescriptor
+(i.e. to the 'resources' parameter of a test) and do the wrapping automatically,
+wouldn't we need to add some magic to the ResourceDescriptor class ?
+
+In other words, it seems your resource_adapter() function assumes the caller
+has already figured out it got a Test class name where a Resource class name
+was expected, and now only needs to do the wrapping.
+
+Thanks,
+		Stefan
+
+
+From mark at codesourcery.com  Fri Sep  2 14:57:24 2005
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Fri, 02 Sep 2005 07:57:24 -0700
+Subject: [qmtest] PATCH: Create resource classes from test classes
+In-Reply-To: <4317BCBF.5060406@sympatico.ca>
+References: <200509012321.j81NLhYw004157@sparrowhawk.codesourcery.com> <4317BCBF.5060406@sympatico.ca>
+Message-ID: <43186854.6080904@codesourcery.com>
+
+Stefan Seefeld wrote:
+
+> In other words, it seems your resource_adapter() function assumes the 
+> caller
+> has already figured out it got a Test class name where a Resource class 
+> name
+> was expected, and now only needs to do the wrapping.
+
+In a Python module, if you have done:
+
+   class MyTestClass(Test):
+
+     def Run(self, context, result):
+
+       ...
+
+you can now do:
+
+   MyResourceBase = resource_adapter(MyTestClass)
+   class MyResourceClass(MyResourceBase):
+
+     pass
+
+Now, MyResourceClass is a legitimate Resource.
+
+There are some other changes for the "generic database" work that are in 
+my local tree that make it easier to take advantage of this, but they'll 
+take a bit more cleaning up.
+
+-- 
+Mark Mitchell
+CodeSourcery, LLC
+mark at codesourcery.com
+(916) 791-8304
+
+
+From mark at codesourcery.com  Fri Sep  2 20:43:41 2005
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Fri, 2 Sep 2005 13:43:41 -0700
+Subject: PATCH: Replace resource_adapter with ResourceAdapter
+Message-ID: <200509022043.j82Khfrv016056@sparrowhawk.codesourcery.com>
+
+
+Stefan suggested a cleaner way of doing the resource adapter that I
+posted yesterday, using a mix-in.  With this method, you do:
+
+  class R(ResourceAdapter, T):
+
+    ...
+
+to make "R" a resource class based on T, a test class.
+
+Committed.
+
+--
+Mark Mitchell
+CodeSourcery, LLC
+mark at codesourcery.com
+
+2005-09-02  Mark Mitchell  <mark at codesourcery.com>
+
+	* qm/test/resource_adapter.py: New file.
+	* qm/test/resource.py (resource_adapter): Remove.
+
+Index: qm/test/resource.py
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/test/resource.py,v
+retrieving revision 1.11
+diff -c -5 -p -r1.11 resource.py
+*** qm/test/resource.py	1 Sep 2005 23:22:04 -0000	1.11
+--- qm/test/resource.py	2 Sep 2005 20:40:11 -0000
+***************
+*** 17,27 ****
+  # Imports
+  ########################################################################
+  
+  import qm
+  import qm.test.runnable
+- from   qm.test.test import Test
+  
+  ########################################################################
+  # Classes
+  ########################################################################
+  
+--- 17,26 ----
+*************** class Resource(qm.test.runnable.Runnable
+*** 104,147 ****
+          This method should not return a value.
+  
+          Derived classes may override this method."""
+  
+          pass
+- 
+- 
+- 
+- ########################################################################
+- # Functions
+- ########################################################################
+- 
+- def resource_adapter(test_class):
+-     """Return a resource class based on 'test_class'.
+- 
+-     'test_class' -- A 'Test' class.  This argument is not the name of
+-     a 'Test' class; it is the actuall class object itself.
+- 
+-     returns -- A 'Resource' class.  The 'Resource' class 'SetUp'
+-     method is equivalent to the 'Test' class 'Run' method.  The
+-     'CleanUp' action is empty.
+- 
+-     If this function is called more than once with the same
+-     'test_class', it will return a new class each time."""
+- 
+-     assert test_class.kind == Test.kind
+- 
+-     # Construct a new class.  By listing 'Resource' first, we ensure
+-     # that the 'kind' field for the new class is 'Resource.kind'.
+-     class ResourceAdapter(Resource, test_class):
+-         """A 'ResourceAdapter' is a resource based on a 'Test' class.
+- 
+-         The 'SetUp' method for this class behaves just like the 'Run'
+-         method for the test class on which this resource is based.""" 
+- 
+-         def SetUp(self, context, result):
+- 
+-             # To set up the resource, just run the underlying test class.
+-             self.Run(context, result)
+- 
+- 
+- 
+-     # Return the new class.        
+-     return ResourceAdapter
+--- 103,107 ----
+Index: qm/test/resource_adapter.py
+===================================================================
+RCS file: qm/test/resource_adapter.py
+diff -N qm/test/resource_adapter.py
+*** /dev/null	1 Jan 1970 00:00:00 -0000
+--- qm/test/resource_adapter.py	2 Sep 2005 20:40:11 -0000
+***************
+*** 0 ****
+--- 1,39 ----
++ ########################################################################
++ #
++ # File:   resource_adapter.py
++ # Author: Mark Mitchell
++ # Date:   2005-09-02
++ #
++ # Contents:
++ #   QMTest ResourceAdapter class.
++ #
++ # Copyright (c) 2005 by CodeSourcery, LLC.  All rights reserved. 
++ #
++ # For license terms see the file COPYING.
++ #
++ ########################################################################
++ 
++ ########################################################################
++ # Imports
++ ########################################################################
++ 
++ from qm.test.resource import Resource
++ 
++ ########################################################################
++ # Classes
++ ########################################################################
++ 
++ class ResourceAdapter(Resource):
++     """A 'ResourceAdapter' converts test classes to resource classes.
++ 
++     If 'C' is a test class, then a class derived from
++     'ResourceAdapter' and 'C' (in that order!) will be a resource
++     class.  The resource class 'Setup' method is equivalent to the
++     'Test' class 'Run' method.  The 'CleanUp' action is empty."""
++ 
++     def SetUp(self, context, result):
++         
++         # To set up the resource, just run the underlying test class.
++         self.Run(context, result)
++ 
++     
+
+
+From mats.d.wichmann at intel.com  Wed Sep  7 21:37:18 2005
+From: mats.d.wichmann at intel.com (Wichmann, Mats D)
+Date: Wed, 7 Sep 2005 14:37:18 -0700
+Subject: Any known problems with qmtest running threaded programs?
+Message-ID: <A06801158AE07847B27A52C1A074BC1D089C4C3E@fmsmsx404.amr.corp.intel.com>
+
+
+The LSB project uses qmtest to drive execution of
+precompiled tests from the g++ testsuite (the
+project itself is referenced here:
+http://www.codesourcery.com/qmtest/v3_abi_testsuite.html)
+
+In some circumstances, the running of the thread
+tests in this testsuite cause nasty problems where
+qmtest itself takes exceptions.  There don't seem
+to be any issues running the test binaries individually
+or from a script that runs them in the same sequence
+as when run under qmtest, nor has anyone to my
+knowledge seen this building-and-running under
+dejagnu, which is the native testing framwork.
+
+I'm wondering if there are known issues with running
+testcases that do moderately stressful things with
+threads under qmtest? Or is this likely to be something
+completely different? I don't see anything in the
+issue tracker that jumps out at me... proving hard
+to trace this as it doesn't happen consistently,
+and of course I'm one of the people who can't
+reproduce it at all (sigh).
+
+QMTest ERROR in test thread/pthread2.cc
+DejaGNUTest.command_1:
+/opt/lsb/test/lib/qmtest_libstdcpp_3.4.3/_thread_pthread2.exe
+qmtest.cause: An exception occurred.
+qmtest.end_time: 2005-08-03T11:33:35Z
+qmtest.exception: exceptions.OSError: [Errno 10] No child processes
+qmtest.start_time: 2005-08-03T11:33:30Z
+
+from:
+
+qmtest.traceback: status = os.waitpid(child, 0)[1]
+
+
+From mark at codesourcery.com  Thu Sep  8 10:10:47 2005
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Thu, 08 Sep 2005 03:10:47 -0700
+Subject: [qmtest] Any known problems with qmtest running threaded programs?
+In-Reply-To: <A06801158AE07847B27A52C1A074BC1D089C4C3E@fmsmsx404.amr.corp.intel.com>
+References: <A06801158AE07847B27A52C1A074BC1D089C4C3E@fmsmsx404.amr.corp.intel.com>
+Message-ID: <43200E27.6020608@codesourcery.com>
+
+Wichmann, Mats D wrote:
+
+> I'm wondering if there are known issues with running
+> testcases that do moderately stressful things with
+> threads under qmtest? Or is this likely to be something
+> completely different? I don't see anything in the
+> issue tracker that jumps out at me... proving hard
+> to trace this as it doesn't happen consistently,
+> and of course I'm one of the people who can't
+> reproduce it at all (sigh).
+
+I'm not aware of anything in QMTest that would cause this.
+
+The error you give is very weird, as I would think that QMTest would
+only get ECHILD if somehow the child process (i.e.,
+_thread_pthread2.exe) had somehow been re-parented by the kernel to some
+other process.  And, that's not supposed to happen.  My suggestion would
+be to run just that test (using "qmtest run name-of-test") a bunch of
+times to see if you can get the error.  If it's reproducible that way,
+then, try "strace qmtest run name-of-test" (or "strace -f") to see if
+can figure out what's going on.
+
+-- 
+Mark Mitchell
+CodeSourcery, LLC
+mark at codesourcery.com
+(916) 791-8304
+
+
+From pankajj at qualcomm.com  Thu Sep 22 03:20:52 2005
+From: pankajj at qualcomm.com (Jain, Pankaj)
+Date: Wed, 21 Sep 2005 20:20:52 -0700
+Subject: [qmtest] problem with targets file
+Message-ID: <068EDF17B38A284786700278BE9EEC250C4E26@NAEX05.na.qualcomm.com>
+
+
+Hi,
+When I am creating the targets file using this command 
+ qmtest create-target -a host="hostname" "TargetName"
+rsh_target.RSHTarget "GroupNameg command 
+
+its creating the target without any problem . but after that if I run
+qmtest its giving me this error.
+This directory is not a Qmtest database. 
+
+Seems like targets file is wrong and Qmtest first check the target file
+format . 
+
+Please help me out. 
+Thanks 
+Pankaj 
+
+
+From stefan at codesourcery.com  Thu Sep 22 20:18:15 2005
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Thu, 22 Sep 2005 16:18:15 -0400
+Subject: [qmtest] problem with targets file
+In-Reply-To: <068EDF17B38A284786700278BE9EEC250C4E26@NAEX05.na.qualcomm.com>
+References: <068EDF17B38A284786700278BE9EEC250C4E26@NAEX05.na.qualcomm.com>
+Message-ID: <43331187.80806@codesourcery.com>
+
+Jain,
+
+I can't reproduce the behavior you are observing.
+Could you provide some more details ? What QMTest version
+are you running ? What is the *exact* sequence of commands you
+use that generates this error ?
+
+Thanks,
+		Stefan
+
+
+
+
+From pankajj at qualcomm.com  Thu Sep 22 20:32:22 2005
+From: pankajj at qualcomm.com (Jain, Pankaj)
+Date: Thu, 22 Sep 2005 13:32:22 -0700
+Subject: [qmtest] problem with targets file
+Message-ID: <068EDF17B38A284786700278BE9EEC250C4F63@NAEX05.na.qualcomm.com>
+
+Thanks for the help.
+Here are more details
+Step1: create qmtest database : qmtest create-tdb
+Step2: create few test using gui ( command.ExecTest class ) 
+Step3: run the tests ( all pass no problem)
+Step4: create target using command
+Qmtest create-target -h name=pankajj OFFICEMACHINE rsh_target.RSHTarget
+OFFICE :- it creates the target file under QMTest directory 
+Step5: run qmtest using qmtest run command . 
+Error : this is not a qmtest database. 
+
+I am using Qmtest version 2.3
+
+Thanks
+Pankaj 
+
+-----Original Message-----
+From: Stefan Seefeld [mailto:stefan at codesourcery.com] 
+Sent: Thursday, September 22, 2005 1:18 PM
+To: qmtest at codesourcery.com
+Subject: Re: [qmtest] problem with targets file
+
+Jain,
+
+I can't reproduce the behavior you are observing.
+Could you provide some more details ? What QMTest version
+are you running ? What is the *exact* sequence of commands you
+use that generates this error ?
+
+Thanks,
+		Stefan
+
+
+
+
+From pragnesh.sampat at timesys.com  Wed Sep 28 21:46:12 2005
+From: pragnesh.sampat at timesys.com (Pragnesh Sampat)
+Date: Wed, 28 Sep 2005 17:46:12 -0400
+Subject: [qmtest] problem with targets file
+In-Reply-To: <068EDF17B38A284786700278BE9EEC250C4F63@NAEX05.na.qualcomm.com>
+References: <068EDF17B38A284786700278BE9EEC250C4F63@NAEX05.na.qualcomm.com>
+Message-ID: <1127943973.11182.2.camel@pss-pc.timesys>
+
+On Thu, 2005-09-22 at 13:32 -0700, Jain, Pankaj wrote:
+> Thanks for the help.
+> Here are more details
+> Step1: create qmtest database : qmtest create-tdb
+> Step2: create few test using gui ( command.ExecTest class ) 
+> Step3: run the tests ( all pass no problem)
+> Step4: create target using command
+> Qmtest create-target -h name=pankajj OFFICEMACHINE rsh_target.RSHTarget
+> OFFICE :- it creates the target file under QMTest directory 
+> Step5: run qmtest using qmtest run command . 
+> Error : this is not a qmtest database. 
+> 
+> I am using Qmtest version 2.3
+
+I ran into a similar problem, I am using head from cvs, more or less,
+but I have not finished my configuration yet (so I am expecting it).
+
+Perhaps you need to make sure that your target system also has a copy of
+the test database in the same location, or there is a way to specify
+where it resides, I am sure.  Will post something some results.
+
+-Pragnesh
+
+
+
+From stefan at codesourcery.com  Wed Sep 28 22:02:15 2005
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Wed, 28 Sep 2005 18:02:15 -0400
+Subject: [qmtest] problem with targets file
+In-Reply-To: <068EDF17B38A284786700278BE9EEC250C4F63@NAEX05.na.qualcomm.com>
+References: <068EDF17B38A284786700278BE9EEC250C4F63@NAEX05.na.qualcomm.com>
+Message-ID: <433B12E7.9060904@codesourcery.com>
+
+Jain, Pankaj wrote:
+> Thanks for the help.
+> Here are more details
+> Step1: create qmtest database : qmtest create-tdb
+> Step2: create few test using gui ( command.ExecTest class ) 
+> Step3: run the tests ( all pass no problem)
+> Step4: create target using command
+> Qmtest create-target -h name=pankajj OFFICEMACHINE rsh_target.RSHTarget
+> OFFICE :- it creates the target file under QMTest directory 
+
+I'm not quite sure what you actually did here, as the line you print
+isn't syntactically correct. A correct line would be
+
+qmtest create-target -a host=my_server my_target rsh_target.RSHTarget
+
+> Step5: run qmtest using qmtest run command . 
+> Error : this is not a qmtest database. 
+
+Replacing Step4 with a correct command to create a target I
+could successfully run the tests, i.e. I couldn't reproduce your problem.
+
+Regards,
+		Stefan
+
+
+From pragnesh.sampat at timesys.com  Wed Sep 28 22:31:32 2005
+From: pragnesh.sampat at timesys.com (Pragnesh Sampat)
+Date: Wed, 28 Sep 2005 18:31:32 -0400
+Subject: [qmtest] problem with targets file
+In-Reply-To: <433B12E7.9060904@codesourcery.com>
+References: <068EDF17B38A284786700278BE9EEC250C4F63@NAEX05.na.qualcomm.com>
+	 <433B12E7.9060904@codesourcery.com>
+Message-ID: <1127946693.11182.12.camel@pss-pc.timesys>
+
+On Wed, 2005-09-28 at 18:02 -0400, Stefan Seefeld wrote:
+> Jain, Pankaj wrote:
+> > Thanks for the help.
+> > Here are more details
+> > Step1: create qmtest database : qmtest create-tdb
+> > Step2: create few test using gui ( command.ExecTest class ) 
+> > Step3: run the tests ( all pass no problem)
+> > Step4: create target using command
+> > Qmtest create-target -h name=pankajj OFFICEMACHINE rsh_target.RSHTarget
+> > OFFICE :- it creates the target file under QMTest directory 
+> 
+> I'm not quite sure what you actually did here, as the line you print
+> isn't syntactically correct. A correct line would be
+> 
+> qmtest create-target -a host=my_server my_target rsh_target.RSHTarget
+> 
+> > Step5: run qmtest using qmtest run command . 
+> > Error : this is not a qmtest database. 
+> 
+> Replacing Step4 with a correct command to create a target I
+> could successfully run the tests, i.e. I couldn't reproduce your problem.
+
+I was also able to run a command remotely with the corrected syntax.
+
+The only real step missing from the above sequence appears to be that
+the test database is missing from the remote host (the database resides
+on a different path on my target system, so I symlinked it on the
+remote system).
+
+BTW, is it possible to automatically copy the test database to the
+remote host (and reference that database) before running the test?  I
+am new to this, so not sure if my understanding is wrong here.
+
+-Pragnesh
+
+
+
+From pankajj at qualcomm.com  Thu Sep 29 16:46:53 2005
+From: pankajj at qualcomm.com (Jain, Pankaj)
+Date: Thu, 29 Sep 2005 09:46:53 -0700
+Subject: [qmtest] problem with targets file
+Message-ID: <068EDF17B38A284786700278BE9EEC250C58A3@NAEX05.na.qualcomm.com>
+
+Thanks for the info. Actually I have the database on remote machine but
+seems like directory structure on local and remote machine has to be
+identical. That's another problem now.. is there any way I can specify
+the path to database on remote machine. This will solve all my problems.
+
+Please respond. 
+Thanks 
+Pankaj 
+
+
+
+-----Original Message-----
+From: Pragnesh Sampat [mailto:pragnesh.sampat at timesys.com] 
+Sent: Wednesday, September 28, 2005 3:32 PM
+To: Stefan Seefeld
+Cc: qmtest at codesourcery.com
+Subject: Re: [qmtest] problem with targets file
+
+On Wed, 2005-09-28 at 18:02 -0400, Stefan Seefeld wrote:
+> Jain, Pankaj wrote:
+> > Thanks for the help.
+> > Here are more details
+> > Step1: create qmtest database : qmtest create-tdb
+> > Step2: create few test using gui ( command.ExecTest class ) 
+> > Step3: run the tests ( all pass no problem)
+> > Step4: create target using command
+> > Qmtest create-target -h name=pankajj OFFICEMACHINE
+rsh_target.RSHTarget
+> > OFFICE :- it creates the target file under QMTest directory 
+> 
+> I'm not quite sure what you actually did here, as the line you print
+> isn't syntactically correct. A correct line would be
+> 
+> qmtest create-target -a host=my_server my_target rsh_target.RSHTarget
+> 
+> > Step5: run qmtest using qmtest run command . 
+> > Error : this is not a qmtest database. 
+> 
+> Replacing Step4 with a correct command to create a target I
+> could successfully run the tests, i.e. I couldn't reproduce your
+problem.
+
+I was also able to run a command remotely with the corrected syntax.
+
+The only real step missing from the above sequence appears to be that
+the test database is missing from the remote host (the database resides
+on a different path on my target system, so I symlinked it on the
+remote system).
+
+BTW, is it possible to automatically copy the test database to the
+remote host (and reference that database) before running the test?  I
+am new to this, so not sure if my understanding is wrong here.
+
+-Pragnesh
+
+
+
+From stefan at codesourcery.com  Thu Sep 29 17:24:14 2005
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Thu, 29 Sep 2005 13:24:14 -0400
+Subject: [qmtest] problem with targets file
+In-Reply-To: <068EDF17B38A284786700278BE9EEC250C58A3@NAEX05.na.qualcomm.com>
+References: <068EDF17B38A284786700278BE9EEC250C58A3@NAEX05.na.qualcomm.com>
+Message-ID: <433C233E.5000000@codesourcery.com>
+
+Jain, Pankaj wrote:
+> Thanks for the info. Actually I have the database on remote machine but
+> seems like directory structure on local and remote machine has to be
+> identical. That's another problem now.. is there any way I can specify
+> the path to database on remote machine. This will solve all my problems.
+
+The RSHTarget has a 'database_path' property which you can set when creating
+it:
+
+qmtest create-target -a host=my_machine \
+                      -a database_path=/path/to/test_db/on/my_machine \
+                      my_target rsh_target.RSHTarget
+
+Regards,
+		Stefan
+
+

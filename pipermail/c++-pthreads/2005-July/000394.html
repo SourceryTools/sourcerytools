@@ -1,0 +1,109 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [c++-pthreads]  Re: pthread_cancel and EH: let's try this again
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:c%2B%2B-pthreads%40codesourcery.com?Subject=Re%3A%20%5Bc%2B%2B-pthreads%5D%20%20Re%3A%20pthread_cancel%20and%20EH%3A%20let%27s%20try%20this%20again&In-Reply-To=%3C42D83CA3.8080600%40bogo.xs4all.nl%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000390.html">
+   <LINK REL="Next"  HREF="000395.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[c++-pthreads]  Re: pthread_cancel and EH: let's try this again</H1>
+    <B>Wil Evers</B> 
+    <A HREF="mailto:c%2B%2B-pthreads%40codesourcery.com?Subject=Re%3A%20%5Bc%2B%2B-pthreads%5D%20%20Re%3A%20pthread_cancel%20and%20EH%3A%20let%27s%20try%20this%20again&In-Reply-To=%3C42D83CA3.8080600%40bogo.xs4all.nl%3E"
+       TITLE="[c++-pthreads]  Re: pthread_cancel and EH: let's try this again">wil at bogo.xs4all.nl
+       </A><BR>
+    <I>Fri Jul 15 22:45:55 UTC 2005</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000390.html">[c++-pthreads]  Re: pthread_cancel and EH: let's try this again
+</A></li>
+        <LI>Next message: <A HREF="000395.html">[c++-pthreads]  Re: pthread_cancel and EH: let's try this again
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#394">[ date ]</a>
+              <a href="thread.html#394">[ thread ]</a>
+              <a href="subject.html#394">[ subject ]</a>
+              <a href="author.html#394">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Mark Mitchell wrote:
+
+&gt;<i> It's not NPTL that says something about &quot;catch (...)&quot; -- it's C++ that 
+</I>&gt;<i> says that.
+</I>&gt;<i> 
+</I>&gt;<i> The whole point of destructors and exceptions in C++ is that you are 
+</I>&gt;<i> guaranteed that all exits from a block will result in a particular set 
+</I>&gt;<i> of cleanup code -- including both destructors and the bodies of catch 
+</I>&gt;<i> clauses -- being run in a particular order.
+</I>&gt;<i> 
+</I>&gt;<i> Jason's proposal #2 splits two things which are considered equivalent by 
+</I>&gt;<i> programmers (destructors and catch clauses) into distinct classes, 
+</I>&gt;<i> running some but not the other.  That's not in the spirit of C++, IMO. 
+</I>&gt;<i>  As Nathan has demonstrated, there are cases where you *must* use a 
+</I>&gt;<i> catch clause to manage cleanups.
+</I>
+I agree, but please note that the handling of catch (...) blocks is not 
+the only distinction between model #1 and model #2.
+
+In model #2, cancellation is disabled in all destructors; in model #1, 
+cancellation is only disabled when destructors are called while 
+unwinding the stack.
+
+In other words, #2 has the desirable property that it does not break 
+existing code that assumes destructors *never* throw. I suspect that a 
+lot of code relies on that assumption, and I know for sure that 
+practically all of my code does.
+
+Supposing model #1 is accepted, then how do we cope with existing code 
+that assumes destructors never throw, or, more generally, with code that 
+was not written to deal with exceptions thrown from cancellation points?
+
+A reasonable thing to do would be to disable cancellation by default 
+(using pthread_setcancelstate()), and to selectively enable cancellation 
+  in sections of code that were written with cancellation in mind. 
+RAII-like objects could be used to ensure the thread's cancellation 
+state is restored on all exits from a block, both exceptional and 
+non-exceptional.
+
+An interesting side-effect of this approach is that once it is in place, 
+there is no reason for the system's cancellation machinery to manipulate 
+a thread's cancellation state at all; it could be managed exclusively 
+from user code.  In addition to protecting sections of code from 
+unexpected cancellation exceptions, it could also be used to *enable* 
+cancellation in sections that would otherwise be run with 
+system-disabled cancellation.
+
+- Wil
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000390.html">[c++-pthreads]  Re: pthread_cancel and EH: let's try this again
+</A></li>
+	<LI>Next message: <A HREF="000395.html">[c++-pthreads]  Re: pthread_cancel and EH: let's try this again
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#394">[ date ]</a>
+              <a href="thread.html#394">[ thread ]</a>
+              <a href="subject.html#394">[ subject ]</a>
+              <a href="author.html#394">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/c++-pthreads">More information about the c++-pthreads
+mailing list</a><br>
+</body></html>

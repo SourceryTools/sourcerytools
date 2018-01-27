@@ -1,0 +1,232 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [vsipl++] [patch] Profile_event class
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20%5Bpatch%5D%20Profile_event%20class&In-Reply-To=%3C44BBF81A.8010805%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000567.html">
+   <LINK REL="Next"  HREF="000571.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[vsipl++] [patch] Profile_event class</H1>
+    <B>Jules Bergmann</B> 
+    <A HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20%5Bpatch%5D%20Profile_event%20class&In-Reply-To=%3C44BBF81A.8010805%40codesourcery.com%3E"
+       TITLE="[vsipl++] [patch] Profile_event class">jules at codesourcery.com
+       </A><BR>
+    <I>Mon Jul 17 20:50:34 UTC 2006</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000567.html">[patch] Profile_event class
+</A></li>
+        <LI>Next message: <A HREF="000571.html">[vsipl++] [patch] Profile_event class
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#570">[ date ]</a>
+              <a href="thread.html#570">[ thread ]</a>
+              <a href="subject.html#570">[ subject ]</a>
+              <a href="author.html#570">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Don McCoy wrote:
+ &gt; This patch integrates the functions needed for the impl_performance()
+ &gt; interface along with some new functions needed for handling events more
+ &gt; efficiently.
+
+Don,
+
+This is looking good.  I have several comments below.
+
+Also, we should start thinking about how this should be configured
+and controlled.
+
+Here's a strawman:
+
+Controllable at configure-time:
+
+  - Type of timer (including no timer)
+    Current --with-profile-timer=XXX configure option.
+
+    Perhaps we should change the option name to avoid confusion when
+    timer is enabled but profiling is not.
+    How about --with-timer=XXX ?
+
+    If timer is disabled, than both profiling and impl_performance
+    are also disabled.
+
+  - Whether profiling is enabled (but not whether it is trace or
+    accumulate):
+    New option: --with-profile={no,all}
+
+  - What types of events are profiled (by broad categories).
+    Categories:
+     - objects: signal processing objects and linear algebra solvers
+     - matvec: linear algebra
+     - expr: element-wise expressions
+     - comm: communications
+     - user events
+
+    New option: --with-profile-cat={no,objects,matvec,expr,user,all}
+
+    Default is {no}.
+
+  - Whether performance API (impl_perfromance) is enabled:
+    New option --[enable,disable]-performance-api
+
+
+Controllable at run-time:
+
+  - If profiling configured: profiling mode (trace vs accumulate),
+    profiling duration and profile output (via Profile_in_scope)
+    controlled via API.  If profiling is disabled, this API is still
+    valid but has no effect.  This is currently how we have it.
+
+    We could potentially add command line options that are recognized
+    by the 'vsipl' object to control profiling mode so that a user
+    program built with a profile-configured library can be profiled
+    without changing the app:
+
+	--vsipl++-profile-mode={accum,trace,off}
+	--vsipl++-profile-output={filename}
+
+    Probably most useful for tracing very small programs and accumulating
+    larger programs.
+
+				-- Jules
+
+ &gt;
+ &gt; # mode: pm_accum
+ &gt; # timer: x86_64_tsc_time
+ &gt; # clocks_per_sec: 3591371008
+ &gt; #
+ &gt; # tag : total ticks : num calls : op count : mflops
+ &gt; fwd fft, cplx-cplx, rbv : 102141 : 1 : 51200 : 1800.24
+ &gt; inv fft, cplx-cplx, rbv : 95490 : 1 : 51200 : 1925.63
+ &gt;
+ &gt; Note: rbv = return by value.  The others should be readable.  Full
+ &gt; documentation will follow soon.
+
+Can you add the FFT size to the tag?
+
+
+ &gt; Index: src/vsip/impl/fft.hpp
+ &gt; ===================================================================
+ &gt; --- src/vsip/impl/fft.hpp	(revision 145051)
+ &gt; +++ src/vsip/impl/fft.hpp	(working copy)
+ &gt; @@ -73,7 +73,7 @@
+ &gt;    typedef typename impl::Scalar_of&lt;I&gt;::type scalar_type;
+ &gt;
+ &gt;    length_type
+ &gt; -  op_count(length_type len)
+ &gt; +  op_count(length_type len) const
+ &gt;    {
+ &gt;      length_type ops =
+ &gt;        static_cast&lt;length_type&gt;(5 * len * std::log((float)len) / 
+std::log(2.f));
+ &gt; @@ -81,11 +81,14 @@
+ &gt;      return ops;
+ &gt;    }
+ &gt;
+ &gt; -  base_interface(Domain&lt;D&gt; const &amp;dom, scalar_type scale)
+ &gt; +  base_interface(Domain&lt;D&gt; const &amp;dom, scalar_type scale, 
+std::string event_tag)
+
+Does base_interface have enough context to figure out the event name
+by itself?  If not, it might be worth passing the extra info (i.e.
+adding a template parameter for by_value vs by_reference).  That would
+make it easier to limit the impact of the profiling when it is turned
+off.
+
+ &gt;      : input_size_(io_size&lt;D, I, O, A&gt;::size(dom)),
+ &gt;        output_size_(io_size&lt;D, O, I, A&gt;::size(dom)),
+ &gt; -      scale_(scale)
+ &gt; -  {}
+ &gt; +      scale_(scale), event_(event_tag)
+ &gt; +  {
+ &gt; +    // Pre-compute the FLOP count.  Used for event profiling (if 
+enabled).
+ &gt; +    event_.ops(op_count(this-&gt;input_size_.size()));
+
+Why not pass the op count as an argument to the 'Profile_event'
+constructor?
+
+ &gt; +  }
+
+
+ &gt; +class Profile_event
+ &gt; +{
+ &gt; +  typedef DefaultTime    TP;
+ &gt; +
+ &gt; +public:
+ &gt; +  Profile_event(std::string name, unsigned int ops_count = 0)
+ &gt; +    : name_(name), ops_(ops_count)
+ &gt; +  {}
+ &gt; +
+ &gt; +  ~Profile_event() {}
+ &gt; +
+ &gt; +  void ops(unsigned int ops_count) { ops_ = ops_count; }
+ &gt; +
+ &gt; +  const char* name() const { return name_.c_str(); }
+ &gt; +  unsigned int ops() const { return ops_; }
+ &gt; +  float total() const { return 
+TP::seconds(prof-&gt;raw_total(this-&gt;name_.c_str())); }
+ &gt; +  int count() const { return prof-&gt;count(this-&gt;name_.c_str()); }
+ &gt; +  float mflops() const { return (prof-&gt;count(this-&gt;name_.c_str()) * 
+this-&gt;ops_) /
+ &gt; +                         (1e6 * this-&gt;total()); }
+ &gt; +
+ &gt; +private:
+ &gt; +  std::string name_;
+ &gt; +  unsigned int ops_;
+ &gt; +};
+
+Profile_event should keep track of its accumulated time.  The above
+approach has two problems:
+  - Profile_event (and hence impl_performance) will only work when
+    profiling is turned on in the pm_accum mode.
+  - Objects with the same tag will confound each other's impl_performance
+    results.
+
+One way to have Profile_event keep track of its own time and use the
+same timestamp for profiling is to have Profile_event call
+TP::sample() and then call a Profile::raw_event() function that is
+similar to Profile::event() but takes a time sample.
+
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">jules at codesourcery.com</A>
+(650) 331-3385 x705
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000567.html">[patch] Profile_event class
+</A></li>
+	<LI>Next message: <A HREF="000571.html">[vsipl++] [patch] Profile_event class
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#570">[ date ]</a>
+              <a href="thread.html#570">[ thread ]</a>
+              <a href="subject.html#570">[ subject ]</a>
+              <a href="author.html#570">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">More information about the vsipl++
+mailing list</a><br>
+</body></html>

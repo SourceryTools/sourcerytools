@@ -1,0 +1,103 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [pooma-dev] comments on Pool
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bpooma-dev%5D%20comments%20on%20Pool&In-Reply-To=%3CNABBJEAOKIDHLPHKHPDLCEALEAAA.allan%40stokes.ca%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000033.html">
+   <LINK REL="Next"  HREF="000037.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[pooma-dev] comments on Pool</H1>
+    <B>Allan Stokes</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bpooma-dev%5D%20comments%20on%20Pool&In-Reply-To=%3CNABBJEAOKIDHLPHKHPDLCEALEAAA.allan%40stokes.ca%3E"
+       TITLE="[pooma-dev] comments on Pool">allan at stokes.ca
+       </A><BR>
+    <I>Mon Mar 19 06:41:49 UTC 2001</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000033.html">[pooma-dev] allocation assert
+</A></li>
+        <LI>Next message: <A HREF="000037.html">[pooma-dev] comments on Pool
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#34">[ date ]</a>
+              <a href="thread.html#34">[ thread ]</a>
+              <a href="subject.html#34">[ subject ]</a>
+              <a href="author.html#34">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>
+I performed some more tests.  The same Krylov Pool assert is occuring on
+FreeBSD/gcc as well as Linux/kcc and Linux/kcc --opt builds.
+
+Along the way I also took a look inside the Pool module and I have a couple
+of comments.
+
+Comments within Pool state that Pool &quot;maintains a set of page-sized chunks
+of memory&quot;.  Currently, the page sized used by the implementation is 4096-8.
+
+I noted that the grow() function makes no special effort to allocate
+page-sized chunks on VM page boundaries.  It just calls new
+char[alloc_this];  Perhaps the implementation is relying on certain C++
+platforms to return near-page-size allocations on VM boundaries on best
+effort?
+
+In additional to its potential impact on VM behaviour, there is also the
+issue of virtual memory TLB entries (translation lookaside buffers).  I've
+seen code (primarily x86 platforms) where TLB thrash was a significant
+performance factor.  Enforcing true VM page alignment can also benefit TLB
+locality.
+
+The forced scalar alignment in Pool is currently on 8 byte boundaries, which
+Pool describes as &quot;align on double words&quot;.  I believe there are now some
+architectural scalar types where a 16-byte alignment is desirable, if not
+mandatory (SSE on x86, extended floats on IA-64).  Ultimately, this should
+be under the control of an allocator policy type.
+
+Going one more level up, there are some situations where you are best served
+by imposing alignment on cache-line boundaries.
+
+For example, on an architecture with 64 byte cache lines, objects of size ~=
+64-8 will average two full cache line fetches when accessed, and the average
+cache line will contain portions of two different blocks (which can become
+painful if the Pool is allowed to contain objects capable of being run
+concurrently under different physical threads of execution).
+
+Perhaps the best thing to do is note some of these issues in Pool.h for
+attention the next time the surgeon cuts.
+
+Allan
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000033.html">[pooma-dev] allocation assert
+</A></li>
+	<LI>Next message: <A HREF="000037.html">[pooma-dev] comments on Pool
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#34">[ date ]</a>
+              <a href="thread.html#34">[ thread ]</a>
+              <a href="subject.html#34">[ subject ]</a>
+              <a href="author.html#34">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

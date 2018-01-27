@@ -1,0 +1,131 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [pooma-dev] [PATCH] Fix Engine&lt;.., MultiPatch&lt;..&gt; &gt;::makeOwnC	opy()
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bpooma-dev%5D%20%5BPATCH%5D%20Fix%20Engine%3C..%2C%20MultiPatch%3C..%3E%20%3E%3A%3AmakeOwnC%0A%09opy%28%29&In-Reply-To=%3CF871BB04B0EA224A821A5274C31DF315150460%40proxim-sf001.santafe.proximation.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001240.html">
+   <LINK REL="Next"  HREF="001242.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[pooma-dev] [PATCH] Fix Engine&lt;.., MultiPatch&lt;..&gt; &gt;::makeOwnC	opy()</H1>
+    <B>James Crotinger</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bpooma-dev%5D%20%5BPATCH%5D%20Fix%20Engine%3C..%2C%20MultiPatch%3C..%3E%20%3E%3A%3AmakeOwnC%0A%09opy%28%29&In-Reply-To=%3CF871BB04B0EA224A821A5274C31DF315150460%40proxim-sf001.santafe.proximation.com%3E"
+       TITLE="[pooma-dev] [PATCH] Fix Engine&lt;.., MultiPatch&lt;..&gt; &gt;::makeOwnC	opy()">jcrotinger at proximation.com
+       </A><BR>
+    <I>Tue Apr 22 17:43:37 UTC 2003</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001240.html">[PATCH] Fix Engine&lt;.., MultiPatch&lt;..&gt; &gt;::makeOwnCopy()
+</A></li>
+        <LI>Next message: <A HREF="001242.html">[pooma-dev] [PATCH] Fix Engine&lt;.., MultiPatch&lt;..&gt; &gt;::makeOwnC opy()
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1241">[ date ]</a>
+              <a href="thread.html#1241">[ thread ]</a>
+              <a href="subject.html#1241">[ subject ]</a>
+              <a href="author.html#1241">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Hmmm. I don't have time to play with this, but something looks wrong. The
+sequence
+
+	data_m.makeOwnCopy();
+	if (data_m.isShared())
+
+the isShared() test should always return false after a call to makeOwnCopy -
+that should be an invariant property of any ref-counted thing. That was
+certainly my intention. 
+
+	Jim
+
+------------------------------------------------------------------------
+James A. Crotinger                           email:     <A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">jimc at numerix.com</A>
+NumeriX, LLC                                 phone:  (505) 424-4477 x104
+2960 Rodeo Park Dr. W.
+Santa Fe, NM 87505
+ 
+
+-----Original Message-----
+From: Richard Guenther [mailto:<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">rguenth at tat.physik.uni-tuebingen.de</A>] 
+Sent: Tuesday, April 22, 2003 9:58 AM
+To: <A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">pooma-dev at pooma.codesourcery.com</A>
+Cc: Jeffrey D. Oldham
+Subject: [pooma-dev] [PATCH] Fix Engine&lt;.., MultiPatch&lt;..&gt; &gt;::makeOwnCopy()
+
+Hi!
+
+Currently for a multipatch engine makeOwnCopy() does no good (it doesnt
+copy), it seems because just calling makeOwnCopy() on the
+RefCountedBlockPtr does not copy the underlying engines. I didnt figure
+out why and so came up with the following fix which works for me. I have
+also an updated Field/BasicTest3.cpp which now checks every engine
+combination for makeOwnCopy and it now succeeds for both MultiPatch&lt;Brick&gt;
+and MultiPatch&lt;Remote&lt;Brick&gt; &gt;.
+
+Ok to apply?
+
+Richard.
+
+
+2003 Apr 22  Richard Guenther &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">richard.guenther at uni-tuebingen.de</A>&gt;
+
+	* Engine/MultiPatchEngine.cpp: do makeOwnCopy() manually.
+
+===== MultiPatchEngine.cpp 1.3 vs edited =====
+--- 1.3/r2/src/Engine/MultiPatchEngine.cpp	Fri Jan 24 10:35:52 2003
++++ edited/MultiPatchEngine.cpp	Tue Apr 22 17:42:04 2003
+@@ -244,8 +244,17 @@
+ Engine&lt;Dim, T, MultiPatch&lt;LayoutTag,PatchTag&gt; &gt;::
+ makeOwnCopy()
+ {
+-  data_m.makeOwnCopy();
+-
++  PAssert(data_m.isValid());
++  if (data_m.isShared()) {
++    PatchContainer_t model = data_m;
++    data_m = PatchContainer_t(model.size());
++    for (int i=0; i&lt;model.size(); ++i) {
++      data_m[i] = model[i];
++      data_m[i].makeOwnCopy();
++    }
++    pDirty_m = new bool(*pDirty_m);
++  }
++
+   return *this;
+ }
+
+-------------- next part --------------
+An HTML attachment was scrubbed...
+URL: &lt;<A HREF="http://sourcerytools.com/pipermail/pooma-dev/attachments/20030422/200652d2/attachment.html">http://sourcerytools.com/pipermail/pooma-dev/attachments/20030422/200652d2/attachment.html</A>&gt;
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001240.html">[PATCH] Fix Engine&lt;.., MultiPatch&lt;..&gt; &gt;::makeOwnCopy()
+</A></li>
+	<LI>Next message: <A HREF="001242.html">[pooma-dev] [PATCH] Fix Engine&lt;.., MultiPatch&lt;..&gt; &gt;::makeOwnC opy()
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1241">[ date ]</a>
+              <a href="thread.html#1241">[ thread ]</a>
+              <a href="subject.html#1241">[ subject ]</a>
+              <a href="author.html#1241">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

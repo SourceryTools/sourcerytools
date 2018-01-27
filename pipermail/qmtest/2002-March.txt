@@ -1,0 +1,639 @@
+From ghost at cs.msu.su  Fri Mar  1 15:30:13 2002
+From: ghost at cs.msu.su (Vladimir Prus)
+Date: Fri, 1 Mar 2002 18:30:13 +0300
+Subject: Expectations and gui.
+Message-ID: <E16goz7-0002DA-00@zigzag.lvk.cs.msu.su>
+
+
+Hi
+I currently see no way to specify a file with expected outcomes to the "gui" 
+command. This requires to load expectations manually from gui. Is this merely 
+an omission?
+
+- Volodya
+
+
+From mark at codesourcery.com  Fri Mar  1 18:21:49 2002
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Fri, 01 Mar 2002 10:21:49 -0800
+Subject: [qmtest] Expectations and gui.
+In-Reply-To: <E16goz7-0002DA-00@zigzag.lvk.cs.msu.su>
+Message-ID: <9300000.1015006909@warlock.codesourcery.com>
+
+
+
+--On Friday, March 01, 2002 06:30:13 PM +0300 Vladimir Prus 
+<ghost at cs.msu.su> wrote:
+
+>
+> Hi
+> I currently see no way to specify a file with expected outcomes to the
+> "gui"  command. This requires to load expectations manually from gui. Is
+> this merely  an omission?
+
+Yes.  And there's a fix for this in the next version of QMTest.
+
+There are going to be lots of great changes; we've improved the GUI a
+lot.  The new release should be ready in a week or two.  Right now, it's
+not checked into CVS because we're still working on some finishing
+touches.
+
+Thanks!
+
+-- 
+Mark Mitchell                mark at codesourcery.com
+CodeSourcery, LLC            http://www.codesourcery.com
+
+
+From WECaputo at thoughtworks.COM  Fri Mar  1 19:16:03 2002
+From: WECaputo at thoughtworks.COM (WECaputo at thoughtworks.COM)
+Date: Fri, 1 Mar 2002 13:16:03 -0600
+Subject: Resource behavior questions, and overall comments
+Message-ID: <OFD0BFA211.66202A19-ON86256B6F.00652D03@thoughtworks.com>
+
+Hi,
+
+Myself, and a couple of my co-workers here at ThoughtWorks have been
+evaluating and trying out QMTest now since the 1.0 release.
+
+First off, a big thumbs up to the design. We have been writing our own
+testing frameworks for Extreme Programming style Story (acceptance) testing
+for some time now, and QMTest's feature set and design is very close (and
+in some ways ahead) of where the emerging framework of our various testers
+was heading.
+
+So, naturally we were excited to see a tool like QMtest go open source, as
+duplicate effort is wasteful, and standards are useful.
+
+First the good news, we have been able to get QMTest working nicely with
+the open source continuous integration tool CruiseControl that ThoughtWorks
+released last year (cruisecontrol.sourceforge.net). In particular, QMTest's
+xml output was very simple to adopt to our reporting XSL, and I am even
+considering recommending that we make this a standard format for Acceptance
+test output in the reporting xsl distributed with cruisecontrol.
+
+Now the not so good news -- which in turn leads to my subject question:
+
+We have found the behavior of Resources in QMtest to be problematic.
+
+According to the docs, tests associated with a resource will have the
+following behavior:
+
+R1.setUp
+t_1.run
+t_2.run
+t_3.run
+...
+t_n
+R1.cleanUp
+
+Presumably, if a second resource (R2) existed, and was associated with a
+different set of tests this resource would be called *after* the cleanup of
+R1:
+
+R1.cleanUp
+
+R2.setUp
+t_n+1.run
+t_n+2.run
+t_n+3.run
+...
+t_n+n.run
+R2.cleanUp
+
+But this isn't what happens, it seems that instead we see something like
+this:
+R1.setUp
+R2.setUp
+t_1.run
+t_2.run
+t_3.run
+...
+t_n.run
+t_n+1.run
+t_n+2.run
+t_n+3.run
+...
+t_n+n.run
+R1.cleanUp <-- note the order
+R2.cleanUp
+
+This also happens when R1 and R2 are both depended upon by the same tests -
+IOW the isolation of the tests in an environment isn't possible with QMTest
+as it would be in say Junit (with fixtures)
+
+What we find we need for all but the simplest testing, is nesting and
+atomic resource execution, along with the option to have a resource isolate
+each test in a set:
+
+R1.setUp
+test
+test
+test
+R1.cleanUp
+
+R1.setUp
+R2.setUp
+test
+test
+test
+R2.cleanUp  <-- order is important
+R1.cleanUp
+
+R1.setUp
+test
+R1.cleanUp
+R1.setUp
+test
+R1.cleanUp
+R1.setUp
+test
+R1.cleanUp
+
+So my questions are, is this by design, or is this a defect? second, are
+you aware of this behavior? third, are there any plans to change it?
+
+A bigger issue for us, is in regard to change.  The structure of the
+resource calling code in QMTest is very difficult to change because the
+ordering seems tied to the database class and the loading of the resource,
+which in turn is tied to the directed graph architecture of the engine
+itself. We really can't plan around a tool that is hard to modify.
+
+This is complicated by the lack of tests for the engine itself. "Eating our
+own dogfood" has been a big part of the usefulness of the testing rigs
+we've written before, even if you don't build them test first. We really
+can't rely on an engine that does not have testing.
+
+Truthfully, we would love to contribute code to this project, and also to
+the use of QMTest in general, but at this point we are finding it easier to
+modify our existing rigs than to modify QMTest for our needs, and the above
+behavior makes most of the testing we do very difficult. If I had to start
+a new project tomorrow I would probably roll a simple test rig, and only
+adopt your output standard (a truly excellent fit with our CI app) and
+possibly your test and resource import standard (also well done) and
+otherwise stop using QMTest at this point. because of the above mentioned
+issues.
+
+Thus, any code we wrote wouldn't be patches to QMTest but more probably a
+simplified version of  a testing framework that emphasized ease of
+modification. Given our company's support for open sourcing, we would most
+likely be able to release such code, but as that is more like a fork than a
+patch, and I wouldn't want that to happen, if we *do* open source any of
+more of our testing code (we released a C++ unit test framework that is not
+xUnit like a while back) it would most likely be a separate project from
+QMTest at this time (with due credit given for the input/output formats if
+we used them of course).
+
+One thing I will say, I am hooked on Python for tool writing. It blows Java
+away, and while I really like Ruby (we have used it a lot for tool writing)
+its acceptance is not as wide, and some clients like having tools in
+languages friendly to their platform (i.e. even though Ruby is fine on
+Windows, MS shops seem to trust Python more, while the Java world is more
+agnostic).
+
+So as to end this on an upbeat, I have to commend you on the speed of fixes
+you are producing -- the stability of the tool (already good when we first
+tried it) is significantly better each release. Your recent mention of
+improvements to the GUI are also good news, we stopped using it after a
+couple of days, because it was easier to modify the xml directly, but we
+find a GUI to be a good idea if we are utilizing our Customer directly for
+test writing (and we often do write front ends to our testing rigs for that
+reason)
+
+Sorry for providing so much critical feedback, I hope this doesn't sound
+too down on you -- overall I would definitely give you guys a thumbs up,
+and if it weren't for those issues, and we would definitely be evangelizing
+this tool through the XP community as we in the XP and agile world could
+use a good AT framework. We will keep watching qmtest with interest.
+
+Best,
+Bill
+
+
+
+From hwu at munoz.capsl.udel.edu  Fri Mar  8 16:32:57 2002
+From: hwu at munoz.capsl.udel.edu (Haiping Wu)
+Date: Fri, 8 Mar 2002 11:32:57 -0500 (EST)
+Subject: qmtest reports error when I try the first step of tutorial
+Message-ID: <Pine.GSO.4.33.0203081125110.16964-100000@munoz.capsl.udel.edu>
+
+I download x86 GNU/Linux Binaries and tar it in my directory. When I try
+the first step:
+  > qmtest gui
+it reports the following errors. What is the problem?
+
+__________ error messages ______________________________________________
+  File "/home/hwu/test/qm-1.1.1/lib/qm/qm/test/qmtest.py", line 93, in ?
+    command.Execute(sys.stdout)
+  File "/home/hwu/test/qm-1.1.1/lib/qm/qm/test/cmdline.py", line 403, in
+Execute
+    self.__database = base.load_database(db_path)
+  File "/home/hwu/test/qm-1.1.1/lib/qm/qm/test/base.py", line 138, in
+load_database
+    "database", None)
+  File "/home/hwu/test/qm-1.1.1/lib/qm/qm/test/base.py", line 324, in
+get_extension_class
+    database))
+  File "/lib/qm/qm/common.py", line 685, in load_class
+  File "/lib/qm/qm/common.py", line 641, in load_module
+  File "/home/hwu/test/qm-1.1.1/lib/qm/qm/test/xmldb.py", line 43, in ?
+    import qm.fields
+  File "/lib/qm/qm/fields.py", line 52, in ?
+  File "/lib/qm/qm/web.py", line 43, in ?
+  File "/home/hwu/test/qm-1.1.1/lib/qm/qm/test/__init__.py", line 93, in ?
+    # End:
+ImportError: /lib/libc.so.6: version `GLIBC_2.1.3' not found (required by
+/home/hwu/test/qm-1.1.1/lib/qm/zope-dtml/ExtensionClass/ExtensionClass.so)
+------------ error message end ------------------------------------------
+
+--Haiping
+
+
+
+From mark at codesourcery.com  Sat Mar  9 21:19:25 2002
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Sat, 09 Mar 2002 13:19:25 -0800
+Subject: [qmtest] qmtest reports error when I try the first step of
+ tutorial
+In-Reply-To: <Pine.GSO.4.33.0203081125110.16964-100000@munoz.capsl.udel.edu>
+Message-ID: <26050000.1015708765@warlock.codesourcery.com>
+
+
+
+--On Friday, March 08, 2002 11:32:57 AM -0500 Haiping Wu 
+<hwu at munoz.capsl.udel.edu> wrote:
+
+> I download x86 GNU/Linux Binaries and tar it in my directory. When I try
+> the first step:
+>   > qmtest gui
+> it reports the following errors. What is the problem?
+
+The problem appears to be that your version of GLIBC is not 2.1.3,
+or higher.  (Do you know what version of glibc is running on your
+system?)
+
+We will improve the error message, and also explicitly note the
+dependency on the C library version on the download page.
+
+I suggest buildling QMTest from source for your system.
+
+Thanks,
+
+-- 
+Mark Mitchell                mark at codesourcery.com
+CodeSourcery, LLC            http://www.codesourcery.com
+
+
+From mark at codesourcery.com  Sun Mar 10 20:00:31 2002
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Sun, 10 Mar 2002 12:00:31 -0800
+Subject: [qmtest] Resource behavior questions, and overall comments
+In-Reply-To: <OFD0BFA211.66202A19-ON86256B6F.00652D03@thoughtworks.com>
+References: <OFD0BFA211.66202A19-ON86256B6F.00652D03@thoughtworks.com>
+Message-ID: <36010000.1015790431@gandalf.codesourcery.com>
+
+
+
+--On Friday, March 01, 2002 01:16:03 PM -0600 "WECaputo at thoughtworks.COM" 
+<WECaputo at thoughtworks.COM> wrote:
+
+First, allow me to apologize for the long delay between the time your
+message was sent and this response.
+
+> According to the docs, tests associated with a resource will have the
+> following behavior:
+>
+> R1.setUp
+> t_1.run
+> t_2.run
+> t_3.run
+> ...
+> t_n
+> R1.cleanUp
+>
+> Presumably, if a second resource (R2) existed, and was associated with a
+> different set of tests this resource would be called *after* the cleanup
+> of R1:
+
+That's not what the docs mean to say; it's assumed that resources, like
+tests, are independent.  (This is important so that you can run them
+in parallel, for example.)
+
+> What we find we need for all but the simplest testing, is nesting and
+> atomic resource execution, along with the option to have a resource
+> isolate each test in a set:
+
+I'm not sure if I understand what you mean by "isolate" in this context.
+
+> R1.setUp
+> R2.setUp
+> test
+> test
+> test
+> R2.cleanUp  <-- order is important
+> R1.cleanUp
+
+Yes, you should be able to do this.  In particular, R2 should be able
+to list R1 as a prerequisite.  If that is not always the case (sometimes
+you want R2 without R1) you can make a new resource (R3) that runs R1
+and then R2.  Note that creating that new resource is something that a
+custom database could do for you -- you don't actually need to do it
+explicitly.
+
+> R1.setUp
+> test
+> R1.cleanUp
+> R1.setUp
+> test
+> R1.cleanUp
+> R1.setUp
+> test
+> R1.cleanUp
+
+That's not what's meant by resource, in our system.  The scheduler
+is allowed to do things this way, even though it doesn't -- but
+there's no way for a user to specify this, as opposed to say:
+
+  R1.setup
+  test
+  test
+  R1.cleanup
+  R1.setup
+  test
+  R1.cleanup
+
+The idea behind resources are that they are things that are shareable
+across tests.  If the cleanup/setup is an intrinsic part of the test,
+the test class itself should handle that.
+
+In other words, resources are purely an optimization.  You could
+*always* put the resource action into the test class.  But, if the
+setup is expensive, then resources allow you to do it only once.
+(The canonical example is database testing, where you need to populate
+the database, and then want to run a bunch of queries.  You could set
+up the database before each test, but it might take a long time, so
+you just do it once, then run all the tests, then tear it down.)
+
+> A bigger issue for us, is in regard to change.  The structure of the
+> resource calling code in QMTest is very difficult to change because the
+> ordering seems tied to the database class and the loading of the resource,
+> which in turn is tied to the directed graph architecture of the engine
+> itself. We really can't plan around a tool that is hard to modify.
+
+I'm not sure if I understand this comment.  You perhaps find the source
+code difficult to modify?  (That could be.)  Or, you find the very
+structure and design hard to modify?  (That could be too -- but is less
+surprising; we had to make some choices when we designed the tool.)
+
+I think what you're finding is that resources simply aren't designed
+for what you want -- they're designed for something else.  My guess
+is that what you want is a custom test class (or classes) instead,
+but it is, of course, also possible that there is yet some third
+thing of which we have not yet conceived!
+
+> This is complicated by the lack of tests for the engine itself. "Eating
+> our own dogfood" has been a big part of the usefulness of the testing rigs
+> we've written before, even if you don't build them test first. We really
+> can't rely on an engine that does not have testing.
+
+Yes, this is a valid criticism.  At this stage, we do not have the
+resources to build as many tests as we would like, but we do hope to
+do that in the future.
+
+> Sorry for providing so much critical feedback, I hope this doesn't sound
+> too down on you -- overall I would definitely give you guys a thumbs up,
+> and if it weren't for those issues, and we would definitely be
+> evangelizing this tool through the XP community as we in the XP and agile
+> world could use a good AT framework. We will keep watching qmtest with
+> interest.
+
+Feedback is appreciated.  I hope that future releases of QMTest will
+better meet your needs.
+
+And, of course, we are happy to provide custom modifications and
+enhancements if that is something in which you would be interested.
+
+--
+Mark Mitchell                   mark at codesourcery.com
+CodeSourcery, LLC               http://www.codesourcery.com
+
+
+
+From mark at codesourcery.com  Mon Mar 11 16:43:44 2002
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Mon, 11 Mar 2002 08:43:44 -0800
+Subject: QM 1.1.2 Released
+Message-ID: <2700000.1015865024@gandalf.codesourcery.com>
+
+QMTest 1.1.2 is now available from:
+
+  http://www.codesourcery.com/qm/qmtest_download
+
+In this release, you'll find:
+
+- Improved results presentation in the GUI.
+
+- The ability to load and save the context in the GUI.
+
+- Numerous small optimizations and bug fixes.
+
+We have also made HPUX 11 binaries available, in addition to GNU/Linux
+binaries.
+
+QMTest is now licensed under the GNU General Public License, rather
+than the MIT License.  Note that the GPL does *not* apply to tests
+or test classes that you might create using QMTest; you are free to
+distribute those under any terms you like.
+
+Enjoy!
+
+--
+Mark Mitchell                   mark at codesourcery.com
+CodeSourcery, LLC               http://www.codesourcery.com
+
+
+
+From mark at codesourcery.com  Thu Mar 14 23:15:28 2002
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Thu, 14 Mar 2002 15:15:28 -0800
+Subject: QM 1.1.3 Released
+Message-ID: <351340000.1016147728@gandalf.codesourcery.com>
+
+QM 1.1.3 is now available from:
+
+  http://www.codesourcery.com/qm/qmtest_download
+
+This release contains a fix for a command-line processing bug in
+QM 1.1.2 that prevented "qmtest run -c" from working as specified.
+
+--
+Mark Mitchell                   mark at codesourcery.com
+CodeSourcery, LLC               http://www.codesourcery.com
+
+
+
+From slamb at slamb.org  Thu Mar 21 19:15:19 2002
+From: slamb at slamb.org (Scott Lamb)
+Date: Thu, 21 Mar 2002 13:15:19 -0600
+Subject: spam
+Message-ID: <3C9A3147.8070308@slamb.org>
+
+The last four messages to this list have all been spam. This is a bit 
+much. Has anyone been reporting these to abuse addresses?
+
+I can't do anything about them because the mailing list is stripping out 
+Received: lines before resending to me, and presumably other headers as 
+well. So the list owner would have to change that configuration or do 
+the reporting.
+
+--
+Scott Lamb
+
+
+
+From mark at codesourcery.com  Fri Mar 22 00:34:45 2002
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Thu, 21 Mar 2002 16:34:45 -0800
+Subject: [qmtest] spam
+In-Reply-To: <3C9A3147.8070308@slamb.org>
+References: <3C9A3147.8070308@slamb.org>
+Message-ID: <23490000.1016757285@gandalf.codesourcery.com>
+
+
+
+--On Thursday, March 21, 2002 01:15:19 PM -0600 Scott Lamb 
+<slamb at slamb.org> wrote:
+
+> The last four messages to this list have all been spam. This is a bit
+> much. Has anyone been reporting these to abuse addresses?
+
+Yes.  But, you're right; it's time to take more drastic action.
+
+I've made the list a moderated list; that way we can block any postings
+that are spam.  (If the volume increases to the point where moderation
+is a significant impediment to discussion, we'll go to some sort of
+automated spam-blocking...)
+
+Thanks for bringing up this issue,
+
+--
+Mark Mitchell                   mark at codesourcery.com
+CodeSourcery, LLC               http://www.codesourcery.com
+
+
+
+From ghost at cs.msu.su  Tue Mar 26 17:20:58 2002
+From: ghost at cs.msu.su (Vladimir Prus)
+Date: Tue, 26 Mar 2002 20:20:58 +0300
+Subject: Finding test location
+Message-ID: <E16pud0-0005zV-00@zigzag.lvk.cs.msu.su>
+
+	
+
+I've two related needs. First, I wanted to convert a number of tests which 
+are just python scripts that use some modules. I expected that QMTest dir 
+that lives at the top of tdb will be in sys.path for code that is specified 
+for python.ExecTest, but it is not. (BTW, is it reasonable to have it 
+there?). I cannot add it there because I can't find the absolute name of 
+QMTest directory. 
+
+In general, it would like an ability to store some data, specifically some 
+directory trees,  inside the tdb. I see no way to use them in tests, because 
+tests don't know their own location. 
+
+How can this question be addressed? Is it assumed that the location of the 
+test database be always passed as context variable?
+
+- Volodya
+
+
+From mark at codesourcery.com  Wed Mar 27 18:30:15 2002
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Wed, 27 Mar 2002 10:30:15 -0800
+Subject: [qmtest] Finding test location
+In-Reply-To: <E16pud0-0005zV-00@zigzag.lvk.cs.msu.su>
+References: <E16pud0-0005zV-00@zigzag.lvk.cs.msu.su>
+Message-ID: <660880000.1017253815@gandalf.codesourcery.com>
+
+> How can this question be addressed? Is it assumed that the location of
+> the  test database be always passed as context variable?
+
+That would work.
+
+The basic model assumes that tests may not be stored in the file system,
+so it doesn't make sense to have a way of getting the path to the test.
+
+You can, however, get it's test id, with the "id" argument.  (So,
+from Python, in the 'Run' method, you can do:
+
+  self.id
+
+).  The XML test database also sets the working directory for the test
+execution to the directory containg the file, so you can find yourself
+by putting those two pieces of information together.
+
+Does that make sense?
+
+--
+Mark Mitchell                   mark at codesourcery.com
+CodeSourcery, LLC               http://www.codesourcery.com
+
+
+
+From ghost at cs.msu.su  Thu Mar 28 09:33:57 2002
+From: ghost at cs.msu.su (Vladimir Prus)
+Date: Thu, 28 Mar 2002 12:33:57 +0300
+Subject: [qmtest] Finding test location
+In-Reply-To: <660880000.1017253815@gandalf.codesourcery.com>
+References: <E16pud0-0005zV-00@zigzag.lvk.cs.msu.su> <660880000.1017253815@gandalf.codesourcery.com>
+Message-ID: <E16qWIA-0000Z6-00@zigzag.lvk.cs.msu.su>
+
+Mark Mitchell wrote:
+> > How can this question be addressed? Is it assumed that the location of
+> > the  test database be always passed as context variable?
+>
+> That would work.
+>
+> The basic model assumes that tests may not be stored in the file system,
+> so it doesn't make sense to have a way of getting the path to the test.
+
+But the test database itself has a location in file system. Why don't make it 
+available to tests? Finding it using "id" and current working directory is a 
+little bit elaborated.
+
+> You can, however, get it's test id, with the "id" argument.  (So,
+> from Python, in the 'Run' method, you can do:
+>
+>   self.id
+>
+> ).  The XML test database also sets the working directory for the test
+> execution to the directory containg the file, so you can find yourself
+> by putting those two pieces of information together.
+>
+> Does that make sense?
+
+Thanks for this information.
+
+What do you think about sys.path for python.ExecTest? Isn't expecting 
+dir_path/QMTest there a reasonable expectation? I've actually wrote a test 
+class that can add it there, but the need to extend QMTest for this simple 
+task somewhat bothers me.
+
+- Volodya
+
+
+From ghost at cs.msu.su  Thu Mar 28 09:35:59 2002
+From: ghost at cs.msu.su (Vladimir Prus)
+Date: Thu, 28 Mar 2002 12:35:59 +0300
+Subject: classes.qmc
+Message-ID: <E16qWK7-0000ct-00@zigzag.lvk.cs.msu.su>
+
+
+It appears that the gui won't find custom test/resource classes in 
+test_database_dir/QMTest unless a file "classes.qmc" is placed here, 
+describing the classes. However, I was not able to find any mention of this 
+file in the documentaiton. Should have looked harder?
+
+- Volodya
+
+

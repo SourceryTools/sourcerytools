@@ -1,0 +1,816 @@
+? tests/Makefile.in
+Index: ChangeLog
+===================================================================
+RCS file: /home/cvs/Repository/vpp/ChangeLog,v
+retrieving revision 1.392
+diff -u -r1.392 ChangeLog
+--- ChangeLog	1 Feb 2006 15:47:49 -0000	1.392
++++ ChangeLog	2 Feb 2006 17:35:24 -0000
+@@ -1,3 +1,16 @@
++2006-02-02  Jules Bergmann  <jules@codesourcery.com>
++
++	* src/vsip/impl/lvalue-proxy.hpp: Specialize Lvalue_proxy's of
++	  complex<T> to derive from complex<T> so that template deduction
++	  works for complex<T> operators.  Refactor dimensional specializations
++	  into single class.
++	* tests/lvalue-proxy.cpp: Extend coverage to proxies of additonal
++	  types (including complex types).  Extend coverage of operations
++	  using proxies.
++	* tests/regr_complex_proxy.cpp: New test, covers condition that
++	  prevented proxy objects from working with complex operators.
++	* tests/test.hpp: Update Lvalue_proxy template parameters.
++
+ 2006-02-01  Don McCoy  <don@codesourcery.com>
+ 
+         * benchmarks/vmul_sal.cpp: New file, SAL element-wise
+Index: src/vsip/impl/lvalue-proxy.hpp
+===================================================================
+RCS file: /home/cvs/Repository/vpp/src/vsip/impl/lvalue-proxy.hpp,v
+retrieving revision 1.5
+diff -u -r1.5 lvalue-proxy.hpp
+--- src/vsip/impl/lvalue-proxy.hpp	20 Dec 2005 12:48:40 -0000	1.5
++++ src/vsip/impl/lvalue-proxy.hpp	2 Feb 2006 17:35:24 -0000
+@@ -1,4 +1,4 @@
+-/* Copyright (c) 2005 by CodeSourcery, LLC.  All rights reserved. */
++/* Copyright (c) 2005, 2006 by CodeSourcery, LLC.  All rights reserved. */
+ 
+ /** @file    vsip/impl/lvalue_proxy.hpp
+     @author  Zack Weinberg
+@@ -30,6 +30,9 @@
+ namespace impl
+ {
+ 
++namespace lvalue_detail
++{
++
+ /// A mix-in template which provides +=, -=, *=, /= operators for any
+ /// class T that defines T::value_type, conversion to T::value_type,
+ /// and conversion or assignment from T::value_type.  Note that in
+@@ -49,47 +52,74 @@
+     { T& self = static_cast<T&>(*this); return self = self / n; }
+ };
+ 
+-/// The generic lvalue proxy class.  All the meat is in per-dimension
+-/// specializations.  Note that the default copy constructor and
+-/// destructor are correct for this class.
+-template <typename Block, dimension_type Dim = Block::dim> class Lvalue_proxy;
++template <typename Block>
++inline typename Block::value_type
++get(
++  Block const& block,
++  Index<1> const& idx)
++{
++  return block.get(idx[0]);
++}
+ 
+-/// Lvalue proxy for 1-dimensional blocks.
+ template <typename Block>
+-class Lvalue_proxy<Block, 1>
+-  : public Modify_operators<Lvalue_proxy<Block, 1>, typename Block::value_type>
++inline typename Block::value_type
++get(
++  Block const& block,
++  Index<2> const& idx)
+ {
+-  // Type members.
+-public:
+-  typedef Block                        block_type;
+-  typedef typename Block::value_type   value_type;
++  return block.get(idx[0], idx[1]);
++}
+ 
+-  // Data members.
+-protected:
+-  block_type& block_;
+-  Point<1> coord_;
+-  
+-public:
+-  /// Constructor.
+-  Lvalue_proxy (block_type& b, index_type i) : block_(b), coord_(i) {};
++template <typename Block>
++inline typename Block::value_type
++get(
++  Block const& block,
++  Index<3> const& idx)
++{
++  return block.get(idx[0], idx[1], idx[2]);
++}
+ 
+-  /// Read access, by implicit conversion to the value type.
+-  operator value_type() const
+-    { return block_.get(coord_[0]); }
++template <typename Block>
++void
++put(
++  Block&                     block,
++  Index<1> const&            idx,
++  typename Block::value_type value)
++{
++  block.put(idx[0], value);
++}
+ 
+-  /// Write access, by assignment from the value type.
+-  Lvalue_proxy& operator= (value_type v)
+-    { block_.put(coord_[0], v); return *this; }
++template <typename Block>
++void
++put(
++  Block&                     block,
++  Index<2> const&            idx,
++  typename Block::value_type value)
++{
++  block.put(idx[0], idx[1], value);
++}
++template <typename Block>
++void
++put(
++  Block&                     block,
++  Index<3> const&            idx,
++  typename Block::value_type value)
++{
++  block.put(idx[0], idx[1], idx[2], value);
++}
+ 
+-  /// Write access, by assignment from another instance of this class.
+-  Lvalue_proxy& operator= (Lvalue_proxy& other)
+-    { return *this = value_type(other); }
+-};
++} // namespace lvalue_detail
+ 
+-/// Lvalue proxy for 2-dimensional blocks.
+-template <typename Block>
+-class Lvalue_proxy<Block, 2>
+-  : public Modify_operators<Lvalue_proxy<Block, 2>, typename Block::value_type>
++
++
++/// The generic lvalue proxy class.  Note that the default copy
++/// constructor and destructor are correct for this class.
++template <typename       T,
++	  typename       Block,
++	  dimension_type Dim>
++class Lvalue_proxy
++  : public lvalue_detail::Modify_operators<Lvalue_proxy<T, Block, Dim>,
++					   typename Block::value_type>
+ {
+   // Type members.
+ public:
+@@ -99,34 +129,37 @@
+   // Data members.
+ protected:
+   block_type& block_;
+-  Point<2> coord_;
++  Index<Dim> coord_;
+   
+ public:
+   /// Constructor.
+-  Lvalue_proxy (block_type& b,
+-                index_type i,
+-                index_type j)
+-    : block_(b), coord_(i, j)
+-    {};
++  Lvalue_proxy (block_type& b, Index<Dim> const& i)
++    : block_(b), coord_(i) {};
+ 
+   /// Read access, by implicit conversion to the value type.
+   operator value_type() const
+-    { return block_.get(coord_[0], coord_[1]); }
++    { return lvalue_detail::get(block_, coord_); }
+ 
+   /// Write access, by assignment from the value type.
+   Lvalue_proxy& operator= (value_type v)
+-    { block_.put(coord_[0], coord_[1], v); return *this; }
++    { lvalue_detail::put(block_, coord_, v); return *this; }
+ 
+   /// Write access, by assignment from another instance of this class.
+   Lvalue_proxy& operator= (Lvalue_proxy& other)
+     { return *this = value_type(other); }
+ };
+ 
+-/// Lvalue proxy for 3-dimensional blocks.
+-template <typename Block>
+-class Lvalue_proxy<Block, 3>
+-  : public Modify_operators<Lvalue_proxy<Block, 3>, typename Block::value_type>
++
++
++/// Lvalue proxy specialization for complex.
++template <typename       T,
++	  typename       Block,
++	  dimension_type Dim>
++class Lvalue_proxy<std::complex<T>, Block, Dim>
++  : public std::complex<T>
+ {
++  typedef std::complex<T> base_type;
++
+   // Type members.
+ public:
+   typedef Block                        block_type;
+@@ -135,30 +168,48 @@
+   // Data members.
+ protected:
+   block_type& block_;
+-  Point<3> coord_;
++  Index<Dim> coord_;
+   
+ public:
+   /// Constructor.
+-  Lvalue_proxy (block_type& b,
+-                index_type i,
+-                index_type j,
+-                index_type k)
+-    : block_(b), coord_(i, j, k)
+-    {};
++  Lvalue_proxy(block_type& b, Index<Dim> const& i)
++    : base_type(lvalue_detail::get(b, i)),
++      block_(b), coord_(i)
++  {};
+ 
+   /// Read access, by implicit conversion to the value type.
+   operator value_type() const
+-    { return block_.get(coord_[0], coord_[1], coord_[2]); }
++    { return lvalue_detail::get(block_, coord_); }
+ 
+   /// Write access, by assignment from the value type.
+   Lvalue_proxy& operator= (value_type v)
+-    { block_.put(coord_[0], coord_[1], coord_[2], v); return *this; }
++  {
++    this->base_type::operator=(v);
++    lvalue_detail::put(block_, coord_, v);
++    return *this;
++  }
+ 
+   /// Write access, by assignment from another instance of this class.
+   Lvalue_proxy& operator= (Lvalue_proxy& other)
+     { return *this = value_type(other); }
++
++
++  // Trying to mix these in with Modify_operators creates an
++  // ambiguity with the same operators derived from std::complex.
++  // Therefor, we define them in class.
++
++  value_type operator+= (value_type n)
++    { return *this = *this + n; }
++  value_type operator-= (value_type n)
++    { return *this = *this - n; }
++  value_type operator*= (value_type n)
++    { return *this = *this * n; }
++  value_type operator/= (value_type n)
++    { return *this = *this / n; }
+ };
+ 
++
++
+ /// Proxy_lvalue_factory takes an arbitrary Block and generates
+ /// Lvalue_proxy instances from it.
+ template <typename Block>
+@@ -169,21 +220,24 @@
+   /// this reference.
+   Block& block_;
+ 
++  typedef typename Block::value_type value_type;
++  static dimension_type const dim = Block::dim;
++
+ public:
+   /// The type of the reference that will be returned.
+-  typedef Lvalue_proxy<Block>       reference_type;
+-  typedef Lvalue_proxy<Block> const const_reference_type;
++  typedef Lvalue_proxy<value_type, Block, dim>       reference_type;
++  typedef Lvalue_proxy<value_type, Block, dim> const const_reference_type;
+ 
+   /// Constructor.
+   Proxy_lvalue_factory (Block& b) : block_(b) {}
+ 
+   /// Retrieve the proxy.
+   reference_type impl_ref(index_type i)
+-    { return Lvalue_proxy<Block>(block_, i); }
++    { return Lvalue_proxy<value_type, Block, dim>(block_, Index<1>(i)); }
+   reference_type impl_ref(index_type i, index_type j)
+-    { return Lvalue_proxy<Block>(block_, i, j); }
++    { return Lvalue_proxy<value_type, Block, dim>(block_, Index<2>(i, j)); }
+   reference_type impl_ref(index_type i, index_type j, index_type k)
+-    { return Lvalue_proxy<Block>(block_, i, j, k); }
++    { return Lvalue_proxy<value_type, Block, dim>(block_, Index<3>(i, j, k)); }
+ };
+ 
+ /// True_lvalue_factory takes a Block that implements impl_ref(),
+@@ -213,30 +267,6 @@
+     { return block_.impl_ref(i, j, k); }
+ };
+ 
+-template <typename       Block,
+-	  dimension_type Dim,
+-	  typename       T>
+-bool
+-operator==(
+-  Lvalue_proxy<Block, Dim> v1,
+-  std::complex<T>          v2)
+-{
+-  typedef typename Lvalue_proxy<Block, Dim>::value_type value_type;
+-  return static_cast<value_type>(v1) == v2;
+-}
+-
+-template <typename       Block,
+-	  dimension_type Dim,
+-	  typename       T>
+-bool
+-operator==(
+-  std::complex<T>          v1,
+-  Lvalue_proxy<Block, Dim> v2)
+-{
+-  typedef typename Lvalue_proxy<Block, Dim>::value_type value_type;
+-  return static_cast<value_type>(v2) == v1;
+-}
+-
+ } // namespace vsip::impl
+ } // namespace vsip
+ 
+Index: tests/lvalue-proxy.cpp
+===================================================================
+RCS file: /home/cvs/Repository/vpp/tests/lvalue-proxy.cpp,v
+retrieving revision 1.4
+diff -u -r1.4 lvalue-proxy.cpp
+--- tests/lvalue-proxy.cpp	20 Dec 2005 12:48:40 -0000	1.4
++++ tests/lvalue-proxy.cpp	2 Feb 2006 17:35:24 -0000
+@@ -1,4 +1,4 @@
+-/* Copyright (c) 2005 by CodeSourcery, LLC.  All rights reserved. */
++/* Copyright (c) 2005, 2006 by CodeSourcery, LLC.  All rights reserved. */
+ 
+ /** @file    tests/lvalue_proxy.hpp
+     @author  Zack Weinberg
+@@ -16,54 +16,205 @@
+ 
+ using namespace vsip;
+ 
++
++
++template <typename T>
++struct test_traits
++{ static T value() { return T(1); } };
++
++template <typename T>
++struct test_traits<complex<T> >
++{ static complex<T> value() { return complex<T>(1, -1); } };
++
++template <typename T>
++void
++test_proxy(void)
++{
++  length_type size = 3;
++
++  Dense<1, T> d(Domain<1>(size), T(42));
++
++  impl::Lvalue_proxy<T, Dense<1, T>, 1> p(d, 1);
++  impl::Lvalue_proxy<T, Dense<1, T>, 1> q(d, 2);
++
++  test_assert (p == T(42));
++
++  T a;
++  T b = T(4);
++  T c;
++
++  p = T(3);
++  c = p;
++
++  assert(c == T(3));
++  assert(p == T(3));
++  assert(d.get(1) == T(3));
++
++  a = b + p;
++
++  assert(a == T(7));
++
++  a += p;
++
++  assert(a == T(10));
++
++  p += a;
++
++  assert(p        == T(13));
++  assert(d.get(1) == T(13));
++
++  q = T(5);
++  assert(q        == T(5));
++  assert(d.get(2) == T(5));
++
++  p *= q;
++
++  assert(p        == T(5*13));
++  assert(d.get(1) == T(5*13));
++
++  q = p;
++
++  assert(q        == T(5*13));
++  assert(d.get(2) == T(5*13));
++
++  assert(p == q);
++
++  a = test_traits<T>::value();
++
++  p = a;
++
++  assert(p        == a);
++  assert(d.get(1) == a);
++
++  q = impl::impl_conj<T>(p);
++  // q = impl::impl_conj(p);
++
++  assert(q        == impl::impl_conj(a));
++  assert(d.get(2) == impl::impl_conj(a));
++
++  typedef typename impl::Scalar_of<T>::type scalar_type;
++
++  scalar_type x = scalar_type(1);
++
++  a = T(0);
++  p = T(0);
++  q = T(0);
++
++  a += x;
++  p += x;
++
++  q += scalar_type(1);
++  q += 1;
++
++  assert(a        == T(1));
++  assert(p        == T(1));
++  assert(d.get(1) == T(1));
++
++  assert(q        == T(2));
++  assert(d.get(2) == T(2));
++
++  assert(a        == scalar_type(1));
++  assert(p        == scalar_type(1));
++
++#if 0
++  // These are valid for T = float and complex<float>:
++  assert(a        == 1.f);
++  assert(p        == 1.f);
++
++  // These are not valid:
++  // NOT VALID: // assert(a        == 1);
++  // NOT VALID: // assert(p        == 1);
++#endif
++}
++
++
++
++template <typename T>
++void
++test_complex_proxy(void)
++{
++  length_type size = 3;
++
++  Dense<1, complex<T> > d(Domain<1>(size), complex<T> (42));
++
++  impl::Lvalue_proxy<complex<T> , Dense<1, complex<T> >, 1> p(d, 1);
++
++  test_assert (p == complex<T> (42));
++
++  complex<T> a;
++
++  a = complex<T>(1, -1);
++  p = complex<T>(1, -1);
++
++  assert(a.real() == T(+1));
++  assert(a.imag() == T(-1));
++
++  assert(p.real() == T(+1));
++  assert(p.imag() == T(-1));
++  assert(d.get(1).real() == T(+1));
++  assert(d.get(1).imag() == T(-1));
++
++  p += a;
++
++  assert(p == complex<T>(+2, -2));
++  assert(p.real() == T(+2));
++  assert(p.imag() == T(-2));
++  assert(d.get(1) == complex<T>(+2, -2));
++  assert(d.get(1).real() == T(+2));
++  assert(d.get(1).imag() == T(-2));
++}
++
++
++
++template <typename T>
+ static void
+ test_1d (void)
+ {
+-  Dense<1> d(Domain<1>(3), 42);
+-  impl::Lvalue_proxy<Dense<1> > p(d, 1);
+-  test_assert (p == 42);
++  Dense<1, T> d(Domain<1>(3), 42);
++  impl::Lvalue_proxy<T, Dense<1, T>, 1> p(d, 1);
++  test_assert (p == T(42));
+ 
+   p = 4;
+-  test_assert (d.get(0) == 42);
+-  test_assert (d.get(1) ==  4);
+-  test_assert (d.get(2) == 42);
++  test_assert (d.get(0) == T(42));
++  test_assert (d.get(1) == T( 4));
++  test_assert (d.get(2) == T(42));
+ 
+   p += 3;
+-  test_assert (d.get(0) == 42);
+-  test_assert (d.get(1) ==  7);
+-  test_assert (d.get(2) == 42);
++  test_assert (d.get(0) == T(42));
++  test_assert (d.get(1) == T( 7));
++  test_assert (d.get(2) == T(42));
+ 
+   p -= 5;
+-  test_assert (d.get(0) == 42);
+-  test_assert (d.get(1) ==  2);
+-  test_assert (d.get(2) == 42);
++  test_assert (d.get(0) == T(42));
++  test_assert (d.get(1) == T( 2));
++  test_assert (d.get(2) == T(42));
+ 
+   p *= 3;
+-  test_assert (d.get(0) == 42);
+-  test_assert (d.get(1) ==  6);
+-  test_assert (d.get(2) == 42);
++  test_assert (d.get(0) == T(42));
++  test_assert (d.get(1) == T( 6));
++  test_assert (d.get(2) == T(42));
+ 
+   p /= 2;
+-  test_assert (d.get(0) == 42);
+-  test_assert (d.get(1) ==  3);
+-  test_assert (d.get(2) == 42);
++  test_assert (d.get(0) == T(42));
++  test_assert (d.get(1) == T( 3));
++  test_assert (d.get(2) == T(42));
+ 
+   (p = 12) = 10;
+-  test_assert (d.get(0) == 42);
+-  test_assert (d.get(1) == 10);
+-  test_assert (d.get(2) == 42);
+-
+-  p = impl::Lvalue_proxy<Dense<1> >(d, 0);
+-  test_assert (d.get(0) == 42);
+-  test_assert (d.get(1) == 42);
+-  test_assert (d.get(2) == 42);
++  test_assert (d.get(0) == T(42));
++  test_assert (d.get(1) == T(10));
++  test_assert (d.get(2) == T(42));
++
++  p = impl::Lvalue_proxy<T, Dense<1, T>, 1>(d, 0);
++  test_assert (d.get(0) == T(42));
++  test_assert (d.get(1) == T(42));
++  test_assert (d.get(2) == T(42));
+ }
+ 
+ static void
+ test_2d (void)
+ {
+   Dense<2> d(Domain<2>(3, 3), 42);
+-  impl::Lvalue_proxy<Dense<2> > p(d, 0, 1);
++  impl::Lvalue_proxy<float, Dense<2>, 2> p(d, Index<2>(0, 1));
+   test_assert (p == 42);
+ 
+   p = 4;
+@@ -96,7 +247,7 @@
+   test_assert(d.get(1,0) == 42); test_assert(d.get(1,1) == 42); test_assert(d.get(1,2) == 42);
+   test_assert(d.get(2,0) == 42); test_assert(d.get(2,1) == 42); test_assert(d.get(2,2) == 42);
+ 
+-  p = impl::Lvalue_proxy<Dense<2> >(d, 0, 0);
++  p = impl::Lvalue_proxy<float, Dense<2>, 2>(d, Index<2>(0, 0));
+   test_assert(d.get(0,0) == 42); test_assert(d.get(0,1) == 42); test_assert(d.get(0,2) == 42);
+   test_assert(d.get(1,0) == 42); test_assert(d.get(1,1) == 42); test_assert(d.get(1,2) == 42);
+   test_assert(d.get(2,0) == 42); test_assert(d.get(2,1) == 42); test_assert(d.get(2,2) == 42);
+@@ -106,7 +257,7 @@
+ test_3d (void)
+ {
+   Dense<3> d(Domain<3>(3, 3, 3), 42);
+-  impl::Lvalue_proxy<Dense<3> > p(d, 0, 1, 2);
++  impl::Lvalue_proxy<float, Dense<3>, 3> p(d, Index<3>(0, 1, 2));
+   test_assert (p == 42);
+ 
+   p = 4;
+@@ -175,7 +326,7 @@
+   test_assert(d.get(2,1,0)==42); test_assert(d.get(2,1,1)==42); test_assert(d.get(2,1,2)==42);
+   test_assert(d.get(2,2,0)==42); test_assert(d.get(2,2,1)==42); test_assert(d.get(2,2,2)==42);
+ 
+-  p = impl::Lvalue_proxy<Dense<3> >(d, 0, 0, 0);
++  p = impl::Lvalue_proxy<float, Dense<3>, 3>(d, Index<3>(0, 0, 0));
+   test_assert(d.get(0,0,0)==42); test_assert(d.get(0,0,1)==42); test_assert(d.get(0,0,2)==42);
+   test_assert(d.get(0,1,0)==42); test_assert(d.get(0,1,1)==42); test_assert(d.get(0,1,2)==42);
+   test_assert(d.get(0,2,0)==42); test_assert(d.get(0,2,1)==42); test_assert(d.get(0,2,2)==42);
+@@ -199,16 +350,18 @@
+ int
+ main(void)
+ {
++#if 0
+   // Type equalities valid for any block.
+   VSIP_IMPL_STATIC_ASSERT((
+     impl::Type_equal< impl::Proxy_lvalue_factory<PseudoBlock>::reference_type,
+-                      impl::Lvalue_proxy<PseudoBlock>
++                      impl::Lvalue_proxy<int, PseudoBlock, 1>
+     >::value == true));
+ 
+   VSIP_IMPL_STATIC_ASSERT((
+     impl::Type_equal< impl::True_lvalue_factory<PseudoBlock>::reference_type,
+                       PseudoBlock::reference_type
+     >::value == true));
++#endif
+ 
+   // Some static test_assertions about the traits class.
+   // For the pseudo-block above, it should make the conservative assumption
+@@ -233,7 +386,19 @@
+                       impl::True_lvalue_factory<Dense<3> >
+     >::value == true));
+ 
+-  test_1d ();
++  test_proxy<int>            ();
++  test_proxy<float>          ();
++  test_proxy<complex<float> >();
++  test_proxy<double>          ();
++  test_proxy<complex<double> >();
++
++  test_complex_proxy<float> ();
++  test_complex_proxy<double>();
++
++  test_1d<int>();
++  test_1d<float>();
++  test_1d<complex<float> >();
++
+   test_2d ();
+   test_3d ();
+ 
+Index: tests/regr_complex_proxy.cpp
+===================================================================
+RCS file: tests/regr_complex_proxy.cpp
+diff -N tests/regr_complex_proxy.cpp
+--- /dev/null	1 Jan 1970 00:00:00 -0000
++++ tests/regr_complex_proxy.cpp	2 Feb 2006 17:35:24 -0000
+@@ -0,0 +1,126 @@
++/* Copyright (c) 2006 by CodeSourcery, LLC.  All rights reserved. */
++
++/** @file    tests/regr_complex_proxy.hpp
++    @author  Jules Bergmann
++    @date    2006-02-02
++    @brief   VSIPL++ Library: Regression test for lvalue proxy objects
++	                      representing complex<T> values.
++*/
++
++// Background: The following types of expression are failing.
++//
++//   complex<T>        a;
++//   Lvalue_proxy<...> p; // where value is complex<T>
++//   a = a + p;
++//
++// This is due to the definition of operator+ for complex:
++//
++//  template<typename _Tp>
++//    inline complex<_Tp>
++//    operator+(const complex<_Tp>& __x, const complex<_Tp>& __y)
++//
++// Template parameter deduction for _Tp fails when this function
++// is considered for 'a + p'.  Since no type for _Tp exists that
++// makes the parameterized 'const complex<_Tp>&' indentical to
++// the argument type 'Lvalue_proxy<...>', and none of the allowable
++// conversions apply, deduction for _Tp fails.  And since each
++// argument-parameter pair is considered independently, with the
++// process succeeding only if all conclusions are the same,
++// deduction fails for the function.
++//
++// The regression illustrates this:
++//  - Functions taking a non-template complex<float> (function_value
++//    and function_cref) are considered (correctly) when given an old
++//    Lvalue_proxy argument.
++//  - However, functions taking a templated complex<float>
++//    (function_template_value and function_template_cref) are not
++//    considered for an old Lvalue_proxy argument.
++//
++// The fix is to have Lvalue_proxy derive from the complex<T> class when
++// the proxy is for a complex<T> value.  Template deduction for _Tp
++// then succeeds because complex<_Tp> is a base class of the argument
++// type, which is an allowable argument conversion.
++//
++// For more detail, see Vandevoorde & Josuttis, secions 11.1 and 11.4.
++
++/***********************************************************************
++  Included Files
++***********************************************************************/
++
++#include <vsip/dense.hpp>
++#include <vsip/impl/lvalue-proxy.hpp>
++#include <vsip/impl/static_assert.hpp>
++#include <vsip/impl/metaprogramming.hpp>
++
++#include "test.hpp"
++
++using namespace vsip;
++using namespace std;
++
++
++
++/***********************************************************************
++  Definitions
++***********************************************************************/
++
++void
++function_value(complex<float> value)
++{
++  assert(value == complex<float>(1.0, -1.0));
++}
++
++void
++function_cref(complex<float> const& value)
++{
++  assert(value == complex<float>(1.0, -1.0));
++}
++
++template <typename T>
++void
++function_template_value(complex<T> value)
++{
++  assert(value == complex<T>(1.0, -1.0));
++}
++
++template <typename T>
++void
++function_template_cref(complex<T> const& value)
++{
++  assert(value == complex<T>(1.0, -1.0));
++}
++
++
++
++void
++test_fun()
++{
++  length_type size = 3;
++
++  Dense<1, complex<float> > d(Domain<1>(size), complex<float> (42));
++
++  impl::Lvalue_proxy<complex<float> , Dense<1, complex<float> >, 1> p(d, 1);
++
++  complex<float> a = complex<float>(1.0, -1.0);
++
++  function_value(a);
++  function_cref(a);
++  function_template_value(a);
++  function_template_cref(a);
++
++  p = complex<float>(1.0, -1.0);
++
++  function_value(p);
++  function_cref(p);
++  function_template_value(p);
++  function_template_cref(p);
++}
++
++
++
++int
++main(void)
++{
++  test_fun();
++
++  return 0;
++}
+Index: tests/test.hpp
+===================================================================
+RCS file: /home/cvs/Repository/vpp/tests/test.hpp,v
+retrieving revision 1.12
+diff -u -r1.12 test.hpp
+--- tests/test.hpp	11 Jan 2006 16:22:47 -0000	1.12
++++ tests/test.hpp	2 Feb 2006 17:35:24 -0000
+@@ -1,4 +1,4 @@
+-/* Copyright (c) 2005 by CodeSourcery, LLC.  All rights reserved. */
++/* Copyright (c) 2005, 2006 by CodeSourcery, LLC.  All rights reserved. */
+ 
+ /** @file    tests/test.hpp
+     @author  Jules Bergmann
+@@ -87,22 +87,24 @@
+   return val1 == val2;
+ }
+ 
+-template <typename             Block,
++template <typename             T,
++	  typename             Block,
+ 	  vsip::dimension_type Dim>
+ inline bool
+ equal(
+-  vsip::impl::Lvalue_proxy<Block, Dim> const&               val1, 
+-  typename vsip::impl::Lvalue_proxy<Block, Dim>::value_type val2)
++  vsip::impl::Lvalue_proxy<T, Block, Dim> const& val1, 
++  T                                              val2)
+ {
+   return val1 == val2;
+ }
+ 
+-template <typename             Block,
++template <typename             T,
++	  typename             Block,
+ 	  vsip::dimension_type Dim>
+ inline bool
+ equal(
+-  typename vsip::impl::Lvalue_proxy<Block, Dim>::value_type val1,
+-  vsip::impl::Lvalue_proxy<Block, Dim> const&               val2) 
++  T                                              val1,
++  vsip::impl::Lvalue_proxy<T, Block, Dim> const& val2) 
+ {
+   return val1 == val2;
+ }

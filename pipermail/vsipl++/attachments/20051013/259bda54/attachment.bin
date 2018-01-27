@@ -1,0 +1,1290 @@
+
+Index: configure.ac
+===================================================================
+RCS file: /home/cvs/Repository/vpp/configure.ac,v
+retrieving revision 1.43
+diff -c -p -r1.43 configure.ac
+*** configure.ac	12 Oct 2005 13:40:17 -0000	1.43
+--- configure.ac	13 Oct 2005 17:42:15 -0000
+*************** AC_ARG_WITH(mpi_prefix,
+*** 31,36 ****
+--- 31,51 ----
+    dnl If the user specified --with-mpi-prefix, they mean to use MPI for sure.
+    [enable_mpi=yes])
+  
++ AC_ARG_ENABLE([sal],
++   AS_HELP_STRING([--enable-sal],
++                  [use SAL if found (default is to not search for it)]),,
++   [enable_sal=no])
++ AC_ARG_WITH(sal_include,
++   AS_HELP_STRING([--with-sal-include=PATH],
++                  [Specify the path to the SAL include directory.]),
++   dnl If the user specified --with-sal-include, they mean to use SAL for sure.
++   [enable_sal=yes])
++ AC_ARG_WITH(sal_lib,
++   AS_HELP_STRING([--with-sal-lib=PATH],
++                  [Specify the installation path of the SAL library.]),
++   dnl If the user specified --with-sal-lib, they mean to use SAL for sure.
++   [enable_sal=yes])
++ 
+  AC_ARG_ENABLE([ipp],
+    AS_HELP_STRING([--enable-ipp],
+                   [use IPP if found (default is to not search for it)]),,
+*************** AC_DEFINE_UNQUOTED(VSIP_IMPL_PAR_SERVICE
+*** 462,467 ****
+--- 477,547 ----
+    [Define to parallel service provided (0 == no service, 1 = MPI).])
+  
+  #
++ # Find the Mercury SAL library, if enabled.
++ #
++ if test "$enable_sal" != "no"; then
++ 
++   if test -n "$with_sal_include"; then
++     SAL_CPPFLAGS="-I$with_sal_include"
++   fi
++   save_CPPFLAGS="$CPPFLAGS"
++   CPPFLAGS="$CPPFLAGS $SAL_CPPFLAGS"
++   
++   # Find sal.h.
++   vsipl_sal_h_name="not found"
++   AC_CHECK_HEADER([sal.h], [vsipl_sal_h_name='<sal.h>'],, [// no prerequisites])
++   if test "$vsipl_sal_h_name" == "not found"; then
++     AC_MSG_ERROR([SAL enabled, but no sal.h detected])
++     CPPFLAGS="$save_CPPFLAGS"
++   else
++ 
++     # Find the library.
++ 
++     if test -n "$with_sal_lib"; then
++       SAL_LDFLAGS="$with_sal_lib"
++     fi
++     save_LDFLAGS="$LDFLAGS"
++     LDFLAGS="$LDFLAGS -L$SAL_LDFLAGS"
++     AC_SEARCH_LIBS(vaddx, csal, [sal_found="yes"], [sal_found="no"])
++ 
++     AC_MSG_CHECKING([for std::complex-compatible SAL-types.])
++     AC_COMPILE_IFELSE([
++ #include <sal.h>
++ 
++ template <bool V> struct static_assert;
++ template <> struct static_assert<true>
++ {
++   static bool const value = true;
++ };
++ 
++ int main(int, char **)
++ {
++   bool value;
++   value = static_assert<sizeof(COMPLEX_SPLIT) == 
++ 			2*sizeof(float *)>::value;
++   value = static_assert<sizeof(DOUBLE_COMPLEX_SPLIT) == 
++ 			2*sizeof(double *)>::value;
++ }
++ ],
++ [AC_MSG_RESULT(yes)],
++ [AC_MSG_ERROR([std::complex-incompatible SAL-types detected!])])
++ 
++   fi     
++ 
++   if test "$sal_found" == "no"; then
++     AC_MSG_ERROR([No SAL library found])
++     CPPFLAGS=$save_CPPFLAGS
++     LDFLAGS=$save_LDFLAGS
++   else
++     AC_SUBST(VSIP_IMPL_HAVE_SAL, 1)
++     AC_DEFINE_UNQUOTED(VSIP_IMPL_HAVE_SAL, $vsipl_sal_h_name,
++     [The name of the header to include for the SAL interface, with <> quotes.])
++   fi
++ 
++ fi
++ 
++ 
++ #
+  # Find the IPP library, if enabled.
+  #
+  
+Index: src/vsip/GNUmakefile.inc.in
+===================================================================
+RCS file: /home/cvs/Repository/vpp/src/vsip/GNUmakefile.inc.in,v
+retrieving revision 1.6
+diff -c -p -r1.6 GNUmakefile.inc.in
+*** src/vsip/GNUmakefile.inc.in	12 Aug 2005 13:58:28 -0000	1.6
+--- src/vsip/GNUmakefile.inc.in	13 Oct 2005 17:42:15 -0000
+***************
+*** 13,18 ****
+--- 13,19 ----
+  ########################################################################
+  
+  VSIP_IMPL_HAVE_IPP := @VSIP_IMPL_HAVE_IPP@
++ VSIP_IMPL_HAVE_SAL := @VSIP_IMPL_HAVE_SAL@
+  
+  src_vsip_CXXINCLUDES := -I$(srcdir)/src
+  src_vsip_CXXFLAGS := $(src_vsip_CXXINCLUDES)
+*************** src_vsip_cxx_sources := $(wildcard $(src
+*** 21,26 ****
+--- 22,30 ----
+  ifdef VSIP_IMPL_HAVE_IPP
+  src_vsip_cxx_sources += $(srcdir)/src/vsip/impl/ipp.cpp
+  endif
++ ifdef VSIP_IMPL_HAVE_SAL
++ src_vsip_cxx_sources += $(srcdir)/src/vsip/impl/sal.cpp
++ endif
+  src_vsip_cxx_objects := $(patsubst $(srcdir)/%.cpp, %.$(OBJEXT), $(src_vsip_cxx_sources))
+  cxx_sources += $(src_vsip_cxx_sources)
+  
+Index: src/vsip/impl/expr_serial_dispatch.hpp
+===================================================================
+RCS file: /home/cvs/Repository/vpp/src/vsip/impl/expr_serial_dispatch.hpp,v
+retrieving revision 1.1
+diff -c -p -r1.1 expr_serial_dispatch.hpp
+*** src/vsip/impl/expr_serial_dispatch.hpp	10 Aug 2005 15:57:55 -0000	1.1
+--- src/vsip/impl/expr_serial_dispatch.hpp	13 Oct 2005 17:42:15 -0000
+***************
+*** 20,25 ****
+--- 20,28 ----
+  #ifdef VSIP_IMPL_HAVE_IPP
+  #include <vsip/impl/ipp.hpp>
+  #endif
++ #ifdef VSIP_IMPL_HAVE_SAL
++ #include <vsip/impl/sal.hpp>
++ #endif
+  #include <iostream>
+  
+  /***********************************************************************
+*************** namespace impl
+*** 33,38 ****
+--- 36,42 ----
+  
+  /// The list of evaluators to be tried, in that specific order.
+  typedef Make_type_list<Intel_ipp_tag,
++                        Mercury_sal_tag,
+  		       Loop_fusion_tag>::type LibraryTagList;
+  
+  
+Index: src/vsip/impl/expr_serial_evaluator.hpp
+===================================================================
+RCS file: /home/cvs/Repository/vpp/src/vsip/impl/expr_serial_evaluator.hpp,v
+retrieving revision 1.2
+diff -c -p -r1.2 expr_serial_evaluator.hpp
+*** src/vsip/impl/expr_serial_evaluator.hpp	10 Aug 2005 19:50:44 -0000	1.2
+--- src/vsip/impl/expr_serial_evaluator.hpp	13 Oct 2005 17:42:15 -0000
+*************** namespace impl
+*** 25,30 ****
+--- 25,31 ----
+  
+  struct Loop_fusion_tag;
+  struct Intel_ipp_tag;
++ struct Mercury_sal_tag;
+  
+  /// Serial_expr_evaluator template.
+  /// This needs to be provided for each tag in the LibraryTagList.
+*************** struct Serial_expr_evaluator<1, DstBlock
+*** 61,66 ****
+--- 62,79 ----
+    static void exec(DstBlock& /*dst*/, SrcBlock const& /*src*/) {}
+  };
+  
++ /// A general expression evaluator for SAL that doesn't match
++ /// anything and thus should be skipped by the dispatcher.
++ template <typename DstBlock,
++ 	  typename SrcBlock>
++ struct Serial_expr_evaluator<1, DstBlock, SrcBlock, Mercury_sal_tag>
++ {
++   static bool const ct_valid = true;
++   static bool rt_valid(DstBlock& /*dst*/, SrcBlock const& /*src*/) 
++   { return false;}
++   static void exec(DstBlock& /*dst*/, SrcBlock const& /*src*/) {}
++ };
++ 
+  } // namespace vsip::impl
+  } // namespace vsip
+  
+Index: src/vsip/impl/sal.cpp
+===================================================================
+RCS file: src/vsip/impl/sal.cpp
+diff -N src/vsip/impl/sal.cpp
+*** /dev/null	1 Jan 1970 00:00:00 -0000
+--- src/vsip/impl/sal.cpp	13 Oct 2005 17:42:15 -0000
+***************
+*** 0 ****
+--- 1,315 ----
++ /* Copyright (c) 2005 by CodeSourcery, LLC.  All rights reserved. */
++ 
++ /** @file    vsip/impl/sal.cpp
++     @author  Don McCoy
++     @date    2005-10-04
++     @brief   VSIPL++ Library: Wrappers and traits to bridge with 
++                Mercury SAL.
++ */
++ 
++ /***********************************************************************
++   Included Files
++ ***********************************************************************/
++ 
++ #include "sal.hpp"
++ #include <sal.h>
++ 
++ 
++ /***********************************************************************
++   Declarations
++ ***********************************************************************/
++ 
++ namespace vsip
++ {
++ namespace impl
++ {
++ namespace sal
++ {
++ 
++ // Addition
++ 
++ void vadd(float * A, stride_type A_stride, float * B, 
++   stride_type B_stride, float* Z, stride_type Z_stride, length_type len)
++ {
++   vaddx( A, A_stride, B, B_stride, Z, Z_stride, len, 0 );
++ }
++ 
++ void vadd(double * A, stride_type A_stride, double * B, 
++   stride_type B_stride, double* Z, stride_type Z_stride, length_type len)
++ {
++   vadddx( A, A_stride, B, B_stride, Z, Z_stride, len, 0 );
++ }
++ 
++ void vadd(std::complex<float> * A, stride_type A_stride, 
++   std::complex<float> * B, stride_type B_stride, std::complex<float>* Z, 
++   stride_type Z_stride, length_type len)
++ {
++   COMPLEX *cA = (COMPLEX *)(A);
++   COMPLEX *cB = (COMPLEX *)(B);
++   COMPLEX *cZ = (COMPLEX *)(Z);
++ 
++   // complex elements call for a stride of 2 and not 1 (when
++   // dealing with dense data for example). this differs from 
++   // the VSIPL++ definition of 1 == 1 pair of values.
++   cvaddx( cA, 2 * A_stride, cB, 2 *B_stride, cZ, 2 * Z_stride, len, 0 );
++ }
++ 
++ void vadd(std::complex<double> * A, stride_type A_stride, 
++   std::complex<double> * B, stride_type B_stride, std::complex<double>* Z, 
++   stride_type Z_stride, length_type len)
++ {
++   DOUBLE_COMPLEX *dcA = (DOUBLE_COMPLEX *)(A);
++   DOUBLE_COMPLEX *dcB = (DOUBLE_COMPLEX *)(B);
++   DOUBLE_COMPLEX *dcZ = (DOUBLE_COMPLEX *)(Z);
++ 
++   // complex elements call for a stride of 2 and not 1 (when
++   // dealing with dense data for example). this differs from 
++   // the VSIPL++ definition of 1 == 1 pair of values.
++   cvadddx( dcA, 2 *A_stride, dcB, 2 * B_stride, dcZ, 2 * Z_stride, len, 0 );
++ }
++ 
++ // split case:
++ void vadd(std::pair<float*, float*> const A, stride_type A_stride, 
++   std::pair<float*, float*> const B, stride_type B_stride, 
++   std::pair<float*, float*> const Z, stride_type Z_stride, 
++   length_type len)
++ {
++   COMPLEX_SPLIT *cA = (COMPLEX_SPLIT *) &A;
++   COMPLEX_SPLIT *cB = (COMPLEX_SPLIT *) &B;
++   COMPLEX_SPLIT *cZ = (COMPLEX_SPLIT *) &Z;
++ 
++   zvaddx( cA, A_stride, cB, B_stride, cZ, Z_stride, len, 0 );
++ }
++ 
++ void vadd(std::pair<double*, double*> const A, stride_type A_stride, 
++   std::pair<double*, double*> const B, stride_type B_stride, 
++   std::pair<double*, double*> const Z, stride_type Z_stride, 
++   length_type len)
++ {
++   DOUBLE_COMPLEX_SPLIT *dcA = (DOUBLE_COMPLEX_SPLIT *) &A;
++   DOUBLE_COMPLEX_SPLIT *dcB = (DOUBLE_COMPLEX_SPLIT *) &B;
++   DOUBLE_COMPLEX_SPLIT *dcZ = (DOUBLE_COMPLEX_SPLIT *) &Z;
++ 
++   zvadddx( dcA, A_stride, dcB, B_stride, dcZ, Z_stride, len, 0 );
++ }
++ 
++ 
++ 
++ // Subtraction
++ // Real values use functions where C = B - A in SAL
++ // Complex values use C = A - B
++ 
++ void vsub(float * A, stride_type A_stride, float * B, 
++   stride_type B_stride, float* Z, stride_type Z_stride, length_type len)
++ {
++   vsubx( B, B_stride, A, A_stride, Z, Z_stride, len, 0 );
++ }
++ 
++ void vsub(double * A, stride_type A_stride, double * B, 
++   stride_type B_stride, double* Z, stride_type Z_stride, length_type len)
++ {
++   vsubdx( B, B_stride, A, A_stride, Z, Z_stride, len, 0 );
++ }
++ 
++ void vsub(std::complex<float> * A, stride_type A_stride, 
++   std::complex<float> * B, stride_type B_stride, std::complex<float>* Z, 
++   stride_type Z_stride, length_type len)
++ {
++   COMPLEX *cA = (COMPLEX *)(A);
++   COMPLEX *cB = (COMPLEX *)(B);
++   COMPLEX *cZ = (COMPLEX *)(Z);
++ 
++   // complex elements call for a stride of 2 and not 1 (when
++   // dealing with dense data for example). this differs from 
++   // the VSIPL++ definition of 1 == 1 pair of values.
++   cvsubx( cA, 2 * A_stride, cB, 2 *B_stride, cZ, 2 * Z_stride, len, 0 );
++ }
++ 
++ void vsub(std::complex<double> * A, stride_type A_stride, 
++   std::complex<double> * B, stride_type B_stride, std::complex<double>* Z, 
++   stride_type Z_stride, length_type len)
++ {
++   DOUBLE_COMPLEX *dcA = (DOUBLE_COMPLEX *)(A);
++   DOUBLE_COMPLEX *dcB = (DOUBLE_COMPLEX *)(B);
++   DOUBLE_COMPLEX *dcZ = (DOUBLE_COMPLEX *)(Z);
++ 
++   // complex elements call for a stride of 2 and not 1 (when
++   // dealing with dense data for example). this differs from 
++   // the VSIPL++ definition of 1 == 1 pair of values.
++   cvsubdx( dcA, 2 *A_stride, dcB, 2 * B_stride, dcZ, 2 * Z_stride, len, 0 );
++ }
++ 
++ // split case:
++ void vsub(std::pair<float*, float*> const A, stride_type A_stride, 
++   std::pair<float*, float*> const B, stride_type B_stride, 
++   std::pair<float*, float*> const Z, stride_type Z_stride, 
++   length_type len)
++ {
++   COMPLEX_SPLIT *cA = (COMPLEX_SPLIT *) &A;
++   COMPLEX_SPLIT *cB = (COMPLEX_SPLIT *) &B;
++   COMPLEX_SPLIT *cZ = (COMPLEX_SPLIT *) &Z;
++ 
++   zvsubx( cA, A_stride, cB, B_stride, cZ, Z_stride, len, 0 );
++ }
++ 
++ void vsub(std::pair<double*, double*> const A, stride_type A_stride, 
++   std::pair<double*, double*> const B, stride_type B_stride, 
++   std::pair<double*, double*> const Z, stride_type Z_stride, 
++   length_type len)
++ {
++   DOUBLE_COMPLEX_SPLIT *dcA = (DOUBLE_COMPLEX_SPLIT *) &A;
++   DOUBLE_COMPLEX_SPLIT *dcB = (DOUBLE_COMPLEX_SPLIT *) &B;
++   DOUBLE_COMPLEX_SPLIT *dcZ = (DOUBLE_COMPLEX_SPLIT *) &Z;
++ 
++   zvsubdx( dcA, A_stride, dcB, B_stride, dcZ, Z_stride, len, 0 );
++ }
++ 
++ 
++ // Multiplication
++ 
++ void vmul(float * A, stride_type A_stride, float * B, 
++   stride_type B_stride, float* Z, stride_type Z_stride, length_type len)
++ {
++   vmulx( A, A_stride, B, B_stride, Z, Z_stride, len, 0 );
++ }
++ 
++ void vmul(double * A, stride_type A_stride, double * B, 
++   stride_type B_stride, double* Z, stride_type Z_stride, length_type len)
++ {
++   vmuldx( A, A_stride, B, B_stride, Z, Z_stride, len, 0 );
++ }
++ 
++ void vmul(std::complex<float> * A, stride_type A_stride, 
++   std::complex<float> * B, stride_type B_stride, std::complex<float>* Z, 
++   stride_type Z_stride, length_type len)
++ {
++   COMPLEX *cA = (COMPLEX *)(A);
++   COMPLEX *cB = (COMPLEX *)(B);
++   COMPLEX *cZ = (COMPLEX *)(Z);
++ 
++   // complex elements call for a stride of 2 and not 1 (when
++   // dealing with dense data for example). this differs from 
++   // the VSIPL++ definition of 1 == 1 pair of values.
++   int conj_flag = 1;
++   cvmulx( cA, 2 * A_stride, cB, 2 *B_stride, cZ, 2 * Z_stride, len, conj_flag, 0 );
++ }
++ 
++ void vmul(std::complex<double> * A, stride_type A_stride, 
++   std::complex<double> * B, stride_type B_stride, std::complex<double>* Z, 
++   stride_type Z_stride, length_type len)
++ {
++   DOUBLE_COMPLEX *dcA = (DOUBLE_COMPLEX *)(A);
++   DOUBLE_COMPLEX *dcB = (DOUBLE_COMPLEX *)(B);
++   DOUBLE_COMPLEX *dcZ = (DOUBLE_COMPLEX *)(Z);
++ 
++   // complex elements call for a stride of 2 and not 1 (when
++   // dealing with dense data for example). this differs from 
++   // the VSIPL++ definition of 1 == 1 pair of values.
++   int conj_flag = 1;
++   cvmuldx( dcA, 2 *A_stride, dcB, 2 * B_stride, dcZ, 2 * Z_stride, len, conj_flag, 0 );
++ }
++ 
++ // split case:
++ void vmul(std::pair<float*, float*> const A, stride_type A_stride, 
++   std::pair<float*, float*> const B, stride_type B_stride, 
++   std::pair<float*, float*> const Z, stride_type Z_stride, 
++   length_type len)
++ {
++   COMPLEX_SPLIT *cA = (COMPLEX_SPLIT *) &A;
++   COMPLEX_SPLIT *cB = (COMPLEX_SPLIT *) &B;
++   COMPLEX_SPLIT *cZ = (COMPLEX_SPLIT *) &Z;
++ 
++   int conj_flag = 1;
++   zvmulx( cA, A_stride, cB, B_stride, cZ, Z_stride, len, conj_flag, 0 );
++ }
++ 
++ void vmul(std::pair<double*, double*> const A, stride_type A_stride, 
++   std::pair<double*, double*> const B, stride_type B_stride, 
++   std::pair<double*, double*> const Z, stride_type Z_stride, 
++   length_type len)
++ {
++   DOUBLE_COMPLEX_SPLIT *dcA = (DOUBLE_COMPLEX_SPLIT *) &A;
++   DOUBLE_COMPLEX_SPLIT *dcB = (DOUBLE_COMPLEX_SPLIT *) &B;
++   DOUBLE_COMPLEX_SPLIT *dcZ = (DOUBLE_COMPLEX_SPLIT *) &Z;
++ 
++   int conj_flag = 1;
++   zvmuldx( dcA, A_stride, dcB, B_stride, dcZ, Z_stride, len, conj_flag, 0 );
++ }
++ 
++ 
++ 
++ // Division
++ // All values use functions where C = B / A in SAL
++ 
++ void vdiv(float * A, stride_type A_stride, float * B, 
++   stride_type B_stride, float* Z, stride_type Z_stride, length_type len)
++ {
++   vdivx( B, B_stride, A, A_stride, Z, Z_stride, len, 0 );
++ }
++ 
++ void vdiv(double * A, stride_type A_stride, double * B, 
++   stride_type B_stride, double* Z, stride_type Z_stride, length_type len)
++ {
++   vdivdx( B, B_stride, A, A_stride, Z, Z_stride, len, 0 );
++ }
++ 
++ void vdiv(std::complex<float> * A, stride_type A_stride, 
++   std::complex<float> * B, stride_type B_stride, std::complex<float>* Z, 
++   stride_type Z_stride, length_type len)
++ {
++   COMPLEX *cA = (COMPLEX *)(A);
++   COMPLEX *cB = (COMPLEX *)(B);
++   COMPLEX *cZ = (COMPLEX *)(Z);
++ 
++   // complex elements call for a stride of 2 and not 1 (when
++   // dealing with dense data for example). this differs from 
++   // the VSIPL++ definition of 1 == 1 pair of values.
++   cvdivx( cB, 2 *B_stride, cA, 2 * A_stride, cZ, 2 * Z_stride, len, 0 );
++ }
++ 
++ void vdiv(std::complex<double> * A, stride_type A_stride, 
++   std::complex<double> * B, stride_type B_stride, std::complex<double>* Z, 
++   stride_type Z_stride, length_type len)
++ {
++   DOUBLE_COMPLEX *dcA = (DOUBLE_COMPLEX *)(A);
++   DOUBLE_COMPLEX *dcB = (DOUBLE_COMPLEX *)(B);
++   DOUBLE_COMPLEX *dcZ = (DOUBLE_COMPLEX *)(Z);
++ 
++   // complex elements call for a stride of 2 and not 1 (when
++   // dealing with dense data for example). this differs from 
++   // the VSIPL++ definition of 1 == 1 pair of values.
++   cvdivdx( dcB, 2 * B_stride, dcA, 2 *A_stride, dcZ, 2 * Z_stride, len, 0 );
++ }
++ 
++ // split case:
++ void vdiv(std::pair<float*, float*> const A, stride_type A_stride, 
++   std::pair<float*, float*> const B, stride_type B_stride, 
++   std::pair<float*, float*> const Z, stride_type Z_stride, 
++   length_type len)
++ {
++   COMPLEX_SPLIT *cA = (COMPLEX_SPLIT *) &A;
++   COMPLEX_SPLIT *cB = (COMPLEX_SPLIT *) &B;
++   COMPLEX_SPLIT *cZ = (COMPLEX_SPLIT *) &Z;
++ 
++   zvdivx( cB, B_stride, cA, A_stride, cZ, Z_stride, len, 0 );
++ }
++ 
++ void vdiv(std::pair<double*, double*> const A, stride_type A_stride, 
++   std::pair<double*, double*> const B, stride_type B_stride, 
++   std::pair<double*, double*> const Z, stride_type Z_stride, 
++   length_type len)
++ {
++   DOUBLE_COMPLEX_SPLIT *dcA = (DOUBLE_COMPLEX_SPLIT *) &A;
++   DOUBLE_COMPLEX_SPLIT *dcB = (DOUBLE_COMPLEX_SPLIT *) &B;
++   DOUBLE_COMPLEX_SPLIT *dcZ = (DOUBLE_COMPLEX_SPLIT *) &Z;
++ 
++   zvdivdx( dcB, B_stride, dcA, A_stride, dcZ, Z_stride, len, 0 );
++ }
++ 
++ 
++ 
++ 
++ } // namespace vsip::impl::sal
++ } // namespace vsip::impl
++ } // namespace vsip
++ 
+Index: src/vsip/impl/sal.hpp
+===================================================================
+RCS file: src/vsip/impl/sal.hpp
+diff -N src/vsip/impl/sal.hpp
+*** /dev/null	1 Jan 1970 00:00:00 -0000
+--- src/vsip/impl/sal.hpp	13 Oct 2005 17:42:15 -0000
+***************
+*** 0 ****
+--- 1,318 ----
++ /* Copyright (c) 2005 by CodeSourcery, LLC.  All rights reserved. */
++ 
++ /** @file    vsip/impl/sal.hpp
++     @author  Don McCoy
++     @date    2005-10-04
++     @brief   VSIPL++ Library: Wrappers and traits to bridge with 
++                Mercury SAL.
++ */
++ 
++ #ifndef VSIP_IMPL_SAL_HPP
++ #define VSIP_IMPL_SAL_HPP
++ 
++ /***********************************************************************
++   Included Files
++ ***********************************************************************/
++ 
++ #include <vsip/support.hpp>
++ #include <vsip/impl/block-traits.hpp>
++ #include <vsip/impl/expr_serial_evaluator.hpp>
++ #include <vsip/impl/expr_binary_block.hpp>
++ #include <vsip/impl/expr_operations.hpp>
++ #include <vsip/impl/extdata.hpp>
++ 
++ /***********************************************************************
++   Declarations
++ ***********************************************************************/
++ 
++ namespace vsip
++ {
++ namespace impl
++ {
++ namespace sal
++ {
++ 
++ template <typename Type>
++ struct Is_type_supported
++ {
++   static bool const value = false;
++ };
++ 
++ template <>
++ struct Is_type_supported<float>
++ {
++   static bool const value = true;
++ };
++ 
++ template <>
++ struct Is_type_supported<double>
++ {
++   static bool const value = true;
++ };
++ 
++ template <>
++ struct Is_type_supported<std::complex<float> >
++ {
++   static bool const value = true;
++ };
++ 
++ template <>
++ struct Is_type_supported<std::complex<double> >
++ {
++   static bool const value = true;
++ };
++ 
++ // functions for vector addition
++ void vadd(float * A, stride_type A_stride, 
++           float * B, stride_type B_stride, 
++           float * Z, stride_type Z_stride, length_type len);
++ void vadd(double * A, stride_type A_stride,
++           double * B, stride_type B_stride,
++           double * Z, stride_type Z_stride, length_type len);
++ void vadd(std::complex<float> * A, stride_type A_stride, 
++           std::complex<float> * B, stride_type B_stride, 
++           std::complex<float> * Z, stride_type Z_stride, length_type len);
++ void vadd(std::complex<double> * A, stride_type A_stride, 
++           std::complex<double> * B, stride_type B_stride, 
++           std::complex<double> * Z, stride_type Z_stride, length_type len);
++ void vadd(std::pair<float*, float*> const A, stride_type A_stride, 
++           std::pair<float*, float*> const B, stride_type B_stride, 
++           std::pair<float*, float*> const Z, stride_type Z_stride, 
++           length_type len);
++ void vadd(std::pair<double*, double*> const A, stride_type A_stride, 
++           std::pair<double*, double*> const B, stride_type B_stride, 
++           std::pair<double*, double*> const Z, stride_type Z_stride, 
++           length_type len);
++ 
++ // functions for vector subtraction
++ void vsub(float * A, stride_type A_stride, 
++           float * B, stride_type B_stride, 
++           float * Z, stride_type Z_stride, length_type len);
++ void vsub(double * A, stride_type A_stride,
++           double * B, stride_type B_stride,
++           double * Z, stride_type Z_stride, length_type len);
++ void vsub(std::complex<float> * A, stride_type A_stride, 
++           std::complex<float> * B, stride_type B_stride, 
++           std::complex<float> * Z, stride_type Z_stride, length_type len);
++ void vsub(std::complex<double> * A, stride_type A_stride, 
++           std::complex<double> * B, stride_type B_stride, 
++           std::complex<double> * Z, stride_type Z_stride, length_type len);
++ void vsub(std::pair<float*, float*> const A, stride_type A_stride, 
++           std::pair<float*, float*> const B, stride_type B_stride, 
++           std::pair<float*, float*> const Z, stride_type Z_stride, 
++           length_type len);
++ void vsub(std::pair<double*, double*> const A, stride_type A_stride, 
++           std::pair<double*, double*> const B, stride_type B_stride, 
++           std::pair<double*, double*> const Z, stride_type Z_stride, 
++           length_type len);
++ 
++ // functions for vector multiply
++ void vmul(float * A, stride_type A_stride, 
++           float * B, stride_type B_stride, 
++           float * Z, stride_type Z_stride, length_type len);
++ void vmul(double * A, stride_type A_stride,
++           double * B, stride_type B_stride,
++           double * Z, stride_type Z_stride, length_type len);
++ void vmul(std::complex<float> * A, stride_type A_stride, 
++           std::complex<float> * B, stride_type B_stride, 
++           std::complex<float> * Z, stride_type Z_stride, length_type len);
++ void vmul(std::complex<double> * A, stride_type A_stride, 
++           std::complex<double> * B, stride_type B_stride, 
++           std::complex<double> * Z, stride_type Z_stride, length_type len);
++ void vmul(std::pair<float*, float*> const A, stride_type A_stride, 
++           std::pair<float*, float*> const B, stride_type B_stride, 
++           std::pair<float*, float*> const Z, stride_type Z_stride, 
++           length_type len);
++ void vmul(std::pair<double*, double*> const A, stride_type A_stride, 
++           std::pair<double*, double*> const B, stride_type B_stride, 
++           std::pair<double*, double*> const Z, stride_type Z_stride, 
++           length_type len);
++ 
++ // functions for vector division
++ void vdiv(float * A, stride_type A_stride, 
++           float * B, stride_type B_stride, 
++           float * Z, stride_type Z_stride, length_type len);
++ void vdiv(double * A, stride_type A_stride,
++           double * B, stride_type B_stride,
++           double * Z, stride_type Z_stride, length_type len);
++ void vdiv(std::complex<float> * A, stride_type A_stride, 
++           std::complex<float> * B, stride_type B_stride, 
++           std::complex<float> * Z, stride_type Z_stride, length_type len);
++ void vdiv(std::complex<double> * A, stride_type A_stride, 
++           std::complex<double> * B, stride_type B_stride, 
++           std::complex<double> * Z, stride_type Z_stride, length_type len);
++ void vdiv(std::pair<float*, float*> const A, stride_type A_stride, 
++           std::pair<float*, float*> const B, stride_type B_stride, 
++           std::pair<float*, float*> const Z, stride_type Z_stride, 
++           length_type len);
++ void vdiv(std::pair<double*, double*> const A, stride_type A_stride, 
++           std::pair<double*, double*> const B, stride_type B_stride, 
++           std::pair<double*, double*> const Z, stride_type Z_stride, 
++           length_type len);
++ 
++ 
++ template <template <typename, typename> class Operator,
++ 	  typename DstBlock,
++ 	  typename LBlock,
++ 	  typename RBlock,
++ 	  typename LType,
++ 	  typename RType>
++ struct Serial_expr_evaluator_base
++ {
++   typedef Binary_expr_block<1, Operator, LBlock, LType, RBlock, RType>
++     SrcBlock;
++ 
++   static bool const ct_valid = 
++     !Is_expr_block<LBlock>::value &&
++     !Is_expr_block<RBlock>::value &&
++      sal::Is_type_supported<LType>::value &&
++      sal::Is_type_supported<RType>::value &&
++      sal::Is_type_supported<typename DstBlock::value_type>::value &&
++      Type_equal<typename DstBlock::value_type, LType>::value &&
++      Type_equal<typename DstBlock::value_type, RType>::value &&
++      // check that direct access is supported
++      Ext_data_cost<DstBlock>::value == 0 &&
++      Ext_data_cost<LBlock>::value == 0 &&
++      Ext_data_cost<RBlock>::value == 0;
++ 
++   
++   static bool rt_valid(DstBlock& dst, SrcBlock const& src)
++   {
++     // SAL supports all strides
++     return true;
++   }
++ };
++ } // namespace vsip::impl::sal
++ 
++ 
++ template <typename DstBlock,
++ 	  typename LBlock,
++ 	  typename RBlock,
++ 	  typename LType,
++ 	  typename RType>
++ struct Serial_expr_evaluator<
++   1, DstBlock, 
++   const Binary_expr_block<1, op::Add, LBlock, LType, RBlock, RType>,
++   Mercury_sal_tag>
++   : sal::Serial_expr_evaluator_base<op::Add, DstBlock,
++ 				    LBlock, RBlock, LType, RType>
++ {
++   typedef Binary_expr_block<1, op::Add, LBlock, LType, RBlock, RType>
++     SrcBlock;
++   
++   static void exec(DstBlock& dst, SrcBlock const& src)
++   {
++     Ext_data<DstBlock> ext_dst(dst, SYNC_OUT);
++     Ext_data<LBlock> ext_l(src.left(), SYNC_IN);
++     Ext_data<RBlock> ext_r(src.right(), SYNC_IN);
++ 
++     sal::vadd(
++       ext_l.data(), ext_l.stride(0), 
++       ext_r.data(), ext_r.stride(0),
++       ext_dst.data(), ext_dst.stride(0),
++       dst.size()
++     );
++   }
++ 
++ };
++ 
++ template <typename DstBlock,
++ 	  typename LBlock,
++ 	  typename RBlock,
++ 	  typename LType,
++ 	  typename RType>
++ struct Serial_expr_evaluator<
++   1, DstBlock, 
++   const Binary_expr_block<1, op::Sub, LBlock, LType, RBlock, RType>,
++   Mercury_sal_tag>
++   : sal::Serial_expr_evaluator_base<op::Sub, DstBlock,
++ 				    LBlock, RBlock, LType, RType>
++ {
++   typedef Binary_expr_block<1, op::Sub, LBlock, LType, RBlock, RType>
++     SrcBlock;
++   
++   static void exec(DstBlock& dst, SrcBlock const& src)
++   {
++     Ext_data<DstBlock> ext_dst(dst, SYNC_OUT);
++     Ext_data<LBlock> ext_l(src.left(), SYNC_IN);
++     Ext_data<RBlock> ext_r(src.right(), SYNC_IN);
++ 
++     sal::vsub(
++       ext_l.data(), ext_l.stride(0), 
++       ext_r.data(), ext_r.stride(0),
++       ext_dst.data(), ext_dst.stride(0),
++       dst.size()
++     );
++   }
++ 
++ };
++ 
++ 
++ template <typename DstBlock,
++ 	  typename LBlock,
++ 	  typename RBlock,
++ 	  typename LType,
++ 	  typename RType>
++ struct Serial_expr_evaluator<
++   1, DstBlock, 
++   const Binary_expr_block<1, op::Mult, LBlock, LType, RBlock, RType>,
++   Mercury_sal_tag>
++   : sal::Serial_expr_evaluator_base<op::Mult, DstBlock,
++ 				    LBlock, RBlock, LType, RType>
++ {
++   typedef Binary_expr_block<1, op::Mult, LBlock, LType, RBlock, RType>
++     SrcBlock;
++   
++   static void exec(DstBlock& dst, SrcBlock const& src)
++   {
++     Ext_data<DstBlock> ext_dst(dst, SYNC_OUT);
++     Ext_data<LBlock> ext_l(src.left(), SYNC_IN);
++     Ext_data<RBlock> ext_r(src.right(), SYNC_IN);
++ 
++     sal::vmul(
++       ext_l.data(), ext_l.stride(0), 
++       ext_r.data(), ext_r.stride(0),
++       ext_dst.data(), ext_dst.stride(0),
++       dst.size()
++     );
++   }
++ 
++ };
++ 
++ 
++ template <typename DstBlock,
++ 	  typename LBlock,
++ 	  typename RBlock,
++ 	  typename LType,
++ 	  typename RType>
++ struct Serial_expr_evaluator<
++   1, DstBlock, 
++   const Binary_expr_block<1, op::Div, LBlock, LType, RBlock, RType>,
++   Mercury_sal_tag>
++   : sal::Serial_expr_evaluator_base<op::Div, DstBlock,
++ 				    LBlock, RBlock, LType, RType>
++ {
++   typedef Binary_expr_block<1, op::Div, LBlock, LType, RBlock, RType>
++     SrcBlock;
++   
++   static void exec(DstBlock& dst, SrcBlock const& src)
++   {
++     Ext_data<DstBlock> ext_dst(dst, SYNC_OUT);
++     Ext_data<LBlock> ext_l(src.left(), SYNC_IN);
++     Ext_data<RBlock> ext_r(src.right(), SYNC_IN);
++ 
++     sal::vdiv(
++       ext_l.data(), ext_l.stride(0), 
++       ext_r.data(), ext_r.stride(0),
++       ext_dst.data(), ext_dst.stride(0),
++       dst.size()
++     );
++   }
++ 
++ };
++ 
++ 
++ } // namespace vsip::impl
++ } // namespace vsip
++ 
++ #endif
+Index: tests/elementwise.cpp
+===================================================================
+RCS file: tests/elementwise.cpp
+diff -N tests/elementwise.cpp
+*** /dev/null	1 Jan 1970 00:00:00 -0000
+--- tests/elementwise.cpp	13 Oct 2005 17:42:15 -0000
+***************
+*** 0 ****
+--- 1,356 ----
++ /* Copyright (c) 2005 by CodeSourcery, LLC.  All rights reserved. */
++ 
++ /** @file    tests/elementwise.cpp
++     @author  Don McCoy
++     @date    2005-10-12
++     @brief   VSIPL++ Library: Unit tests for external libraries
++              that provide elementwise functions.
++ 
++   This module tests elementwise functions using alternate libraries.
++   When using SAL it will test SAL with stride-1 and stride-N.  When 
++   using IPP it will test IPP with stride-1 and loop fusion for stride-N.
++ */
++ 
++ 
++ /***********************************************************************
++   Included Files
++ ***********************************************************************/
++ 
++ #include <cmath>
++ #include <iostream>
++ #include <vsip/initfin.hpp>
++ #include <vsip/vector.hpp>
++ #include <vsip/math.hpp>
++ #include <vsip/impl/fast-block.hpp>
++ #include <vsip/impl/subblock.hpp>
++ #include "test.hpp"
++ #include "output.hpp"
++ 
++ using namespace std;
++ using namespace vsip;
++ 
++ 
++   
++ 
++ template <typename T>
++ void 
++ Test_add( T a, T b)
++ {
++   // unit strides
++   {
++     Vector<T> v1(10, a);
++     Vector<T> v2(10, b);
++     Vector<T> result(10, T());
++     
++     // add them
++     result = v1 + v2;
++     
++     // check the result
++     for ( index_type i = 0; i < result.size(); ++i )
++       assert( equal( result.get(i), a + b ) );
++   }
++ 
++   // non-unit strides
++   {
++     typedef typename Vector<T>::subview_type vector_subview_type;
++ 
++     Vector<T> v1_(20, a);
++     Vector<T> v2_(30, b);
++     Vector<T> result_(50, T());
++     vector_subview_type v1 = v1_(Domain<1>(0, 2, 10));
++     vector_subview_type v2 = v2_(Domain<1>(0, 3, 10));
++     vector_subview_type result = result_(Domain<1>(0, 5, 10));
++ 
++     // add them
++     result = v1 + v2;
++ 
++     // check the result
++     for ( index_type i = 0; i < result.size(); ++i )
++       assert( equal( result.get(i), a + b ) );
++   }
++ }
++ 
++ 
++ template <typename T>
++ void 
++ Test_split_add( complex<T> a, complex<T> b)
++ {
++   typedef impl::Fast_block<1, complex<T>,
++     impl::Layout<1, row1_type,
++     impl::Stride_unit_dense,
++     impl::Cmplx_split_fmt> > split_type;
++   
++   Vector<complex<T>, split_type>  v1(10, a);
++   Vector<complex<T>, split_type>  v2(10, b);
++   Vector<complex<T>, split_type>  result(10, T());
++   
++   // add them
++   result = v1 + v2;
++   
++     // check the result
++   for ( index_type i = 0; i < result.size(); ++i )
++     assert( equal( result.get(i), a + b ) );
++ }
++ 
++ 
++ template <typename T>
++ void 
++ Test_sub( T a, T b)
++ {
++   // unit strides
++   {
++     Vector<T> v1(10, a);
++     Vector<T> v2(10, b);
++     Vector<T> result(10, T());
++     
++     // subtract them
++     result = v1 - v2;
++     
++     // check the result
++     for ( index_type i = 0; i < result.size(); ++i )
++       assert( equal( result.get(i), a - b ) );
++   }
++ 
++   // non-unit strides
++   {
++     typedef typename Vector<T>::subview_type vector_subview_type;
++ 
++     Vector<T> v1_(20, a);
++     Vector<T> v2_(30, b);
++     Vector<T> result_(50, T());
++     vector_subview_type v1 = v1_(Domain<1>(0, 2, 10));
++     vector_subview_type v2 = v2_(Domain<1>(0, 3, 10));
++     vector_subview_type result = result_(Domain<1>(0, 5, 10));
++ 
++     // subtract them
++     result = v1 - v2;
++ 
++     // check the result
++     for ( index_type i = 0; i < result.size(); ++i )
++       assert( equal( result.get(i), a - b ) );
++   }
++ }
++ 
++ 
++ template <typename T>
++ void 
++ Test_split_sub( complex<T> a, complex<T> b)
++ {
++   typedef impl::Fast_block<1, complex<T>,
++     impl::Layout<1, row1_type,
++       impl::Stride_unit_dense,
++       impl::Cmplx_split_fmt> > split_type;
++ 
++   Vector<complex<T>, split_type>  v1(10, a);
++   Vector<complex<T>, split_type>  v2(10, b);
++   Vector<complex<T>, split_type>  result(10, T());
++ 
++   // subtract them
++   result = v1 - v2;
++ 
++   // check the result
++   for ( index_type i = 0; i < result.size(); ++i )
++     assert( equal( result.get(i), a - b ) );
++ }
++ 
++ 
++ 
++ template <typename T>
++ void 
++ Test_mul( T a, T b)
++ {
++   // unit strides
++   {
++     Vector<T> v1(10, a);
++     Vector<T> v2(10, b);
++     Vector<T> result(10, T());
++     
++     // multiply them
++     result = v1 * v2;
++   
++     // check the result
++     for ( index_type i = 0; i < result.size(); ++i )
++       assert( equal( result.get(i), a * b ) );
++   }
++ 
++   // non-unit strides
++   {
++     typedef typename Vector<T>::subview_type vector_subview_type;
++ 
++     Vector<T> v1_(20, a);
++     vector_subview_type v1 = v1_(Domain<1>(0, 2, 10));
++     Vector<T> v2_(30, b);
++     vector_subview_type v2 = v2_(Domain<1>(0, 3, 10));
++     Vector<T> result_(50, T());
++     vector_subview_type result = result_(Domain<1>(0, 5, 10));
++ 
++     // multiply them
++     result = v1 * v2;
++ 
++     // check the result
++     for ( index_type i = 0; i < result.size(); ++i )
++       assert( equal( result.get(i), a * b ) );
++   }
++ }
++ 
++ 
++ template <typename T>
++ void 
++ Test_split_mul( complex<T> a, complex<T> b)
++ {
++   typedef impl::Fast_block<1, complex<T>,
++     impl::Layout<1, row1_type,
++       impl::Stride_unit_dense,
++       impl::Cmplx_split_fmt> > split_type;
++ 
++   Vector<complex<T>, split_type>  v1(10, a);
++   Vector<complex<T>, split_type>  v2(10, b);
++   Vector<complex<T>, split_type>  result(10, T());
++ 
++   // multiply them
++   result = v1 * v2;
++ 
++   // check the result
++   for ( index_type i = 0; i < result.size(); ++i )
++     assert( equal( result.get(i), a * b ) );
++ }
++ 
++ 
++ template <typename T>
++ void 
++ Test_div( T a, T b)
++ {
++   // unit strides
++   {
++     Vector<T> v1(10, a);
++     Vector<T> v2(10, b);
++     Vector<T> result(10, T());
++     
++     // divide them
++     result = v1 / v2;
++     
++     // check the result
++     for ( index_type i = 0; i < result.size(); ++i )
++       assert( equal( result.get(i), a / b ) );
++   }
++ 
++   // non-unit strides
++   {
++     typedef typename Vector<T>::subview_type vector_subview_type;
++ 
++     Vector<T> v1_(20, a);
++     Vector<T> v2_(30, b);
++     Vector<T> result_(50, T());
++     vector_subview_type v1 = v1_(Domain<1>(0, 2, 10));
++     vector_subview_type v2 = v2_(Domain<1>(0, 3, 10));
++     vector_subview_type result = result_(Domain<1>(0, 5, 10));
++ 
++     // divide them
++     result = v1 / v2;
++ 
++     // check the result
++     for ( index_type i = 0; i < result.size(); ++i )
++       assert( equal( result.get(i), a / b ) );
++   }
++ }
++ 
++ 
++ template <typename T>
++ void 
++ Test_split_div( complex<T> a, complex<T> b )
++ {
++   typedef impl::Fast_block<1, complex<T>,
++     impl::Layout<1, row1_type,
++       impl::Stride_unit_dense,
++       impl::Cmplx_split_fmt> > split_type;
++ 
++   Vector<complex<T>, split_type>  v1(10, a);
++   Vector<complex<T>, split_type>  v2(10, b);
++   Vector<complex<T>, split_type>  result(10, T());
++ 
++   // divide them
++   result = v1 / v2;
++ 
++   // check the result
++   for ( index_type i = 0; i < result.size(); ++i )
++     assert( equal( result.get(i), a / b ) );
++ }
++ 
++ 
++ 
++ 
++ 
++ void
++ Test_add()
++ {
++   Test_add<float>( float(1.0), float(2.0));
++   Test_add<double>( double(1.0), double(2.0));
++   Test_add<complex<float> >( complex<float>(1.0, 2.0),
++     complex<float>(3.0, 4.0) );
++   Test_add<complex<double> >( complex<double>(1.0, 2.0), 
++     complex<double>(3.0, 4.0) );
++   Test_split_add<float>( complex<float>(1.0, 2.0), 
++     complex<float>(3.0, 4.0) );
++   Test_split_add<double>( complex<double>(1.0, 2.0), 
++     complex<double>(3.0, 4.0) );
++ }
++ 
++ void
++ Test_sub()
++ {
++   Test_sub<float>( float(3.0), float(2.0));
++   Test_sub<double>( double(3.0), double(2.0));
++   Test_sub<complex<float> >( complex<float>(4.0, 3.0),
++     complex<float>(2.0, 1.0) );
++   Test_sub<complex<double> >( complex<double>(4.0, 3.0), 
++     complex<double>(2.0, 1.0) );
++   Test_split_sub<float>( complex<float>(4.0, 3.0), 
++     complex<float>(2.0, 1.0) );
++   Test_split_sub<double>( complex<double>(4.0, 3.0), 
++     complex<double>(2.0, 1.0) );
++ }
++ 
++ void
++ Test_mul()
++ {
++   Test_mul<float>( float(1.0), float(2.0));
++   Test_mul<double>( double(1.0), double(2.0));
++   Test_mul<complex<float> >( complex<float>(1.0, 2.0),
++     complex<float>(3.0, 4.0) );
++   Test_mul<complex<double> >( complex<double>(1.0, 2.0), 
++     complex<double>(3.0, 4.0) );
++   Test_split_mul<float>( complex<float>(1.0, 2.0), 
++     complex<float>(3.0, 4.0) );
++   Test_split_mul<double>( complex<double>(1.0, 2.0), 
++     complex<double>(3.0, 4.0) );
++ }
++ 
++ void
++ Test_div()
++ {
++   Test_div<float>( float(1.0), float(2.0));
++   Test_div<double>( double(1.0), double(2.0));
++   Test_div<complex<float> >( complex<float>(1.0, 2.0),
++     complex<float>(3.0, 4.0) );
++   Test_div<complex<double> >( complex<double>(1.0, 2.0), 
++     complex<double>(3.0, 4.0) );
++   Test_split_div<float>( complex<float>(1.0, 2.0), 
++     complex<float>(3.0, 4.0) );
++   Test_split_div<double>( complex<double>(1.0, 2.0), 
++     complex<double>(3.0, 4.0) );
++ }
++ 
++ 
++ 
++ 
++ 
++ int main() 
++ {
++   vsip::vsipl v;
++ 
++   Test_add();
++   Test_sub();
++   Test_mul();
++   Test_div();
++ }
++ 
+Index: tests/sal-assumptions.cpp
+===================================================================
+RCS file: tests/sal-assumptions.cpp
+diff -N tests/sal-assumptions.cpp
+*** /dev/null	1 Jan 1970 00:00:00 -0000
+--- tests/sal-assumptions.cpp	13 Oct 2005 17:42:15 -0000
+***************
+*** 0 ****
+--- 1,63 ----
++ /* Copyright (c) 2005 by CodeSourcery, LLC.  All rights reserved. */
++ 
++ /** @file    tests/sal-assumptions.cpp
++     @author  Don McCoy
++     @date    2005-10-13
++     @brief   VSIPL++ Library: Check SAL assumptions.
++ */
++ 
++ 
++ /***********************************************************************
++   Included Files
++ ***********************************************************************/
++ 
++ #include <cmath>
++ #include <iostream>
++ #include <vsip/initfin.hpp>
++ #include <vsip/impl/layout.hpp>
++ #include <sal.h>
++ #include "test.hpp"
++ #include "output.hpp"
++ 
++ using namespace std;
++ using namespace vsip;
++ 
++ 
++ // this verifies that std::pair<> and the SAL types for split
++ // complex share the same layout.  the explicit cast is exactly the
++ // method used when the SAL library is used for elementwise operations.
++ void 
++ check_split_layout()
++ {
++   {
++     float real_value[1] = { 1.23 };
++     float imag_value[1] = { 4.56 };
++     std::pair<float *, float *> p(real_value, imag_value);
++     COMPLEX_SPLIT *pcs = (COMPLEX_SPLIT *) &p;
++     
++     assert( pcs->realp == p.first );
++     assert( pcs->imagp == p.second );
++     assert( *pcs->realp == *p.first );
++     assert( *pcs->imagp == *p.second );
++   }
++ 
++   {
++     double real_value[1] = { 1.23 };
++     double imag_value[1] = { 4.56 };
++     std::pair<double *, double *> p(real_value, imag_value);
++     DOUBLE_COMPLEX_SPLIT *pcs = (DOUBLE_COMPLEX_SPLIT *) &p;
++     
++     assert( pcs->realp == p.first );
++     assert( pcs->imagp == p.second );
++     assert( *pcs->realp == *p.first );
++     assert( *pcs->imagp == *p.second );
++   }
++ }
++ 
++ 
++ int 
++ main()
++ {
++   check_split_layout();
++ }
++ 

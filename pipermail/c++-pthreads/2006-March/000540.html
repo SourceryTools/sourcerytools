@@ -1,0 +1,282 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [c++-pthreads]  Re: FW: RE: Re: I'm Lost
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:c%2B%2B-pthreads%40codesourcery.com?Subject=Re%3A%20%5Bc%2B%2B-pthreads%5D%20%20Re%3A%20FW%3A%20RE%3A%20Re%3A%20I%27m%20Lost&In-Reply-To=%3C440E3FE8.4040902%40hp.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000539.html">
+   <LINK REL="Next"  HREF="000543.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[c++-pthreads]  Re: FW: RE: Re: I'm Lost</H1>
+    <B>Dave Butenhof</B> 
+    <A HREF="mailto:c%2B%2B-pthreads%40codesourcery.com?Subject=Re%3A%20%5Bc%2B%2B-pthreads%5D%20%20Re%3A%20FW%3A%20RE%3A%20Re%3A%20I%27m%20Lost&In-Reply-To=%3C440E3FE8.4040902%40hp.com%3E"
+       TITLE="[c++-pthreads]  Re: FW: RE: Re: I'm Lost">david.butenhof at hp.com
+       </A><BR>
+    <I>Wed Mar  8 02:22:32 UTC 2006</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000539.html">[c++-pthreads]  Re: FW: RE: Re: I'm Lost
+</A></li>
+        <LI>Next message: <A HREF="000543.html">[c++-pthreads]  Re: FW: RE: Re: I'm Lost
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#540">[ date ]</a>
+              <a href="thread.html#540">[ thread ]</a>
+              <a href="subject.html#540">[ subject ]</a>
+              <a href="author.html#540">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>David Abrahams wrote:
+&gt;<i> Dave Butenhof &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/c++-pthreads">david.butenhof at hp.com</A>&gt; writes:
+</I>&gt;<i>   
+</I>I'm cutting off a lot of the top part. It's getting long, the discussion 
+isn't really going anywhere relevant to the root topic, and we're 
+probably better off just dropping it. That, at any rate, is my 
+preference. ;-)
+&gt;&gt;<i> Ah, but cancellation is basically asynchronous with respect to the 
+</I>&gt;&gt;<i> receiving thread. 
+</I>&gt;&gt;<i>     
+</I>&gt;<i> Not the kind of cancellation that uses cancellation points.
+</I>&gt;<i> &quot;Asynchronous exception&quot; means an exception that emanates from code
+</I>&gt;<i> that is not allowed to throw unless undefined behavior is invoked.
+</I>&gt;<i> Everything else is a synchronous exception.  If you call some of that
+</I>&gt;<i> latter stuff &quot;asynchronous,&quot; (a)synchronicity of exceptions becomes a
+</I>&gt;<i> useless distinction.
+</I>&gt;<i>   
+</I>The entire point of threads is that their operation is asynchronous. 
+Everything about the design of a threaded application, a runtime and OS 
+that support threads, a LANGUAGE that supports threads, has to be to 
+deal with asynchrony -- with parallel call stacks running 
+simultaneously. Anything that happens in or because of a thread is 
+asynchronous with respect to other threads.
+
+Deferred cancellation is a &quot;conversion interface&quot; to allow the 
+asynchronous external event to manifest synchronously in the target 
+thread, for ease and consistency of cleanup. But that doesn't make the 
+event synchronous, and I think that the distinction is important.
+
+Cancellation is asynchronous up to the point where the exception is 
+thrown, synchronously, by the target thread to unwind and terminate. A 
+blocking read operation isn't cancelled synchronously at the beginning 
+or end of the operation, or even the beginning or end of the blocking 
+part of the I/O -- it can be interrupted asynchronously somewhere in the 
+middle. In my implementation, I initiated the unwind (the &quot;throw&quot;) from 
+the interrupt handler, if cancellation is enabled, rather than deferring 
+it until the unblocked operation wakes up... though that would certainly 
+be another alternative.
+&gt;&gt;<i> Even though we deliver the exception only at defined synchronous
+</I>&gt;&gt;<i> points, the cancellation request can arrive at any instant.  
+</I>&gt;&gt;<i>     
+</I>&gt;<i> But exactly when it arrives is irrelevant with respect to the
+</I>&gt;<i> receiving thread.
+</I>&gt;<i>   
+</I>I suppose you can reasonably argue that. I think that understanding the 
+model is important when you making coding decisions.
+&gt;&gt;<i> This is mostly relevant when you talk about blocking behavior --
+</I>&gt;&gt;<i> that a blocking operation can be interrupted anywhere in the middle
+</I>&gt;&gt;<i> IS asynchronous.
+</I>&gt;&gt;<i>     
+</I>&gt;<i> Huh?  It sounds like you're interested in some detail that I don't yet
+</I>&gt;<i> have context for.
+</I>&gt;<i>   
+</I>Perhaps I'm worried about thought models and implementation while you're 
+concerned with appearance. Both views are certainly valid within certain 
+domains.
+&gt;&gt;<i> &quot;Deferred&quot; cancelability converts that asynchronous interrupt into a 
+</I>&gt;&gt;<i> synchronous exception, though the definition of the blocking operation 
+</I>&gt;&gt;<i> as a cancellation point. So the cancelled thread doesn't necessarily see 
+</I>&gt;&gt;<i> the exception as &quot;asynchronous&quot; (it called a function, and got back an 
+</I>&gt;&gt;<i> exception); but that doesn't change the fact that it really was 
+</I>&gt;&gt;<i> asynchronous all the same.
+</I>&gt;&gt;<i>     
+</I>&gt;<i> Cancellation can be as asynchronous as you like from that definition.
+</I>&gt;<i> The resulting exception is still synchronous.
+</I>&gt;<i>   
+</I>Right. Cancellation is asynchronous. The exception that notifies the 
+thread of cancellation is synchronous. There we go. That's the 
+conversion interface.
+&gt;&gt;<i> But I don't mean it in anything like the sense of &quot;asynchronous 
+</I>&gt;&gt;<i> cancelability mode&quot;, where the exception can be raised (cancel 
+</I>&gt;&gt;<i> delivered) at any arbitrary point. 
+</I>&gt;&gt;<i>     
+</I>&gt;<i> Good.  Let's pick different terms that don't lead to this confusion,
+</I>&gt;<i> please.
+</I>&gt;<i>   
+</I>But C++ people should be good at overloading. ;-)
+
+&quot;Asynchronous cancelability type&quot; is (at least potentially) an 
+asynchronous EXCEPTION in response to an asynchronous event, while 
+&quot;deferred cancelability type&quot; is a synchronous (deferred) exception in 
+response to the same asynchronous event. Does that help?
+
+Cancelability type affects only the DELIVERY of notification within the 
+target thread, not either the &quot;launching&quot; or &quot;delivery&quot; mechanisms of 
+cancellation.
+&gt;&gt;<i> However, when cancellation is enabled, any blocking call (or any
+</I>&gt;&gt;<i> method/operator that makes or might make a blocking call, like
+</I>&gt;&gt;<i> &quot;cout&lt;&lt;&quot;, might raise an exception. Not all code will be prepared to
+</I>&gt;&gt;<i> handle that, and much shouldn't be; it's important to be able to
+</I>&gt;&gt;<i> disable cancelability dynamically over critical scopes. It's not
+</I>&gt;&gt;<i> like most exceptions where the conditions for an exception are
+</I>&gt;&gt;<i> generally static; it could happen at any time for reasons the
+</I>&gt;&gt;<i> current thread cannot possibly anticipate.
+</I>&gt;&gt;<i>     
+</I>&gt;<i> That's exactly like most exceptions (c.f. out-of-memory).  Usually
+</I>&gt;<i> conditions whose reasons can be anticipated can be effectively tested
+</I>&gt;<i> and become preconditions or simply should be reported by other means.
+</I>&gt;<i>   
+</I>Sometimes. Exceptions are great for &quot;out of band&quot; notifications that may 
+not be intended for the direct caller; they can be picked up with full 
+state, and without additional mechanism, by anyone along the call path 
+who cares.
+&gt;&gt;<i> and I'm much less ignorant than I was 2 years ago when I started
+</I>&gt;&gt;<i> working with C++ and STL on a regular basis. Still, I am not steeped
+</I>&gt;&gt;<i> in the history and tradition of C++ as I am in threads, and probably
+</I>&gt;&gt;<i> never will be. More than that, while I have an authoritative voice
+</I>&gt;&gt;<i> on the POSIX working group and in the community, I'm not involved
+</I>&gt;&gt;<i> with the C++ committee and have no time or management support to get
+</I>&gt;&gt;<i> involved; and I won't put myself in the position of being an outside
+</I>&gt;&gt;<i> expert in some other area pretending to tell the C++ committee what
+</I>&gt;&gt;<i> it must (or even should) do.
+</I>&gt;&gt;<i>     
+</I>&gt;<i> I don't think you should.  There are other areas where you could make
+</I>&gt;<i> a big difference, though, like the ISO committee for C++/POSIX binding
+</I>&gt;<i> Mr. Drepper is now running.
+</I>&gt;<i>   
+</I>&quot;ISO committee&quot; is rather a strong description; it's a simple mailing 
+list that's hoping to gain some preliminary consensus towards 
+constructing a formal proposal to request permission to develop a 
+charter and start a working group with the intent of building a proposal 
+for a binding. But, yeah, OK, fine. ;-)
+
+In any case, I am following it, and contributing to the (sporadic) 
+discussions. In fact, when I got your re-opening of this mailing list I 
+initially thought you were writing to that one; though this discussion 
+is rather more detailed and relevant than what we've seen so far on the 
+other.
+
+I will get as involved as I can given my time constraints, but we'll see 
+what that amounts to as the mailing list discussions progress. I assure 
+you that if I hold back it's not for lack of interest or motivation. ;-)
+&gt;&gt;&gt;<i> No, I wasn't suggesting anything that couldn't be caught.  I was just
+</I>&gt;&gt;&gt;<i> suggesting an exception that couldn't be stopped.  It could throw
+</I>&gt;&gt;&gt;<i> itself in its dtor (not that I'm advocating it, but it might satisfy
+</I>&gt;&gt;&gt;<i> the &quot;other side&quot;), for example.
+</I>&gt;&gt;&gt;<i>       
+</I>&gt;&gt;<i> The POSIX model where cancel propagates inexorably to thread termination 
+</I>&gt;&gt;<i> is an inherently flawed compromise; but simply the best we could do 
+</I>&gt;&gt;<i> within the context of ISO C and POSIX APIs. OUR implementation always 
+</I>&gt;&gt;<i> allowed finalization, via C++ catch(...), our ISO C &quot;CATCH_ALL&quot; 
+</I>&gt;&gt;<i> extensions, or whatever other language syntax might fit.
+</I>&gt;&gt;<i>
+</I>&gt;&gt;<i> I really wouldn't want to propagate this restriction to C++.
+</I>&gt;&gt;<i>     
+</I>&gt;<i> Be clear, I'm not talking about a restriction.  If you ask it to throw
+</I>&gt;<i> something normal, it's finalizable in the normal way.  This is a way
+</I>&gt;<i> for the _cancelling_ thread to say, &quot;I know what I'm doing; the author
+</I>&gt;<i> of the thread I'm cancelling doesn't.  Force it to be killed at the
+</I>&gt;<i> next cancellation point.&quot;
+</I>&gt;<i>   
+</I>The whole concept of cancellation is exactly that the TARGET thread, not 
+the cancelling thread, knows what it's doing and should control the 
+cleanup and termination entirely. Without explicit synchronization, the 
+cancelling thread can't know what it's doing and whether a forced abort 
+is appropriate or safe. And if it has enough synchronization to know 
+that, there are far better ways to gain a cooperative termination than 
+cancellation.
+&gt;&gt;<i> One advantage, though, of the single cancel exception, is that it's 
+</I>&gt;&gt;<i> universal. When you asynchronously issue a cancel request for a thread, 
+</I>&gt;&gt;<i> you can't really know what code is executing: your's, STL, some other 
+</I>&gt;&gt;<i> shared library, etc. Cancel means the same to all of them, and either is 
+</I>&gt;&gt;<i> supported with commonly agreed semantics or will be ignored (by 
+</I>&gt;&gt;<i> disabling cancellation in critical scopes). Once you start firing off 
+</I>&gt;&gt;<i> your own arbitrary exceptions, though, anything might happen because 
+</I>&gt;&gt;<i> half the time the exceptions won't belong anywhere in the call tree 
+</I>&gt;&gt;<i> that's active at the time they arrive.
+</I>&gt;&gt;<i>     
+</I>&gt;<i> That's not the way most exception-safe code works.  It goes to the
+</I>&gt;<i> reason that exception-specifications are a failure: the particular
+</I>&gt;<i> type of exception that propagates out of a throwing function makes
+</I>&gt;<i> almost no difference to anyone.  The type only becomes important where
+</I>&gt;<i> errors are reported, or where exceptions are translated -- either to
+</I>&gt;<i> other exception types or, for example, to error return codes that can
+</I>&gt;<i> propagate through other languages.  So the danger of injecting an
+</I>&gt;<i> arbitrary exception type into existing code (especially libraries,
+</I>&gt;<i> which are very often exception-neutral) is very very low.
+</I>&gt;<i>   
+</I>That's an intriguing statement. I'll need to think about that some.
+
+I've certainly always thought that exception specifications were little 
+more than a trap into which people could mire themselves as deeply as 
+they like. So maybe that means I agree. I'm not sure. ;-)
+
+I guess I'd have to agree that the danger of injecting another exception 
+type is low. And mostly due to the fact that C++ has no &quot;root exception 
+type&quot; onto which could be grafted some minimal universal state (an 
+architected status code space, like VMS condition codes, a descriptive 
+string, etc.) so that nobody would need an anonymous and semantic-free 
+catch(...) just to be sure nothing slipped past.
+&gt;&gt;<i> Which brings us back to the &quot;academic&quot; resolution: if an exception
+</I>&gt;&gt;<i> means distinct things in different call trees, those call trees
+</I>&gt;&gt;<i> should be distinct threads and only one universal exception is
+</I>&gt;&gt;<i> necessary. ;-)
+</I>&gt;&gt;<i>     
+</I>&gt;<i> I think you might be missing the point.  I am proposing the generalized 
+</I>&gt;<i>
+</I>&gt;<i>   thread_throw( thread_id, exception_object )
+</I>&gt;<i>
+</I>&gt;<i> function so that those who wish to hang themselves with homegrown
+</I>&gt;<i> unstoppable exception types can do so without forcing the standard to
+</I>&gt;<i> sanction the use of unstoppable exceptions by providing any kind of
+</I>&gt;<i> &quot;forced cancellation.&quot;  If &quot;the other side&quot; has A WAY to force
+</I>&gt;<i> cancellation, maybe they won't insist it has to be THE WAY.  I know,
+</I>&gt;<i> wishful thinking :)
+</I>&gt;<i>   
+</I>I'm not sure how sanctioning generalized unstoppable exceptions is going 
+to mollify anyone opposed to an unstoppable variety of a specific 
+exception. At best, cancel becomes a subset of cross-thread throw with 
+specialized additional deferral semantics. And if you're generalizing 
+the unstoppable exception, I don't quite see how it makes sense not to 
+generalize the deferral, and now cancel really is just a specific 
+predefined exception that can be thrown like any other exception. That's 
+not necessarily bad; I just don't see how it's a compromise. (A 
+compromise needs to make BOTH sides equally unhappy, not just one side!)
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: david.butenhof.vcf
+Type: text/x-vcard
+Size: 476 bytes
+Desc: not available
+URL: &lt;<A HREF="http://sourcerytools.com/pipermail/c++-pthreads/attachments/20060307/23fd6799/attachment.vcf">http://sourcerytools.com/pipermail/c++-pthreads/attachments/20060307/23fd6799/attachment.vcf</A>&gt;
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000539.html">[c++-pthreads]  Re: FW: RE: Re: I'm Lost
+</A></li>
+	<LI>Next message: <A HREF="000543.html">[c++-pthreads]  Re: FW: RE: Re: I'm Lost
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#540">[ date ]</a>
+              <a href="thread.html#540">[ thread ]</a>
+              <a href="subject.html#540">[ subject ]</a>
+              <a href="author.html#540">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/c++-pthreads">More information about the c++-pthreads
+mailing list</a><br>
+</body></html>

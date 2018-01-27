@@ -1,0 +1,126 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [vsipl++] [patch] BLAS dispatch
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20%5Bpatch%5D%20BLAS%20dispatch&In-Reply-To=%3C43701943.1000405%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000125.html">
+   <LINK REL="Next"  HREF="000127.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[vsipl++] [patch] BLAS dispatch</H1>
+    <B>Jules Bergmann</B> 
+    <A HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20%5Bpatch%5D%20BLAS%20dispatch&In-Reply-To=%3C43701943.1000405%40codesourcery.com%3E"
+       TITLE="[vsipl++] [patch] BLAS dispatch">jules at codesourcery.com
+       </A><BR>
+    <I>Tue Nov  8 03:19:31 UTC 2005</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000125.html">[patch] BLAS dispatch
+</A></li>
+        <LI>Next message: <A HREF="000127.html">[vsipl++] [patch] BLAS dispatch
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#126">[ date ]</a>
+              <a href="thread.html#126">[ thread ]</a>
+              <a href="subject.html#126">[ subject ]</a>
+              <a href="author.html#126">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>
+
+Don McCoy wrote:
+&gt;<i> The attached patch adds dispatch support for certain BLAS functions.  
+</I>&gt;<i> Two things that are worth drawing attention to are: 1) The row-major 
+</I>&gt;<i> cases for outer() with complex values and 2) The various run-time and 
+</I>&gt;<i> compile-time checks used in the blas evaluator functions.
+</I>
+This patch looks good.  I have two small comments below, please check it 
+in once they're addressed.
+
+&gt;<i> 
+</I>&gt;<i> For 1), my concern is that the BLAS 'ger' variant used can only 
+</I>&gt;<i> conjugate the second vector argument.  I'm using the non-conj version 
+</I>&gt;<i> and performing the conjugation on the first vector argument manually.  
+</I>&gt;<i> It involves memory allocation and an extra loop through one of the 
+</I>&gt;<i> vectors.  I'd like to know if there is a more efficient way to do this.
+</I>
+The choices here seem to be:
+  1) use generic implementation
+  2) compute result in wrong dimension order, then tranpose in place.
+  3) conjugate in-place, compute outer, reverse conjugate
+  4) allocate temporary storage to store conjugate (as you currently do)
+
+Let's go with either (1) or (3).  (2) would be good, but although we 
+have a stub in Ext_data to reorgnize data, its not implemented yet.  We 
+can't do (4), the current approach, because of the memory allocation. 
+We need to avoid memory allocation that would occur during the inner 
+loop of an application.
+
+&gt;<i> 
+</I>&gt;<i> For 2), just want to make sure I didn't omit any checks that would 
+</I>&gt;<i> dispatch a call to BLAS that it cannot handle.  I was careful to verify 
+</I>&gt;<i> that BLAS was only called when it should be, but it would be easy to 
+</I>&gt;<i> overlook something if there is not a corresponding test case for it.  In 
+</I>&gt;<i> cases like outer, it is not tested with a column-major result matrix if 
+</I>&gt;<i> only the vsip::outer() is called (because it allocates the matrix with 
+</I>&gt;<i> the default block).  So, for the test, I added the col-major cases 
+</I>&gt;<i> explicitly by calling vsip::impl::outer() directly.  There may be other 
+</I>&gt;<i> cases where we should add specific tests for col-major layouts.
+</I>
+This sounds good.
+
+				-- Jules
+
+
+&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: /home/cvs/Repository/vpp/src/vsip/impl/general_dispatch.hpp,v
+</I>&gt;<i> retrieving revision 1.1
+</I>&gt;<i> diff -c -p -r1.1 general_dispatch.hpp
+</I>&gt;<i> *** src/vsip/impl/general_dispatch.hpp	12 Oct 2005 12:45:05 -0000	1.1
+</I>&gt;<i> --- src/vsip/impl/general_dispatch.hpp	4 Nov 2005 19:32:27 -0000
+</I>&gt;<i> *************** namespace impl
+</I>&gt;<i> *** 35,40 ****
+</I>&gt;<i> --- 35,42 ----
+</I>&gt;<i>   
+</I>&gt;<i>   struct Op_prod_vv;	// vector-vector dot-product
+</I>
+Let's create seperate tags for dot-product and outer-product to avoid 
+confusion.  Perhaps Op_prod_vv_dot and Op_prod_vv_outer?
+
+&gt;<i>   struct Op_prod_mm;	// matrix-matrix product
+</I>&gt;<i> + struct Op_prod_mv;	// matrix-vector product
+</I>&gt;<i> + struct Op_prod_vm;	// vector-matrix product
+</I>&gt;<i>   
+</I>
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000125.html">[patch] BLAS dispatch
+</A></li>
+	<LI>Next message: <A HREF="000127.html">[vsipl++] [patch] BLAS dispatch
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#126">[ date ]</a>
+              <a href="thread.html#126">[ thread ]</a>
+              <a href="subject.html#126">[ subject ]</a>
+              <a href="author.html#126">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">More information about the vsipl++
+mailing list</a><br>
+</body></html>

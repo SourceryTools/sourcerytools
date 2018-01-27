@@ -1,0 +1,269 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> PATCH: Remove unncessary configury
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:qmtest%40codesourcery.com?Subject=Re%3A%20PATCH%3A%20Remove%20unncessary%20configury&In-Reply-To=%3C1068451018.3120.25.camel%40minax.codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000590.html">
+   <LINK REL="Next"  HREF="000577.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>PATCH: Remove unncessary configury</H1>
+    <B>Mark Mitchell</B> 
+    <A HREF="mailto:qmtest%40codesourcery.com?Subject=Re%3A%20PATCH%3A%20Remove%20unncessary%20configury&In-Reply-To=%3C1068451018.3120.25.camel%40minax.codesourcery.com%3E"
+       TITLE="PATCH: Remove unncessary configury">mark at codesourcery.com
+       </A><BR>
+    <I>Mon Nov 10 07:56:58 UTC 2003</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000590.html">[qmtest] command.ShellCommandTest run directory
+</A></li>
+        <LI>Next message: <A HREF="000577.html">PATCH: Do not build documentation when running 'make check'
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#576">[ date ]</a>
+              <a href="thread.html#576">[ thread ]</a>
+              <a href="subject.html#576">[ subject ]</a>
+              <a href="author.html#576">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Now that we've switched over to distutils, there's no need for some of
+the checks we were previously doing at configure-time.  This patch
+removes the unneeded checks, and makes corresponding simplifications of
+the GNUMakefile.
+
+-- 
+Mark Mitchell &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">mark at codesourcery.com</A>&gt;
+CodeSourcery, LLC
+-------------- next part --------------
+2003-11-09  Mark Mitchell  &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">mark at codesourcery.com</A>&gt;
+
+	* GNUmakefile.in (DOCUMENTATION): Set value to MAINTAINER_MODE.
+	(TIDY): Likewise.
+	(TIDYFLAGS): Likewise.
+	* configure.in: Do not search for Jade, tidy, DocBook stylesheets,
+	etc.
+
+Index: GNUmakefile.in
+===================================================================
+RCS file: /home/sc/Repository/qm/GNUmakefile.in,v
+retrieving revision 1.30
+diff -c -5 -p -r1.30 GNUmakefile.in
+*** GNUmakefile.in	14 Oct 2003 21:56:06 -0000	1.30
+--- GNUmakefile.in	10 Nov 2003 07:47:33 -0000
+*************** PYTHON 		= PYTHONPATH=$(subst $(SPACE),:
+*** 30,44 ****
+  		  $(PYTHONBIN) -O
+  PYTHON_PLATFORM = @PYTHON_PLATFORM@
+  PYTHONDIRS	= $(TOPDIR)
+  
+  # Whether or not we should generate documentation.
+! DOCUMENTATION = @DOCUMENTATION@
+! 
+! # Tidy configuration.
+! TIDY 		= @TIDY@
+! TIDYFLAGS	= -wrap 72 -i --indent-spaces 1
+  
+  # HappyDoc configuration.
+  HAPPYDOC	= @HAPPYDOC@
+  
+  # Places to install things.
+--- 30,40 ----
+  		  $(PYTHONBIN) -O
+  PYTHON_PLATFORM = @PYTHON_PLATFORM@
+  PYTHONDIRS	= $(TOPDIR)
+  
+  # Whether or not we should generate documentation.
+! DOCUMENTATION = @MAINTAINER_MODE@
+  
+  # HappyDoc configuration.
+  HAPPYDOC	= @HAPPYDOC@
+  
+  # Places to install things.
+*************** bindir		= @bindir@
+*** 52,62 ****
+  # Build Rules
+  ########################################################################
+  
+  .PHONY: all
+  all:
+! ifeq ($(DOCUMENTATION), yes)
+  	$(PYTHON) ./setup.py build_doc
+  endif
+  	$(PYTHON) ./setup.py build
+  
+  # Build internal documentation.
+--- 48,58 ----
+  # Build Rules
+  ########################################################################
+  
+  .PHONY: all
+  all:
+! ifeq ($(DOCUMENTATION),1)
+  	$(PYTHON) ./setup.py build_doc
+  endif
+  	$(PYTHON) ./setup.py build
+  
+  # Build internal documentation.
+Index: configure.in
+===================================================================
+RCS file: /home/sc/Repository/qm/configure.in,v
+retrieving revision 1.32
+diff -c -5 -p -r1.32 configure.in
+*** configure.in	10 Aug 2003 21:31:58 -0000	1.32
+--- configure.in	10 Nov 2003 07:47:33 -0000
+*************** dnl ####################################
+*** 111,216 ****
+  dnl Look for HappyDoc, which we use to build source documentation.
+  dnl ####################################################################
+  
+  AC_PATH_PROG(HAPPYDOC, happydoc)
+  
+- dnl ####################################################################
+- dnl Jade and Tidy are used to generate documentation.  Without Jade,
+- dnl documentation will not be built.
+- dnl ####################################################################
+- 
+- AC_PATH_PROG(JADE, jade, no)
+- AC_PATH_PROG(TIDY, tidy, no)
+- 
+- dnl ####################################################################
+- dnl We need XML declarations for Jade, in xml.dcl.  This file should be 
+- dnl included with Jade.  Look for it in some usual places.
+- dnl ####################################################################
+- 
+- if test &quot;$JADE&quot; != no; then
+-   AC_MSG_CHECKING(xml.dcl)
+-   XML_DCL=no
+-   for file in \
+-     /usr/share/doc/jade*/pubtext/xml.dcl \
+-     /usr/share/doc/openjade*/pubtext/xml.dcl \
+-     /usr/doc/jade*/pubtext/xml.dcl \
+-     /usr/share/sgml/declaration/xml.dcl \
+-   ; do
+-     if test -r &quot;$file&quot;; then
+-       XML_DCL=$file
+-       break
+-     fi
+-   done
+-   AC_MSG_RESULT($XML_DCL)
+-   AC_SUBST(XML_DCL)
+- fi
+- 
+- dnl ####################################################################
+- dnl To build documentation, we need DSSSL stylesheets for DocBook.  Look
+- dnl for them in some usual places.
+- dnl ####################################################################
+- 
+- AC_MSG_CHECKING(DocBook stylesheets)
+- DOCBOOK_STYLESHEETS=no
+- for dir in \
+-   /usr/lib/sgml/stylesheets/docbook \
+-   /usr/lib/sgml/stylesheet/dsssl/docbook \
+- ; do
+-   if test -d $dir; then
+-     DOCBOOK_STYLESHEETS=$dir
+-     break
+-   fi
+- done
+- AC_MSG_RESULT($DOCBOOK_STYLESHEETS)
+- AC_SUBST(DOCBOOK_STYLESHEETS)
+- 
+- dnl #####################
+- dnl Find the Docbook DTD.
+- dnl #####################
+- 
+- DOCBOOK_DTD=
+- AC_MSG_CHECKING(for docbook DTD)
+- AC_ARG_WITH(docbook-dtd, 
+-             [  --with-docbook-dtd=PATH directory containing the docbook DTD.],
+-             [case $withval in
+-                yes) DOCBOOK_DTD=/usr/lib/sgml;;
+-                no)  ;;
+-                *)   DOCBOOK_DTD=$withval;;
+-              esac],
+-             DOCBOOK_DTD=/usr/lib/sgml)
+- AC_MSG_RESULT($DOCBOOK_DTD)
+- AC_SUBST(DOCBOOK_DTD)
+- 
+- if test &quot;$JADE&quot; = no -o &quot;$XML_DCL&quot; = no -o &quot;$DOCBOOK_DTD&quot; = no; then
+-   AC_MSG_WARN(Documentation will not be built.)
+-   DOCUMENTATION=no
+- else
+-   DOCUMENTATION=yes
+- fi
+- 
+  # Do not try to build documentation unless --enable-maintainer-mode
+  # was specified.  The documentation is pre-generated for releases.
+! if test $DOCUMENTATION = yes &amp;&amp; test $MAINTAINER_MODE = 0; then
+!   AC_MSG_WARN(Documentation is only built in maintainer mode.)
+!   DOCUMENTATION=no
+! fi
+! 
+! # Maintainers should be building documentation.
+! if test $DOCUMENTATION = no &amp;&amp; test $MAINTAINER_MODE = 1; then
+!   AC_MSG_WARN(Documentation will not be built despite --enable-maintainer-mode.)
+!   AC_MSG_WARN(Check that Jade and Docbook have been installed.)
+! fi
+! 
+! if test $DOCUMENTATION = yes \
+!    || test -f &quot;$srcdir/qm/test/doc/print/manual.pdf&quot;; then
+!   INSTALL_DOCUMENTATION=yes
+! else
+!   INSTALL_DOCUMENTATION=no
+  fi
+- 
+- AC_SUBST(DOCUMENTATION)
+- AC_SUBST(INSTALL_DOCUMENTATION)
+  
+  dnl ####################################################################
+  dnl Generate results
+  dnl ####################################################################
+  
+--- 111,125 ----
+  dnl Look for HappyDoc, which we use to build source documentation.
+  dnl ####################################################################
+  
+  AC_PATH_PROG(HAPPYDOC, happydoc)
+  
+  # Do not try to build documentation unless --enable-maintainer-mode
+  # was specified.  The documentation is pre-generated for releases.
+! if test $MAINTAINER_MODE = 0; then
+!   AC_MSG_WARN(Documentation is only built with --enable-maintainer-mode.)
+  fi
+  
+  dnl ####################################################################
+  dnl Generate results
+  dnl ####################################################################
+  
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000590.html">[qmtest] command.ShellCommandTest run directory
+</A></li>
+	<LI>Next message: <A HREF="000577.html">PATCH: Do not build documentation when running 'make check'
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#576">[ date ]</a>
+              <a href="thread.html#576">[ thread ]</a>
+              <a href="subject.html#576">[ subject ]</a>
+              <a href="author.html#576">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">More information about the qmtest
+mailing list</a><br>
+</body></html>

@@ -1,0 +1,190 @@
+// -*- C++ -*-
+// ACL:license
+// ----------------------------------------------------------------------
+// This software and ancillary information (herein called "SOFTWARE")
+// called POOMA (Parallel Object-Oriented Methods and Applications) is
+// made available under the terms described here.  The SOFTWARE has been
+// approved for release with associated LA-CC Number LA-CC-98-65.
+// 
+// Unless otherwise indicated, this SOFTWARE has been authored by an
+// employee or employees of the University of California, operator of the
+// Los Alamos National Laboratory under Contract No. W-7405-ENG-36 with
+// the U.S. Department of Energy.  The U.S. Government has rights to use,
+// reproduce, and distribute this SOFTWARE. The public may copy, distribute,
+// prepare derivative works and publicly display this SOFTWARE without 
+// charge, provided that this Notice and any statement of authorship are 
+// reproduced on all copies.  Neither the Government nor the University 
+// makes any warranty, express or implied, or assumes any liability or 
+// responsibility for the use of this SOFTWARE.
+// 
+// If SOFTWARE is modified to produce derivative works, such modified
+// SOFTWARE should be clearly marked, so as not to confuse it with the
+// version available from LANL.
+// 
+// For more information about POOMA, send e-mail to pooma@acl.lanl.gov,
+// or visit the POOMA web page at http://www.acl.lanl.gov/pooma/.
+// ----------------------------------------------------------------------
+// ACL:license
+//-----------------------------------------------------------------------------
+// Bounce example code: Particles bouncing around inside a 3D box.
+//-----------------------------------------------------------------------------
+
+
+// Include files
+#include "Pooma/Particles.h"
+#include "Pooma/DynamicArrays.h"
+#include "Tiny/Vector.h"
+#include "Utilities/Inform.h"
+#include <iostream>
+#include <stdlib.h>
+
+
+// Dimensionality of this problem
+static const int PDim = 3;
+
+// Particles subclass with position and velocity
+template <class PT>
+class Balls : public Particles<PT>
+{
+public:
+  // Typedefs
+  typedef Particles<PT>                          Base_t;
+  typedef typename Base_t::AttributeEngineTag_t  AttributeEngineTag_t;
+  typedef typename Base_t::ParticleLayout_t      ParticleLayout_t;
+  typedef double                                 AxisType_t;
+  typedef Vector<PDim,AxisType_t>                PointType_t;
+
+  // Constructor: set up layouts, register attributes
+  Balls(const ParticleLayout_t &pl)
+  : Particles<PT>(pl)
+  {
+    addAttribute(pos);
+    addAttribute(vel);
+  }
+
+  // Position and velocity attributes (as public members)
+  DynamicArray< PointType_t, AttributeEngineTag_t >  pos;
+  DynamicArray< PointType_t, AttributeEngineTag_t >  vel;
+};
+
+
+// Use canned traits class from CommonParticleTraits.h
+// MPDynamicUniform provides MultiPatch Dynamic Engine for 
+// particle attributes and UniformLayout for particle data.
+#if POOMA_CHEETAH
+typedef MPRemoteDynamicUniform PTraits_t;
+#else
+typedef MPDynamicUniform PTraits_t;
+#endif
+
+// Type of particle layout
+typedef PTraits_t::ParticleLayout_t ParticleLayout_t;
+
+// Type of actual particles
+typedef Balls<PTraits_t> Particle_t;
+
+
+// Number of particles in simulation
+const int NumPart = 10;
+
+// Number of timesteps in simulation
+const int NumSteps = 100;
+
+// Printout Frequency
+const int NumPrint = 50;
+
+// Number of patches to distribute particles across.
+// Typically one would use one patch per processor.
+const int numPatches = 16;
+
+void addBCs( Particle_t& balls, Inform& );
+
+// Main simulation routine 
+int main(int argc, char *argv[])
+{
+  // Initialize POOMA and output stream
+  Pooma::initialize(argc, argv);
+  Inform out(argv[0]);
+
+  out << "Begin Bounce example code" << std::endl;
+  out << "-------------------------" << std::endl;
+
+  // Create a particle layout object for our use
+  ParticleLayout_t particleLayout(numPatches);
+
+  // Create the actual Particles object (but not the particles as yet)
+  Particle_t balls(particleLayout);
+
+  addBCs( balls, out );
+  
+  // Create some particles, recompute the global domain, and initialize
+  // the attributes randomly.  The globalCreate call will create an equal
+  // number of particles on each patch.  The particle positions are initialized
+  // within a 12 X 20 X 28 domain, and the velocity components are all
+  // in the range -4 to +4.
+  balls.globalCreate(NumPart);
+  srand(12345U);
+  Particle_t::PointType_t initPos, initVel;
+  typedef Particle_t::AxisType_t Coordinate_t;
+  Coordinate_t ranmax = static_cast<Coordinate_t>(RAND_MAX);
+  for (int i = 0; i < NumPart; ++i)
+  {
+    for (int d = 0; d < PDim; ++d)
+    {
+      initPos(d) = 4 * (2 * (d+1) + 1) * (rand() / ranmax);
+      initVel(d) = 4 * (2 * (rand() / ranmax) - 1);
+    }
+    balls.pos(i) = initPos;
+    balls.vel(i) = initVel;
+  }
+
+  // Display the particle positions and velocities.
+  out << "Timestep 0: " << std::endl;
+  out << "Ball positions: "  << balls.pos << std::endl;
+  out << "Ball velocities: " << balls.vel << std::endl;
+
+  
+  out << *( balls.boundaryCondition(0) )<<std::endl;
+  // Advance simulation stepwise
+  for (int it=1; it <= NumSteps; ++it)
+  {
+    // Advance ball positions (timestep dt = 1)
+    balls.pos += balls.vel;
+
+    // Invoke boundary conditions
+    // balls.applyBoundaryConditions();
+
+    // Print out the current particle data if it is time to do so
+    if (it % NumPrint == 0) {
+      out << "Timestep " << it << ": " << std::endl;
+      out << "Ball positions: " << balls.pos << std::endl;
+      out << "Ball velocities: " << balls.vel << std::endl;
+    }
+  }
+
+  // Shut down POOMA and exit
+  Pooma::finalize();
+  return 0;
+}
+void addBCs( Particle_t& balls, Inform& out )
+{
+  // Set up a reversal boundary condition, so that particles will
+  // bounce off the domain boundaries.
+  Particle_t::PointType_t lower, upper;
+  for (int d = 0; d < PDim; ++d)
+  {
+    lower(d) = 0.0;
+    upper(d) = (d+1) * 8.0 + 4.0;
+  }
+  ReverseBC<Particle_t::PointType_t> bounce(lower, upper);
+  balls.addBoundaryCondition(balls.pos, balls.vel, bounce);
+  
+  out << *( balls.boundaryCondition(0) )<<std::endl;
+}
+
+// ACL:rcsinfo
+// ----------------------------------------------------------------------
+// $RCSfile: Bounce.cpp,v $   $Author: julianc $
+// $Revision: 1.11 $   $Date: 2000/07/24 16:14:36 $
+// ----------------------------------------------------------------------
+// ACL:rcsinfo

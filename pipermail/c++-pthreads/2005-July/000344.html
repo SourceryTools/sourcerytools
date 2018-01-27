@@ -1,0 +1,120 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [c++-pthreads]  Re: pthread_cancel and EH: let's try this again
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:c%2B%2B-pthreads%40codesourcery.com?Subject=Re%3A%20%5Bc%2B%2B-pthreads%5D%20%20Re%3A%20pthread_cancel%20and%20EH%3A%20let%27s%20try%20this%20again&In-Reply-To=%3Cxypk6juzt8p.fsf%40miranda.boston.redhat.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000364.html">
+   <LINK REL="Next"  HREF="000346.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[c++-pthreads]  Re: pthread_cancel and EH: let's try this again</H1>
+    <B>Jason Merrill</B> 
+    <A HREF="mailto:c%2B%2B-pthreads%40codesourcery.com?Subject=Re%3A%20%5Bc%2B%2B-pthreads%5D%20%20Re%3A%20pthread_cancel%20and%20EH%3A%20let%27s%20try%20this%20again&In-Reply-To=%3Cxypk6juzt8p.fsf%40miranda.boston.redhat.com%3E"
+       TITLE="[c++-pthreads]  Re: pthread_cancel and EH: let's try this again">jason at redhat.com
+       </A><BR>
+    <I>Wed Jul 13 14:16:22 UTC 2005</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000364.html">pthread_cancel and EH: let's try this again
+</A></li>
+        <LI>Next message: <A HREF="000346.html">pthread_cancel and EH: let's try this again
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#344">[ date ]</a>
+              <a href="thread.html#344">[ thread ]</a>
+              <a href="subject.html#344">[ subject ]</a>
+              <a href="author.html#344">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>On Tue, 12 Jul 2005 20:07:55 -0400, David Abrahams &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/c++-pthreads">dave at boost-consulting.com</A>&gt; wrote:
+
+&gt;<i> Jason Merrill &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/c++-pthreads">jason at redhat.com</A>&gt; writes:
+</I>&gt;<i>
+</I>&gt;&gt;<i> OK, let me clarify my position.  For a new C++ threading library, I would
+</I>&gt;&gt;<i> continue to prefer scheme #1.  But this isn't a new library, it's an
+</I>&gt;&gt;<i> extension of an existing library.
+</I>&gt;&gt;<i>
+</I>&gt;&gt;<i> The main benefit of scheme #2 is that existing pthread_cancel-safe C++ code
+</I>&gt;&gt;<i> written to use pthread_cleanup_push/pop continues to work.  
+</I>&gt;<i>
+</I>&gt;<i> What do you mean by &quot;work?&quot;  Can you explain the issues here, and show
+</I>&gt;<i> just what would be broken by scheme #1?
+</I>
+Thread robustness code like the following:
+
+while (true)
+ try
+  {
+   body();
+  }
+ catch (...)
+  {
+   recover();
+  }
+
+Under the old non-EH implementation this thread cancelled properly.  Under
+#1 it doesn't; it goes into an infinite loop of throw/recover.
+
+&gt;&gt;<i> if someone specifically told the thread to go away, they don't want it
+</I>&gt;&gt;<i> to recover, they want it to go away.  The thread doesn't get to
+</I>&gt;&gt;<i> second-guess that request, it has to go away.  It can take arbitrarily
+</I>&gt;&gt;<i> long to get around to actually going away, but it can't actually decide
+</I>&gt;&gt;<i> not to.  It especially can't decide this implicitly, as a side-effect of
+</I>&gt;&gt;<i> code written to handle exceptions.
+</I>&gt;<i>
+</I>&gt;<i> As Alexander says, a thread can always disable cancellation and never
+</I>&gt;<i> re-enable it.  AFAICT, the idea that we can somehow force a thread to
+</I>&gt;<i> cancel via a synchronous notification is just a myth.  I don't think
+</I>&gt;<i> we can make any sensible decisions until face reality.
+</I>
+Sure, a thread can disable cancellation.  I consider that &quot;taking
+arbitrarily long,&quot; because if it ever enables it again the request is still
+there and will be acted on.
+
+Furthermore, if you find that your cancel isn't being processed, it's easy
+enough to grep for pthread_setcancelstate.  Finding the random code written
+to deal with program-generated exceptions which is now interfering with
+cancellation is not as simple.
+
+Incidentally, my list of uses of catch(...) omitted the use in iostreams,
+which is much like the inter-language glue case, except that it's just glue
+to another error reporting mechanism.  As in that case, #1 handles the
+iostream use by re-asserting cancel later on.  #2 handles it by just
+continuing to run cleanups if the function is allowed to throw, or by
+disabling cancellation within the function if it isn't allowed to throw.
+#3 blows up.
+
+Jason
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000364.html">pthread_cancel and EH: let's try this again
+</A></li>
+	<LI>Next message: <A HREF="000346.html">pthread_cancel and EH: let's try this again
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#344">[ date ]</a>
+              <a href="thread.html#344">[ thread ]</a>
+              <a href="subject.html#344">[ subject ]</a>
+              <a href="author.html#344">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/c++-pthreads">More information about the c++-pthreads
+mailing list</a><br>
+</body></html>

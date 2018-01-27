@@ -1,0 +1,1082 @@
+From howes at ll.mit.edu  Tue Dec  4 17:34:12 2007
+From: howes at ll.mit.edu (Brad Howes)
+Date: Tue, 4 Dec 2007 12:34:12 -0500
+Subject: [vsipl++] [1.3] Mem Leak in vsip::llsqsol?
+In-Reply-To: <474F5494.1000805@codesourcery.com>
+References: <A6F917AB-E21D-4EB2-8575-C067B0D985D3@ll.mit.edu> <474F5494.1000805@codesourcery.com>
+Message-ID: <F191483B-6365-4578-8779-B6E93169519F@ll.mit.edu>
+
+On Nov 29, 2007, at 7:08 PM, Don McCoy wrote:
+
+> I have a fix for your problem!
+
+Yep! 24 hours running so far and no memory leaks. Thanks for the patch!
+
+Brad
+
+-- 
+Brad Howes
+Group 42
+MIT Lincoln Laboratory ? 244 Wood St. ? Lexington, MA 02173
+Phone: 781.981.5292 ? Fax: 781.981.3495 ? Secretary: 781.981.7420
+
+
+
+
+-------------- next part --------------
+An HTML attachment was scrubbed...
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20071204/c67a5dcc/attachment.html>
+
+From jules at codesourcery.com  Wed Dec  5 16:18:47 2007
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Wed, 05 Dec 2007 11:18:47 -0500
+Subject: [patch] pwarp
+Message-ID: <4756CF67.9090106@codesourcery.com>
+
+Here's a preliminary perspective warp (aka pwarp) patch.
+
+It contains:
+
+  - both a perspective_warp function and a Perspective_warp
+    image processing object.
+
+  - a generic implementation that works mostly everywhere and with
+    every type (albeit slowly).
+
+  - SIMD optimized versions for float/float and float/uchar.  Key: for
+    X/Y, X is the perspective coeff type, Y is the image value type.
+    Float and double are the only reasonable values for X, but Y could
+    easily be float, int, short, unsigned char, etc.
+
+  - CBE optimized version for float/uchar.  A float/float version would
+    not be too hard.
+
+  - unit tests and benchmark.
+
+This is preliminary patch (but its been hanging out so long I wanted to 
+get it posted).  In particular, before checking in, I will:
+
+  - get rid of remaining #if 0 debug cruft.
+
+  - fix SIMD version to work on SSE (currently it has some hardcoded
+    altivec bits).
+
+  - unify the different SIMD variants (there are currently three SIMD
+    float/uchar impls: the functional version, the processing object
+    version, and the SPU version).  Otherwise, what is the point of
+    our fancy SIMD traits?  (This doesn't apply to different coeff/image
+    types.  I.e. SIMD float/float and float/uchar cannot reasonably be
+    unified).
+
+  - finish up the SPU SIMD traits.
+
+After checking in:
+
+  - generalize the SPU streaming.  Right now it assumes the perspective
+    warp coefficients are "low tilt" when sending out necessary regions
+    of the source image.  It would not reasonably handle a warp that
+    rotated the image by 90 degrees.
+
+				-- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: pwarp.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20071205/03bb6c3a/attachment.ksh>
+
+From don at codesourcery.com  Thu Dec  6 17:05:59 2007
+From: don at codesourcery.com (Don McCoy)
+Date: Thu, 06 Dec 2007 10:05:59 -0700
+Subject: [vsipl++] [1.3] Mem Leak in vsip::llsqsol?
+In-Reply-To: <F191483B-6365-4578-8779-B6E93169519F@ll.mit.edu>
+References: <A6F917AB-E21D-4EB2-8575-C067B0D985D3@ll.mit.edu> <474F5494.1000805@codesourcery.com> <F191483B-6365-4578-8779-B6E93169519F@ll.mit.edu>
+Message-ID: <47582BF7.70803@codesourcery.com>
+
+Brad Howes wrote:
+> On Nov 29, 2007, at 7:08 PM, Don McCoy wrote:
+>
+>> I have a fix for your problem!
+>
+> Yep! 24 hours running so far and no memory leaks. Thanks for the patch!
+>
+This patch has now been committed.
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+
+
+
+From brooks at codesourcery.com  Tue Dec 11 06:29:56 2007
+From: brooks at codesourcery.com (Brooks Moses)
+Date: Mon, 10 Dec 2007 22:29:56 -0800
+Subject: [vsipl++] [patch] pwarp
+In-Reply-To: <4756CF67.9090106@codesourcery.com>
+References: <4756CF67.9090106@codesourcery.com>
+Message-ID: <475E2E64.1070101@codesourcery.com>
+
+Jules Bergmann wrote, at 12/5/2007 8:18 AM:
+> Here's a preliminary perspective warp (aka pwarp) patch.
+[...]
+> This is preliminary patch (but its been hanging out so long I wanted to 
+> get it posted).  In particular, before checking in, I will:
+
+Did this get checked in yet?
+
+Would it be useful to make an "ncet" branch of VSIPL++ to use for this,
+so we can get it checked in now to use for the code drop we'll make to
+AFRL and Pal, but still wait until it's polished up (if it still needs
+work) and documented before putting it into the VSIPL++ trunk?
+
+- Brooks
+
+
+
+From jules at codesourcery.com  Wed Dec 12 16:38:00 2007
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Wed, 12 Dec 2007 11:38:00 -0500
+Subject: [vsipl++] [patch] pwarp
+In-Reply-To: <475E2E64.1070101@codesourcery.com>
+References: <4756CF67.9090106@codesourcery.com> <475E2E64.1070101@codesourcery.com>
+Message-ID: <47600E68.10102@codesourcery.com>
+
+Brooks Moses wrote:
+> Jules Bergmann wrote, at 12/5/2007 8:18 AM:
+>> Here's a preliminary perspective warp (aka pwarp) patch.
+> [...]
+>> This is preliminary patch (but its been hanging out so long I wanted to 
+>> get it posted).  In particular, before checking in, I will:
+> 
+> Did this get checked in yet?
+
+No, not yet.  I'll take a pass through it this afternoon to cleanup the 
+rough edges and repost.
+
+				-- Jules
+
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From jules at codesourcery.com  Thu Dec 13 15:48:52 2007
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Thu, 13 Dec 2007 10:48:52 -0500
+Subject: [vsipl++] [patch] pwarp
+In-Reply-To: <4756CF67.9090106@codesourcery.com>
+References: <4756CF67.9090106@codesourcery.com>
+Message-ID: <47615464.2010704@codesourcery.com>
+
+Here's an update to the pwarp patch.
+
+It addresses these:
+
+> 
+>  - get rid of remaining #if 0 debug cruft.
+
+ >
+ >  - finish up the SPU SIMD traits.
+
+It doesn't address these.  I need to put more thought into how handle 
+some of the 8-bit math.  Also, the location of the SPU kernel (in vsip) 
+makes it unsightly to depend on code from vsip_csl.
+
+>  - unify the different SIMD variants (there are currently three SIMD
+>    float/uchar impls: the functional version, the processing object
+>    version, and the SPU version).  Otherwise, what is the point of
+>    our fancy SIMD traits?  (This doesn't apply to different coeff/image
+>    types.  I.e. SIMD float/float and float/uchar cannot reasonably be
+>    unified).
+
+ >
+ >  - fix SIMD version to work on SSE (currently it has some hardcoded
+ >    altivec bits).
+
+However, these aren't show stoppers.
+
+
+Also, my original attempt to make error_db work for unsigned char broke 
+it for complex.  I've fixed that, and added a unit test for error_db.
+
+Ok to apply?
+
+				-- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: pwarp-2.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20071213/512fa419/attachment.ksh>
+
+From jules at codesourcery.com  Thu Dec 13 15:58:21 2007
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Thu, 13 Dec 2007 10:58:21 -0500
+Subject: [vsipl++] [patch] pwarp
+In-Reply-To: <47615464.2010704@codesourcery.com>
+References: <4756CF67.9090106@codesourcery.com> <47615464.2010704@codesourcery.com>
+Message-ID: <4761569D.8060108@codesourcery.com>
+
+Oops, didn't save teh changelog before creating the diff.  Here's the 
+right ChangeLog.
+
+Jules Bergmann wrote:
+> Here's an update to the pwarp patch.
+> 
+> It addresses these:
+> 
+>>
+>>  - get rid of remaining #if 0 debug cruft.
+> 
+>  >
+>  >  - finish up the SPU SIMD traits.
+> 
+> It doesn't address these.  I need to put more thought into how handle 
+> some of the 8-bit math.  Also, the location of the SPU kernel (in vsip) 
+> makes it unsightly to depend on code from vsip_csl.
+> 
+>>  - unify the different SIMD variants (there are currently three SIMD
+>>    float/uchar impls: the functional version, the processing object
+>>    version, and the SPU version).  Otherwise, what is the point of
+>>    our fancy SIMD traits?  (This doesn't apply to different coeff/image
+>>    types.  I.e. SIMD float/float and float/uchar cannot reasonably be
+>>    unified).
+> 
+>  >
+>  >  - fix SIMD version to work on SSE (currently it has some hardcoded
+>  >    altivec bits).
+> 
+> However, these aren't show stoppers.
+> 
+> 
+> Also, my original attempt to make error_db work for unsigned char broke 
+> it for complex.  I've fixed that, and added a unit test for error_db.
+> 
+> Ok to apply?
+> 
+>                 -- Jules
+> 
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: pwarp-cl.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20071213/34fd95cd/attachment.ksh>
+
+From jules at codesourcery.com  Thu Dec 13 16:24:09 2007
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Thu, 13 Dec 2007 11:24:09 -0500
+Subject: [vsipl++] [patch] pwarp
+In-Reply-To: <47615464.2010704@codesourcery.com>
+References: <4756CF67.9090106@codesourcery.com> <47615464.2010704@codesourcery.com>
+Message-ID: <47615CA9.8000405@codesourcery.com>
+
+FYI,
+
+Oops, this was meant to be a temporary hack to avoid reconfiguring:
+
+>  CC_SPU := @CC_SPU@
+> +CXX_SPU := spu-g++ ## @CXX_SPU@
+>  EMBED_SPU := @EMBED_SPU@ -m32
+>  CPP_SPU_FLAGS := @CPP_SPU_FLAGS@
+
+The checked in patch will handle this more reasonably (configure will 
+set CXX_SPU).
+
+				-- Jules
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From stefan at codesourcery.com  Thu Dec 13 16:44:24 2007
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Thu, 13 Dec 2007 11:44:24 -0500
+Subject: [vsipl++] [patch] pwarp
+In-Reply-To: <47615464.2010704@codesourcery.com>
+References: <4756CF67.9090106@codesourcery.com> <47615464.2010704@codesourcery.com>
+Message-ID: <47616168.5050805@codesourcery.com>
+
+Jules Bergmann wrote:
+> I need to put more thought into how handle
+> some of the 8-bit math.  Also, the location of the SPU kernel (in vsip)
+> makes it unsightly to depend on code from vsip_csl.
+
+Right. We should think a bit about how to decouple that. In particular,
+how to not make the task_manager.hpp file the central repository for all
+tasks / task types.
+
+> Ok to apply?
+
+Yes. I have some suggestions below that you may address.
+
+> Index: src/vsip/opt/cbe/pwarp_params.h
+> ===================================================================
+> --- src/vsip/opt/cbe/pwarp_params.h	(revision 0)
+> +++ src/vsip/opt/cbe/pwarp_params.h	(revision 0)
+> @@ -0,0 +1,43 @@
+> +/* Copyright (c) 2007 by CodeSourcery.  All rights reserved.
+> +
+> +   This file is available for license from CodeSourcery, Inc. under the terms
+> +   of a commercial license and under the GPL.  It is not part of the VSIPL++
+> +   reference implementation and is not available under the BSD license.
+> +*/
+> +/** @file    vsip/opt/cbe/pwarp_params.h
+> +    @author  Jules Bergmann
+> +    @date    2007-11-19
+> +    @brief   VSIPL++ Library: Parameters for PWarp kernels.
+> +*/
+> +
+> +#ifndef VSIP_OPT_CBE_PWARP_PARAMS_H
+> +#define VSIP_OPT_CBE_PWARP_PARAMS_H
+> +
+> +/***********************************************************************
+> +  Definitions
+> +***********************************************************************/
+> +
+> +// Structures used in DMAs should be sized in multiples of 128-bits
+> +
+> +typedef struct
+> +{
+> +  float P[9];			// perspective warp matrix
+> +  int   pad[3];
+
+I'm still not sure whether there are in fact size restrictions for task
+parameters. Or may be they changed between SDK 2.1 and SDK 3.0.
+
+
+> +
+> +  unsigned long long ea_in;	// input block EA
+> +  unsigned long long ea_out;	// output block EA
+> +
+> +  unsigned int in_row_0;	// input origin row
+> +  unsigned int in_col_0;	// input origin column
+> +  unsigned int in_rows;		// input number of rows
+> +  unsigned int in_cols;		// input number of cols
+> +  unsigned int in_stride_0;	// input stride to next row
+> +
+> +  unsigned int out_row_0;	// output origin row
+> +  unsigned int out_col_0;	// output origin column
+> +  unsigned int out_rows;	// output number of rows
+> +  unsigned int out_cols;	// output number of cols
+> +  unsigned int out_stride_0;	// output stride to next row
+> +} Pwarp_params;
+> +
+> +#endif // VSIP_OPT_CBE_FFT_PARAMS_H
+
+> Index: src/vsip/opt/cbe/ppu/task_manager.hpp
+> ===================================================================
+> --- src/vsip/opt/cbe/ppu/task_manager.hpp	(revision 188740)
+> +++ src/vsip/opt/cbe/ppu/task_manager.hpp	(working copy)
+> @@ -43,6 +43,7 @@
+>  struct Fastconv_tag;
+>  struct Fastconvm_tag;
+>  struct Vmmul_tag;
+> +struct Pwarp_tag;
+
+As noted above, we should start thinking about alternate ways to
+register task types, to avoid artificial dependencies.
+
+(I may look into boost.python for inspiration. There are tricks to
+register types and type conversions that seem to avoid single
+bottlenecks...)
+
+
+>  
+>  
+>  namespace cbe
+> @@ -150,5 +151,6 @@
+>  DEFINE_TASK(6, Fastconvm_tag, void(std::complex<float>, std::complex<float>), fconvm_c)
+>  DEFINE_TASK(7, Fastconvm_tag, void(split_float_type, split_float_type), fconvm_split_c)
+>  DEFINE_TASK(8, Vmmul_tag, std::complex<float>(std::complex<float>, std::complex<float>), vmmul_c)
+> +DEFINE_TASK(9, Pwarp_tag, void(unsigned char, unsigned char), pwarp_ub)
+>  
+>  #endif
+
+
+> Index: tests/vsip_csl/pwarp.cpp
+> ===================================================================
+
+> +template <typename T,
+> +	  typename BlockT>
+> +void
+> +setup_p(
+> +  Matrix<T, BlockT> P,
+> +  int               i)
+> +{
+> +  switch (i) {
+> +  case 0:
+> +    P        = T();
+> +    P.diag() = T(1);
+> +
+> +  case 1:
+> +    P(0,0) = T(0.999982);    P(0,1) = T(0.000427585); P(0,2) = T(-0.180836);
+> +    P(1,0) = T(-0.00207906); P(1,1) = T(0.999923);    P(1,2) = T(0.745001);
+> +    P(2,0) = T(1.01958e-07); P(2,1) = T(8.99655e-08); P(2,2) = T(1);
+> +    break;
+> +
+> +  case 2:
+> +    P(0,0) = 8.28282751190698e-01; 
+> +    P(0,1) = 2.26355321374407e-02;
+> +    P(0,2) = -1.10504985681804e+01;
+> +
+> +    P(1,0) = -2.42950546474237e-01;
+> +    P(1,1) = 8.98035288576380e-01;
+> +    P(1,2) = 1.05162748265872e+02;
+> +
+> +    P(2,0) = -1.38973743578922e-04;
+> +    P(2,1) = -9.01955477542629e-05;
+> +    P(2,2) = 1;
+> +    break;
+> +  }
+> +}
+
+Where do these numbers come from ? And what mean the cases ? Could you
+add some comments so casual users (such as myself) are less puzzled ? :-)
+
+Finally, could you make suitable modifications to the affected makefiles
+such that 'make install' does the right thing ? I checked in a small
+patch earlier this morning, but that didn't take into account that
+vsip_csl/img/ has subdirectories, so it isn't quite complete.
+
+Thanks,
+		Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+
+
+From jules at codesourcery.com  Thu Dec 13 17:45:08 2007
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Thu, 13 Dec 2007 12:45:08 -0500
+Subject: [vsipl++] [patch] pwarp
+In-Reply-To: <47616168.5050805@codesourcery.com>
+References: <4756CF67.9090106@codesourcery.com> <47615464.2010704@codesourcery.com> <47616168.5050805@codesourcery.com>
+Message-ID: <47616FA4.10400@codesourcery.com>
+
+Stefan Seefeld wrote:
+> Jules Bergmann wrote:
+>> I need to put more thought into how handle
+>> some of the 8-bit math.  Also, the location of the SPU kernel (in vsip)
+>> makes it unsightly to depend on code from vsip_csl.
+> 
+> Right. We should think a bit about how to decouple that. In particular,
+> how to not make the task_manager.hpp file the central repository for all
+> tasks / task types.
+
+Yeah, I was thinking about that too.  For library code like this, could 
+we move the DEINE_TASK instantiation from task_manager.hpp to the file 
+using the task?
+
+Also, we need to capability for users to provide customer kernels that 
+VSIPL++ manages the calling of.  Requiring a change to task_manager.hpp 
+would make that painful.
+
+>> +
+>> +// Structures used in DMAs should be sized in multiples of 128-bits
+>> +
+>> +typedef struct
+>> +{
+>> +  float P[9];			// perspective warp matrix
+>> +  int   pad[3];
+> 
+> I'm still not sure whether there are in fact size restrictions for task
+> parameters. Or may be they changed between SDK 2.1 and SDK 3.0.
+> 
+
+It might even be a pre ALF 2.1 thing.
+
+
+> 
+> Where do these numbers come from ? And what mean the cases ? Could you
+> add some comments so casual users (such as myself) are less puzzled ? :-)
+
+These are for a perspective warp matrix pulled at random out of the 
+image registration program.
+
+I've attached before and after images showing the effect of these 
+particular warp coefficients.
+
+> 
+> Finally, could you make suitable modifications to the affected makefiles
+> such that 'make install' does the right thing ? I checked in a small
+> patch earlier this morning, but that didn't take into account that
+> vsip_csl/img/ has subdirectories, so it isn't quite complete.
+
+Ok, will do.  My bad!  Thanks for catching that Brooks and Stefan!
+
+				-- Jules
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: obj-uchar-src.pgm
+Type: application/octet-stream
+Size: 262159 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20071213/e04f5f54/attachment.obj>
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: obj-uchar-dst.pgm
+Type: application/octet-stream
+Size: 262159 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20071213/e04f5f54/attachment-0001.obj>
+
+From stefan at codesourcery.com  Thu Dec 13 17:54:59 2007
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Thu, 13 Dec 2007 12:54:59 -0500
+Subject: [vsipl++] [patch] pwarp
+In-Reply-To: <47616FA4.10400@codesourcery.com>
+References: <4756CF67.9090106@codesourcery.com> <47615464.2010704@codesourcery.com> <47616168.5050805@codesourcery.com> <47616FA4.10400@codesourcery.com>
+Message-ID: <476171F3.4060909@codesourcery.com>
+
+Jules Bergmann wrote:
+> Stefan Seefeld wrote:
+>> Jules Bergmann wrote:
+>>> I need to put more thought into how handle
+>>> some of the 8-bit math.  Also, the location of the SPU kernel (in vsip)
+>>> makes it unsightly to depend on code from vsip_csl.
+>>
+>> Right. We should think a bit about how to decouple that. In particular,
+>> how to not make the task_manager.hpp file the central repository for all
+>> tasks / task types.
+> 
+> Yeah, I was thinking about that too.  For library code like this, could
+> we move the DEINE_TASK instantiation from task_manager.hpp to the file
+> using the task?
+
+I'm not sure, it will at least be quite fragile, as we want to generate
+unique task-ids so we can meaningfully compare tasks to determine
+whether to reuse the old one or not. This requires the reserve<>()
+function (template) to be able to instantiate the Task_map, and hence,
+needs to see all specializations.
+This ought to be possible, but it requires some thought.
+
+Thanks,
+		Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+
+
+From jules at codesourcery.com  Thu Dec 13 18:20:22 2007
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Thu, 13 Dec 2007 13:20:22 -0500
+Subject: [vsipl++] [patch] pwarp
+In-Reply-To: <476171F3.4060909@codesourcery.com>
+References: <4756CF67.9090106@codesourcery.com> <47615464.2010704@codesourcery.com> <47616168.5050805@codesourcery.com> <47616FA4.10400@codesourcery.com> <476171F3.4060909@codesourcery.com>
+Message-ID: <476177E6.3080603@codesourcery.com>
+
+
+
+Also, the location of the SPU kernel (in vsip)
+>>>> makes it unsightly to depend on code from vsip_csl.
+>>> Right. We should think a bit about how to decouple that. In particular,
+>>> how to not make the task_manager.hpp file the central repository for all
+>>> tasks / task types.
+>> Yeah, I was thinking about that too.  For library code like this, could
+>> we move the DEINE_TASK instantiation from task_manager.hpp to the file
+>> using the task?
+> 
+> I'm not sure, it will at least be quite fragile, as we want to generate
+> unique task-ids so we can meaningfully compare tasks to determine
+> whether to reuse the old one or not. 
+
+Why can't we just test the spe_program_handle_t* for uniqueness?  Then 
+we can decentralize the selection of the right spe_program_handle_t* to 
+the PPU bridge functions, and task_manager will just have to remember 
+the last task loaded to avoid the extra reload.
+
+FWIW, that seems to work OK in our skunkworks ALF replacement.
+
+				-- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From stefan at codesourcery.com  Thu Dec 13 18:34:00 2007
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Thu, 13 Dec 2007 13:34:00 -0500
+Subject: [vsipl++] [patch] pwarp
+In-Reply-To: <476177E6.3080603@codesourcery.com>
+References: <4756CF67.9090106@codesourcery.com> <47615464.2010704@codesourcery.com> <47616168.5050805@codesourcery.com> <47616FA4.10400@codesourcery.com> <476171F3.4060909@codesourcery.com> <476177E6.3080603@codesourcery.com>
+Message-ID: <47617B18.4070300@codesourcery.com>
+
+Jules Bergmann wrote:
+
+> Why can't we just test the spe_program_handle_t* for uniqueness?  Then
+> we can decentralize the selection of the right spe_program_handle_t* to
+> the PPU bridge functions, and task_manager will just have to remember
+> the last task loaded to avoid the extra reload.
+
+Indeed, the spe_program_handle pointer is unique, too. However:
+
+1) if we don't use embedded images, a call to get_image() will actually
+load the kernel first, so we'd need to add some more cachine logic.
+
+2) With SDK 3.0 (which we are going to adapt sooner or later anyhow), we
+don't have access to that any more, or at least not in that raw form.
+
+		Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+
+
+From jules at codesourcery.com  Thu Dec 13 18:56:30 2007
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Thu, 13 Dec 2007 13:56:30 -0500
+Subject: [vsipl++] [patch] pwarp
+In-Reply-To: <47617B18.4070300@codesourcery.com>
+References: <4756CF67.9090106@codesourcery.com> <47615464.2010704@codesourcery.com> <47616168.5050805@codesourcery.com> <47616FA4.10400@codesourcery.com> <476171F3.4060909@codesourcery.com> <476177E6.3080603@codesourcery.com> <47617B18.4070300@codesourcery.com>
+Message-ID: <4761805E.2090700@codesourcery.com>
+
+Stefan Seefeld wrote:
+> Jules Bergmann wrote:
+> 
+>> Why can't we just test the spe_program_handle_t* for uniqueness?  Then
+>> we can decentralize the selection of the right spe_program_handle_t* to
+>> the PPU bridge functions, and task_manager will just have to remember
+>> the last task loaded to avoid the extra reload.
+> 
+> Indeed, the spe_program_handle pointer is unique, too. However:
+> 
+> 1) if we don't use embedded images, a call to get_image() will actually
+> load the kernel first, so we'd need to add some more cachine logic.
+
+get_image() still returns a (presumably) unique pointer to an image right?
+
+A bridge function might look like:
+
+
+template <typename T>
+Choose;
+
+template <>
+struct Choose<float>
+{
+private:
+   static spe_program_handle_t* image_;
+
+public:
+   static spe_program_handle_t* image()
+   {
+     if (image_ == NULL)
+       image_ get_image(path...)
+     return image_;
+   }
+};
+
+... other specializations for other types ...
+
+
+template <typename T>
+...
+vmul(...)
+{
+   spe_program_handle_t* pgm = Choose<T>::image();
+
+   ... = task_manager.instance(pgm)
+}
+
+
+> 2) With SDK 3.0 (which we are going to adapt sooner or later anyhow), we
+> don't have access to that any more, or at least not in that raw form.
+
+You mean ALF 3.0, right?  I'm assuming libspe2 doesn't take away 
+functionality.
+
+What does ALF 3.0 force us to do here?
+
+				-- jules
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From stefan at codesourcery.com  Thu Dec 13 19:08:18 2007
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Thu, 13 Dec 2007 14:08:18 -0500
+Subject: [vsipl++] [patch] pwarp
+In-Reply-To: <4761805E.2090700@codesourcery.com>
+References: <4756CF67.9090106@codesourcery.com> <47615464.2010704@codesourcery.com> <47616168.5050805@codesourcery.com> <47616FA4.10400@codesourcery.com> <476171F3.4060909@codesourcery.com> <476177E6.3080603@codesourcery.com> <47617B18.4070300@codesourcery.com> <4761805E.2090700@codesourcery.com>
+Message-ID: <47618322.6040207@codesourcery.com>
+
+Jules Bergmann wrote:
+
+>> 2) With SDK 3.0 (which we are going to adapt sooner or later anyhow), we
+>> don't have access to that any more, or at least not in that raw form.
+> 
+> You mean ALF 3.0, right?  I'm assuming libspe2 doesn't take away
+> functionality.
+> 
+> What does ALF 3.0 force us to do here?
+
+
+The ALF that ships with the SDK 3.0 :-) fully encapsulates the libspe2
+interface, so we would never actually 'see' the loaded kernel. All we do
+is pass various names (char const *) to ALF to allow it to dlopen /
+dlsym the appropriate symbols. I'm not even sure we can query these
+strings from ALF. (In CML I implemented a 'user-space' analog of the
+task-info for caching purposes, as the latter has become an opaque
+pointer, and thus doesn't allow us to implement a comparison operation.)
+
+		Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+
+
+From jules at codesourcery.com  Thu Dec 13 19:09:00 2007
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Thu, 13 Dec 2007 14:09:00 -0500
+Subject: [vsipl++] [patch] pwarp
+In-Reply-To: <47616168.5050805@codesourcery.com>
+References: <4756CF67.9090106@codesourcery.com> <47615464.2010704@codesourcery.com> <47616168.5050805@codesourcery.com>
+Message-ID: <4761834C.2080206@codesourcery.com>
+
+
+> 
+>> Ok to apply?
+> 
+> Yes. I have some suggestions below that you may address.
+
+Committed, with
+
+  + fix configure.ac to define CXX_SPU
+  + comment on pwarp.cpp warp matrices
+  + fix make install
+
+				-- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From jules at codesourcery.com  Thu Dec 13 19:12:50 2007
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Thu, 13 Dec 2007 14:12:50 -0500
+Subject: [vsipl++] [patch] pwarp
+In-Reply-To: <47618322.6040207@codesourcery.com>
+References: <4756CF67.9090106@codesourcery.com> <47615464.2010704@codesourcery.com> <47616168.5050805@codesourcery.com> <47616FA4.10400@codesourcery.com> <476171F3.4060909@codesourcery.com> <476177E6.3080603@codesourcery.com> <47617B18.4070300@codesourcery.com> <4761805E.2090700@codesourcery.com> <47618322.6040207@codesourcery.com>
+Message-ID: <47618432.8070006@codesourcery.com>
+
+Stefan Seefeld wrote:
+> Jules Bergmann wrote:
+> 
+>>> 2) With SDK 3.0 (which we are going to adapt sooner or later anyhow), we
+>>> don't have access to that any more, or at least not in that raw form.
+>> You mean ALF 3.0, right?  I'm assuming libspe2 doesn't take away
+>> functionality.
+>>
+>> What does ALF 3.0 force us to do here?
+> 
+> 
+> The ALF that ships with the SDK 3.0 :-) fully encapsulates the libspe2
+> interface, so we would never actually 'see' the loaded kernel. All we do
+> is pass various names (char const *) to ALF to allow it to dlopen /
+> dlsym the appropriate symbols.
+
+Right (now I remember you explained that to me before :)
+
+  I'm not even sure we can query these
+> strings from ALF. (In CML I implemented a 'user-space' analog of the
+> task-info for caching purposes, as the latter has become an opaque
+> pointer, and thus doesn't allow us to implement a comparison operation.)
+
+Ok.  In that case, we could assume the names are unique.
+
+I.e., the bridge function might look like:
+
+template <typename T>
+Choose;
+
+template <>
+struct Choose<float>
+{
+   static char const* image() { return "vmul-float"; }
+};
+
+... other specializations for other types ...
+
+
+template <typename T>
+...
+vmul(...)
+{
+   char const* pgm_name = Choose<T>::image();
+
+   ... = task_manager.instance(pgm_name)
+}
+
+				-- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From jules at codesourcery.com  Thu Dec 13 19:56:08 2007
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Thu, 13 Dec 2007 14:56:08 -0500
+Subject: pwarp - simd_spu fixes
+Message-ID: <47618E58.3060601@codesourcery.com>
+
+Somehow I managed to break lots of bits in simd_spu.hpp at the very last 
+minute before committing -- and I thought I tested this!
+
+I also appear to have missed checking in my changelog.
+
+Patch applied.
+
+				-- Jules
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: simd_spu.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20071213/c68f330d/attachment.ksh>
+
+From don at codesourcery.com  Thu Dec 13 20:48:23 2007
+From: don at codesourcery.com (Don McCoy)
+Date: Thu, 13 Dec 2007 13:48:23 -0700
+Subject: [vsipl++] [patch] External data access example
+In-Reply-To: <46A5EDD5.7040209@codesourcery.com>
+References: <46A4FE66.8040100@codesourcery.com> <46A5EDD5.7040209@codesourcery.com>
+Message-ID: <47619A97.9050703@codesourcery.com>
+
+Jules Bergmann wrote:
+> Don McCoy wrote:
+>   
+>> This patch adds an example where the values of a VSIPL++ Matrix are 
+>> altered using a direct pointer to the underlying data.  This is useful 
+>> for performing operations on data outside the VSIPL++ library.
+>>     
+>
+> Don, This patch looks good, please check it in.  thanks, -- Jules
+>
+>   
+This patch has now been committed with one minor change that makes it
+more obvious that the program ran successfully (i.e. it displays the
+expected values to be read from the view).
+
+Regards,
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+
+
+
+From stefan at codesourcery.com  Sat Dec 15 01:55:28 2007
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Fri, 14 Dec 2007 20:55:28 -0500
+Subject: [vsipl++] pwarp - simd_spu fixes
+In-Reply-To: <47618E58.3060601@codesourcery.com>
+References: <47618E58.3060601@codesourcery.com>
+Message-ID: <47633410.6050300@codesourcery.com>
+
+Jules Bergmann wrote:
+> Somehow I managed to break lots of bits in simd_spu.hpp at the very last
+> minute before committing -- and I thought I tested this!
+> 
+> I also appear to have missed checking in my changelog.
+> 
+> Patch applied.
+
+Jules, it looks as if you didn't check in the change to configure.ac:
+
+it doesn't define CXX_SPU, and so the command for compiling C++ SPU
+kernels is broken now.
+
+Thanks,
+		Stefan
+
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+
+
+From brooks at codesourcery.com  Sat Dec 15 02:48:03 2007
+From: brooks at codesourcery.com (Brooks Moses)
+Date: Fri, 14 Dec 2007 18:48:03 -0800
+Subject: [vsipl++] pwarp - simd_spu fixes
+In-Reply-To: <47633410.6050300@codesourcery.com>
+References: <47618E58.3060601@codesourcery.com> <47633410.6050300@codesourcery.com>
+Message-ID: <47634063.5020808@codesourcery.com>
+
+Stefan Seefeld wrote, at 12/14/2007 5:55 PM:
+> Jules Bergmann wrote:
+>> Somehow I managed to break lots of bits in simd_spu.hpp at the very last
+>> minute before committing -- and I thought I tested this!
+>>
+>> I also appear to have missed checking in my changelog.
+>>
+>> Patch applied.
+> 
+> Jules, it looks as if you didn't check in the change to configure.ac:
+> 
+> it doesn't define CXX_SPU, and so the command for compiling C++ SPU
+> kernels is broken now.
+
+This was getting in my way for working on finishing up the AFRL
+integration and debugging, so I fixed it with the attached obvious patch
+(committed).  :)
+
+My compiles still fall over trying to build the examples, though:
+> compiling examples/fconv.o
+> ppu-g++ -c -I src -I ../trunk-afrl/src   -I/opt/ibm/cell-sdk/prototype/sysroot/usr/include -DVSIP_CBE_SDK_VERSION=210 -DVSIP_IMPL_FFTW3=1 -DVSIP_IMPL_PAR_SERVICE=0 -DVSIP_IMPL_FFT_USE_FLOAT=1 -DVSIP_IMPL_FFT_USE_DOUBLE=1 -DVSIP_IMPL_FFT_USE_LONG_DOUBLE=1 -DVSIP_IMPL_PROVIDE_FFT_FLOAT=1 -DVSIP_IMPL_PROVIDE_FFT_DOUBLE=1 -DVSIP_IMPL_PROVIDE_FFT_LONG_DOUBLE=1 -I/usr/include/atlas -DVSIP_IMPL_USE_CBLAS=1 -m32 -mcpu=cell -maltivec -funswitch-loops -fgcse-after-reload --param max-inline-insns-single=2000 --param large-function-insns=6000 --param large-function-growth=800 --param inline-unit-growth=300 -I../trunk-afrl/src -o examples/fconv.o ../trunk-afrl/examples/fconv.cpp
+> ../trunk-afrl/examples/fconv.cpp: In function 'void fconv_example()':
+> ../trunk-afrl/examples/fconv.cpp:78: error: reference to 'impl' is ambiguous
+> ../trunk-afrl/src/vsip_csl/error_db.hpp:36: error: candidates are: namespace vsip_csl::impl { }
+> ../trunk-afrl/src/vsip/support.hpp:145: error:                 namespace vsip::impl { }
+> ../trunk-afrl/examples/fconv.cpp:78: error: template argument 3 is invalid
+> ../trunk-afrl/examples/fconv.cpp:78: error: invalid type in declaration before ';' token
+> ../trunk-afrl/examples/fconv.cpp:79: error: initializer expression list treated as compound expression
+> ../trunk-afrl/examples/fconv.cpp:83: error: 'fconv' cannot be used as a function
+> ../trunk-afrl/examples/fconv.cpp:88: error: 'fconv' cannot be used as a function
+> make: *** [examples/fconv.o] Error 1
+
+- Brooks
+
+
+Index: ../trunk-afrl/ChangeLog
+===================================================================
+--- ../trunk-afrl/ChangeLog     (revision 189488)
++++ ../trunk-afrl/ChangeLog     (working copy)
+@@ -1,3 +1,7 @@
++2007-12-14  Brooks Moses  <brooks at codesourcery.com>
++
++       * configure.ac (CXX_SPU): Define.
++
+ 2007-12-13  Don McCoy  <don at codesourcery.com>
+
+        * examples/extdata.cpp: New file.  Example demonstrating the
+Index: ../trunk-afrl/configure.ac
+===================================================================
+--- ../trunk-afrl/configure.ac  (revision 189488)
++++ ../trunk-afrl/configure.ac  (working copy)
+@@ -584,6 +584,7 @@
+   cxx_compiler_list="ppu-g++ g++ c++"
+   c_compiler_list="ppu-gcc gcc cc"
+   AC_CHECK_PROGS(CC_SPU, [spu-gcc])
++  AC_CHECK_PROGS(CXX_SPU, [spu-g++])
+   AC_CHECK_PROGS(EMBED_SPU, [ppu-embedspu embedspu])
+ else
+   # Use autoconf default lists
+
+
+
+From stefan at codesourcery.com  Mon Dec 24 04:08:29 2007
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Sun, 23 Dec 2007 23:08:29 -0500
+Subject: patch: Fix Windows build issues.
+Message-ID: <476F30BD.9080304@codesourcery.com>
+
+The attached patch corrects various issues raised during automated
+testing on Windows ('make benchmarks'). Checked in as obvious.
+
+Thanks,
+		Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: win.patch
+Type: text/x-patch
+Size: 3608 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20071223/ea1669b4/attachment.bin>
+
+From stefan at codesourcery.com  Mon Dec 24 17:19:25 2007
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Mon, 24 Dec 2007 12:19:25 -0500
+Subject: patch: Correct firbank.cpp syntax
+Message-ID: <476FEA1D.40703@codesourcery.com>
+
+This attached patch fixes the 'make benchmark' build with Intel's icl.
+GCC didn't complain about it, though I wonder whether the original code
+was actually valid C++.
+
+Committed as obvious.
+
+Thanks,
+		Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: firbank.cpp.diff
+Type: text/x-patch
+Size: 673 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20071224/3562ba11/attachment.bin>
+

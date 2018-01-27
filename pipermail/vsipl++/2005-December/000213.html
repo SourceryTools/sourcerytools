@@ -1,0 +1,349 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [patch] Re: [patch] SSE on amd64, other config hax
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bpatch%5D%20Re%3A%20%5Bpatch%5D%20SSE%20on%20amd64%2C%20other%20config%20hax&In-Reply-To=%3C20051221085049.GF29701%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000212.html">
+   <LINK REL="Next"  HREF="000214.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[patch] Re: [patch] SSE on amd64, other config hax</H1>
+    <B>Nathan (Jasper) Myers</B> 
+    <A HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bpatch%5D%20Re%3A%20%5Bpatch%5D%20SSE%20on%20amd64%2C%20other%20config%20hax&In-Reply-To=%3C20051221085049.GF29701%40codesourcery.com%3E"
+       TITLE="[patch] Re: [patch] SSE on amd64, other config hax">ncm at codesourcery.com
+       </A><BR>
+    <I>Wed Dec 21 08:50:49 UTC 2005</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000212.html">[vsipl++] [patch] SSE on amd64, other config hax
+</A></li>
+        <LI>Next message: <A HREF="000214.html">[vsipl++] [patch] Re: [patch] SSE on amd64, other config hax
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#213">[ date ]</a>
+              <a href="thread.html#213">[ thread ]</a>
+              <a href="subject.html#213">[ subject ]</a>
+              <a href="author.html#213">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>On Tue, Dec 20, 2005 at 11:38:23PM -0800, Nathan (Jasper) Myers wrote:
+&gt;<i> On Wed, Dec 21, 2005 at 12:13:15AM -0500, Jules Bergmann wrote:
+</I>&gt;<i> &gt; Nathan (Jasper) Myers wrote:
+</I>&gt;<i> &gt; &gt;Patch below makes FFTW3 use SSE/SSE2 on x86-64, and cleans up some
+</I>&gt;<i> &gt; &gt;config file and minor build details.  OK?
+</I>&gt;<i> &gt; 
+</I>&gt;<i> &gt; Looks good, please check it in.  Do the x86-64 changes work on Sethra? 
+</I>&gt;<i> 
+</I>&gt;<i> Hmm, on cugel, built with /home/jules/local/x86_64/gcc-4.0.1/bin/g++ ...
+</I>&gt;<i> 
+</I>&gt;<i> qmtest run fft.cpp   PASS
+</I>&gt;<i> qmtest run fftm.cpp  FAIL
+</I>
+When built with /usr/local/tools/gcc-3.4.0/bin/g++ and tested using 
+/home/jules/local/x86_64/bin/qmtest, both PASS.
+
+(BTW, when tested using /usr/local/tools/gcc-3.4.0/bin/qmtest, 
+all tests fail with 'The context variable &quot;CompilerTable.compiler_table&quot; 
+was not defined.'  Evidently the qmtest installed there is obsolete.)
+
+New patch below.  I tried to check it in, from both cugel and sethra,
+but just get &quot;cvs commit: Up-to-date check failed for&quot; Changelog,
+configure.ac, and GNUmakefile.in, despite that I have just cvs-updated
+them; and then deleted, cvs-updated, and re-patched them.  Are the
+timestamps on CVS's files messed up?
+
+Nathan Myers
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">ncm at cantrip.org</A>
+
+Index: ChangeLog
+===================================================================
+RCS file: /home/cvs/Repository/vpp/ChangeLog,v
+retrieving revision 1.344
+diff -u -p -r1.344 ChangeLog
+--- ChangeLog	21 Dec 2005 04:04:36 -0000	1.344
++++ ChangeLog	21 Dec 2005 08:48:13 -0000
+@@ -1,3 +1,13 @@
++2005-12-20  Nathan Myers  &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">ncm at codesourcery.com</A>&gt;
++
++	* configure.ac, vendor/fftw/simd/sse.c, vendor/fftw/simd/sse2.c:
++	  enable using SSE/SSE2 on x86-64.
++	* vendor/GNUmakefile.inc.in: improve build status reports,
++	  simplify handling of &quot;.a&quot; results so that 'make clean' works. 
++	* configure.ac, GNUmakefile.in, tests/context.in: 
++	  rearrange -I, -L so compiler will find internal includes &amp; libs 
++	  first, installed ones second, environment ones last.
++
+ 2005-12-20  Stefan Seefeld  &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">stefan at codesourcery.com</A>&gt;
+ 
+ 	* synopsis.py.in: Additional code not yet part of the last (0.8) release.
+Index: GNUmakefile.in
+===================================================================
+RCS file: /home/cvs/Repository/vpp/GNUmakefile.in,v
+retrieving revision 1.32
+diff -u -p -r1.32 GNUmakefile.in
+--- GNUmakefile.in	20 Dec 2005 17:10:34 -0000	1.32
++++ GNUmakefile.in	21 Dec 2005 08:48:13 -0000
+@@ -58,13 +58,13 @@ CXXINCLUDES := -I src -I $(srcdir)/src
+ # C++ macro definitions.
+ CXXDEFS :=
+ # C++ preprocessor flags.
+-CXXCPPFLAGS := $(CXXINCLUDES) $(CXXDEFS) @CPPFLAGS@ @INT_CPPFLAGS@
++CXXCPPFLAGS := $(CXXINCLUDES) $(CXXDEFS) @INT_CPPFLAGS@ @CPPFLAGS@
+ # C++ compilation flags.
+ CXXFLAGS := $(CXXCPPFLAGS) @CXXFLAGS@
+ # The extension for executable programs.
+ EXEEXT := @EXEEXT@
+ # Linker flags.
+-LDFLAGS := @LDFLAGS@ @INT_LDFLAGS@
++LDFLAGS := @INT_LDFLAGS@ @LDFLAGS@
+ # Libraries to link to.
+ LIBS := @LIBS@
+ # The extension for object files.
+Index: configure.ac
+===================================================================
+RCS file: /home/cvs/Repository/vpp/configure.ac,v
+retrieving revision 1.60
+diff -u -p -r1.60 configure.ac
+--- configure.ac	20 Dec 2005 18:50:29 -0000	1.60
++++ configure.ac	21 Dec 2005 08:48:13 -0000
+@@ -456,11 +456,9 @@ if test &quot;$build_fftw3&quot; != &quot;no&quot;; then
+     fftw3_d_simd=
+     fftw3_l_simd=
+     case &quot;$host_cpu&quot; in
+-      (ia32|i686)        fftw3_f_simd=&quot;--enable-sse&quot;
++      (ia32|i686|x86_64) fftw3_f_simd=&quot;--enable-sse&quot;
+ 	                 fftw3_d_simd=&quot;--enable-sse2&quot; 
+ 	                 ;;
+-      (x86_64)           fftw3_d_simd=&quot;&quot;
+-	                 ;;
+       (ppc*)             fftw3_f_simd=&quot;--enable-altivec&quot; ;;
+     esac
+     AC_MSG_NOTICE([fftw3 config options: $fftw3_opts $fftw3_simd.])
+@@ -523,11 +521,11 @@ if test &quot;$build_fftw3&quot; != &quot;no&quot;; then
+   # fail).  Instead we add them to LATE_LIBS, which gets added to
+   # LIBS just before AC_OUTPUT.
+ 
+-  LATE_LIBS=&quot;$LATE_LIBS $FFTW3_LIBS&quot;
+-  INT_CPPFLAGS=&quot;$INT_CPPFLAGS -I$curdir/vendor/fftw/include&quot;
+-  INT_LDFLAGS=&quot;$INT_LDFLAGS -L$curdir/vendor/fftw/lib&quot;
+-  CPPFLAGS=&quot;$CPPFLAGS -I$includedir/fftw3&quot;
+-  LDFLAGS=&quot;$LDFLAGS -L$libdir/fftw3&quot;
++  LATE_LIBS=&quot;$FFTW3_LIBS $LATE_LIBS&quot;
++  INT_CPPFLAGS=&quot;-I$curdir/vendor/fftw/include $INT_CPPFLAGS&quot;
++  INT_LDFLAGS=&quot;-L$curdir/vendor/fftw/lib $INT_LDFLAGS&quot;
++  CPPFLAGS=&quot;-I$includedir/fftw3 $CPPFLAGS&quot;
++  LDFLAGS=&quot;-L$libdir/fftw3 $LDFLAGS&quot;
+ fi
+ 
+ if test &quot;$enable_fftw2&quot; != &quot;no&quot; ; then
+@@ -1083,12 +1081,12 @@ if test &quot;$with_lapack&quot; != &quot;no&quot;; then
+ 	# fail).  Instead we add them to LATE_LIBS, which gets added to
+ 	# LIBS just before AC_OUTPUT.
+ 
+-        LATE_LIBS=&quot;$LATE_LIBS -lcsl_lapack -lcsl_cblas -lcsl_f77blas -lcsl_atlas $use_g2c&quot;
++        LATE_LIBS=&quot;-lcsl_lapack -lcsl_cblas -lcsl_f77blas -lcsl_atlas $use_g2c $LATE_LIBS&quot;
+ 
+-	INT_CPPFLAGS=&quot;$INT_CPPFLAGS -I$my_abs_top_srcdir/vendor/atlas/include&quot;
+-	INT_LDFLAGS=&quot;$INT_LDFLAGS -L$curdir/vendor/atlas/lib&quot;
+-        CPPFLAGS=&quot;$keep_CPPFLAGS -I$includedir/atlas&quot;
+-        LDFLAGS=&quot;$keep_LDFLAGS -L$libdir/atlas&quot;
++	INT_CPPFLAGS=&quot;-I$my_abs_top_srcdir/vendor/atlas/include $INT_CPPFLAGS&quot;
++	INT_LDFLAGS=&quot;-L$curdir/vendor/atlas/lib $INT_LDFLAGS&quot;
++        CPPFLAGS=&quot;-I$includedir/atlas $keep_CPPFLAGS&quot;
++        LDFLAGS=&quot;-L$libdir/atlas $keep_LDFLAGS&quot;
+         LIBS=&quot;$keep_LIBS&quot;
+         lapack_use_ilaenv=0
+         cblas_style=&quot;1&quot;	# use cblas.h
+@@ -1231,7 +1229,7 @@ AC_CHECK_PROGS(XEP, xep)
+ AC_PROG_INSTALL
+ 
+ # &quot;Late&quot; variables
+-LIBS=&quot;$LIBS $LATE_LIBS&quot;
++LIBS=&quot;$LATE_LIBS $LIBS&quot;
+ AC_SUBST(INT_LDFLAGS)
+ AC_SUBST(INT_CPPFLAGS)
+ 
+Index: tests/context.in
+===================================================================
+RCS file: /home/cvs/Repository/vpp/tests/context.in,v
+retrieving revision 1.4
+diff -u -p -r1.4 context.in
+--- tests/context.in	1 Dec 2005 16:39:27 -0000	1.4
++++ tests/context.in	21 Dec 2005 08:48:13 -0000
+@@ -1,8 +1,8 @@
+ CompilerTable.languages= cxx
+ CompilerTable.cxx_kind= GCC
+ CompilerTable.cxx_path= @CXX@
+-CompilerTable.cxx_options= <A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">-I at abs_top_builddir</A>@/src <A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">-I at abs_top_srcdir</A>@/src @CPPFLAGS@ @INT_CPPFLAGS@ @CXXFLAGS@
+-CompilerTable.cxx_ldflags= @LDFLAGS@ @INT_LDFLAGS@ @abs_top_builddir@/src/vsip/libvsip.a @LIBS@
++CompilerTable.cxx_options= <A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">-I at abs_top_builddir</A>@/src <A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">-I at abs_top_srcdir</A>@/src @INT_CPPFLAGS@ @CPPFLAGS@ @CXXFLAGS@
++CompilerTable.cxx_ldflags= @INT_LDFLAGS@ @LDFLAGS@ @abs_top_builddir@/src/vsip/libvsip.a @LIBS@
+ GPPInit.options=
+ GPPInit.library_directories= 
+ DejaGNUTest.target= @host@
+Index: vendor/GNUmakefile.inc.in
+===================================================================
+RCS file: /home/cvs/Repository/vpp/vendor/GNUmakefile.inc.in,v
+retrieving revision 1.3
+diff -u -p -r1.3 GNUmakefile.inc.in
+--- vendor/GNUmakefile.inc.in	20 Dec 2005 18:50:30 -0000	1.3
++++ vendor/GNUmakefile.inc.in	21 Dec 2005 08:48:13 -0000
+@@ -42,11 +42,11 @@ all:: $(vendor_LIBS)
+ libs:: $(vendor_LIBS)
+ 
+ $(vendor_ATLAS_LIBS):
+-	@echo &quot;Building ATLAS (atlas.build.log)&quot;
++	@echo &quot;Building ATLAS (see atlas.build.log)&quot;
+ 	@$(MAKE) -C vendor/atlas build &gt; atlas.build.log 2&gt;&amp;1
+ 
+ $(vendor_REF_LAPACK):
+-	@echo &quot;Building LAPACK (lapack.build.log)&quot;
++	@echo &quot;Building LAPACK (see lapack.build.log)&quot;
+ 	@$(MAKE) -C vendor/lapack/SRC all &gt; lapack.build.log 2&gt;&amp;1
+ 
+ $(vendor_USE_LAPACK): $(vendor_PRE_LAPACK) $(vendor_REF_LAPACK)
+@@ -57,11 +57,11 @@ $(vendor_USE_LAPACK): $(vendor_PRE_LAPAC
+ 	rm -rf vendor/atlas/lib/tmp
+ 
+ clean::
+-	@echo &quot;Cleaning ATLAS (atlas.clean.log)&quot;
++	@echo &quot;Cleaning ATLAS (see atlas.clean.log)&quot;
+ 	@$(MAKE) -C vendor/atlas clean &gt; atlas.clean.log 2&gt;&amp;1
+ 
+ install::
+-	@echo &quot;Installing ATLAS (atlas.install.log)&quot;
++	@echo &quot;Installing ATLAS (see atlas.install.log)&quot;
+ 	# @$(MAKE) -C vendor/atlas installinstall &gt; atlas.install.log 2&gt;&amp;1
+ 	$(INSTALL) -d $(libdir)/atlas
+ 	$(INSTALL_DATA) vendor/atlas/lib/libcsl_atlas.a   $(libdir)/atlas
+@@ -75,41 +75,38 @@ endif
+ ifdef USE_BUILTIN_FFTW
+ 
+ vendor_FFTW_LIBS := \
+-	vendor/fftw3f/libfftw3f-csl.a \
+-	vendor/fftw3/libfftw3-csl.a \
+-	vendor/fftw3l/libfftw3l-csl.a \
++	vendor/fftw3f/.libs/libfftw3f-csl.a \
++	vendor/fftw3/.libs/libfftw3-csl.a \
++	vendor/fftw3l/.libs/libfftw3l-csl.a 
+ 
+ all:: $(vendor_FFTW_LIBS)
+ 
+ libs:: $(vendor_FFTW_LIBS)
+ 
+-vendor/fftw3f/libfftw3f-csl.a:
+-	@echo &quot;Building FFTW float (fftw-f.build.log)&quot;
++vendor/fftw3f/.libs/libfftw3f-csl.a:
++	@echo &quot;Building FFTW float (see fftw-f.build.log)&quot;
+ 	@$(MAKE) -C vendor/fftw3f &gt; fftw-f.build.log 2&gt;&amp;1
+-	mv vendor/fftw3f/.libs/libfftw3f.a vendor/fftw3f/libfftw3f-csl.a
+ 
+-vendor/fftw3/libfftw3-csl.a:
+-	@echo &quot;Building FFTW double (fftw-d.build.log)&quot;
++vendor/fftw3/.libs/libfftw3-csl.a:
++	@echo &quot;Building FFTW double (see fftw-d.build.log)&quot;
+ 	@$(MAKE) -C vendor/fftw3 &gt; fftw-d.build.log 2&gt;&amp;1
+-	mv vendor/fftw3/.libs/libfftw3.a vendor/fftw3/libfftw3-csl.a
+ 
+-vendor/fftw3l/libfftw3l-csl.a:
+-	@echo &quot;Building FFTW double (fftw-l.build.log)&quot;
++vendor/fftw3l/.libs/libfftw3l-csl.a:
++	@echo &quot;Building FFTW long double (see fftw-l.build.log)&quot;
+ 	@$(MAKE) -C vendor/fftw3l &gt; fftw-l.build.log 2&gt;&amp;1
+-	mv vendor/fftw3l/.libs/libfftw3l.a vendor/fftw3l/libfftw3l-csl.a
+ 
+ clean::
+-	@echo &quot;Cleaning FFTW (fftw.clean.log)&quot;
++	@echo &quot;Cleaning FFTW (see fftw.clean.log)&quot;
+ 	@$(MAKE) -C vendor/fftw3f clean  &gt; fftw.clean.log 2&gt;&amp;1
+ 	@$(MAKE) -C vendor/fftw3  clean &gt;&gt; fftw.clean.log 2&gt;&amp;1
+ 	@$(MAKE) -C vendor/fftw3l clean &gt;&gt; fftw.clean.log 2&gt;&amp;1
+ 
+ install::
+-	@echo &quot;Installing FFTW (fftw.install.log)&quot;
++	@echo &quot;Installing FFTW&quot;
+ 	$(INSTALL) -d $(libdir)/fftw3
+-	$(INSTALL_DATA) vendor/fftw3f/libfftw3f-csl.a  $(libdir)/fftw3
+-	$(INSTALL_DATA) vendor/fftw3/libfftw3-csl.a    $(libdir)/fftw3
+-	$(INSTALL_DATA) vendor/fftw3l/libfftw3l-csl.a  $(libdir)/fftw3
++	$(INSTALL_DATA) vendor/fftw3f/.libs/libfftw3f-csl.a  $(libdir)/fftw3
++	$(INSTALL_DATA) vendor/fftw3/.libs/libfftw3-csl.a    $(libdir)/fftw3
++	$(INSTALL_DATA) vendor/fftw3l/.libs/libfftw3l-csl.a  $(libdir)/fftw3
+ 	$(INSTALL) -d $(includedir)
+ 	$(INSTALL_DATA) $(srcdir)/vendor/fftw/api/fftw3.h $(includedir)
+ endif
+Index: vendor/fftw/simd/sse.c
+===================================================================
+RCS file: /home/cvs/Repository/fftw/simd/sse.c,v
+retrieving revision 1.1.1.1
+diff -u -p -r1.1.1.1 sse.c
+--- vendor/fftw/simd/sse.c	1 Dec 2005 10:33:03 -0000	1.1.1.1
++++ vendor/fftw/simd/sse.c	21 Dec 2005 08:48:13 -0000
+@@ -40,6 +40,13 @@ static inline int cpuid_edx(int op)
+           pop ebx
+      }
+      return ret;
++#elif defined(__x86_64__)
++     int rax, rcx, rdx;
++
++     __asm__(&quot;pushq %%rbx\n\tcpuid\n\tpopq %%rbx&quot;
++	     : &quot;=a&quot; (rax), &quot;=c&quot; (rcx), &quot;=d&quot; (rdx)
++	     : &quot;a&quot; (op));
++     return rdx;
+ #else
+      int eax, ecx, edx;
+ 
+Index: vendor/fftw/simd/sse2.c
+===================================================================
+RCS file: /home/cvs/Repository/fftw/simd/sse2.c,v
+retrieving revision 1.1.1.1
+diff -u -p -r1.1.1.1 sse2.c
+--- vendor/fftw/simd/sse2.c	1 Dec 2005 10:33:03 -0000	1.1.1.1
++++ vendor/fftw/simd/sse2.c	21 Dec 2005 08:48:13 -0000
+@@ -40,6 +40,13 @@ static inline int cpuid_edx(int op)
+           pop ebx
+      }
+      return ret;
++#elif defined(__x86_64__)
++     int rax, rcx, rdx;
++
++     __asm__(&quot;pushq %%rbx\n\tcpuid\n\tpopq %%rbx&quot;
++	     : &quot;=a&quot; (rax), &quot;=c&quot; (rcx), &quot;=d&quot; (rdx)
++	     : &quot;a&quot; (op));
++     return rdx;
+ #else
+      int eax, ecx, edx;
+ 
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000212.html">[vsipl++] [patch] SSE on amd64, other config hax
+</A></li>
+	<LI>Next message: <A HREF="000214.html">[vsipl++] [patch] Re: [patch] SSE on amd64, other config hax
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#213">[ date ]</a>
+              <a href="thread.html#213">[ thread ]</a>
+              <a href="subject.html#213">[ subject ]</a>
+              <a href="author.html#213">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">More information about the vsipl++
+mailing list</a><br>
+</body></html>

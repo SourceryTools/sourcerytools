@@ -1,0 +1,498 @@
+// -----------------------------------------------------------
+// SPL (Solitonic POOMA-based Library).
+// Copyright (C) 2000 by Serge Mingaleev <smino@bitp.kiev.ua>
+// Last modified: Sep 17, 2000.
+// -----------------------------------------------------------
+
+#ifndef SPL_ENGINE_SPARSEENGINE_H
+#error "Should be included from SparseEngine.h only!"
+#endif
+
+#ifndef SPL_ENGINE_SPARSEENGINE2_H
+#define SPL_ENGINE_SPARSEENGINE2_H
+
+//=============================================================
+//   Realization of the Engine<2,T,Sparse>
+//=============================================================
+
+#define Dim 2
+
+template<class T>
+class Engine<2,T,Sparse>
+{
+public:
+
+  //============================================================
+  // Exported typedefs and constants
+  //============================================================
+
+  typedef Engine<Dim,T,Sparse>             This_t;
+  typedef Engine<Dim,T,Sparse>             Engine_t;
+//  typedef Pooma::SparseBase<Dim>          Base_t;
+//  typedef typename Base_t::Domain_t        Domain_t;
+  typedef Interval<Dim>                    Domain_t;
+  typedef Interval<1>                      Domain1D_t;
+  typedef DomainLayout<Dim>                Layout_t;
+  typedef T                                Element_t;
+  typedef T&                               ElementRef_t;
+  typedef Sparse                           Tag_t;
+
+  enum { sparse        = true  };
+  enum { brick         = false };
+  enum { dimensions    = Dim   };
+  enum { hasDataObject = false };
+  enum { dynamic       = false };
+  enum { zeroBased     = false };
+  enum { multiPatch    = false };
+
+  //==========================================================
+  // Constructors and Factory Methods
+  //==========================================================
+
+  // Default constructor. Creates a Brick-Engine with no data
+  // and an "empty" domain.  This is not really usable until it
+  // has been initialized (via operator=) to a new engine with an
+  // actual domain.
+
+  Engine() { }
+
+  // These constructors take an Interval<Dim> and create a new
+  // Brick-Engine with data of type T on this Domain. This is where
+  // storage gets allocated. The second version uses a model data
+  // element to initialize storage.
+  
+  Engine(const Domain_t& dom)
+  {
+    tol_m=SPARSE_TOLERANCE;
+    size_m=int(SPARSITY_LEVEL*dom[0].size()*dom[1].size());
+    domain1D_m=Domain1D_t(-1, size_m-1);
+    for (int d = 0; d < Dim; d++) {
+      domain_m[d] = dom[d];
+      firsts_m[d] = dom[d].first();
+    }
+
+    data_m.initialize(domain1D_m);
+    cols_m.initialize(domain1D_m);
+    next_m.initialize(domain1D_m);
+    addr_m.initialize(domain_m[0]);
+
+    addr_m=-1;       // no elements are stored
+    data_m(-1)=0.0;  // unstored elements are zero
+
+    // the first free cell has zero index:
+    free_m=0;
+
+    // all other free cells form a chain:
+    for (int k=0; k<size_m; k++) next_m(k)=k+1;
+
+    // the last free cell ends the chain:
+    next_m(size_m-1)=-1;
+
+#ifdef SPL_DEBUG_SPARSE
+    cerr << "Creating Sparse Matrix ("
+         << domain_m[0] << "x" 
+         << domain_m[1] 
+         << ") with size = " << size_m 
+         << " in (" << domain1D_m << ")" << endl;
+#endif
+  }
+
+  // Subsetting Constructors.
+  //   There are none - you cannot create a Brick-Engine by taking
+  //   a "view" of another Engine.  Brick-Engines, by definition,
+  //   view all of the data. See Engine<D,T,BrickView> below.
+
+  //============================================================
+  // Destructor
+  //============================================================
+
+  ~Engine(){ 
+#ifdef SPL_DEBUG_SPARSE
+    cerr << "Deleting Sparse Matrix ("
+         << domain_m[0] << "x" 
+         << domain_m[1] 
+         << ") with size = " << size_m 
+         << " in (" << domain1D_m << ")" << endl;
+#endif
+  };
+
+  //============================================================
+  // Assignment operators
+  //============================================================
+
+  // Assigment is SHALLOW, to be consistent with copy.
+
+  Engine_t &operator=(const Engine_t &model)
+  {
+    if (this == &model) return *this;
+
+    tol_m = model.tol_m;
+    size_m = model.size_m;
+    free_m = model.free_m;
+    for (int d = 0; d < Dim; ++d) {
+      firsts_m[d] = model.firsts_m[d];
+    }
+    domain_m = model.domain_m;
+    domain1D_m = model.domain1D_m;
+    data_m.initialize(model.data_m);
+    cols_m.initialize(model.cols_m);
+    next_m.initialize(model.next_m);
+    addr_m.initialize(model.addr_m);
+    data_m = model.data_m;
+    cols_m = model.cols_m;
+    next_m = model.next_m;
+    addr_m = model.addr_m;
+
+    return *this;
+  }
+
+  //============================================================
+  // Accessor and Mutator functions:
+  //============================================================
+
+  // Element access via Loc.
+
+  Element_t read(const Loc<Dim> &loc) const
+  {
+    return data_m(index(loc));
+  }
+
+  ElementRef_t operator()(const Loc<Dim> &loc) const
+  {
+    return data_m(set_index(loc));
+  }
+
+  // Element access via ints for speed.
+
+  Element_t read(int i1, int i2) const
+  {
+    return data_m(index(i1,i2));
+  }
+
+  ElementRef_t operator()(int i1, int i2) const
+  {
+    return data_m(set_index(i1,i2));
+  }
+
+  // Get a private copy of data viewed by this Engine.
+
+  Engine_t &makeOwnCopy()
+  {
+//  mutable int free_m;
+//  T tol_m;
+//  int size_m;
+//  int firsts_m[Dim];
+//  Domain_t domain_m;
+//  Domain1D_t domain1D_m;
+
+    data_m.makeOwnCopy();
+    cols_m.makeOwnCopy();
+    next_m.makeOwnCopy();
+    addr_m.makeOwnCopy();
+
+    return *this;
+  }
+
+  //---------------------------------------------------------
+  // Return/set the domain.
+
+  inline const Domain_t &domain() const
+  {
+    return domain_m; 
+  }
+
+  //---------------------------------------------------------
+  // Return the first index value for the specified direction.
+
+  inline int first(int i) const
+  {
+    PAssert(i >= 0 && i < Dim);
+    return firsts_m[i];
+  }
+
+  //---------------------------------------------------------
+  // Return the size
+
+  inline int size() const
+  {
+    return size_m;
+  }
+
+  //---------------------------------------------------------
+  // Return number of free cells
+
+  inline int free() const
+  {
+    int f=0, k=free_m;
+    while (k != -1) {
+      f++; k=next_m(k);
+    }
+    return f;
+  }
+
+  //---------------------------------------------------------
+  // Return/set tolerance
+
+  inline T& tolerance()
+  {
+    return tol_m;
+  }
+
+  //---------------------------------------------------------
+  // Return index of element (i,j) or -1 if it is not stored
+
+  inline int index(int i, int j) const
+  {
+    int k=addr_m(i);
+    while (k != -1) {
+      int m=cols_m(k);
+      if (m == j) return k;
+      if (m > j) break;
+      k=next_m(k);
+    }
+    return (-1);
+  }
+
+  inline int index(const Domain_t &dom) const
+  {
+    return index(dom[0].first(),dom[1].first());
+  }
+
+  //---------------------------------------------------------
+  // Packing functions for the sparse array:
+
+  void pack(void) const
+  {
+    int i_min=domain_m[0].first(), 
+        i_max=i_min+domain_m[0].size();
+    for (int i=i_min; i<i_max; i++) {
+      int k0=-1;
+      int k=addr_m(i);
+      while (k != -1) {
+        if (abs(data_m(k)) <= abs(tol_m)) {
+          if (k0 == -1) addr_m(i)=next_m(k);
+          else          next_m(k0)=next_m(k);
+          next_m(k)=free_m;
+          free_m=k;
+        }
+        else k0=k;
+        if (k0 == -1) k=addr_m(i);
+        else          k=next_m(k0);
+      }
+    }
+  }
+
+  //---------------------------------------------------------
+  // Makes a vector from the diagonal of a sparse matrix:
+
+  inline Array<1,T,Brick> diagVector(void) const
+  {
+    if (domain_m[0] != domain_m[1]) 
+      PError ("Not a square matrix - has no diagonal");
+
+    Array<1,T> B(domain_m[0]);
+    int i_min=domain_m[0].first(), 
+        i_max=i_min+domain_m[0].size();
+
+    for (int i=i_min; i<i_max; i++) {
+      B(i)=data_m(index(i,i));
+    }
+    return B;
+  }
+
+  //---------------------------------------------------------
+  // Multiply a sparse matrix by a vector:
+
+  template<class TV, class ETV>
+  inline Array<1,TV,ETV> dot(Array<1,TV,ETV> X) const
+  {
+    if (X.domain() != domain_m[1]) 
+      PError ("Mismatched matrix and input vector");
+
+    Array<1,TV,ETV> B(domain_m[0]);
+    int i_min=domain_m[0].first(), 
+        i_max=i_min+domain_m[0].size();
+
+    B=0.0;
+    for (int i=i_min; i<i_max; i++) {
+      int k=addr_m(i);
+      while (k != -1) {
+        B(i) += data_m(k)*X(cols_m(k));
+        k=next_m(k);
+      }
+    }
+    return B;
+  }
+
+  //---------------------------------------------------------
+  // Multiply the transpose of a sparse matrix by a vector:
+
+  template<class TV, class ETV>
+  inline Array<1,TV,ETV> dot_T(Array<1,TV,ETV> X) const
+  {
+    if (X.domain() != domain_m[0]) 
+      PError ("Mismatched matrix and input vector");
+
+    Array<1,TV,ETV> B(domain_m[1]);
+    int i_min=domain_m[0].first(), 
+        i_max=i_min+domain_m[0].size();
+
+    B=0.0;
+    for (int i=i_min; i<i_max; i++) {
+      int k=addr_m(i);
+      while (k != -1) {
+        B(cols_m(k)) += data_m(k)*X(i);
+        k=next_m(k);
+      }
+    }
+    return B;
+  }
+
+  //---------------------------------------------------------
+  // Debugging functions for the sparse array:
+
+  void printSparse(void) const
+  {
+    int i_min=domain_m[0].first(), 
+        i_max=i_min+domain_m[0].size();
+
+    cout << " addr = " << addr_m << endl;
+    cout << " k \t next \t cols \t data" << endl;
+
+    for (int i=i_min; i<i_max; i++) {
+      int k=addr_m(i);
+      while (k != -1) {
+        cout << k << " \t "
+             << next_m(k) << " \t "
+             << cols_m(k) << " \t "
+             << data_m(k) << endl;
+        k=next_m(k);
+      }
+    }
+  }
+
+  //---------------------------------------------------------
+  // Print sparse array:
+
+  void print(void) const
+  {
+    int i_min=domain_m[0].first(), 
+        i_max=i_min+domain_m[0].size();
+
+//    cout << endl << " Non-zero elements of Sparse Matrix:" << endl;
+
+    for (int i=i_min; i<i_max; i++) {
+      int k=addr_m(i);
+      while (k != -1) {
+        cout << " (" << i << "," << cols_m(k) << ") = " << data_m(k) << endl;
+        k=next_m(k);
+      }
+    }
+  }
+
+  //---------------------------------------------------------
+  // Write sparse array:
+  template<class Out>
+  void write(Out& os) const
+  {
+    pack();
+
+    // Write the extent vector: this is separated by 'x's, e.g.
+    // (1, 10) x (-4, 4) x (-5, 5)
+
+    for (int i=0; i < Dim; ++i) {
+      os << "(";
+      os << domain_m[i].first(); 
+      os << ", ";
+      os << domain_m[i].last(); 
+      os << ")";
+      if (i != Dim-1) os << " x ";
+    }
+    os << endl << "[ ";
+
+    int i_min=domain_m[0].first(), 
+        i_max=i_min+domain_m[0].size();
+
+    for (int i=i_min; i<i_max; i++) {
+      int k=addr_m(i);
+      while (k != -1) {
+        os << setprecision(12) << "{(" << i << "," << cols_m(k) << ") " << data_m(k) << "} ";
+        k=next_m(k);
+      }
+    }
+    
+    os << "]" << endl;
+  }
+
+protected:
+
+  //==========================================================
+  // Protected functions
+  //==========================================================
+
+  int get_free(void) const
+  {
+    int k=free_m;
+    if (k == -1) {
+      pack();
+      k=free_m;
+      if (k == -1)  PError("No free space in Sparse Matrix");
+    }
+    free_m=next_m(k);
+    return k;
+  }
+
+  //---------------------------------------------------------
+  // Return index of element (i,j) or allocate new index if 
+  // the element is not yet stored
+
+  int set_index(int i, int j) const
+  {
+    int k0, k=addr_m(i);
+    while (k != -1) {
+      int m=cols_m(k);
+      if (m == j) return k;
+      if (m > j) break;
+      k0=k;
+      k=next_m(k);
+    }
+
+    int q=get_free();
+
+    if (k == addr_m(i))  addr_m(i)=q;
+    else  next_m(k0)=q;
+
+    next_m(q)=k;
+    cols_m(q)=j;
+    data_m(q)=0.0;
+    return q;
+  }
+
+  inline int set_index(const Domain_t &dom) const
+  {
+    return set_index(dom[0].first(),dom[1].first());
+  }
+
+private:
+
+  //==========================================================
+  // Private data
+  //==========================================================
+
+  mutable int free_m;
+  T tol_m;
+  int size_m;
+  int firsts_m[Dim];
+  Domain_t domain_m;
+  Domain1D_t domain1D_m;
+  Array<1,T> data_m;
+  Array<1,int> cols_m;
+  Array<1,int> next_m;
+  Array<1,int> addr_m;
+};
+
+#undef Dim
+
+#endif // SPL_ENGINE_SPARSEENGINE2_H
+
+

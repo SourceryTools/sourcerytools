@@ -1,0 +1,2960 @@
+From zack at codesourcery.com  Mon Jun  9 19:13:34 2003
+From: zack at codesourcery.com (Zack Weinberg)
+Date: Mon, 09 Jun 2003 12:13:34 -0700
+Subject: test 
+Message-ID: <87wufvt675.fsf@egil.codesourcery.com>
+
+posting test
+
+
+From zackw at panix.com  Mon Jun  9 19:15:36 2003
+From: zackw at panix.com (zackw at panix.com)
+Date: Mon, 9 Jun 2003 15:15:36 -0400 (EDT)
+Subject: test
+Message-ID: <200306091915.h59JFaF10198@panix1.panix.com>
+
+nonsubscriber posting test
+
+
+From zack at codesourcery.com  Mon Jun  9 20:02:14 2003
+From: zack at codesourcery.com (Zack Weinberg)
+Date: Mon, 09 Jun 2003 13:02:14 -0700
+Subject: kick mhonarc
+Message-ID: <E19PSqM-0002oa-00@egil.codesourcery.com>
+
+
+
+From zack at codesourcery.com  Mon Jun  9 20:16:18 2003
+From: zack at codesourcery.com (Zack Weinberg)
+Date: Mon, 09 Jun 2003 13:16:18 -0700
+Subject: kick mhonarc again
+Message-ID: <E19PT3y-0002oq-00@egil.codesourcery.com>
+
+blah
+
+
+From drow at false.org  Fri Jun 13 04:19:25 2003
+From: drow at false.org (Daniel Jacobowitz)
+Date: Fri, 13 Jun 2003 00:19:25 -0400
+Subject: Something to start with
+Message-ID: <20030613041925.GA23591@nevyn.them.org>
+
+OK, folks, I know you're out there :)
+
+Here are three tidbits to consider:
+
+ - Because 2.57 still has the deprecated support for not cross compiling
+when $build = $host, we can get by in a partial per-directory conversion
+without needing any magic at the top level at all.  I did gas to prove the
+point.
+
+ -  Alex prefers we arrange to pass the right arguments to 2.5x-ized
+subdirectories.  This is a simple piece of makefile trickery.  Anyone care
+to do it?
+
+ - I also did libiberty.  I have not tested a combined tree cygwin build
+yet, which needs to happen, since it exercises the relevant hard case.  I
+also reimplemented AC_NO_EXECUTABLES based on another of Alexandre's
+suggestions, which proved quite good: disable link tests at runtime if
+GCC_NO_EXECUTABLES is encountered, rather than at autoconf time if it is
+seen in the file.
+
+I've attached the patch for libiberty in case someone wants to give it a
+whirl before I do, in more combinations.  I'm testing eight kinds of builds
+right now and I'll have a few more before I'm satisfied, but I won't have
+time to work on this for a day or two, so I wanted to give the list a kick.
+
+Oh, if you try the patch be sure to invoke the right autoconf.  I forgot to
+bump AC_PREREQ, so distributions with autoconf wrappers are likely to pick
+2.13 instead.
+
+-- 
+Daniel Jacobowitz
+MontaVista Software                         Debian GNU/Linux Developer
+
+2003-06-13  Daniel Jacobowitz  <drow at mvista.com>
+
+	* no-executables.m4: New file.
+
+2003-06-13  Daniel Jacobowitz  <drow at mvista.com>
+
+	* aclocal.m4: Include no-executables.m4.  Use AC_LIBOBJ.  Remove
+	LIB_AC_PROG_CC.
+	* configure.in: Use GCC_NO_EXECUTABLES and AC_PROG_CC instead of
+	LIB_AC_PROG_CC.  Also substitue ac_libiberty_warn_cflags here.
+	Use AC_LIBOBJ.  Remove AC_PROG_CC_WORKS call.
+	* configure: Regenerate using autoconf 2.57.
+
+Index: config/no-executables.m4
+===================================================================
+RCS file: config/no-executables.m4
+diff -N config/no-executables.m4
+--- /dev/null	1 Jan 1970 00:00:00 -0000
++++ config/no-executables.m4	13 Jun 2003 03:59:34 -0000
+@@ -0,0 +1,49 @@
++# GCC_NO_EXECUTABLES
++# -----------------
++# FIXME: The GCC team has specific needs which the current Autoconf
++# framework cannot solve elegantly.  This macro implements a dirty
++# hack until Autoconf is abble to provide the services its users
++# needs.
++#
++# Several of the support libraries that are often built with GCC can't
++# assume the tool-chain is already capable of linking a program: the
++# compiler often expects to be able to link with some of such
++# libraries.
++#
++# In several of these libraries, workarounds have been introduced to
++# avoid the AC_PROG_CC_WORKS test, that would just abort their
++# configuration.  The introduction of AC_EXEEXT, enabled either by
++# libtool or by CVS autoconf, have just made matters worse.
++#
++# Unlike the previous AC_NO_EXECUTABLES, this test does not
++# disable link tests at autoconf time, but at configure time.
++# This allows AC_NO_EXECUTABLES to be invoked conditionally.
++AC_DEFUN_ONCE([GCC_NO_EXECUTABLES],
++[m4_divert_push([KILL])
++
++AC_BEFORE([$0], [_AC_COMPILER_EXEEXT])
++AC_BEFORE([$0], [AC_LINK_IFELSE])
++
++m4_define([_AC_COMPILER_EXEEXT],
++AC_LANG_CONFTEST([AC_LANG_PROGRAM()])
++# FIXME: Cleanup?
++AS_IF([AC_TRY_EVAL(ac_link)], [gcc_no_link=no], [gcc_no_link=yes])
++if test x$gcc_no_link = xyes; then
++  # Setting cross_compile will disable run tests; it will
++  # also disable AC_CHECK_FILE but that's generally
++  # correct if we can't link.
++  cross_compiling=yes
++  EXEEXT=
++else
++  m4_defn([_AC_COMPILER_EXEEXT])dnl
++fi
++)
++
++m4_define([AC_LINK_IFELSE],
++if test x$gcc_no_link = xyes; then
++  AC_MSG_ERROR([Link tests are not allowed after [[$0]].])
++fi
++m4_defn([AC_LINK_IFELSE]))
++
++m4_divert_pop()dnl
++])# GCC_NO_EXECUTABLES
+Index: libiberty/aclocal.m4
+===================================================================
+RCS file: /big/fsf/rsync/gcc-cvs/gcc/libiberty/aclocal.m4,v
+retrieving revision 1.7
+diff -u -p -r1.7 aclocal.m4
+--- libiberty/aclocal.m4	7 May 2003 18:06:53 -0000	1.7
++++ libiberty/aclocal.m4	13 Jun 2003 04:04:55 -0000
+@@ -1,4 +1,5 @@
+ sinclude(../config/accross.m4)
++sinclude(../config/no-executables.m4)
+ 
+ dnl See whether strncmp reads past the end of its string parameters.
+ dnl On some versions of SunOS4 at least, strncmp reads a word at a time
+@@ -71,7 +72,7 @@ main ()
+   ac_cv_func_strncmp_works=no)
+ rm -f core core.* *.core])
+ if test $ac_cv_func_strncmp_works = no ; then
+-  LIBOBJS="$LIBOBJS strncmp.o"
++  AC_LIBOBJ([strncmp])
+ fi
+ ])
+ 
+@@ -117,48 +118,6 @@ if test $libiberty_cv_decl_needed_$1 = y
+             [Define if $1 is not declared in system header files.])
+ fi
+ ])dnl
+-
+-# FIXME: We temporarily define our own version of AC_PROG_CC.  This is
+-# copied from autoconf 2.12, but does not call AC_PROG_CC_WORKS.  We
+-# are probably using a cross compiler, which will not be able to fully
+-# link an executable.  This should really be fixed in autoconf
+-# itself.
+-
+-AC_DEFUN(LIB_AC_PROG_CC,
+-[AC_BEFORE([$0], [AC_PROG_CPP])dnl
+-AC_PROVIDE([AC_PROG_CC])
+-AC_CHECK_PROG(CC, gcc, gcc)
+-if test -z "$CC"; then
+-  AC_CHECK_PROG(CC, cc, cc, , , /usr/ucb/cc)
+-  test -z "$CC" && AC_MSG_ERROR([no acceptable cc found in \$PATH])
+-fi
+-
+-AC_PROG_CC_GNU
+-
+-if test $ac_cv_prog_gcc = yes; then
+-  GCC=yes
+-  ac_libiberty_warn_cflags='-W -Wall -Wtraditional -pedantic'
+-dnl Check whether -g works, even if CFLAGS is set, in case the package
+-dnl plays around with CFLAGS (such as to build both debugging and
+-dnl normal versions of a library), tasteless as that idea is.
+-  ac_test_CFLAGS="${CFLAGS+set}"
+-  ac_save_CFLAGS="$CFLAGS"
+-  CFLAGS=
+-  AC_PROG_CC_G
+-  if test "$ac_test_CFLAGS" = set; then
+-    CFLAGS="$ac_save_CFLAGS"
+-  elif test $ac_cv_prog_cc_g = yes; then
+-    CFLAGS="-g -O2"
+-  else
+-    CFLAGS="-O2"
+-  fi
+-else
+-  GCC=
+-  ac_libiberty_warn_cflags=
+-  test "${CFLAGS+set}" = set || CFLAGS="-g"
+-fi
+-AC_SUBST(ac_libiberty_warn_cflags)
+-])
+ 
+ # Work around a bug in autoheader.  This can go away when we switch to
+ # autoconf >2.50.  The use of define instead of AC_DEFUN is
+Index: libiberty/configure.in
+===================================================================
+RCS file: /big/fsf/rsync/gcc-cvs/gcc/libiberty/configure.in,v
+retrieving revision 1.69
+diff -u -p -r1.69 configure.in
+--- libiberty/configure.in	9 Jun 2003 05:20:02 -0000	1.69
++++ libiberty/configure.in	13 Jun 2003 04:04:14 -0000
+@@ -99,7 +99,13 @@ dnl to call AC_CHECK_PROG.
+ AC_CHECK_TOOL(AR, ar)
+ AC_CHECK_TOOL(RANLIB, ranlib, :)
+ 
+-LIB_AC_PROG_CC
++GCC_NO_EXECUTABLES
++AC_PROG_CC
++
++if test x$GCC = xyes; then
++  ac_libiberty_warn_cflags='-W -Wall -Wtraditional -pedantic'
++fi
++AC_SUBST(ac_libiberty_warn_cflags)
+ 
+ AC_PROG_CC_C_O
+ # autoconf is lame and doesn't give us any substitution variable for this.
+@@ -250,7 +256,12 @@ if test -n "${with_target_subdir}"; then
+   # newlib provide and which ones we will be expected to provide.
+ 
+   if test "x${with_newlib}" = "xyes"; then
+-    LIBOBJS="asprintf.o basename.o insque.o random.o strdup.o vasprintf.o"
++    AC_LIBOBJ([asprintf])
++    AC_LIBOBJ([basename])
++    AC_LIBOBJ([insque])
++    AC_LIBOBJ([random])
++    AC_LIBOBJ([strdup])
++    AC_LIBOBJ([vasprintf])
+ 
+     for f in $funcs; do
+       case "$f" in
+@@ -318,8 +329,16 @@ if test -z "${setobjs}"; then
+     # Handle VxWorks configuration specially, since on VxWorks the
+     # libraries are actually on the target board, not in the file
+     # system.
+-    LIBOBJS="basename.o getpagesize.o insque.o random.o strcasecmp.o"
+-    LIBOBJS="$LIBOBJS strncasecmp.o strdup.o vfork.o waitpid.o vasprintf.o"
++    AC_LIBOBJ([basename])
++    AC_LIBOBJ([getpagesize])
++    AC_LIBOBJ([insque])
++    AC_LIBOBJ([random])
++    AC_LIBOBJ([strcasecmp])
++    AC_LIBOBJ([strncasecmp])
++    AC_LIBOBJ([strdup])
++    AC_LIBOBJ([vfork])
++    AC_LIBOBJ([waitpid])
++    AC_LIBOBJ([vasprintf])
+     for f in $funcs; do
+       case "$f" in
+ 	basename | getpagesize | insque | random | strcasecmp)
+@@ -366,7 +385,7 @@ if test -z "${setobjs}"; then
+     if test -n "${with_target_subdir}"
+     then
+       funcs="`echo $funcs | sed -e 's/random//'`"
+-      LIBOBJS="$LIBOBJS random.o"
++      AC_LIBOBJ([random])
+       vars="`echo $vars | sed -e 's/sys_siglist//'`"
+       checkfuncs="`echo $checkfuncs | sed -e 's/strsignal//' -e 's/psignal//'`"
+     fi
+@@ -402,12 +421,11 @@ if test -z "${setobjs}"; then
+ 
+   # We haven't set the list of objects yet.  Use the standard autoconf
+   # tests.  This will only work if the compiler works.
+-  AC_PROG_CC_WORKS
+   AC_REPLACE_FUNCS($funcs)
+   libiberty_AC_FUNC_C_ALLOCA
+   AC_FUNC_VFORK
+   if test $ac_cv_func_vfork_works = no; then
+-    LIBOBJS="$LIBOBJS vfork.o"
++    AC_LIBOBJ([vfork])
+   fi
+   # We only need _doprnt if we might use it to implement v*printf.
+   if test $ac_cv_func_vprintf != yes \
+
+
+From tromey at redhat.com  Fri Jun 13 22:51:48 2003
+From: tromey at redhat.com (Tom Tromey)
+Date: 13 Jun 2003 16:51:48 -0600
+Subject: [autoconf-conversion] Something to start with
+In-Reply-To: <20030613041925.GA23591@nevyn.them.org>
+References: <20030613041925.GA23591@nevyn.them.org>
+Message-ID: <87wufp381n.fsf@fleche.redhat.com>
+
+>>>>> "Daniel" == Daniel Jacobowitz <drow at false.org> writes:
+
+Daniel>  - Because 2.57 still has the deprecated support for not cross
+Daniel> compiling when $build = $host, we can get by in a partial
+Daniel> per-directory conversion without needing any magic at the top
+Daniel> level at all.  I did gas to prove the point.
+
+Are we waiting for any special dispensation before checking in changes
+to 2.57?  Do we have whatever global go-ahead we need?  For instance,
+if I upgraded something simple, like fastjar, could I just commit it?
+
+Are there outstanding issues for target libraries?  I think the new
+Boehm GC already uses newer auto*, and the users are asking for an
+import.
+
+Tom
+
+
+From tromey at redhat.com  Sat Jun 14 00:31:32 2003
+From: tromey at redhat.com (Tom Tromey)
+Date: 13 Jun 2003 18:31:32 -0600
+Subject: [autoconf-conversion] Something to start with
+In-Reply-To: <20030613041925.GA23591@nevyn.them.org>
+References: <20030613041925.GA23591@nevyn.them.org>
+Message-ID: <87smqd33ff.fsf@fleche.redhat.com>
+
+>>>>> "Daniel" == Daniel Jacobowitz <drow at false.org> writes:
+
+Daniel>  - Because 2.57 still has the deprecated support for not cross
+Daniel> compiling when $build = $host, we can get by in a partial
+Daniel> per-directory conversion without needing any magic at the top
+Daniel> level at all.  I did gas to prove the point.
+
+Here's fastjar.
+
+There are varying levels of conversion we could do.  For instance,
+"proper" autoconf 2.5x style looks quite different from 2.13 style.
+I didn't try to do this.
+
+However, I did rename configure.in to configure.ac.  That will prevent
+people from accidentally using 2.13.  I think we should do this in
+every directory.
+
+In a similar vein I added "1.6" to AUTOMAKE_OPTIONS, to prevent use of
+earlier versions (I would have used 1.7 but at the moment 1.6 was
+easier for me to access).  While 1.7 isn't shipped in RHL 9, I still
+think we should require it and not 1.6.  1.7 has had a lot of bug
+fixing, plus other enhancements which may actually be useful (in
+places).
+
+I only tested this in one configuration, namely native on x86 RHL 9.
+I realize that isn't nearly enough.  What are we requiring?
+
+I chose to enable automake's dependency tracking.  I think this is
+reasonable, but as it may be troublesome I thought I'd point it out
+explicitly.  I'm happy to share my perspective on the benefits and
+tradeoffs if anybody wants.
+
+We'll be able to remove config/accross.m4 -- the corresponding
+standard macros in autoconf 2.57 work properly when cross-compiling.
+
+No doubt I've made some embarrassing mistake.  Feel free to point it
+out.
+
+Tom
+
+
+Index: fastjar/ChangeLog
+from  Tom Tromey  <tromey at redhat.com>
+
+	* depcomp: New file from automake.
+	* config.h.in, Makefile.in: Rebuilt.
+	* Makefile.am (AUTOMAKE_OPTIONS): Enable dependency tracking.
+	Require 1.6.
+	(AM_MAKEINFOFLAGS): New macro.
+	(my_makei_flags): Removed.
+	(fastjar.info): Likewise.
+	* configure.ac: Use AC_CHECK_SIZEOF, AC_C_BIGENDIAN.
+	Renamed from...
+	* configure.in: ... here.
+	* aclocal.m4: Rebuilt.
+	* acinclude.m4: Don't include accross.m4.
+
+Index: fastjar/Makefile.am
+===================================================================
+RCS file: /cvs/gcc/gcc/fastjar/Makefile.am,v
+retrieving revision 1.11
+diff -u -r1.11 Makefile.am
+--- fastjar/Makefile.am 30 Dec 2002 21:32:30 -0000 1.11
++++ fastjar/Makefile.am 14 Jun 2003 00:26:45 -0000
+@@ -1,7 +1,6 @@
+ # Process this with automake to create Makefile.in
+ 
+-## We definitely don't want dependency tracking when using automake 1.4.
+-AUTOMAKE_OPTIONS = no-dependencies
++AUTOMAKE_OPTIONS = 1.6
+ 
+ # Work around what appears to be a GNU make bug handling MAKEFLAGS
+ # values defined in terms of make variables, as is the case for CC and
+@@ -67,18 +66,7 @@
+ man_MANS = jar.1 grepjar.1
+ EXTRA_DIST = $(man_MANS)
+ 
+-## This is a hack.  We can't set AM_MAKEINFOFLAGS, since that isn't
+-## available in 1.4.  Nor can we override or append to MAKEINFO or
+-## MAKEINFOFLAGS, since these are overridden by the top-level
+-## Makefile.  So, we just duplicate the rules.  FIXME: remove this
+-## when we upgrade automake.  Note that we don't include $(srcdir) in
+-## my_makei_flags; makeinfo is run in srcdir.
+-my_makei_flags += -I ../gcc/doc/include
+-fastjar.info: fastjar.texi $(fastjar_TEXINFOS)
+-	@cd $(srcdir) && rm -f $@ $@-[0-9] $@-[0-9][0-9]
+-	cd $(srcdir) \
+-	  && $(MAKEINFO) $(my_makei_flags) `echo $< | sed 's,.*/,,'`
+-
++AM_MAKEINFOFLAGS = -I ../gcc/doc/include
+ 
+ TEXI2POD = perl $(srcdir)/../contrib/texi2pod.pl
+ POD2MAN = pod2man --center="GNU" --release="gcc- at gcc_version@"
+Index: fastjar/acinclude.m4
+===================================================================
+RCS file: /cvs/gcc/gcc/fastjar/acinclude.m4,v
+retrieving revision 1.2
+diff -u -r1.2 acinclude.m4
+--- fastjar/acinclude.m4 16 Dec 2002 18:18:45 -0000 1.2
++++ fastjar/acinclude.m4 14 Jun 2003 00:26:45 -0000
+@@ -1,5 +1,3 @@
+-sinclude(../config/accross.m4)
+-
+ dnl Define MKDIR_TAKES_ONE_ARG if mkdir accepts only one argument instead
+ dnl of the usual 2.
+ AC_DEFUN(gcc_AC_FUNC_MKDIR_TAKES_ONE_ARG,
+Index: fastjar/configure.ac
+===================================================================
+RCS file: fastjar/configure.ac
+diff -N fastjar/configure.ac
+--- /dev/null	1 Jan 1970 00:00:00 -0000
++++ fastjar/configure.ac 14 Jun 2003 00:26:47 -0000
+@@ -0,0 +1,81 @@
++dnl Process this file with autoconf to produce a configure script.
++AC_INIT(jartool.h)
++AM_INIT_AUTOMAKE(fastjar, 0.92-gcc)
++AM_CONFIG_HEADER(config.h)
++
++dnl Checks for programs.
++AC_PROG_CC
++AC_PROG_INSTALL
++AC_PATH_PROG(RM, rm, /bin/rm, $PATH:/bin:/usr/bin:/usr/local/bin)
++AC_PATH_PROG(CP, cp, /bin/cp, $PATH:/bin:/usr/bin:/usr/local/bin)
++AC_PATH_PROG(STRIP, strip, /usr/bin/strip, $PATH:/bin:/usr/bin:/usr/local/bin)
++AC_PATH_PROG(CHMOD, chmod, /bin/chmod, $PATH:/bin:/usr/bin:/usr/local/bin)
++AC_EXEEXT
++
++AM_MAINTAINER_MODE
++
++dnl Add warning flags if we are using gcc.
++if test "$GCC" = yes; then
++  fastjar_warn_cflags='-W -Wall -pedantic -Wstrict-prototypes -Wmissing-prototypes -Wwrite-strings'
++fi
++AC_SUBST(fastjar_warn_cflags)
++
++dnl Checks for header files.
++AC_HEADER_DIRENT
++AC_HEADER_STDC
++AC_STRUCT_TM
++AC_CHECK_HEADERS(fcntl.h unistd.h sys/param.h stdlib.h limits.h)
++
++dnl Checks for typedefs, structures, and compiler characteristics.
++AC_TYPE_OFF_T
++AC_STRUCT_TM
++
++# mkdir takes a single argument on some systems.
++gcc_AC_FUNC_MKDIR_TAKES_ONE_ARG
++
++dnl Check for type-widths
++AC_CHECK_SIZEOF(char)
++AC_CHECK_SIZEOF(short)
++AC_CHECK_SIZEOF(int)
++AC_CHECK_SIZEOF(long)
++AC_CHECK_SIZEOF(long long)
++
++dnl Check byte order
++AC_C_BIGENDIAN
++
++AC_ARG_WITH(system-zlib,
++[  --with-system-zlib      use installed libz])
++
++ZLIBS=
++ZDEPS=
++ZINCS=
++use_zlib=maybe
++if test "$with_system_zlib" = yes; then
++   AC_CHECK_LIB(z, deflate, ZLIBS=-lz, use_zlib=no)
++else
++   use_zlib=no
++fi
++
++if test "$use_zlib" = no; then
++   # Brain dead way to find tree's zlib.
++   ZDEPS='$(top_builddir)/../zlib/libz.a'
++   ZLIBS="$ZDEPS -L\$(here)/../zlib/$libsubdir"
++   ZINCS='-I$(top_srcdir)/../zlib'
++fi
++AC_SUBST(ZLIBS)
++AC_SUBST(ZDEPS)
++AC_SUBST(ZINCS)
++
++# Get the version trigger filename from the toplevel
++if test "${with_gcc_version_trigger+set}" = set; then
++   gcc_version_trigger=$with_gcc_version_trigger
++else
++   gcc_version_trigger=${srcdir}/version.c
++fi
++changequote(,)dnl
++gcc_version_full=`grep version_string ${gcc_version_trigger} | sed -e 's/.*"\([^"]*\)".*/\1/'`
++gcc_version=`echo ${gcc_version_full} | sed -e 's/\([^ ]*\) .*/\1/'`
++changequote([,])dnl
++AC_SUBST(gcc_version)
++
++AC_OUTPUT(Makefile install-defs.sh)
+Index: fastjar/configure.in
+===================================================================
+RCS file: fastjar/configure.in
+diff -N fastjar/configure.in
+--- fastjar/configure.in 16 Dec 2002 18:18:45 -0000 1.12
++++ /dev/null	1 Jan 1970 00:00:00 -0000
+@@ -1,81 +0,0 @@
+-dnl Process this file with autoconf to produce a configure script.
+-AC_INIT(jartool.h)
+-AM_INIT_AUTOMAKE(fastjar, 0.92-gcc)
+-AM_CONFIG_HEADER(config.h)
+-
+-dnl Checks for programs.
+-AC_PROG_CC
+-AC_PROG_INSTALL
+-AC_PATH_PROG(RM, rm, /bin/rm, $PATH:/bin:/usr/bin:/usr/local/bin)
+-AC_PATH_PROG(CP, cp, /bin/cp, $PATH:/bin:/usr/bin:/usr/local/bin)
+-AC_PATH_PROG(STRIP, strip, /usr/bin/strip, $PATH:/bin:/usr/bin:/usr/local/bin)
+-AC_PATH_PROG(CHMOD, chmod, /bin/chmod, $PATH:/bin:/usr/bin:/usr/local/bin)
+-AC_EXEEXT
+-
+-AM_MAINTAINER_MODE
+-
+-dnl Add warning flags if we are using gcc.
+-if test "$GCC" = yes; then
+-  fastjar_warn_cflags='-W -Wall -pedantic -Wstrict-prototypes -Wmissing-prototypes -Wwrite-strings'
+-fi
+-AC_SUBST(fastjar_warn_cflags)
+-
+-dnl Checks for header files.
+-AC_HEADER_DIRENT
+-AC_HEADER_STDC
+-AC_STRUCT_TM
+-AC_CHECK_HEADERS(fcntl.h unistd.h sys/param.h stdlib.h limits.h)
+-
+-dnl Checks for typedefs, structures, and compiler characteristics.
+-AC_TYPE_OFF_T
+-AC_STRUCT_TM
+-
+-# mkdir takes a single argument on some systems.
+-gcc_AC_FUNC_MKDIR_TAKES_ONE_ARG
+-
+-dnl Check for type-widths
+-AC_COMPILE_CHECK_SIZEOF(char)
+-AC_COMPILE_CHECK_SIZEOF(short)
+-AC_COMPILE_CHECK_SIZEOF(int)
+-AC_COMPILE_CHECK_SIZEOF(long)
+-AC_COMPILE_CHECK_SIZEOF(long long)
+-
+-dnl Check byte order
+-AC_C_BIGENDIAN_CROSS
+-
+-AC_ARG_WITH(system-zlib,
+-[  --with-system-zlib      use installed libz])
+-
+-ZLIBS=
+-ZDEPS=
+-ZINCS=
+-use_zlib=maybe
+-if test "$with_system_zlib" = yes; then
+-   AC_CHECK_LIB(z, deflate, ZLIBS=-lz, use_zlib=no)
+-else
+-   use_zlib=no
+-fi
+-
+-if test "$use_zlib" = no; then
+-   # Brain dead way to find tree's zlib.
+-   ZDEPS='$(top_builddir)/../zlib/libz.a'
+-   ZLIBS="$ZDEPS -L\$(here)/../zlib/$libsubdir"
+-   ZINCS='-I$(top_srcdir)/../zlib'
+-fi
+-AC_SUBST(ZLIBS)
+-AC_SUBST(ZDEPS)
+-AC_SUBST(ZINCS)
+-
+-# Get the version trigger filename from the toplevel
+-if test "${with_gcc_version_trigger+set}" = set; then
+-   gcc_version_trigger=$with_gcc_version_trigger
+-else
+-   gcc_version_trigger=${srcdir}/version.c
+-fi
+-changequote(,)dnl
+-gcc_version_full=`grep version_string ${gcc_version_trigger} | sed -e 's/.*"\([^"]*\)".*/\1/'`
+-gcc_version=`echo ${gcc_version_full} | sed -e 's/\([^ ]*\) .*/\1/'`
+-changequote([,])dnl
+-AC_SUBST(gcc_version)
+-
+-AC_OUTPUT(Makefile install-defs.sh)
+
+
+From bonzini at gnu.org  Sat Jun 14 14:03:22 2003
+From: bonzini at gnu.org (Bonzini)
+Date: Sat, 14 Jun 2003 16:03:22 +0200
+Subject: [autoconf-conversion] Something to start with
+References: <20030613041925.GA23591@nevyn.them.org> <87smqd33ff.fsf@fleche.redhat.com>
+Message-ID: <001b01c3327d$b8671510$addc1d97@bonz>
+
+> There are varying levels of conversion we could do.  For instance,
+> "proper" autoconf 2.5x style looks quite different from 2.13 style.
+> I didn't try to do this.
+
+I think it should be good to move the arguments from AC_INIT to AC_CONFIG_SRCDIR, from
+AM_INIT_AUTOMAKE to AC_INIT and from AC_OUTPUT to AC_CONFIG_FILES, and renaming
+AC_CONFIG_HEADER to AC_CONFIG_HEADERS.  But this can be done at the end.
+
+> In a similar vein I added "1.6" to AUTOMAKE_OPTIONS, to prevent use of
+> earlier versions (I would have used 1.7 but at the moment 1.6 was
+> easier for me to access).  While 1.7 isn't shipped in RHL 9, I still
+> think we should require it and not 1.6.  1.7 has had a lot of bug
+> fixing, plus other enhancements which may actually be useful (in
+> places).
+
+I agree.  For example, it avoids exponential explosion in the idiom
+
+if COND1
+VAR += VALUE1
+endif
+if COND2
+VAR += VALUE2
+endif
+if COND3
+VAR += VALUE3
+endif
+
+which might be useful for some Makefile.am's such as libffi's.  I hope to post a patch
+for libffi on Tuesday, and maybe libjava too.
+
+zlib should be ready as is, except for removing the three lines that mention AC_EXEEXT.
+Some comments in it refer to Autoconf 2.5x so it looks like it was "multi-versioned".
+
+Also, it might be interesting to move AC_PROG_LIBTOOL to the toplevel.  Configuring
+libtool takes a little while.  But probably it would only be feasible after
+bootstrapping is moved there as well.  Take note.
+
+I think it would be best to post the patch versus configure.in, and then actually
+"rename" it to configure.ac at commit time.  Review would be much easier.
+
+> I chose to enable automake's dependency tracking.  I think this is
+> reasonable, but as it may be troublesome I thought I'd point it out
+> explicitly.  I'm happy to share my perspective on the benefits and
+> tradeoffs if anybody wants.
+
+In 1.7 it should not be troublesome at all (dependencies are generated at compilation
+time, and anyway there's --disable-dependency-tracking -- you will know better than me,
+but other people might not :-).
+
+Paolo
+
+
+
+From drow at false.org  Sat Jun 14 15:05:56 2003
+From: drow at false.org (Daniel Jacobowitz)
+Date: Sat, 14 Jun 2003 11:05:56 -0400
+Subject: [autoconf-conversion] Something to start with
+In-Reply-To: <001b01c3327d$b8671510$addc1d97@bonz>
+References: <20030613041925.GA23591@nevyn.them.org> <87smqd33ff.fsf@fleche.redhat.com> <001b01c3327d$b8671510$addc1d97@bonz>
+Message-ID: <20030614150556.GB6749@nevyn.them.org>
+
+On Sat, Jun 14, 2003 at 04:03:22PM +0200, Bonzini wrote:
+> > There are varying levels of conversion we could do.  For instance,
+> > "proper" autoconf 2.5x style looks quite different from 2.13 style.
+> > I didn't try to do this.
+> 
+> I think it should be good to move the arguments from AC_INIT to AC_CONFIG_SRCDIR, from
+> AM_INIT_AUTOMAKE to AC_INIT and from AC_OUTPUT to AC_CONFIG_FILES, and renaming
+> AC_CONFIG_HEADER to AC_CONFIG_HEADERS.  But this can be done at the end.
+
+I agree with the "at the end" part.  I'd like to suggest this method:
+  - Rename configure.in to configure.ac in every directory we convert.
+    Yes, I realize what this does to CVS history.
+  - Post diffs from configure.in to configure.ac instead of a full
+    diff.
+  - Add an AC_PREREQ(2.57).
+  - Make the minimal necessary changes, and we can go pack to prettying
+    it up later.  If you look at the unified diff I posted for
+    libiberty, the last line is a comment on another macro saying "This
+    can be removed with autoconf 2.5x".  Fight the urge, do it later :)
+
+Any objections?
+
+> > In a similar vein I added "1.6" to AUTOMAKE_OPTIONS, to prevent use of
+> > earlier versions (I would have used 1.7 but at the moment 1.6 was
+> > easier for me to access).  While 1.7 isn't shipped in RHL 9, I still
+> > think we should require it and not 1.6.  1.7 has had a lot of bug
+> > fixing, plus other enhancements which may actually be useful (in
+> > places).
+
+Requiring 1.7 sounds good to me.
+
+-- 
+Daniel Jacobowitz
+MontaVista Software                         Debian GNU/Linux Developer
+
+
+From tromey at redhat.com  Sat Jun 14 16:17:42 2003
+From: tromey at redhat.com (Tom Tromey)
+Date: 14 Jun 2003 10:17:42 -0600
+Subject: [autoconf-conversion] Something to start with
+In-Reply-To: <20030614150556.GB6749@nevyn.them.org>
+References: <20030613041925.GA23591@nevyn.them.org>
+	<87smqd33ff.fsf@fleche.redhat.com>
+	<001b01c3327d$b8671510$addc1d97@bonz>
+	<20030614150556.GB6749@nevyn.them.org>
+Message-ID: <87adck1vmh.fsf@fleche.redhat.com>
+
+Daniel> I agree with the "at the end" part.  I'd like to suggest this method:
+Daniel>   - Rename configure.in to configure.ac in every directory we convert.
+Daniel>     Yes, I realize what this does to CVS history.
+Daniel>   - Post diffs from configure.in to configure.ac instead of a full
+Daniel>     diff.
+
+I don't understand this point.  You mean I should run "diff
+configure.in configure.ac" when posting?  Maybe it would be better to
+2.57-ize the configure.in (including adding the AC_PREREQ), and then
+do the rename as a separate step immediately after.
+
+Daniel> - Make the minimal necessary changes, and we can go pack to
+Daniel> prettying it up later.
+
+Definitely.
+
+Tom
+
+
+From tromey at redhat.com  Sat Jun 14 16:24:02 2003
+From: tromey at redhat.com (Tom Tromey)
+Date: 14 Jun 2003 10:24:02 -0600
+Subject: gcc_update
+Message-ID: <874r2s1vbx.fsf@fleche.redhat.com>
+
+Maybe we need a task list and/or a "how to upgrade a directory" document.
+
+Anyway, I just discovered we'll need to update contrib/gcc_update.
+It got into an infinite loop due to my fastjar change.
+
+Tom
+
+
+From drow at false.org  Sat Jun 14 16:35:39 2003
+From: drow at false.org (Daniel Jacobowitz)
+Date: Sat, 14 Jun 2003 12:35:39 -0400
+Subject: [autoconf-conversion] Something to start with
+In-Reply-To: <87adck1vmh.fsf@fleche.redhat.com>
+References: <20030613041925.GA23591@nevyn.them.org> <87smqd33ff.fsf@fleche.redhat.com> <001b01c3327d$b8671510$addc1d97@bonz> <20030614150556.GB6749@nevyn.them.org> <87adck1vmh.fsf@fleche.redhat.com>
+Message-ID: <20030614163539.GA18495@nevyn.them.org>
+
+On Sat, Jun 14, 2003 at 10:17:42AM -0600, Tom Tromey wrote:
+> Daniel> I agree with the "at the end" part.  I'd like to suggest this method:
+> Daniel>   - Rename configure.in to configure.ac in every directory we convert.
+> Daniel>     Yes, I realize what this does to CVS history.
+> Daniel>   - Post diffs from configure.in to configure.ac instead of a full
+> Daniel>     diff.
+> 
+> I don't understand this point.  You mean I should run "diff
+> configure.in configure.ac" when posting?  Maybe it would be better to
+> 2.57-ize the configure.in (including adding the AC_PREREQ), and then
+> do the rename as a separate step immediately after.
+
+That's what I meant; but the other way works too.  I would just like to
+be able to read the patch without having to apply part of it and diff
+by hand.
+
+> Daniel> - Make the minimal necessary changes, and we can go pack to
+> Daniel> prettying it up later.
+> 
+> Definitely.
+> 
+> Tom
+> 
+
+-- 
+Daniel Jacobowitz
+MontaVista Software                         Debian GNU/Linux Developer
+
+
+From drow at false.org  Sat Jun 14 20:51:17 2003
+From: drow at false.org (Daniel Jacobowitz)
+Date: Sat, 14 Jun 2003 16:51:17 -0400
+Subject: [autoconf-conversion] Something to start with
+In-Reply-To: <20030613041925.GA23591@nevyn.them.org>
+References: <20030613041925.GA23591@nevyn.them.org>
+Message-ID: <20030614205117.GA17662@nevyn.them.org>
+
+On Fri, Jun 13, 2003 at 12:19:25AM -0400, Daniel Jacobowitz wrote:
+>  - I also did libiberty.  I have not tested a combined tree cygwin build
+> yet, which needs to happen, since it exercises the relevant hard case.  I
+> also reimplemented AC_NO_EXECUTABLES based on another of Alexandre's
+> suggestions, which proved quite good: disable link tests at runtime if
+> GCC_NO_EXECUTABLES is encountered, rather than at autoconf time if it is
+> seen in the file.
+> 
+> I've attached the patch for libiberty in case someone wants to give it a
+> whirl before I do, in more combinations.  I'm testing eight kinds of builds
+> right now and I'll have a few more before I'm satisfied, but I won't have
+> time to work on this for a day or two, so I wanted to give the list a kick.
+
+Here's a fixed version, which actually does build Cygwin.  libiberty's
+custom strncmp test uses AC_REQUIRE([AC_FUNC_MMAP]), so I had to wrap
+AC_FUNC_MMAP; otherwise we perform a link test.  The alternative would
+have been invoking AC_FUNC_MMAP instead of AC_REQUIRE'ing it.  I can
+switch if someone prefers.
+
+So now for the million dollar question: do I submit this to
+gcc-patches, or do we try to get most/all directories finished first?
+
+-- 
+Daniel Jacobowitz
+MontaVista Software                         Debian GNU/Linux Developer
+
+2003-06-14  Daniel Jacobowitz  <drow at mvista.com>
+
+	* acx.m4: Add GCC_NO_EXECUTABLES.
+
+2003-06-14  Daniel Jacobowitz  <drow at mvista.com>
+
+	* aclocal.m4: Include no-executables.m4.  Use AC_LIBOBJ.  Remove
+	LIB_AC_PROG_CC.
+	* configure.in: Use GCC_NO_EXECUTABLES and AC_PROG_CC instead of
+	LIB_AC_PROG_CC.  Also substitue ac_libiberty_warn_cflags here.
+	Use AC_LIBOBJ.  Remove AC_PROG_CC_WORKS call.  Update AC_PREREQ.
+	Move call to AC_ISC_POSIX.
+	* configure: Regenerate using autoconf 2.57.
+
+Index: libiberty/aclocal.m4
+===================================================================
+RCS file: /big/fsf/rsync/src-cvs/src/libiberty/aclocal.m4,v
+retrieving revision 1.7
+diff -u -p -r1.7 aclocal.m4
+--- libiberty/aclocal.m4	7 May 2003 18:06:23 -0000	1.7
++++ libiberty/aclocal.m4	14 Jun 2003 17:21:22 -0000
+@@ -1,4 +1,5 @@
+ sinclude(../config/accross.m4)
++sinclude(../config/acx.m4)
+ 
+ dnl See whether strncmp reads past the end of its string parameters.
+ dnl On some versions of SunOS4 at least, strncmp reads a word at a time
+@@ -71,7 +72,7 @@ main ()
+   ac_cv_func_strncmp_works=no)
+ rm -f core core.* *.core])
+ if test $ac_cv_func_strncmp_works = no ; then
+-  LIBOBJS="$LIBOBJS strncmp.o"
++  AC_LIBOBJ([strncmp])
+ fi
+ ])
+ 
+@@ -117,48 +118,6 @@ if test $libiberty_cv_decl_needed_$1 = y
+             [Define if $1 is not declared in system header files.])
+ fi
+ ])dnl
+-
+-# FIXME: We temporarily define our own version of AC_PROG_CC.  This is
+-# copied from autoconf 2.12, but does not call AC_PROG_CC_WORKS.  We
+-# are probably using a cross compiler, which will not be able to fully
+-# link an executable.  This should really be fixed in autoconf
+-# itself.
+-
+-AC_DEFUN(LIB_AC_PROG_CC,
+-[AC_BEFORE([$0], [AC_PROG_CPP])dnl
+-AC_PROVIDE([AC_PROG_CC])
+-AC_CHECK_PROG(CC, gcc, gcc)
+-if test -z "$CC"; then
+-  AC_CHECK_PROG(CC, cc, cc, , , /usr/ucb/cc)
+-  test -z "$CC" && AC_MSG_ERROR([no acceptable cc found in \$PATH])
+-fi
+-
+-AC_PROG_CC_GNU
+-
+-if test $ac_cv_prog_gcc = yes; then
+-  GCC=yes
+-  ac_libiberty_warn_cflags='-W -Wall -Wtraditional -pedantic'
+-dnl Check whether -g works, even if CFLAGS is set, in case the package
+-dnl plays around with CFLAGS (such as to build both debugging and
+-dnl normal versions of a library), tasteless as that idea is.
+-  ac_test_CFLAGS="${CFLAGS+set}"
+-  ac_save_CFLAGS="$CFLAGS"
+-  CFLAGS=
+-  AC_PROG_CC_G
+-  if test "$ac_test_CFLAGS" = set; then
+-    CFLAGS="$ac_save_CFLAGS"
+-  elif test $ac_cv_prog_cc_g = yes; then
+-    CFLAGS="-g -O2"
+-  else
+-    CFLAGS="-O2"
+-  fi
+-else
+-  GCC=
+-  ac_libiberty_warn_cflags=
+-  test "${CFLAGS+set}" = set || CFLAGS="-g"
+-fi
+-AC_SUBST(ac_libiberty_warn_cflags)
+-])
+ 
+ # Work around a bug in autoheader.  This can go away when we switch to
+ # autoconf >2.50.  The use of define instead of AC_DEFUN is
+Index: libiberty/configure.in
+===================================================================
+RCS file: /big/fsf/rsync/src-cvs/src/libiberty/configure.in,v
+retrieving revision 1.47
+diff -u -p -r1.47 configure.in
+--- libiberty/configure.in	13 Jun 2003 01:50:48 -0000	1.47
++++ libiberty/configure.in	14 Jun 2003 20:45:34 -0000
+@@ -1,6 +1,6 @@
+ dnl Process this file with autoconf to produce a configure script
+ 
+-AC_PREREQ(2.13)
++AC_PREREQ(2.57)
+ AC_INIT(xmalloc.c)
+ 
+ # This works around the fact that libtool configuration may change LD
+@@ -99,7 +99,13 @@ dnl to call AC_CHECK_PROG.
+ AC_CHECK_TOOL(AR, ar)
+ AC_CHECK_TOOL(RANLIB, ranlib, :)
+ 
+-LIB_AC_PROG_CC
++GCC_NO_EXECUTABLES
++AC_PROG_CC
++
++if test x$GCC = xyes; then
++  ac_libiberty_warn_cflags='-W -Wall -Wtraditional -pedantic'
++fi
++AC_SUBST(ac_libiberty_warn_cflags)
+ 
+ AC_PROG_CC_C_O
+ # autoconf is lame and doesn't give us any substitution variable for this.
+@@ -111,7 +117,6 @@ fi
+ AC_SUBST(NO_MINUS_C_MINUS_O)
+ AC_SUBST(OUTPUT_OPTION)
+ 
+-AC_ISC_POSIX
+ AC_C_CONST
+ AC_C_INLINE
+ AC_C_BIGENDIAN_CROSS
+@@ -250,7 +255,12 @@ if test -n "${with_target_subdir}"; then
+   # newlib provide and which ones we will be expected to provide.
+ 
+   if test "x${with_newlib}" = "xyes"; then
+-    LIBOBJS="asprintf.o basename.o insque.o random.o strdup.o vasprintf.o"
++    AC_LIBOBJ([asprintf])
++    AC_LIBOBJ([basename])
++    AC_LIBOBJ([insque])
++    AC_LIBOBJ([random])
++    AC_LIBOBJ([strdup])
++    AC_LIBOBJ([vasprintf])
+ 
+     for f in $funcs; do
+       case "$f" in
+@@ -318,8 +328,16 @@ if test -z "${setobjs}"; then
+     # Handle VxWorks configuration specially, since on VxWorks the
+     # libraries are actually on the target board, not in the file
+     # system.
+-    LIBOBJS="basename.o getpagesize.o insque.o random.o strcasecmp.o"
+-    LIBOBJS="$LIBOBJS strncasecmp.o strdup.o vfork.o waitpid.o vasprintf.o"
++    AC_LIBOBJ([basename])
++    AC_LIBOBJ([getpagesize])
++    AC_LIBOBJ([insque])
++    AC_LIBOBJ([random])
++    AC_LIBOBJ([strcasecmp])
++    AC_LIBOBJ([strncasecmp])
++    AC_LIBOBJ([strdup])
++    AC_LIBOBJ([vfork])
++    AC_LIBOBJ([waitpid])
++    AC_LIBOBJ([vasprintf])
+     for f in $funcs; do
+       case "$f" in
+ 	basename | getpagesize | insque | random | strcasecmp)
+@@ -366,7 +384,7 @@ if test -z "${setobjs}"; then
+     if test -n "${with_target_subdir}"
+     then
+       funcs="`echo $funcs | sed -e 's/random//'`"
+-      LIBOBJS="$LIBOBJS random.o"
++      AC_LIBOBJ([random])
+       vars="`echo $vars | sed -e 's/sys_siglist//'`"
+       checkfuncs="`echo $checkfuncs | sed -e 's/strsignal//' -e 's/psignal//'`"
+     fi
+@@ -402,12 +420,12 @@ if test -z "${setobjs}"; then
+ 
+   # We haven't set the list of objects yet.  Use the standard autoconf
+   # tests.  This will only work if the compiler works.
+-  AC_PROG_CC_WORKS
++  AC_ISC_POSIX
+   AC_REPLACE_FUNCS($funcs)
+   libiberty_AC_FUNC_C_ALLOCA
+   AC_FUNC_VFORK
+   if test $ac_cv_func_vfork_works = no; then
+-    LIBOBJS="$LIBOBJS vfork.o"
++    AC_LIBOBJ([vfork])
+   fi
+   # We only need _doprnt if we might use it to implement v*printf.
+   if test $ac_cv_func_vprintf != yes \
+Index: config/acx.m4
+===================================================================
+RCS file: /big/fsf/rsync/src-cvs/src/config/acx.m4,v
+retrieving revision 1.3
+diff -u -p -r1.3 acx.m4
+--- config/acx.m4	18 May 2003 15:49:06 -0000	1.3
++++ config/acx.m4	14 Jun 2003 20:41:01 -0000
+@@ -140,3 +140,61 @@ else
+   $1="$ac_cv_prog_$1"
+ fi
+ ]) []dnl # NCN_STRICT_CHECK_TARGET_TOOL
++
++# GCC_NO_EXECUTABLES
++# -----------------
++# FIXME: The GCC team has specific needs which the current Autoconf
++# framework cannot solve elegantly.  This macro implements a dirty
++# hack until Autoconf is abble to provide the services its users
++# needs.
++#
++# Several of the support libraries that are often built with GCC can't
++# assume the tool-chain is already capable of linking a program: the
++# compiler often expects to be able to link with some of such
++# libraries.
++#
++# In several of these libraries, workarounds have been introduced to
++# avoid the AC_PROG_CC_WORKS test, that would just abort their
++# configuration.  The introduction of AC_EXEEXT, enabled either by
++# libtool or by CVS autoconf, have just made matters worse.
++#
++# Unlike the previous AC_NO_EXECUTABLES, this test does not
++# disable link tests at autoconf time, but at configure time.
++# This allows AC_NO_EXECUTABLES to be invoked conditionally.
++AC_DEFUN_ONCE([GCC_NO_EXECUTABLES],
++[m4_divert_push([KILL])
++
++AC_BEFORE([$0], [_AC_COMPILER_EXEEXT])
++AC_BEFORE([$0], [AC_LINK_IFELSE])
++
++m4_define([_AC_COMPILER_EXEEXT],
++AC_LANG_CONFTEST([AC_LANG_PROGRAM()])
++# FIXME: Cleanup?
++AS_IF([AC_TRY_EVAL(ac_link)], [gcc_no_link=no], [gcc_no_link=yes])
++if test x$gcc_no_link = xyes; then
++  # Setting cross_compile will disable run tests; it will
++  # also disable AC_CHECK_FILE but that's generally
++  # correct if we can't link.
++  cross_compiling=yes
++  EXEEXT=
++else
++  m4_defn([_AC_COMPILER_EXEEXT])dnl
++fi
++)
++
++m4_define([AC_LINK_IFELSE],
++if test x$gcc_no_link = xyes; then
++  AC_MSG_ERROR([Link tests are not allowed after [[$0]].])
++fi
++m4_defn([AC_LINK_IFELSE]))
++
++dnl This is a shame.  We have to provide a default for some link tests,
++dnl similar to the default for run tests.
++m4_define([AC_FUNC_MMAP],
++if test x$gcc_no_link = xyes; then
++  ac_cv_func_mmap_fixed_mapped=no
++fi
++m4_defn([AC_FUNC_MMAP]))
++
++m4_divert_pop()dnl
++])# GCC_NO_EXECUTABLES
+
+
+From dj at redhat.com  Sat Jun 14 20:56:37 2003
+From: dj at redhat.com (DJ Delorie)
+Date: Sat, 14 Jun 2003 16:56:37 -0400
+Subject: [autoconf-conversion] Something to start with
+In-Reply-To: <20030614205117.GA17662@nevyn.them.org> (message from Daniel
+	Jacobowitz on Sat, 14 Jun 2003 16:51:17 -0400)
+References: <20030613041925.GA23591@nevyn.them.org> <20030614205117.GA17662@nevyn.them.org>
+Message-ID: <200306142056.h5EKubR01132@greed.delorie.com>
+
+
+The MMAP test is only useful if you can run the executable; it tests
+to see if strncmp accesses memory beyond the string it's checking by
+using mmap to make the next byte be outside its memory space.
+
+I think it makes sense to at least get a few directories converted
+(preferably different classes of directories: build, host, target,
+etc) before we start submitting anything.  That way we'll have a
+better warm-n-fuzzy that we've at least seen all the weird cases we're
+going to encounter.
+
+Let's at least not start with the one that triggers the most exception
+cases ;-)
+
+
+From drow at false.org  Sat Jun 14 21:02:53 2003
+From: drow at false.org (Daniel Jacobowitz)
+Date: Sat, 14 Jun 2003 17:02:53 -0400
+Subject: [autoconf-conversion] Something to start with
+In-Reply-To: <200306142056.h5EKubR01132@greed.delorie.com>
+References: <20030613041925.GA23591@nevyn.them.org> <20030614205117.GA17662@nevyn.them.org> <200306142056.h5EKubR01132@greed.delorie.com>
+Message-ID: <20030614210253.GA992@nevyn.them.org>
+
+On Sat, Jun 14, 2003 at 04:56:37PM -0400, DJ Delorie wrote:
+> 
+> The MMAP test is only useful if you can run the executable; it tests
+> to see if strncmp accesses memory beyond the string it's checking by
+> using mmap to make the next byte be outside its memory space.
+> 
+> I think it makes sense to at least get a few directories converted
+> (preferably different classes of directories: build, host, target,
+> etc) before we start submitting anything.  That way we'll have a
+> better warm-n-fuzzy that we've at least seen all the weird cases we're
+> going to encounter.
+> 
+> Let's at least not start with the one that triggers the most exception
+> cases ;-)
+
+That's why I did it second :)
+
+We've currently got libiberty, gas, and fastjar.  Any others in
+particular you would like to see in the first pass?
+
+-- 
+Daniel Jacobowitz
+MontaVista Software                         Debian GNU/Linux Developer
+
+
+From dj at redhat.com  Sat Jun 14 21:08:02 2003
+From: dj at redhat.com (DJ Delorie)
+Date: Sat, 14 Jun 2003 17:08:02 -0400
+Subject: [autoconf-conversion] Something to start with
+In-Reply-To: <20030614210253.GA992@nevyn.them.org> (message from Daniel
+	Jacobowitz on Sat, 14 Jun 2003 17:02:53 -0400)
+References: <20030613041925.GA23591@nevyn.them.org> <20030614205117.GA17662@nevyn.them.org> <200306142056.h5EKubR01132@greed.delorie.com> <20030614210253.GA992@nevyn.them.org>
+Message-ID: <200306142108.h5EL82T01392@greed.delorie.com>
+
+
+> We've currently got libiberty, gas, and fastjar.  Any others in
+> particular you would like to see in the first pass?
+
+gcc builds build, host, and target foo.  It's probably the worst case
+next to libiberty.
+
+Do we have a warm and fuzzy about the 2.13/2.57 incompatibilities?  Do
+we need to tweak the toplevel for them, or does it happen to just
+work?
+
+
+From drow at false.org  Sat Jun 14 21:14:46 2003
+From: drow at false.org (Daniel Jacobowitz)
+Date: Sat, 14 Jun 2003 17:14:46 -0400
+Subject: [autoconf-conversion] Something to start with
+In-Reply-To: <200306142108.h5EL82T01392@greed.delorie.com>
+References: <20030613041925.GA23591@nevyn.them.org> <20030614205117.GA17662@nevyn.them.org> <200306142056.h5EKubR01132@greed.delorie.com> <20030614210253.GA992@nevyn.them.org> <200306142108.h5EL82T01392@greed.delorie.com>
+Message-ID: <20030614211445.GA30329@nevyn.them.org>
+
+On Sat, Jun 14, 2003 at 05:08:02PM -0400, DJ Delorie wrote:
+> 
+> > We've currently got libiberty, gas, and fastjar.  Any others in
+> > particular you would like to see in the first pass?
+> 
+> gcc builds build, host, and target foo.  It's probably the worst case
+> next to libiberty.
+> 
+> Do we have a warm and fuzzy about the 2.13/2.57 incompatibilities?  Do
+> we need to tweak the toplevel for them, or does it happen to just
+> work?
+
+It happens to just work, because of a deprecated feature of autoconf
+2.57 (--host=--build does not trigger cross compilation mode).  We
+should probably tweak the toplevel anyway but I'm hoping someone else
+will do it.
+
+We could add GCC to the list.  I was rather hoping Nathanael would do
+it; I'll ask him.
+
+[I am a little worried.  I ran into what looks like a cache
+incompatibility; I configured libiberty using 2.50, backed down to the
+2.13 configure script, did it again, and got quoting errors in
+config.cache.  But I can't reproduce it now, so I'm only a little
+worried.]
+
+-- 
+Daniel Jacobowitz
+MontaVista Software                         Debian GNU/Linux Developer
+
+
+From dj at redhat.com  Sat Jun 14 21:20:41 2003
+From: dj at redhat.com (DJ Delorie)
+Date: Sat, 14 Jun 2003 17:20:41 -0400
+Subject: [autoconf-conversion] Something to start with
+In-Reply-To: <20030614211445.GA30329@nevyn.them.org> (message from Daniel
+	Jacobowitz on Sat, 14 Jun 2003 17:14:46 -0400)
+References: <20030613041925.GA23591@nevyn.them.org> <20030614205117.GA17662@nevyn.them.org> <200306142056.h5EKubR01132@greed.delorie.com> <20030614210253.GA992@nevyn.them.org> <200306142108.h5EL82T01392@greed.delorie.com> <20030614211445.GA30329@nevyn.them.org>
+Message-ID: <200306142120.h5ELKfq01568@greed.delorie.com>
+
+
+> [I am a little worried.  I ran into what looks like a cache
+> incompatibility; I configured libiberty using 2.50, backed down to the
+> 2.13 configure script, did it again, and got quoting errors in
+> config.cache.  But I can't reproduce it now, so I'm only a little
+> worried.]
+
+Yup, we know about that.  2.50 might not be usable; we might need some
+other 2.5x that's fixed the cache bug.  Or we might need to disable
+the cache for the interim.
+
+
+From drow at false.org  Sat Jun 14 21:25:35 2003
+From: drow at false.org (Daniel Jacobowitz)
+Date: Sat, 14 Jun 2003 17:25:35 -0400
+Subject: [autoconf-conversion] Something to start with
+In-Reply-To: <200306142120.h5ELKfq01568@greed.delorie.com>
+References: <20030613041925.GA23591@nevyn.them.org> <20030614205117.GA17662@nevyn.them.org> <200306142056.h5EKubR01132@greed.delorie.com> <20030614210253.GA992@nevyn.them.org> <200306142108.h5EL82T01392@greed.delorie.com> <20030614211445.GA30329@nevyn.them.org> <200306142120.h5ELKfq01568@greed.delorie.com>
+Message-ID: <20030614212535.GA5189@nevyn.them.org>
+
+On Sat, Jun 14, 2003 at 05:20:41PM -0400, DJ Delorie wrote:
+> 
+> > [I am a little worried.  I ran into what looks like a cache
+> > incompatibility; I configured libiberty using 2.50, backed down to the
+> > 2.13 configure script, did it again, and got quoting errors in
+> > config.cache.  But I can't reproduce it now, so I'm only a little
+> > worried.]
+> 
+> Yup, we know about that.  2.50 might not be usable; we might need some
+> other 2.5x that's fixed the cache bug.  Or we might need to disable
+> the cache for the interim.
+
+Er, I'm slipping.  Debian for hysterical reasons (really) labels modern
+autoconf as "2.50".  It's actually 2.57.
+
+I wouldn't object to disabling the cache for the interim if we had a
+bit more momentum than we do now.  I say let's leave it alone unless it
+bites again.
+
+-- 
+Daniel Jacobowitz
+MontaVista Software                         Debian GNU/Linux Developer
+
+
+From tromey at redhat.com  Sun Jun 15 02:24:06 2003
+From: tromey at redhat.com (Tom Tromey)
+Date: 14 Jun 2003 20:24:06 -0600
+Subject: [autoconf-conversion] Something to start with
+In-Reply-To: <200306142056.h5EKubR01132@greed.delorie.com>
+References: <20030613041925.GA23591@nevyn.them.org>
+	<20030614205117.GA17662@nevyn.them.org>
+	<200306142056.h5EKubR01132@greed.delorie.com>
+Message-ID: <87y904qdrt.fsf@fleche.redhat.com>
+
+DJ> I think it makes sense to at least get a few directories converted
+DJ> (preferably different classes of directories: build, host, target,
+DJ> etc) before we start submitting anything.  That way we'll have a
+DJ> better warm-n-fuzzy that we've at least seen all the weird cases we're
+DJ> going to encounter.
+
+How about we make a branch and do the work there?
+
+Tom
+
+
+From dj at redhat.com  Mon Jun 16 17:18:11 2003
+From: dj at redhat.com (DJ Delorie)
+Date: Mon, 16 Jun 2003 13:18:11 -0400
+Subject: [autoconf-conversion] Something to start with
+In-Reply-To: <87y904qdrt.fsf@fleche.redhat.com> (message from Tom Tromey on 14
+	Jun 2003 20:24:06 -0600)
+References: <20030613041925.GA23591@nevyn.them.org>
+	<20030614205117.GA17662@nevyn.them.org>
+	<200306142056.h5EKubR01132@greed.delorie.com> <87y904qdrt.fsf@fleche.redhat.com>
+Message-ID: <200306161718.h5GHIBH00674@greed.delorie.com>
+
+
+> How about we make a branch and do the work there?
+
+We'd have to branch all of src and gcc.  But that might be a good idea
+regardless, unless we tweak the toplevel to allow gradual migration.
+
+
+From bonzini at gnu.org  Tue Jun 17 15:58:00 2003
+From: bonzini at gnu.org (Bonzini)
+Date: Tue, 17 Jun 2003 11:58:00 -0400
+Subject: libffi
+Message-ID: <20030617155800.GA29211@gnu.org>
+
+Here is a first stab at libffi conversion.
+
+The problem is that I know nil about multilibbing, and tested only on
+non-multilibbed i686-pc-linux-gnu, so it might not work where ml's
+are used.
+
+There are a few hacks removed and a few added.  In particular I'd like
+to receive commentary on the MIPS SGI stuff (is it supported? is it
+necessary? is there a better solution?) and on AC_CONFIG_AUX_DIRS usage.
+
+Thanks in advance,
+
+Paolo
+
+2003-06-17  Paolo Bonzini  <bonzini at gnu.org>
+
+	* libffi/Makefile.am (nodist_libffi_la_SOURCES,
+	nodist_libffi_convenience_la_SOURCES): put target-
+	specific source files here.  Create them as symlinks
+	from the files in the target-specific subdirectory.
+	(VPATH, implicit rules): remove them
+	(AM_CCASFLAGS): set it to $(INCLUDES).
+	* libffi/configure.ac: update to Autoconf 2.5x.  Split
+	the multilib codelets into several small parts for each
+	of AC_CONFIG_FILES and AC_CONFIG_HEADERS.
+
+Index: gcc/libffi/Makefile.am
+===================================================================
+RCS file: /cvsroot/gcc/gcc/libffi/Makefile.am,v
+retrieving revision 1.27
+diff -u -r1.27 Makefile.am
+--- gcc/libffi/Makefile.am	13 Jun 2003 02:23:26 -0000	1.27
++++ gcc/libffi/Makefile.am	17 Jun 2003 15:46:06 -0000
+@@ -1,6 +1,6 @@
+ ## Process this with automake to create Makefile.in
+ 
+-AUTOMAKE_OPTIONS = cygnus
++AUTOMAKE_OPTIONS = 1.7 cygnus
+ 
+ SUBDIRS = include
+ 
+@@ -22,8 +22,6 @@
+ 		src/sh/ffi.c src/sh/sysv.S \
+ 		src/sh64/ffi.c src/sh64/sysv.S
+ 
+-VPATH = @srcdir@:@srcdir@/src:@srcdir@/src/@TARGETDIR@
+-
+ ## ################################################################
+ 
+ ##
+@@ -80,102 +78,102 @@
+ 
+ toolexeclib_LTLIBRARIES = libffi.la
+ noinst_LTLIBRARIES = libffi_convenience.la
+-
+ noinst_PROGRAMS = ffitest
+ 
+-ffitest_OBJECTS = ffitest.lo
++ffitest_SOURCES = src/ffitest.c
+ ffitest_LDADD = libffi.la
+ ffitest_LDFLAGS = -shared-libgcc
+ 
+-TARGET_SRC_MIPS_GCC = src/mips/ffi.c src/mips/o32.S src/mips/n32.S
+-TARGET_SRC_MIPS_LINUX = src/mips/ffi.c src/mips/o32.S
+-TARGET_SRC_MIPS_SGI = src/mips/ffi.c src/mips/o32.s src/mips/n32.s
+-TARGET_SRC_X86 = src/x86/ffi.c src/x86/sysv.S
+-TARGET_SRC_X86_WIN32 = src/x86/ffi.c src/x86/win32.S
+-TARGET_SRC_SPARC = src/sparc/ffi.c src/sparc/v8.S src/sparc/v9.S
+-TARGET_SRC_ALPHA = src/alpha/ffi.c src/alpha/osf.S
+-TARGET_SRC_IA64 = src/ia64/ffi.c src/ia64/unix.S
+-TARGET_SRC_M68K = src/m68k/ffi.c src/m68k/sysv.S
+-TARGET_SRC_POWERPC = src/powerpc/ffi.c src/powerpc/sysv.S src/powerpc/ppc_closure.S src/powerpc/linux64.S src/powerpc/linux64_closure.S
+-TARGET_SRC_POWERPC_AIX = src/powerpc/ffi_darwin.c src/powerpc/aix.S src/powerpc/aix_closure.S
+-TARGET_SRC_POWERPC_DARWIN = src/powerpc/ffi_darwin.c src/powerpc/darwin.S src/powerpc/darwin_closure.S
+-TARGET_SRC_ARM =  src/arm/sysv.S src/arm/ffi.c
+-TARGET_SRC_S390 =  src/s390/sysv.S src/s390/ffi.c
+-TARGET_SRC_X86_64 = src/x86/ffi64.c src/x86/unix64.S src/x86/ffi.c src/x86/sysv.S
+-TARGET_SRC_SH =  src/sh/sysv.S src/sh/ffi.c
+-TARGET_SRC_SH64 =  src/sh64/sysv.S src/sh64/ffi.c
+-
+-##libffi_la_SOURCES = src/debug.c src/prep_cif.c src/types.c $(TARGET_SRC_ at TARGET@)
+-## Work around automake deficiency
+-libffi_la_common_SOURCES = src/debug.c src/prep_cif.c src/types.c \
++# Work around automake deficiency
++# ---
++# Automake does not recognize that only one of src/x86/ffi.c,
++# src/mips/ffi.c etc. can be compiled at each time, and barfs
++# that they all go to the same object file.  So we move the
++# target files to the src directory through symbolic links.
++
++libffi_la_SOURCES = src/debug.c src/prep_cif.c src/types.c \
+ 		src/raw_api.c src/java_raw_api.c
++
++libffi_convenience_la_SOURCES = $(libffi_la_SOURCES)
++
++$(nodist_libffi_la_SOURCES):
++	@for dest in $(nodist_libffi_la_SOURCES); do \
++	  src=`cd $(srcdir)/src/$(TARGETDIR); pwd`/`echo $$dest | sed 's,.*/,,' `; \
++	  echo $(LN_S) $$src $$dest; \
++	  $(LN_S) $$src $$dest; \
++	done
++
++# It still complains about o32.s and o32.S, so let's do this.
++%_cpp.s: %.s
++	cp $< $@
++
+ if MIPS_GCC
+-libffi_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_MIPS_GCC)
+-libffi_convenience_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_MIPS_GCC)
++nodist_libffi_la_SOURCES = src/ffi.c src/o32.S src/n32.S
++nodist_libffi_convenience_la_SOURCES = src/ffi.c src/o32.S src/n32.S
+ endif
+ if MIPS_LINUX
+-libffi_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_MIPS_LINUX)
+-libffi_convenience_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_MIPS_LINUX)
++nodist_libffi_la_SOURCES = src/ffi.c src/o32.S
++nodist_libffi_convenience_la_SOURCES = src/ffi.c src/o32.S
+ endif
+ if MIPS_SGI
+-libffi_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_MIPS_SGI)
+-libffi_convenience_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_MIPS_SGI)
++nodist_libffi_la_SOURCES = src/ffi.c src/o32_cpp.s src/n32_cpp.s
++nodist_libffi_convenience_la_SOURCES = src/ffi.c src/o32_cpp.s src/n32_cpp.s
+ endif
+ if X86
+-libffi_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_X86)
+-libffi_convenience_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_X86)
++nodist_libffi_la_SOURCES = src/ffi.c src/sysv.S
++nodist_libffi_convenience_la_SOURCES = src/ffi.c src/sysv.S
+ endif
+ if X86_WIN32
+-libffi_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_X86_WIN32)
+-libffi_convenience_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_X86_WIN32)
++nodist_libffi_la_SOURCES = src/ffi.c src/win32.S
++nodist_libffi_convenience_la_SOURCES = src/ffi.c src/win32.S
+ endif
+ if SPARC
+-libffi_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_SPARC)
+-libffi_convenience_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_SPARC)
++nodist_libffi_la_SOURCES = src/ffi.c src/v8.S src/v9.S
++nodist_libffi_convenience_la_SOURCES = src/ffi.c src/v8.S src/v9.S
+ endif
+ if ALPHA
+-libffi_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_ALPHA)
+-libffi_convenience_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_ALPHA)
++nodist_libffi_la_SOURCES = src/ffi.c src/osf.S
++nodist_libffi_convenience_la_SOURCES = src/ffi.c src/osf.S
+ endif
+ if IA64
+-libffi_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_IA64)
+-libffi_convenience_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_IA64)
++nodist_libffi_la_SOURCES = src/ffi.c src/unix.S
++nodist_libffi_convenience_la_SOURCES = src/ffi.c src/unix.S
+ endif
+ if M68K
+-libffi_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_M68K)
+-libffi_convenience_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_M68K)
++nodist_libffi_la_SOURCES = src/ffi.c src/sysv.S
++nodist_libffi_convenience_la_SOURCES = src/ffi.c src/sysv.S
+ endif
+ if POWERPC
+-libffi_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_POWERPC)
+-libffi_convenience_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_POWERPC)
++nodist_libffi_la_SOURCES = src/ffi.c src/sysv.S src/ppc_closure.S src/linux64.S src/linux64_closure.S
++nodist_libffi_convenience_la_SOURCES = src/ffi.c src/sysv.S src/ppc_closure.S src/linux64.S src/linux64_closure.S
+ endif
+ if POWERPC_AIX
+-libffi_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_POWERPC_AIX)
+-libffi_convenience_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_POWERPC_AIX)
++nodist_libffi_la_SOURCES = src/ffi_darwin.c src/aix.S src/aix_closure.S
++nodist_libffi_convenience_la_SOURCES = src/ffi_darwin.c src/aix.S src/aix_closure.S
+ endif
+ if POWERPC_DARWIN
+-libffi_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_POWERPC_DARWIN)
+-libffi_convenience_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_POWERPC_DARWIN)
++nodist_libffi_la_SOURCES = src/ffi_darwin.c src/darwin.S src/darwin_closure.S
++nodist_libffi_convenience_la_SOURCES = src/ffi_darwin.c src/darwin.S src/darwin_closure.S
+ endif
+ if ARM
+-libffi_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_ARM)
+-libffi_convenience_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_ARM)
++nodist_libffi_la_SOURCES = src/sysv.S src/ffi.c
++nodist_libffi_convenience_la_SOURCES = src/sysv.S src/ffi.c
+ endif
+ if S390
+-libffi_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_S390)
+-libffi_convenience_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_S390)
++nodist_libffi_la_SOURCES = src/sysv.S src/ffi.c
++nodist_libffi_convenience_la_SOURCES = src/sysv.S src/ffi.c
+ endif
+ if X86_64
+-libffi_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_X86_64)
+-libffi_convenience_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_X86_64)
++nodist_libffi_la_SOURCES = src/ffi64.c src/unix64.S src/ffi.c src/sysv.S
++nodist_libffi_convenience_la_SOURCES = src/ffi64.c src/unix64.S src/ffi.c src/sysv.S
+ endif
+ if SH
+-libffi_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_SH)
+-libffi_convenience_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_SH)
++nodist_libffi_la_SOURCES = src/sysv.S src/ffi.c
++nodist_libffi_convenience_la_SOURCES = src/sysv.S src/ffi.c
+ endif
+ if SH64
+-libffi_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_SH64)
+-libffi_convenience_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_SH64)
++nodist_libffi_la_SOURCES = src/sysv.S src/ffi.c
++nodist_libffi_convenience_la_SOURCES = src/sysv.S src/ffi.c
+ endif
+ 
+ AM_CFLAGS = -fexceptions
+@@ -183,26 +181,7 @@
+ libffi_la_LDFLAGS = -release $(VERSION) 
+ 
+ INCLUDES = -I$(top_srcdir)/include -Iinclude -I$(top_srcdir)/src
+-
+-# Override these rules so that object files get put in the correct 
+-# subdirectories. 
+-.c.o:
+-	$(LTCOMPILE) -c -o $@ $<
+-
+-.s.o:
+-	$(LTCOMPILE) -c -o $@ $<
+-
+-.S.o:
+-	$(LTCOMPILE) -c -o $@ $<
+-
+-.c.lo:
+-	$(LTCOMPILE) -c -o $@ $<
+-
+-.s.lo:
+-	$(LTCOMPILE) -c -o $@ $<
+-
+-.S.lo:
+-	$(LTCOMPILE) -c -o $@ $<
++AM_CCASFLAGS = $(INCLUDES)
+ 
+ # Multilib support.
+ .PHONY: all-multi mostlyclean-multi clean-multi distclean-multi \
+Index: gcc/libffi/configure.in
+===================================================================
+RCS file: /cvsroot/gcc/gcc/libffi/configure.in,v
+retrieving revision 1.43
+diff -u -r1.43 configure.in
+--- gcc/libffi/configure.in	13 Jun 2003 02:23:26 -0000	1.43
++++ gcc/libffi/configure.in	17 Jun 2003 15:46:07 -0000
+@@ -1,6 +1,6 @@
+ dnl Process this with autoconf to create configure
+ AC_INIT(fficonfig.h.in)
+-AM_CONFIG_HEADER(fficonfig.h)
++AC_PREREQ(2.57)
+ 
+ # This works around the fact that libtool configuration may change LD
+ # for this particular configuration, but some shells, instead of
+@@ -30,18 +30,25 @@
+   libffi_basedir=
+ fi
+ AC_SUBST(libffi_basedir)
+-AC_CONFIG_AUX_DIR(${libffi_basedir}..)
+ 
+-AC_CANONICAL_HOST
++if test a = b; then
++  # This is for automake
++  AC_CONFIG_AUX_DIR(..)
++else
++  # and this is for autoconf
++  AC_CONFIG_AUX_DIRS(${libffi_basedir}.. dnl
++  		     ${libffi_basedir}../.. dnl
++		     ${libffi_basedir}../../..)
++fi
+ 
+-AM_PROG_LIBTOOL
++AC_CANONICAL_HOST
+ 
+ AM_INIT_AUTOMAKE(libffi,2.00-beta,no-define)
+ 
+-AC_EXEEXT
+ AM_MAINTAINER_MODE
+ 
+ AC_PROG_CC
++AM_PROG_AS
+ AC_PROG_LIBTOOL
+ 
+ TARGETDIR="unknown"
+@@ -109,16 +116,15 @@
+ AC_FUNC_ALLOCA
+ 
+ dnl AC_CHECK_SIZEOF(char)
+-AC_COMPILE_CHECK_SIZEOF(short)
+-AC_COMPILE_CHECK_SIZEOF(int)
+-AC_COMPILE_CHECK_SIZEOF(long)
+-AC_COMPILE_CHECK_SIZEOF(long long)
+-AC_COMPILE_CHECK_SIZEOF(float)
+-AC_COMPILE_CHECK_SIZEOF(double)
+-AC_COMPILE_CHECK_SIZEOF(long double)
+-
+-AC_COMPILE_CHECK_SIZEOF(void *)
+-AC_C_BIGENDIAN_CROSS
++AC_CHECK_SIZEOF(short)
++AC_CHECK_SIZEOF(int)
++AC_CHECK_SIZEOF(long)
++AC_CHECK_SIZEOF(long long)
++AC_CHECK_SIZEOF(float)
++AC_CHECK_SIZEOF(double)
++AC_CHECK_SIZEOF(long double)
++AC_CHECK_SIZEOF(void *)
++AC_C_BIGENDIAN
+ 
+ if test x$TARGET = xSPARC; then
+     AC_CACHE_CHECK([assembler and linker support unaligned pc related relocs],
+@@ -178,25 +184,29 @@
+ AC_ARG_ENABLE(debug,
+ [  --enable-debug          debugging mode],
+   if test "$enable_debug" = "yes"; then
+-    AC_DEFINE(FFI_DEBUG)
++    AC_DEFINE(FFI_DEBUG, 1,
++      [Define this if you want extra debugging]) 
+   fi)
+ 
+ AC_ARG_ENABLE(structs,
+ [  --disable-structs       omit code for struct support],
+   if test "$enable_structs" = "no"; then
+-    AC_DEFINE(FFI_NO_STRUCTS)
++    AC_DEFINE(FFI_NO_STRUCTS, 1,
++      [this is you do not want support for aggregate types.])
+   fi)
+ 
+ AC_ARG_ENABLE(raw-api,
+ [  --disable-raw-api       make the raw api unavailable],
+   if test "$enable_raw_api" = "no"; then
+-    AC_DEFINE(FFI_NO_RAW_API)
++    AC_DEFINE(FFI_NO_RAW_API, 1,
++      [this is you do not want support for the raw API.])
+   fi)
+ 
+ AC_ARG_ENABLE(purify-safety,
+ [  --enable-purify-safety  purify-safe mode],
+   if test "$enable_purify_safety" = "yes"; then
+-    AC_DEFINE(USING_PURIFY)
++    AC_DEFINE(USING_PURIFY, 1,
++      [Define this if you are using Purify and want to suppress spurious messages.]) 
+   fi)
+ 
+ if test -n "$with_cross_host" &&
+@@ -221,13 +231,13 @@
+   multilib_arg=
+ fi
+ 
+-AC_OUTPUT(include/Makefile include/ffi.h Makefile,
++AC_CONFIG_FILES(include/Makefile include/ffi.h Makefile,
+ [
+ if test -n "$CONFIG_FILES"; then
+    LD="${ORIGINAL_LD_FOR_MULTILIBS}"
+    ac_file=Makefile . ${srcdir}/${libffi_basedir}../config-ml.in
+ fi
+-],
++], [
+ srcdir=${srcdir}
+ host=${host}
+ target=${target}
+@@ -238,6 +248,10 @@
+ CC="${CC}"
+ DEFS="$DEFS"
+ ORIGINAL_LD_FOR_MULTILIBS="${ORIGINAL_LD_FOR_MULTILIBS}"
++])
++
++AC_CONFIG_HEADERS(fficonfig.h,
++[
+ test ! -d include && mkdir include
+ test ! -f include/fficonfig.h && cp fficonfig.h include/fficonfig.h
+ if cmp -s fficonfig.h include/fficonfig.h 2>/dev/null; then 
+@@ -246,8 +260,12 @@
+ 	echo Moving fficonfig.h to include/fficonfig.h
+ 	cp fficonfig.h include/fficonfig.h
+ fi
+-)
++])
+ 
+-# Make target subdirectories if required.
++AC_CONFIG_COMMANDS(target-subdirs,
++[ 
++# Make target subdirectory if required.
+ test -d src || mkdir src
+-test -d src/${TARGETDIR} || mkdir src/${TARGETDIR}
++])
++
++AC_OUTPUT
+
+
+From tromey at redhat.com  Tue Jun 17 16:19:25 2003
+From: tromey at redhat.com (Tom Tromey)
+Date: 17 Jun 2003 10:19:25 -0600
+Subject: [autoconf-conversion] libffi
+In-Reply-To: <20030617155800.GA29211@gnu.org>
+References: <20030617155800.GA29211@gnu.org>
+Message-ID: <87el1sk776.fsf@fleche.redhat.com>
+
+>>>>> "Paolo" == Paolo Bonzini <bonzini at gnu.org> writes:
+
+Paolo> Here is a first stab at libffi conversion.
+
+Paolo> +# Work around automake deficiency
+Paolo> +# ---
+Paolo> +# Automake does not recognize that only one of src/x86/ffi.c,
+Paolo> +# src/mips/ffi.c etc. can be compiled at each time, and barfs
+Paolo> +# that they all go to the same object file.  So we move the
+Paolo> +# target files to the src directory through symbolic links.
+
+You don't need this.  Instead, add "subdir-objects" to
+AUTOMAKE_OPTIONS.  This will preserve the existing behavior of
+putting .o files in subdirectories.
+
+The AC_CONFIG_AUX_DIRS thing is ugly.  I wonder if there is a better
+way.  (I haven't really been tracking automake development...)
+I wonder if automake's built-in multilib support helps here.
+
+Tom
+
+
+From bonzini at gnu.org  Tue Jun 17 21:16:56 2003
+From: bonzini at gnu.org (Bonzini)
+Date: Tue, 17 Jun 2003 23:16:56 +0200
+Subject: [autoconf-conversion] libffi
+References: <20030617155800.GA29211@gnu.org> <87el1sk776.fsf@fleche.redhat.com>
+Message-ID: <003401c33515$c93ed770$fcdf1d97@bonz>
+
+> You don't need this.  Instead, add "subdir-objects" to
+> AUTOMAKE_OPTIONS.  This will preserve the existing behavior of
+> putting .o files in subdirectories.
+
+Ah, ok.
+
+> The AC_CONFIG_AUX_DIRS thing is ugly.
+
+Plain wrong actually.  The problem is with autoconf; I still have to understand how
+srcdir is passed and why I have to add those ..'s
+
+> I wonder if automake's built-in multilib support helps here.
+
+What do you mean?
+
+Paolo
+
+
+
+From tromey at redhat.com  Tue Jun 17 22:14:48 2003
+From: tromey at redhat.com (Tom Tromey)
+Date: 17 Jun 2003 16:14:48 -0600
+Subject: [autoconf-conversion] libffi
+In-Reply-To: <003401c33515$c93ed770$fcdf1d97@bonz>
+References: <20030617155800.GA29211@gnu.org>
+	<87el1sk776.fsf@fleche.redhat.com>
+	<003401c33515$c93ed770$fcdf1d97@bonz>
+Message-ID: <87u1aogxlz.fsf@fleche.redhat.com>
+
+>> I wonder if automake's built-in multilib support helps here.
+
+Paolo> What do you mean?
+
+See AM_ENABLE_MULTILIB and the Multilibs node in the automake manual.
+I think if you call this you won't need the AC_CONFIG_AUX_DIR hacks
+at all -- they'll be handled for you.  Likewise this will let you
+remove code from Makefile.am, which is a good thing since the
+existing code relies on undocumented names.
+
+In particular you can get rid of all the *-multi targets, the
+*-recursive targets (in Makefile.am, they are just used to add a
+dependency) and the "Multilib support variables" paragraph.
+
+Tom
+
+
+From tromey at redhat.com  Tue Jun 17 23:37:21 2003
+From: tromey at redhat.com (Tom Tromey)
+Date: 17 Jun 2003 17:37:21 -0600
+Subject: [autoconf-conversion] Something to start with
+In-Reply-To: <200306161718.h5GHIBH00674@greed.delorie.com>
+References: <20030613041925.GA23591@nevyn.them.org>
+	<20030614205117.GA17662@nevyn.them.org>
+	<200306142056.h5EKubR01132@greed.delorie.com>
+	<87y904qdrt.fsf@fleche.redhat.com>
+	<200306161718.h5GHIBH00674@greed.delorie.com>
+Message-ID: <87n0gggtse.fsf@fleche.redhat.com>
+
+DJ> We'd have to branch all of src and gcc.  But that might be a good
+DJ> idea regardless, unless we tweak the toplevel to allow gradual
+DJ> migration.
+
+On irc I was told we don't need any special permission to make such a
+branch anywhere.  In the absence of a complaint I'll make a branch in
+both repositories tomorrow.
+
+Tom
+
+
+From dj at redhat.com  Wed Jun 18 00:27:01 2003
+From: dj at redhat.com (DJ Delorie)
+Date: Tue, 17 Jun 2003 20:27:01 -0400
+Subject: [autoconf-conversion] Something to start with
+In-Reply-To: <87n0gggtse.fsf@fleche.redhat.com> (message from Tom Tromey on 17
+	Jun 2003 17:37:21 -0600)
+References: <20030613041925.GA23591@nevyn.them.org>
+	<20030614205117.GA17662@nevyn.them.org>
+	<200306142056.h5EKubR01132@greed.delorie.com>
+	<87y904qdrt.fsf@fleche.redhat.com>
+	<200306161718.h5GHIBH00674@greed.delorie.com> <87n0gggtse.fsf@fleche.redhat.com>
+Message-ID: <200306180027.h5I0R1v15941@greed.delorie.com>
+
+
+> On irc I was told we don't need any special permission to make such a
+> branch anywhere.  In the absence of a complaint I'll make a branch in
+> both repositories tomorrow.
+
+I wasn't worried about permission.  I was concerned that it will be a
+*big* branch, that's all.  Lots of CVS activity and disk space.
+
+
+From drow at false.org  Wed Jun 18 00:29:40 2003
+From: drow at false.org (Daniel Jacobowitz)
+Date: Tue, 17 Jun 2003 20:29:40 -0400
+Subject: [autoconf-conversion] Something to start with
+In-Reply-To: <200306180027.h5I0R1v15941@greed.delorie.com>
+References: <20030613041925.GA23591@nevyn.them.org> <20030614205117.GA17662@nevyn.them.org> <200306142056.h5EKubR01132@greed.delorie.com> <87y904qdrt.fsf@fleche.redhat.com> <200306161718.h5GHIBH00674@greed.delorie.com> <87n0gggtse.fsf@fleche.redhat.com> <200306180027.h5I0R1v15941@greed.delorie.com>
+Message-ID: <20030618002939.GA10334@nevyn.them.org>
+
+On Tue, Jun 17, 2003 at 08:27:01PM -0400, DJ Delorie wrote:
+> 
+> > On irc I was told we don't need any special permission to make such a
+> > branch anywhere.  In the absence of a complaint I'll make a branch in
+> > both repositories tomorrow.
+> 
+> I wasn't worried about permission.  I was concerned that it will be a
+> *big* branch, that's all.  Lots of CVS activity and disk space.
+
+I'm sort of assuming the opposite - since most files will never be
+touched, or merged.
+
+On the other hand I'm still not convinced it should be done on a
+branch.  I'd rather just do it directory-at-a-time, one shot at a time.
+
+-- 
+Daniel Jacobowitz
+MontaVista Software                         Debian GNU/Linux Developer
+
+
+From bonzini at gnu.org  Thu Jun 19 15:35:11 2003
+From: bonzini at gnu.org (Bonzini)
+Date: Thu, 19 Jun 2003 11:35:11 -0400
+Subject: libffi take 2
+Message-ID: <20030619153511.GA19663@gnu.org>
+
+Here is take 2 at updating libffi.  I am using AM_ENABLE_MULTILIB as per
+Tom's suggestion and also subdir-objects; this means that the 'compile'
+wrapper script from Automake should be added to the toplevel.
+
+I'm hitting exponential behavior in Automake somewhere, so the
+distinction between libffi_la_SOURCES and nodist_libffi_la_SOURCES
+remains.  Besides, I think it is right like this because the sources are
+already made distributable by EXTRA_DIST.
+
+Paolo
+
+2003-06-17  Paolo Bonzini  <bonzini at gnu.org>
+
+	* libffi/Makefile.am (nodist_libffi_la_SOURCES,
+	nodist_libffi_convenience_la_SOURCES): put target-
+	specific source files here.  
+	(VPATH, implicit rules): remove them
+	(AM_CCASFLAGS): set it to $(INCLUDES).
+	* libffi/configure.ac: update to Autoconf 2.5x and
+	Automake 1.7.x (using AM_ENABLE_MULTILIB).
+
+Index: gcc/libffi/Makefile.am
+===================================================================
+RCS file: /cvsroot/gcc/gcc/libffi/Makefile.am,v
+retrieving revision 1.27
+diff -u -r1.27 Makefile.am
+--- gcc/libffi/Makefile.am	13 Jun 2003 02:23:26 -0000	1.27
++++ gcc/libffi/Makefile.am	19 Jun 2003 15:28:44 -0000
+@@ -1,6 +1,6 @@
+ ## Process this with automake to create Makefile.in
+ 
+-AUTOMAKE_OPTIONS = cygnus
++AUTOMAKE_OPTIONS = 1.7 cygnus subdir-objects
+ 
+ SUBDIRS = include
+ 
+@@ -22,8 +22,6 @@
+ 		src/sh/ffi.c src/sh/sysv.S \
+ 		src/sh64/ffi.c src/sh64/sysv.S
+ 
+-VPATH = @srcdir@:@srcdir@/src:@srcdir@/src/@TARGETDIR@
+-
+ ## ################################################################
+ 
+ ##
+@@ -70,164 +68,90 @@
+ 
+ MAKEOVERRIDES=
+ 
+-# Multilib support variables.
+ MULTISRCTOP =
+ MULTIBUILDTOP =
+ MULTIDIRS =
+ MULTISUBDIR =
+-MULTIDO = true
+-MULTICLEAN = true
+ 
+ toolexeclib_LTLIBRARIES = libffi.la
+ noinst_LTLIBRARIES = libffi_convenience.la
+-
+ noinst_PROGRAMS = ffitest
+ 
+-ffitest_OBJECTS = ffitest.lo
++ffitest_SOURCES = src/ffitest.c
+ ffitest_LDADD = libffi.la
+ ffitest_LDFLAGS = -shared-libgcc
+ 
+-TARGET_SRC_MIPS_GCC = src/mips/ffi.c src/mips/o32.S src/mips/n32.S
+-TARGET_SRC_MIPS_LINUX = src/mips/ffi.c src/mips/o32.S
+-TARGET_SRC_MIPS_SGI = src/mips/ffi.c src/mips/o32.s src/mips/n32.s
+-TARGET_SRC_X86 = src/x86/ffi.c src/x86/sysv.S
+-TARGET_SRC_X86_WIN32 = src/x86/ffi.c src/x86/win32.S
+-TARGET_SRC_SPARC = src/sparc/ffi.c src/sparc/v8.S src/sparc/v9.S
+-TARGET_SRC_ALPHA = src/alpha/ffi.c src/alpha/osf.S
+-TARGET_SRC_IA64 = src/ia64/ffi.c src/ia64/unix.S
+-TARGET_SRC_M68K = src/m68k/ffi.c src/m68k/sysv.S
+-TARGET_SRC_POWERPC = src/powerpc/ffi.c src/powerpc/sysv.S src/powerpc/ppc_closure.S src/powerpc/linux64.S src/powerpc/linux64_closure.S
+-TARGET_SRC_POWERPC_AIX = src/powerpc/ffi_darwin.c src/powerpc/aix.S src/powerpc/aix_closure.S
+-TARGET_SRC_POWERPC_DARWIN = src/powerpc/ffi_darwin.c src/powerpc/darwin.S src/powerpc/darwin_closure.S
+-TARGET_SRC_ARM =  src/arm/sysv.S src/arm/ffi.c
+-TARGET_SRC_S390 =  src/s390/sysv.S src/s390/ffi.c
+-TARGET_SRC_X86_64 = src/x86/ffi64.c src/x86/unix64.S src/x86/ffi.c src/x86/sysv.S
+-TARGET_SRC_SH =  src/sh/sysv.S src/sh/ffi.c
+-TARGET_SRC_SH64 =  src/sh64/sysv.S src/sh64/ffi.c
+-
+-##libffi_la_SOURCES = src/debug.c src/prep_cif.c src/types.c $(TARGET_SRC_ at TARGET@)
+-## Work around automake deficiency
+-libffi_la_common_SOURCES = src/debug.c src/prep_cif.c src/types.c \
++libffi_la_SOURCES = src/debug.c src/prep_cif.c src/types.c \
+ 		src/raw_api.c src/java_raw_api.c
++
++
++# It still complains about o32.s and o32.S, so let's do this.
++%_cpp.s: %.s
++	cp $< $@
++
++nodist_libffi_la_SOURCES =
++
+ if MIPS_GCC
+-libffi_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_MIPS_GCC)
+-libffi_convenience_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_MIPS_GCC)
++nodist_libffi_la_SOURCES += src/mips/ffi.c src/mips/o32.S src/mips/n32.S
+ endif
+ if MIPS_LINUX
+-libffi_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_MIPS_LINUX)
+-libffi_convenience_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_MIPS_LINUX)
++nodist_libffi_la_SOURCES += src/mips/ffi.c src/mips/o32.S
+ endif
+ if MIPS_SGI
+-libffi_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_MIPS_SGI)
+-libffi_convenience_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_MIPS_SGI)
++nodist_libffi_la_SOURCES += src/mips/ffi.c src/mips/o32_cpp.s src/mips/n32_cpp.s
+ endif
+ if X86
+-libffi_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_X86)
+-libffi_convenience_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_X86)
++nodist_libffi_la_SOURCES += src/x86/ffi.c src/x86/sysv.S
+ endif
+ if X86_WIN32
+-libffi_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_X86_WIN32)
+-libffi_convenience_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_X86_WIN32)
++nodist_libffi_la_SOURCES += src/x86/ffi.c src/x86/win32.S
+ endif
+ if SPARC
+-libffi_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_SPARC)
+-libffi_convenience_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_SPARC)
++nodist_libffi_la_SOURCES += src/sparc/ffi.c src/sparc/v8.S src/sparc/v9.S
+ endif
+ if ALPHA
+-libffi_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_ALPHA)
+-libffi_convenience_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_ALPHA)
++nodist_libffi_la_SOURCES += src/alpha/ffi.c src/alpha/osf.S
+ endif
+ if IA64
+-libffi_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_IA64)
+-libffi_convenience_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_IA64)
++nodist_libffi_la_SOURCES += src/ia64/ffi.c src/ia64/unix.S
+ endif
+ if M68K
+-libffi_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_M68K)
+-libffi_convenience_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_M68K)
++nodist_libffi_la_SOURCES += src/m68k/ffi.c src/m68k/sysv.S
+ endif
+ if POWERPC
+-libffi_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_POWERPC)
+-libffi_convenience_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_POWERPC)
++nodist_libffi_la_SOURCES += src/powerpc/ffi.c src/powerpc/sysv.S src/powerpc/ppc_closure.S src/powerpc/linux64.S src/powerpc/linux64_closure.S
+ endif
+ if POWERPC_AIX
+-libffi_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_POWERPC_AIX)
+-libffi_convenience_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_POWERPC_AIX)
++nodist_libffi_la_SOURCES += src/powerpc/ffi_darwin.c src/powerpc/aix.S src/powerpc/aix_closure.S
+ endif
+ if POWERPC_DARWIN
+-libffi_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_POWERPC_DARWIN)
+-libffi_convenience_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_POWERPC_DARWIN)
++nodist_libffi_la_SOURCES += src/powerpc/ffi_darwin.c src/powerpc/darwin.S src/powerpc/darwin_closure.S
+ endif
+ if ARM
+-libffi_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_ARM)
+-libffi_convenience_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_ARM)
++nodist_libffi_la_SOURCES += src/arm/sysv.S src/arm/ffi.c
+ endif
+ if S390
+-libffi_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_S390)
+-libffi_convenience_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_S390)
++nodist_libffi_la_SOURCES += src/s390/sysv.S src/s390/ffi.c
+ endif
+ if X86_64
+-libffi_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_X86_64)
+-libffi_convenience_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_X86_64)
++nodist_libffi_la_SOURCES += src/x86/ffi64.c src/x86/unix64.S src/x86/ffi.c src/x86/sysv.S
+ endif
+ if SH
+-libffi_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_SH)
+-libffi_convenience_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_SH)
++nodist_libffi_la_SOURCES += src/sh/sysv.S src/sh/ffi.c
+ endif
+ if SH64
+-libffi_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_SH64)
+-libffi_convenience_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_SH64)
++nodist_libffi_la_SOURCES += src/sh64/sysv.S src/sh64/ffi.c
+ endif
+ 
++libffi_convenience_la_SOURCES = $(libffi_la_SOURCES)
++nodist_libffi_convenience_la_SOURCES = $(nodist_libffi_la_SOURCES)
++
+ AM_CFLAGS = -fexceptions
+ 
+ libffi_la_LDFLAGS = -release $(VERSION) 
+ 
+ INCLUDES = -I$(top_srcdir)/include -Iinclude -I$(top_srcdir)/src
+-
+-# Override these rules so that object files get put in the correct 
+-# subdirectories. 
+-.c.o:
+-	$(LTCOMPILE) -c -o $@ $<
+-
+-.s.o:
+-	$(LTCOMPILE) -c -o $@ $<
+-
+-.S.o:
+-	$(LTCOMPILE) -c -o $@ $<
+-
+-.c.lo:
+-	$(LTCOMPILE) -c -o $@ $<
+-
+-.s.lo:
+-	$(LTCOMPILE) -c -o $@ $<
+-
+-.S.lo:
+-	$(LTCOMPILE) -c -o $@ $<
+-
+-# Multilib support.
+-.PHONY: all-multi mostlyclean-multi clean-multi distclean-multi \
+-	maintainer-clean-multi
+-
+-all-recursive: all-multi
+-install-recursive: install-multi
+-mostlyclean-recursive: mostlyclean-multi
+-clean-recursive: clean-multi
+-distclean-recursive: distclean-multi
+-maintainer-clean-recursive: maintainer-clean-multi
+-
+-all-multi:
+-	: $(MAKE) ; exec $(MULTIDO) $(AM_MAKEFLAGS) DO=all multi-do
+-install-multi:
+-	$(MULTIDO) $(AM_MAKEFLAGS) DO=install multi-do
+-mostlyclean-multi:
+-	$(MULTICLEAN) $(AM_MAKEFLAGS) DO=mostlyclean multi-clean
+-clean-multi:
+-	$(MULTICLEAN) $(AM_MAKEFLAGS) DO=clean multi-clean
+-distclean-multi:
+-	$(MULTICLEAN) $(AM_MAKEFLAGS) DO=distclean multi-clean
+-maintainer-clean-multi:
+-	$(MULTICLEAN) $(AM_MAKEFLAGS) DO=maintainer-clean multi-clean
+-
++AM_CCASFLAGS = $(INCLUDES)
+ 
+ ## ################################################################
+ 
+Index: gcc/libffi/acconfig.h
+===================================================================
+RCS file: /cvsroot/gcc/gcc/libffi/acconfig.h,v
+retrieving revision 1.2
+diff -u -r1.2 acconfig.h
+--- gcc/libffi/acconfig.h	1 Sep 1999 23:16:33 -0000	1.2
++++ gcc/libffi/acconfig.h	19 Jun 2003 15:28:46 -0000
+@@ -1,12 +0,0 @@
+-/* Define this if you want extra debugging */
+-#undef FFI_DEBUG
+-
+-/* Define this if you are using Purify and want to suppress 
+-   spurious messages. */
+-#undef USING_PURIFY
+-
+-/* Define this is you do not want support for aggregate types.  */
+-#undef FFI_NO_STRUCTS
+-
+-/* Define this is you do not want support for the raw API.  */
+-#undef FFI_NO_RAW_API
+Index: gcc/libffi/configure.in
+===================================================================
+RCS file: /cvsroot/gcc/gcc/libffi/configure.in,v
+retrieving revision 1.43
+diff -u -r1.43 configure.in
+--- gcc/libffi/configure.in	13 Jun 2003 02:23:26 -0000	1.43
++++ gcc/libffi/configure.in	19 Jun 2003 15:28:49 -0000
+@@ -1,47 +1,31 @@
+ dnl Process this with autoconf to create configure
+ AC_INIT(fficonfig.h.in)
+-AM_CONFIG_HEADER(fficonfig.h)
++AC_PREREQ(2.57)
+ 
+ # This works around the fact that libtool configuration may change LD
+ # for this particular configuration, but some shells, instead of
+ # keeping the changes in LD private, export them just because LD is
+-# exported.
+-ORIGINAL_LD_FOR_MULTILIBS=$LD
++# exported. (???)
++# ORIGINAL_LD_FOR_MULTILIBS=$LD
+ 
+-dnl Default to --enable-multilib
+-AC_ARG_ENABLE(multilib,
+-[  --enable-multilib       build many library versions (default)],
+-[case "${enableval}" in
+-  yes) multilib=yes ;;
+-  no)  multilib=no ;;
+-  *)   AC_MSG_ERROR(bad value ${enableval} for multilib option) ;;
+- esac], [multilib=yes])dnl
+-
+-dnl We may get other options which we don't document:
+-dnl --with-target-subdir, --with-multisrctop, --with-multisubdir
+-
+-if test "${srcdir}" = "."; then
+-  if test "${with_target_subdir}" != "."; then
+-    libffi_basedir="${with_multisrctop}../"
+-  else
+-    libffi_basedir="${with_multisrctop}"
+-  fi
++AM_ENABLE_MULTILIB(Makefile, ..)
++if test a = b; then
++  # This is for automake
++  AC_CONFIG_AUX_DIR(..)
+ else
+-  libffi_basedir=
++  # and this is for autoconf
++  AC_CONFIG_AUX_DIRS(${multi_basedir})
+ fi
+-AC_SUBST(libffi_basedir)
+-AC_CONFIG_AUX_DIR(${libffi_basedir}..)
+ 
+ AC_CANONICAL_HOST
+ 
+-AM_PROG_LIBTOOL
+-
+ AM_INIT_AUTOMAKE(libffi,2.00-beta,no-define)
+ 
+-AC_EXEEXT
+ AM_MAINTAINER_MODE
+ 
+ AC_PROG_CC
++AM_PROG_AS
++AM_PROG_CC_C_O
+ AC_PROG_LIBTOOL
+ 
+ TARGETDIR="unknown"
+@@ -109,16 +93,15 @@
+ AC_FUNC_ALLOCA
+ 
+ dnl AC_CHECK_SIZEOF(char)
+-AC_COMPILE_CHECK_SIZEOF(short)
+-AC_COMPILE_CHECK_SIZEOF(int)
+-AC_COMPILE_CHECK_SIZEOF(long)
+-AC_COMPILE_CHECK_SIZEOF(long long)
+-AC_COMPILE_CHECK_SIZEOF(float)
+-AC_COMPILE_CHECK_SIZEOF(double)
+-AC_COMPILE_CHECK_SIZEOF(long double)
+-
+-AC_COMPILE_CHECK_SIZEOF(void *)
+-AC_C_BIGENDIAN_CROSS
++AC_CHECK_SIZEOF(short)
++AC_CHECK_SIZEOF(int)
++AC_CHECK_SIZEOF(long)
++AC_CHECK_SIZEOF(long long)
++AC_CHECK_SIZEOF(float)
++AC_CHECK_SIZEOF(double)
++AC_CHECK_SIZEOF(long double)
++AC_CHECK_SIZEOF(void *)
++AC_C_BIGENDIAN
+ 
+ if test x$TARGET = xSPARC; then
+     AC_CACHE_CHECK([assembler and linker support unaligned pc related relocs],
+@@ -178,25 +161,29 @@
+ AC_ARG_ENABLE(debug,
+ [  --enable-debug          debugging mode],
+   if test "$enable_debug" = "yes"; then
+-    AC_DEFINE(FFI_DEBUG)
++    AC_DEFINE(FFI_DEBUG, 1,
++      [Define this if you want extra debugging]) 
+   fi)
+ 
+ AC_ARG_ENABLE(structs,
+ [  --disable-structs       omit code for struct support],
+   if test "$enable_structs" = "no"; then
+-    AC_DEFINE(FFI_NO_STRUCTS)
++    AC_DEFINE(FFI_NO_STRUCTS, 1,
++      [this is you do not want support for aggregate types.])
+   fi)
+ 
+ AC_ARG_ENABLE(raw-api,
+ [  --disable-raw-api       make the raw api unavailable],
+   if test "$enable_raw_api" = "no"; then
+-    AC_DEFINE(FFI_NO_RAW_API)
++    AC_DEFINE(FFI_NO_RAW_API, 1,
++      [this is you do not want support for the raw API.])
+   fi)
+ 
+ AC_ARG_ENABLE(purify-safety,
+ [  --enable-purify-safety  purify-safe mode],
+   if test "$enable_purify_safety" = "yes"; then
+-    AC_DEFINE(USING_PURIFY)
++    AC_DEFINE(USING_PURIFY, 1,
++      [Define this if you are using Purify and want to suppress spurious messages.]) 
+   fi)
+ 
+ if test -n "$with_cross_host" &&
+@@ -221,23 +208,9 @@
+   multilib_arg=
+ fi
+ 
+-AC_OUTPUT(include/Makefile include/ffi.h Makefile,
++AC_CONFIG_FILES(include/Makefile include/ffi.h Makefile)
++AC_CONFIG_HEADERS(fficonfig.h,
+ [
+-if test -n "$CONFIG_FILES"; then
+-   LD="${ORIGINAL_LD_FOR_MULTILIBS}"
+-   ac_file=Makefile . ${srcdir}/${libffi_basedir}../config-ml.in
+-fi
+-],
+-srcdir=${srcdir}
+-host=${host}
+-target=${target}
+-with_multisubdir=${with_multisubdir}
+-ac_configure_args="${multilib_arg} ${ac_configure_args}"
+-CONFIG_SHELL=${CONFIG_SHELL-/bin/sh}
+-libffi_basedir=${libffi_basedir}
+-CC="${CC}"
+-DEFS="$DEFS"
+-ORIGINAL_LD_FOR_MULTILIBS="${ORIGINAL_LD_FOR_MULTILIBS}"
+ test ! -d include && mkdir include
+ test ! -f include/fficonfig.h && cp fficonfig.h include/fficonfig.h
+ if cmp -s fficonfig.h include/fficonfig.h 2>/dev/null; then 
+@@ -246,8 +219,13 @@
+ 	echo Moving fficonfig.h to include/fficonfig.h
+ 	cp fficonfig.h include/fficonfig.h
+ fi
+-)
++])
+ 
+-# Make target subdirectories if required.
++AC_CONFIG_COMMANDS(target-subdirs,
++[ 
++# Make target subdirectory if required.
+ test -d src || mkdir src
+ test -d src/${TARGETDIR} || mkdir src/${TARGETDIR}
++])
++
++AC_OUTPUT
+
+
+
+From tromey at redhat.com  Thu Jun 19 16:15:53 2003
+From: tromey at redhat.com (Tom Tromey)
+Date: 19 Jun 2003 10:15:53 -0600
+Subject: [autoconf-conversion] libffi take 2
+In-Reply-To: <20030619153511.GA19663@gnu.org>
+References: <20030619153511.GA19663@gnu.org>
+Message-ID: <87adceavra.fsf@fleche.redhat.com>
+
+>>>>> "Paolo" == Paolo Bonzini <bonzini at gnu.org> writes:
+
+Paolo> Here is take 2 at updating libffi.
+
+I have more suggestions.  Hope you don't mind.
+
+Paolo> I'm hitting exponential behavior in Automake somewhere
+
+Report this -- I know Alexandre has been fixing these pretty
+regularly.
+
+Paolo>  MULTISRCTOP =
+Paolo>  MULTIBUILDTOP =
+Paolo>  MULTIDIRS =
+Paolo>  MULTISUBDIR =
+
+You should be able to remove all of these.
+
+Paolo> +# It still complains about o32.s and o32.S, so let's do this.
+Paolo> +%_cpp.s: %.s
+Paolo> +	cp $< $@
+
+"%" rules aren't portable.  Let's not use them.  I'm not sure what the
+problem is exactly, but I'm sure we can fix it some other way.
+
+Tom
+
+
+From bonzini at gnu.org  Sat Jun 21 08:19:19 2003
+From: bonzini at gnu.org (Bonzini)
+Date: Sat, 21 Jun 2003 10:19:19 +0200
+Subject: [autoconf-conversion] libffi take 2
+References: <20030619153511.GA19663@gnu.org> <87adceavra.fsf@fleche.redhat.com>
+Message-ID: <005101c337ce$6b46f970$28dc1d97@bonz>
+
+> I have more suggestions.  Hope you don't mind.
+
+Not at all.
+
+> Paolo> I'm hitting exponential behavior in Automake somewhere
+>
+> Report this -- I know Alexandre has been fixing these pretty
+> regularly.
+
+It is fixed in CVS.
+
+> Paolo>  MULTISRCTOP =
+> Paolo>  MULTIBUILDTOP =
+> Paolo>  MULTIDIRS =
+> Paolo>  MULTISUBDIR =
+>
+> You should be able to remove all of these.
+
+Unfortunately not -- and I also need MULTIDO and MULTICLEAN.
+
+> Paolo> +# It still complains about o32.s and o32.S, so let's do this.
+> Paolo> +%_cpp.s: %.S
+> Paolo> + cp $< $@
+>
+> "%" rules aren't portable.  Let's not use them.  I'm not sure what the
+> problem is exactly, but I'm sure we can fix it some other way.
+
+I can use explicit rules anyway.  But, is libffi really being built with something
+other than gcc?  Maybe 1.x was, but now libffi is integrated with the toplevel and only
+built as a target library.  I don't think there are other users of libffi 2.x besides
+libjava and GNU Smalltalk...  I think that removing support for MIPS with the SGI
+compiler is not heresy at all -- I would not mind for GNU Smalltalk anyway.
+
+Paolo
+
+
+
+
+From schwab at suse.de  Sat Jun 21 14:58:44 2003
+From: schwab at suse.de (Andreas Schwab)
+Date: Sat, 21 Jun 2003 16:58:44 +0200
+Subject: [autoconf-conversion] libffi take 2
+In-Reply-To: <005101c337ce$6b46f970$28dc1d97@bonz> (bonzini@gnu.org's
+ message of "Sat, 21 Jun 2003 10:19:19 +0200")
+References: <20030619153511.GA19663@gnu.org>
+	<87adceavra.fsf@fleche.redhat.com>
+	<005101c337ce$6b46f970$28dc1d97@bonz>
+Message-ID: <je1xxno4t7.fsf@sykes.suse.de>
+
+"Bonzini" <bonzini at gnu.org> writes:
+
+|> > Paolo> +# It still complains about o32.s and o32.S, so let's do this.
+|> > Paolo> +%_cpp.s: %.S
+|> > Paolo> + cp $< $@
+|> >
+|> > "%" rules aren't portable.  Let's not use them.  I'm not sure what the
+|> > problem is exactly, but I'm sure we can fix it some other way.
+|> 
+|> I can use explicit rules anyway.  But, is libffi really being built with something
+|> other than gcc?
+
+It's not a matter of the compiler, but of the make program.
+
+Andreas.
+
+-- 
+Andreas Schwab, SuSE Labs, schwab at suse.de
+SuSE Linux AG, Deutschherrnstr. 15-19, D-90429 N?rnberg
+Key fingerprint = 58CA 54C7 6D53 942B 1756  01D3 44D5 214B 8276 4ED5
+"And now for something completely different."
+
+
+From bonzini at gnu.org  Sun Jun 22 09:44:00 2003
+From: bonzini at gnu.org (Bonzini)
+Date: Sun, 22 Jun 2003 11:44:00 +0200
+Subject: [autoconf-conversion] libffi take 2
+References: <20030619153511.GA19663@gnu.org><87adceavra.fsf@fleche.redhat.com><005101c337ce$6b46f970$28dc1d97@bonz> <je1xxno4t7.fsf@sykes.suse.de>
+Message-ID: <001701c338a2$d08b3fb0$4fdd1d97@bonz>
+
+> |> I can use explicit rules anyway.  But, is libffi really being built with something
+> |> other than gcc?
+>
+> It's not a matter of the compiler, but of the make program.
+
+I know that.  But these rules are only used with the MIPS_SGI Automake conditional,
+hence only under the SGI compiler.
+
+Paolo
+
+
+
+From tromey at redhat.com  Tue Jun 24 13:08:25 2003
+From: tromey at redhat.com (Tom Tromey)
+Date: Tue, 24 Jun 2003 07:08:25 -0600
+Subject: [autoconf-conversion] libffi take 2
+In-Reply-To: <005101c337ce$6b46f970$28dc1d97@bonz>
+References: <20030619153511.GA19663@gnu.org>
+	<87adceavra.fsf@fleche.redhat.com>
+	<005101c337ce$6b46f970$28dc1d97@bonz>
+Message-ID: <16120.19785.745659.857145@creche.redhat.com>
+
+>>>>> "Paolo" == bonzini  <bonzini at gnu.org> writes:
+
+Paolo> Unfortunately not -- and I also need MULTIDO and MULTICLEAN.
+
+Bummer.  Is that fixed in cvs as well?  I thought I looked at
+multilib.am before mailing and saw all the definitions there.
+
+Paolo> But, is libffi really being built with something other than
+Paolo> gcc?  Maybe 1.x was, but now libffi is integrated with the
+Paolo> toplevel and only built as a target library.  I don't think
+Paolo> there are other users of libffi 2.x besides libjava and GNU
+Paolo> Smalltalk...  I think that removing support for MIPS with the
+Paolo> SGI compiler is not heresy at all -- I would not mind for GNU
+Paolo> Smalltalk anyway.
+
+There is occasional talk of doing a libffi release separate from the
+gcc tree.  There are other users, but I think they usually work by
+importing the source into their own tree.
+
+Anthony (CCd) could say better than me whether we need to preserve the
+SGI MIPS compiler support.  Left to me, I say delete it.  We can
+always resurrect it in the unlikely case we need it.
+
+Tom
+
+
+From green at redhat.com  Tue Jun 24 14:23:32 2003
+From: green at redhat.com (Anthony Green)
+Date: 24 Jun 2003 07:23:32 -0700
+Subject: [autoconf-conversion] libffi take 2
+In-Reply-To: <16120.19785.745659.857145@creche.redhat.com>
+References: <20030619153511.GA19663@gnu.org>
+	 <87adceavra.fsf@fleche.redhat.com> <005101c337ce$6b46f970$28dc1d97@bonz>
+	 <16120.19785.745659.857145@creche.redhat.com>
+Message-ID: <1056464612.8763.648.camel@escape>
+
+On Tue, 2003-06-24 at 06:08, Tom Tromey wrote:
+> There is occasional talk of doing a libffi release separate from the
+> gcc tree.  There are other users, but I think they usually work by
+> importing the source into their own tree.
+
+I don't mind dropping support for non-GNU compilers now.
+
+BTW - I'm missing a little context here.  What is autoconf-conversion? 
+Is this supposed to be a GCC list? 
+
+AG
+
+-- 
+Anthony Green <green at redhat.com>
+Red Hat, Inc.
+
+
+
+From bonzini at gnu.org  Tue Jun 24 21:21:08 2003
+From: bonzini at gnu.org (Bonzini)
+Date: Tue, 24 Jun 2003 23:21:08 +0200
+Subject: [autoconf-conversion] libffi take 2
+References: <20030619153511.GA19663@gnu.org> <87adceavra.fsf@fleche.redhat.com> <005101c337ce$6b46f970$28dc1d97@bonz> <16120.19785.745659.857145@creche.redhat.com> <1056464612.8763.648.camel@escape>
+Message-ID: <005501c33a96$885800c0$57de1d97@bonz>
+
+Very good, I will put up a final patch for libffi tomorrow.  So now there's gas,
+fastjar, libffi, and libiberty (I don't remember well about the latter).
+
+> > There is occasional talk of doing a libffi release separate from the
+> > gcc tree.  There are other users, but I think they usually work by
+> > importing the source into their own tree.
+
+Yes, though I had to do some of the work that went into this patch.
+
+> BTW - I'm missing a little context here.  What is autoconf-conversion?
+> Is this supposed to be a GCC list?
+
+It is about converting the gcc and src repositories to Autoconf 2.5x
+and Automake 1.7.  It was announced about a week ago on the gcc mailing list.
+
+Paolo
+
+
+
+
+From bonzini at gnu.org  Tue Jun 24 21:23:53 2003
+From: bonzini at gnu.org (Bonzini)
+Date: Tue, 24 Jun 2003 23:23:53 +0200
+Subject: [autoconf-conversion] libffi take 2
+References: <20030619153511.GA19663@gnu.org><87adceavra.fsf@fleche.redhat.com><005101c337ce$6b46f970$28dc1d97@bonz> <16120.19785.745659.857145@creche.redhat.com>
+Message-ID: <005b01c33a96$eb1d0980$57de1d97@bonz>
+
+> Bummer.  Is that fixed in cvs as well?
+
+I don't know (and cannot check for a while).
+
+> I thought I looked at
+> multilib.am before mailing and saw all the definitions there.
+
+The definitions are there, but they aren't put in the generated Makefile.in (?!?).
+They are surely unesthetic, but they do not make any harm.
+
+Paolo
+
+
+
+From bonzini at gnu.org  Wed Jun 25 14:06:16 2003
+From: bonzini at gnu.org (Bonzini)
+Date: Wed, 25 Jun 2003 10:06:16 -0400
+Subject: libffi definitive
+Message-ID: <20030625140616.GA472@gnu.org>
+
+Ok, here it is.  This should be definitive, workarounds for Automake
+bugs can be removed later.
+
+Paolo
+
+-------------- next part --------------
+Index: gcc/libffi/Makefile.am
+===================================================================
+RCS file: /cvsroot/gcc/gcc/libffi/Makefile.am,v
+retrieving revision 1.27
+diff -u -r1.27 Makefile.am
+--- gcc/libffi/Makefile.am	13 Jun 2003 02:23:26 -0000	1.27
++++ gcc/libffi/Makefile.am	25 Jun 2003 08:22:55 -0000
+@@ -1,6 +1,6 @@
+ ## Process this with automake to create Makefile.in
+ 
+-AUTOMAKE_OPTIONS = cygnus
++AUTOMAKE_OPTIONS = 1.7 cygnus subdir-objects
+ 
+ SUBDIRS = include
+ 
+@@ -22,8 +22,6 @@
+ 		src/sh/ffi.c src/sh/sysv.S \
+ 		src/sh64/ffi.c src/sh64/sysv.S
+ 
+-VPATH = @srcdir@:@srcdir@/src:@srcdir@/src/@TARGETDIR@
+-
+ ## ################################################################
+ 
+ ##
+@@ -70,7 +68,7 @@
+ 
+ MAKEOVERRIDES=
+ 
+-# Multilib support variables.
++# Multilib support variables working around Automake bug.
+ MULTISRCTOP =
+ MULTIBUILDTOP =
+ MULTIDIRS =
+@@ -80,154 +78,76 @@
+ 
+ toolexeclib_LTLIBRARIES = libffi.la
+ noinst_LTLIBRARIES = libffi_convenience.la
+-
+ noinst_PROGRAMS = ffitest
+ 
+-ffitest_OBJECTS = ffitest.lo
++ffitest_SOURCES = src/ffitest.c
+ ffitest_LDADD = libffi.la
+ ffitest_LDFLAGS = -shared-libgcc
+ 
+-TARGET_SRC_MIPS_GCC = src/mips/ffi.c src/mips/o32.S src/mips/n32.S
+-TARGET_SRC_MIPS_LINUX = src/mips/ffi.c src/mips/o32.S
+-TARGET_SRC_MIPS_SGI = src/mips/ffi.c src/mips/o32.s src/mips/n32.s
+-TARGET_SRC_X86 = src/x86/ffi.c src/x86/sysv.S
+-TARGET_SRC_X86_WIN32 = src/x86/ffi.c src/x86/win32.S
+-TARGET_SRC_SPARC = src/sparc/ffi.c src/sparc/v8.S src/sparc/v9.S
+-TARGET_SRC_ALPHA = src/alpha/ffi.c src/alpha/osf.S
+-TARGET_SRC_IA64 = src/ia64/ffi.c src/ia64/unix.S
+-TARGET_SRC_M68K = src/m68k/ffi.c src/m68k/sysv.S
+-TARGET_SRC_POWERPC = src/powerpc/ffi.c src/powerpc/sysv.S src/powerpc/ppc_closure.S src/powerpc/linux64.S src/powerpc/linux64_closure.S
+-TARGET_SRC_POWERPC_AIX = src/powerpc/ffi_darwin.c src/powerpc/aix.S src/powerpc/aix_closure.S
+-TARGET_SRC_POWERPC_DARWIN = src/powerpc/ffi_darwin.c src/powerpc/darwin.S src/powerpc/darwin_closure.S
+-TARGET_SRC_ARM =  src/arm/sysv.S src/arm/ffi.c
+-TARGET_SRC_S390 =  src/s390/sysv.S src/s390/ffi.c
+-TARGET_SRC_X86_64 = src/x86/ffi64.c src/x86/unix64.S src/x86/ffi.c src/x86/sysv.S
+-TARGET_SRC_SH =  src/sh/sysv.S src/sh/ffi.c
+-TARGET_SRC_SH64 =  src/sh64/sysv.S src/sh64/ffi.c
+-
+-##libffi_la_SOURCES = src/debug.c src/prep_cif.c src/types.c $(TARGET_SRC_ at TARGET@)
+-## Work around automake deficiency
+-libffi_la_common_SOURCES = src/debug.c src/prep_cif.c src/types.c \
++libffi_la_SOURCES = src/debug.c src/prep_cif.c src/types.c \
+ 		src/raw_api.c src/java_raw_api.c
++
++
++nodist_libffi_la_SOURCES =
++
+ if MIPS_GCC
+-libffi_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_MIPS_GCC)
+-libffi_convenience_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_MIPS_GCC)
++nodist_libffi_la_SOURCES += src/mips/ffi.c src/mips/o32.S src/mips/n32.S
+ endif
+ if MIPS_LINUX
+-libffi_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_MIPS_LINUX)
+-libffi_convenience_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_MIPS_LINUX)
+-endif
+-if MIPS_SGI
+-libffi_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_MIPS_SGI)
+-libffi_convenience_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_MIPS_SGI)
++nodist_libffi_la_SOURCES += src/mips/ffi.c src/mips/o32.S
+ endif
+ if X86
+-libffi_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_X86)
+-libffi_convenience_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_X86)
++nodist_libffi_la_SOURCES += src/x86/ffi.c src/x86/sysv.S
+ endif
+ if X86_WIN32
+-libffi_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_X86_WIN32)
+-libffi_convenience_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_X86_WIN32)
++nodist_libffi_la_SOURCES += src/x86/ffi.c src/x86/win32.S
+ endif
+ if SPARC
+-libffi_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_SPARC)
+-libffi_convenience_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_SPARC)
++nodist_libffi_la_SOURCES += src/sparc/ffi.c src/sparc/v8.S src/sparc/v9.S
+ endif
+ if ALPHA
+-libffi_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_ALPHA)
+-libffi_convenience_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_ALPHA)
++nodist_libffi_la_SOURCES += src/alpha/ffi.c src/alpha/osf.S
+ endif
+ if IA64
+-libffi_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_IA64)
+-libffi_convenience_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_IA64)
++nodist_libffi_la_SOURCES += src/ia64/ffi.c src/ia64/unix.S
+ endif
+ if M68K
+-libffi_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_M68K)
+-libffi_convenience_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_M68K)
++nodist_libffi_la_SOURCES += src/m68k/ffi.c src/m68k/sysv.S
+ endif
+ if POWERPC
+-libffi_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_POWERPC)
+-libffi_convenience_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_POWERPC)
++nodist_libffi_la_SOURCES += src/powerpc/ffi.c src/powerpc/sysv.S src/powerpc/ppc_closure.S src/powerpc/linux64.S src/powerpc/linux64_closure.S
+ endif
+ if POWERPC_AIX
+-libffi_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_POWERPC_AIX)
+-libffi_convenience_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_POWERPC_AIX)
++nodist_libffi_la_SOURCES += src/powerpc/ffi_darwin.c src/powerpc/aix.S src/powerpc/aix_closure.S
+ endif
+ if POWERPC_DARWIN
+-libffi_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_POWERPC_DARWIN)
+-libffi_convenience_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_POWERPC_DARWIN)
++nodist_libffi_la_SOURCES += src/powerpc/ffi_darwin.c src/powerpc/darwin.S src/powerpc/darwin_closure.S
+ endif
+ if ARM
+-libffi_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_ARM)
+-libffi_convenience_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_ARM)
++nodist_libffi_la_SOURCES += src/arm/sysv.S src/arm/ffi.c
+ endif
+ if S390
+-libffi_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_S390)
+-libffi_convenience_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_S390)
++nodist_libffi_la_SOURCES += src/s390/sysv.S src/s390/ffi.c
+ endif
+ if X86_64
+-libffi_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_X86_64)
+-libffi_convenience_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_X86_64)
++nodist_libffi_la_SOURCES += src/x86/ffi64.c src/x86/unix64.S src/x86/ffi.c src/x86/sysv.S
+ endif
+ if SH
+-libffi_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_SH)
+-libffi_convenience_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_SH)
++nodist_libffi_la_SOURCES += src/sh/sysv.S src/sh/ffi.c
+ endif
+ if SH64
+-libffi_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_SH64)
+-libffi_convenience_la_SOURCES = $(libffi_la_common_SOURCES) $(TARGET_SRC_SH64)
++nodist_libffi_la_SOURCES += src/sh64/sysv.S src/sh64/ffi.c
+ endif
+ 
++libffi_convenience_la_SOURCES = $(libffi_la_SOURCES)
++nodist_libffi_convenience_la_SOURCES = $(nodist_libffi_la_SOURCES)
++
+ AM_CFLAGS = -fexceptions
+ 
+ libffi_la_LDFLAGS = -release $(VERSION) 
+ 
+ INCLUDES = -I$(top_srcdir)/include -Iinclude -I$(top_srcdir)/src
+-
+-# Override these rules so that object files get put in the correct 
+-# subdirectories. 
+-.c.o:
+-	$(LTCOMPILE) -c -o $@ $<
+-
+-.s.o:
+-	$(LTCOMPILE) -c -o $@ $<
+-
+-.S.o:
+-	$(LTCOMPILE) -c -o $@ $<
+-
+-.c.lo:
+-	$(LTCOMPILE) -c -o $@ $<
+-
+-.s.lo:
+-	$(LTCOMPILE) -c -o $@ $<
+-
+-.S.lo:
+-	$(LTCOMPILE) -c -o $@ $<
+-
+-# Multilib support.
+-.PHONY: all-multi mostlyclean-multi clean-multi distclean-multi \
+-	maintainer-clean-multi
+-
+-all-recursive: all-multi
+-install-recursive: install-multi
+-mostlyclean-recursive: mostlyclean-multi
+-clean-recursive: clean-multi
+-distclean-recursive: distclean-multi
+-maintainer-clean-recursive: maintainer-clean-multi
+-
+-all-multi:
+-	: $(MAKE) ; exec $(MULTIDO) $(AM_MAKEFLAGS) DO=all multi-do
+-install-multi:
+-	$(MULTIDO) $(AM_MAKEFLAGS) DO=install multi-do
+-mostlyclean-multi:
+-	$(MULTICLEAN) $(AM_MAKEFLAGS) DO=mostlyclean multi-clean
+-clean-multi:
+-	$(MULTICLEAN) $(AM_MAKEFLAGS) DO=clean multi-clean
+-distclean-multi:
+-	$(MULTICLEAN) $(AM_MAKEFLAGS) DO=distclean multi-clean
+-maintainer-clean-multi:
+-	$(MULTICLEAN) $(AM_MAKEFLAGS) DO=maintainer-clean multi-clean
+-
++AM_CCASFLAGS = $(INCLUDES)
+ 
+ ## ################################################################
+ 
+Index: gcc/libffi/acconfig.h
+===================================================================
+RCS file: /cvsroot/gcc/gcc/libffi/acconfig.h,v
+retrieving revision 1.2
+diff -u -r1.2 acconfig.h
+--- gcc/libffi/acconfig.h	1 Sep 1999 23:16:33 -0000	1.2
++++ gcc/libffi/acconfig.h	25 Jun 2003 08:22:57 -0000
+@@ -1,12 +0,0 @@
+-/* Define this if you want extra debugging */
+-#undef FFI_DEBUG
+-
+-/* Define this if you are using Purify and want to suppress 
+-   spurious messages. */
+-#undef USING_PURIFY
+-
+-/* Define this is you do not want support for aggregate types.  */
+-#undef FFI_NO_STRUCTS
+-
+-/* Define this is you do not want support for the raw API.  */
+-#undef FFI_NO_RAW_API
+Index: gcc/libffi/configure.in
+===================================================================
+RCS file: /cvsroot/gcc/gcc/libffi/configure.in,v
+retrieving revision 1.43
+diff -u -r1.43 configure.in
+--- gcc/libffi/configure.in	13 Jun 2003 02:23:26 -0000	1.43
++++ gcc/libffi/configure.in	25 Jun 2003 08:23:00 -0000
+@@ -1,47 +1,31 @@
+ dnl Process this with autoconf to create configure
+ AC_INIT(fficonfig.h.in)
+-AM_CONFIG_HEADER(fficonfig.h)
++AC_PREREQ(2.57)
+ 
+ # This works around the fact that libtool configuration may change LD
+ # for this particular configuration, but some shells, instead of
+ # keeping the changes in LD private, export them just because LD is
+-# exported.
+-ORIGINAL_LD_FOR_MULTILIBS=$LD
++# exported. (??? anyway it is Automake that should handle this)
++# ORIGINAL_LD_FOR_MULTILIBS=$LD
+ 
+-dnl Default to --enable-multilib
+-AC_ARG_ENABLE(multilib,
+-[  --enable-multilib       build many library versions (default)],
+-[case "${enableval}" in
+-  yes) multilib=yes ;;
+-  no)  multilib=no ;;
+-  *)   AC_MSG_ERROR(bad value ${enableval} for multilib option) ;;
+- esac], [multilib=yes])dnl
+-
+-dnl We may get other options which we don't document:
+-dnl --with-target-subdir, --with-multisrctop, --with-multisubdir
+-
+-if test "${srcdir}" = "."; then
+-  if test "${with_target_subdir}" != "."; then
+-    libffi_basedir="${with_multisrctop}../"
+-  else
+-    libffi_basedir="${with_multisrctop}"
+-  fi
++AM_ENABLE_MULTILIB(Makefile, ..)
++if test a = b; then
++  # This is for automake
++  AC_CONFIG_AUX_DIR(..)
+ else
+-  libffi_basedir=
++  # and this is for autoconf
++  AC_CONFIG_AUX_DIRS(${multi_basedir})
+ fi
+-AC_SUBST(libffi_basedir)
+-AC_CONFIG_AUX_DIR(${libffi_basedir}..)
+ 
+ AC_CANONICAL_HOST
+ 
+-AM_PROG_LIBTOOL
+-
+ AM_INIT_AUTOMAKE(libffi,2.00-beta,no-define)
+ 
+-AC_EXEEXT
+ AM_MAINTAINER_MODE
+ 
+ AC_PROG_CC
++AM_PROG_AS
++AM_PROG_CC_C_O
+ AC_PROG_LIBTOOL
+ 
+ TARGETDIR="unknown"
+@@ -81,9 +65,11 @@
+ if test $TARGETDIR = unknown; then
+   AC_ERROR("libffi has not been ported to $host.")
+ fi
++if test ${TARGET}${ac_cv_prog_gcc} = MIPSno; then
++  AC_ERROR("libffi requires gcc on MIPS.")
++fi
+ 
+ AM_CONDITIONAL(MIPS_GCC, test ${TARGET}${ac_cv_prog_gcc} = MIPSyes)
+-AM_CONDITIONAL(MIPS_SGI, test ${TARGET}${ac_cv_prog_gcc} = MIPSno)
+ AM_CONDITIONAL(MIPS_LINUX, test x$TARGET = xMIPS_LINUX)
+ AM_CONDITIONAL(SPARC, test x$TARGET = xSPARC)
+ AM_CONDITIONAL(X86, test x$TARGET = xX86)
+@@ -109,16 +95,15 @@
+ AC_FUNC_ALLOCA
+ 
+ dnl AC_CHECK_SIZEOF(char)
+-AC_COMPILE_CHECK_SIZEOF(short)
+-AC_COMPILE_CHECK_SIZEOF(int)
+-AC_COMPILE_CHECK_SIZEOF(long)
+-AC_COMPILE_CHECK_SIZEOF(long long)
+-AC_COMPILE_CHECK_SIZEOF(float)
+-AC_COMPILE_CHECK_SIZEOF(double)
+-AC_COMPILE_CHECK_SIZEOF(long double)
+-
+-AC_COMPILE_CHECK_SIZEOF(void *)
+-AC_C_BIGENDIAN_CROSS
++AC_CHECK_SIZEOF(short)
++AC_CHECK_SIZEOF(int)
++AC_CHECK_SIZEOF(long)
++AC_CHECK_SIZEOF(long long)
++AC_CHECK_SIZEOF(float)
++AC_CHECK_SIZEOF(double)
++AC_CHECK_SIZEOF(long double)
++AC_CHECK_SIZEOF(void *)
++AC_C_BIGENDIAN
+ 
+ if test x$TARGET = xSPARC; then
+     AC_CACHE_CHECK([assembler and linker support unaligned pc related relocs],
+@@ -178,25 +163,29 @@
+ AC_ARG_ENABLE(debug,
+ [  --enable-debug          debugging mode],
+   if test "$enable_debug" = "yes"; then
+-    AC_DEFINE(FFI_DEBUG)
++    AC_DEFINE(FFI_DEBUG, 1,
++      [Define this if you want extra debugging]) 
+   fi)
+ 
+ AC_ARG_ENABLE(structs,
+ [  --disable-structs       omit code for struct support],
+   if test "$enable_structs" = "no"; then
+-    AC_DEFINE(FFI_NO_STRUCTS)
++    AC_DEFINE(FFI_NO_STRUCTS, 1,
++      [this is you do not want support for aggregate types.])
+   fi)
+ 
+ AC_ARG_ENABLE(raw-api,
+ [  --disable-raw-api       make the raw api unavailable],
+   if test "$enable_raw_api" = "no"; then
+-    AC_DEFINE(FFI_NO_RAW_API)
++    AC_DEFINE(FFI_NO_RAW_API, 1,
++      [this is you do not want support for the raw API.])
+   fi)
+ 
+ AC_ARG_ENABLE(purify-safety,
+ [  --enable-purify-safety  purify-safe mode],
+   if test "$enable_purify_safety" = "yes"; then
+-    AC_DEFINE(USING_PURIFY)
++    AC_DEFINE(USING_PURIFY, 1,
++      [Define this if you are using Purify and want to suppress spurious messages.]) 
+   fi)
+ 
+ if test -n "$with_cross_host" &&
+@@ -221,33 +210,25 @@
+   multilib_arg=
+ fi
+ 
+-AC_OUTPUT(include/Makefile include/ffi.h Makefile,
++AC_CONFIG_COMMANDS(target-subdirs,
++[ 
++# Make target subdirectory if required.
++test -d include || mkdir include
++test -d src || mkdir src
++test -d src/$TARGETDIR || mkdir src/$TARGETDIR
++], [
++TARGETDIR="$TARGETDIR"
++])
++
++AC_CONFIG_FILES(include/Makefile include/ffi.h Makefile)
++AC_CONFIG_HEADERS(fficonfig.h,
+ [
+-if test -n "$CONFIG_FILES"; then
+-   LD="${ORIGINAL_LD_FOR_MULTILIBS}"
+-   ac_file=Makefile . ${srcdir}/${libffi_basedir}../config-ml.in
+-fi
+-],
+-srcdir=${srcdir}
+-host=${host}
+-target=${target}
+-with_multisubdir=${with_multisubdir}
+-ac_configure_args="${multilib_arg} ${ac_configure_args}"
+-CONFIG_SHELL=${CONFIG_SHELL-/bin/sh}
+-libffi_basedir=${libffi_basedir}
+-CC="${CC}"
+-DEFS="$DEFS"
+-ORIGINAL_LD_FOR_MULTILIBS="${ORIGINAL_LD_FOR_MULTILIBS}"
+-test ! -d include && mkdir include
+-test ! -f include/fficonfig.h && cp fficonfig.h include/fficonfig.h
+-if cmp -s fficonfig.h include/fficonfig.h 2>/dev/null; then 
++if test -f include/fficonfig.h && cmp -s fficonfig.h include/fficonfig.h 2>/dev/null; then 
+ 	echo fficonfig.h unchanged
+ else
+ 	echo Moving fficonfig.h to include/fficonfig.h
+ 	cp fficonfig.h include/fficonfig.h
+ fi
+-)
++])
+ 
+-# Make target subdirectories if required.
+-test -d src || mkdir src
+-test -d src/${TARGETDIR} || mkdir src/${TARGETDIR}
++AC_OUTPUT
+

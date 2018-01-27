@@ -1,0 +1,138 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [c++-pthreads] Re: thread-safety definition
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:c%2B%2B-pthreads%40codesourcery.com?Subject=Re%3A%20%5Bc%2B%2B-pthreads%5D%20Re%3A%20thread-safety%20definition&In-Reply-To=%3C4002A413.4090908%40hp.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000185.html">
+   <LINK REL="Next"  HREF="000214.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[c++-pthreads] Re: thread-safety definition</H1>
+    <B>Dave Butenhof</B> 
+    <A HREF="mailto:c%2B%2B-pthreads%40codesourcery.com?Subject=Re%3A%20%5Bc%2B%2B-pthreads%5D%20Re%3A%20thread-safety%20definition&In-Reply-To=%3C4002A413.4090908%40hp.com%3E"
+       TITLE="[c++-pthreads] Re: thread-safety definition">David.Butenhof at hp.com
+       </A><BR>
+    <I>Mon Jan 12 13:41:39 UTC 2004</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000185.html">[c++-pthreads] Re: thread-safety definition
+</A></li>
+        <LI>Next message: <A HREF="000214.html">[c++-pthreads] Re: thread-safety definition
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#212">[ date ]</a>
+              <a href="thread.html#212">[ thread ]</a>
+              <a href="subject.html#212">[ subject ]</a>
+              <a href="author.html#212">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Jason Merrill wrote:
+
+&gt;<i>On Fri, 09 Jan 2004 07:20:18 -0500, Dave Butenhof &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/c++-pthreads">David.Butenhof at hp.com</A>&gt; wrote:
+</I>&gt;<i>  
+</I>&gt;<i>
+</I>&gt;&gt;<i>Jason's model, putting together the puzzle pieces from various messages
+</I>&gt;&gt;<i>here
+</I>&gt;&gt;<i>    
+</I>&gt;&gt;<i>
+</I>&gt;<i>My original formulation is at
+</I>&gt;<i>
+</I>&gt;<i>  <A HREF="http://www.codesourcery.com/archives/c++-pthreads/msg00059.html">http://www.codesourcery.com/archives/c++-pthreads/msg00059.html</A>
+</I>&gt;<i>  
+</I>&gt;<i>
+</I>&gt;&gt;<i>, appears to be basing cancel on an ordinary (&quot;finalizable&quot;) C++
+</I>&gt;&gt;<i>exception, which would be raised by any and all cancellation points; but if
+</I>&gt;&gt;<i>the exception object were to be destroyed (by finalization), the &quot;pending
+</I>&gt;&gt;<i>cancel&quot; would (might?) be reasserted. I personally feel that it ought to be
+</I>&gt;&gt;<i>reasonable to finalize the cancel and continue operation. If that wasn't
+</I>&gt;&gt;<i>really what the application intended then it's an application error; but
+</I>&gt;&gt;<i>there are cases where it's arguably reasonable, and the capability falls
+</I>&gt;&gt;<i>naturally out of the model.
+</I>&gt;&gt;<i>    
+</I>&gt;&gt;<i>
+</I>&gt;<i>Too naturally, IMO.  There seems to be a substantial amount of C++ code out
+</I>&gt;<i>there which traps and finalizes all exceptions, some of it in the C++
+</I>&gt;<i>standard library I/O classes.  I disagree with this design, and propose to
+</I>&gt;<i>change it in the message cited above, but it's just one example.  I don't
+</I>&gt;<i>think it's reasonable for a cancellation request to be silently discarded
+</I>&gt;<i>just because the thread was in the middle of doing some formatted output
+</I>&gt;<i>when the cancel was received.
+</I>&gt;<i>
+</I>&gt;<i>I wouldn't object to a facility for explicitly abandoning the cancel, but I
+</I>&gt;<i>think that allowing it to fall out of the model is far too fragile.
+</I>&gt;<i>
+</I>I think I disagree, at least philsophically, with the characterization 
+of the model as &quot;fragile&quot;. But I think I also understand what you mean; 
+and the problem isn't with the model, but rather with the effect of that 
+model on existing code that all-too-casually and agressively eats 
+exceptions it doesn't understand. I think there are vanishingly few 
+circumstances where a blind catch(...) without an unconditional re-throw 
+should be considered &quot;legitimate&quot;. If you don't completely understand 
+what an exception means, you cannot claim to have completely recovered, 
+and therefore cannot reasonably finalize propagation. (And when you 
+catch anonymously, you can't possibly understand what they mean since 
+you can't even identify them.) On the other hand, regardless of whether 
+the semantics are meaningful or reasonable, the syntax is legal and 
+apparently (unfortunately) in common use, so I can't dispute that you 
+need to consider that.
+
+&gt;&gt;<i>Besides, &quot;reasserting cancel&quot; in all the right places and no other places
+</I>&gt;&gt;<i>sounds like one of those projects that ends up being a lot more subtle
+</I>&gt;&gt;<i>and error-prone than anyone ever expects. ;-)
+</I>&gt;&gt;<i>    
+</I>&gt;&gt;<i>
+</I>&gt;<i>Assuming support for abanoning the cancel, why would it be more complex than
+</I>&gt;<i>
+</I>&gt;<i>  pthread_cancel (pthread_self ());
+</I>&gt;<i>  
+</I>&gt;<i>
+</I>While I didn't have anything specific in mind, just a general concern, 
+one example that occurs to me is &quot;catch(...) {...; throw;}&quot;. One must be 
+careful about specifying the &quot;cancelled&quot; state of the thread here; it 
+shouldn't be possible to consider the exception destroyed during the 
+body of the catch prior to the re-throw. I don't know if the current 
+wording in the standard would allow this interpretation: but for 
+&quot;traditional&quot; exceptions that have no &quot;state&quot; it shouldn't really 
+matter, and it seems plausible that the standard doesn't tie this down 
+explicitly. (It's enough in practice that the 'throw' continues 
+propagation &quot;as if&quot;. Now, though, the distinction might become critical.)
+
+-- 
+/--------------------[ <A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/c++-pthreads">David.Butenhof at hp.com</A> ]--------------------\
+|<i> Hewlett-Packard Company       Tru64 UNIX &amp; VMS Thread Architect |
+</I>|<i>     My book: <A HREF="http://www.awl.com/cseng/titles/0-201-63392-2/">http://www.awl.com/cseng/titles/0-201-63392-2/</A>     |
+</I>\----[ <A HREF="http://homepage.mac.com/dbutenhof/Threads/Threads.html">http://homepage.mac.com/dbutenhof/Threads/Threads.html</A> ]---/
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000185.html">[c++-pthreads] Re: thread-safety definition
+</A></li>
+	<LI>Next message: <A HREF="000214.html">[c++-pthreads] Re: thread-safety definition
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#212">[ date ]</a>
+              <a href="thread.html#212">[ thread ]</a>
+              <a href="subject.html#212">[ subject ]</a>
+              <a href="author.html#212">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/c++-pthreads">More information about the c++-pthreads
+mailing list</a><br>
+</body></html>

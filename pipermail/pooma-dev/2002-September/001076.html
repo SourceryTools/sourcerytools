@@ -1,0 +1,146 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [pooma-dev] Assigning to internal guards
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bpooma-dev%5D%20Assigning%20to%20internal%20guards&In-Reply-To=%3CF871BB04B0EA224A821A5274C31DF31509451E%40proxim-sf001.santafe.proximation.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001078.html">
+   
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[pooma-dev] Assigning to internal guards</H1>
+    <B>James Crotinger</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bpooma-dev%5D%20Assigning%20to%20internal%20guards&In-Reply-To=%3CF871BB04B0EA224A821A5274C31DF31509451E%40proxim-sf001.santafe.proximation.com%3E"
+       TITLE="[pooma-dev] Assigning to internal guards">jcrotinger at proximation.com
+       </A><BR>
+    <I>Fri Sep 27 20:12:06 UTC 2002</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001078.html">[pooma-dev] Assigning to internal guards
+</A></li>
+        
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1076">[ date ]</a>
+              <a href="thread.html#1076">[ thread ]</a>
+              <a href="subject.html#1076">[ subject ]</a>
+              <a href="author.html#1076">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>A good starting point would be Engine/Intersector.h. You might want to step
+through the MultiPatch evaluation to see how this all flows. I think it
+currently just bails out of the process of accumulating intersected patches
+if its already seem the same layout ID (not the same layout - we want this
+bail-out even if different layouts have differing numbers of internal
+guards). I think you'll have to change this by building a new PETE functor
+that just gets you the layout reference (this may already exist) and then
+you'll have to do a ForEach that checks if all layouts have the same
+address. Hmmm. Layouts have shallow copy semantics, so what you'd really
+like is an operator== on layouts that just compared object identity. I'm not
+sure if that is there. Anyway, if all the layouts are the same, then you'd
+want to generate a list of patches that was the total-domain of each
+underlying patch. If any layout was different, then you'd have to branch to
+the existing intersector code. Doesn't really sound all that hard. You
+probably want to protect the new code with a configuration flag and maybe
+even a runtime flag to allow comparisons. 
+
+In your example:
+
+ temp(I) = a(I) + b(I);
+ c(I) = temp(I-1) + temp(I+1);
+
+you should also compare with doing a and b with no guards, which they don't
+need in this expression. If your stuff is 1D, the memory is probably not an
+issue, but in multiple dimensions it can be a big problem - when the
+difference is &quot;runs, but communicates a lot&quot; and &quot;doesn't run because it
+won't fit into memory&quot;, people tend to choose the first. :)
+
+	Jim
+
+
+-----Original Message-----
+From: Richard Guenther [mailto:<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">rguenth at tat.physik.uni-tuebingen.de</A>] 
+Sent: Friday, September 27, 2002 1:57 PM
+To: James Crotinger
+Cc: <A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">pooma-dev at pooma.codesourcery.com</A>
+Subject: RE: [pooma-dev] Assigning to internal guards
+
+On Wed, 25 Sep 2002, James Crotinger wrote:
+
+&gt;<i> We considered this and it was on the list of things to work on someday. If
+</I>I
+&gt;<i> remember correctly, we were going to try to figure out if the layouts all
+</I>&gt;<i> matched, including the numbers of internal guards, and if so, generate
+</I>patch
+&gt;<i> iterates that performed the operations on the entire domains, not just the
+</I>&gt;<i> physical domains. We already figure out if the layouts match at the
+</I>&gt;<i> physical-domain basis, I believe, so this didn't sound like a big
+</I>extension.
+&gt;<i> Indeed, the simplest form of this would be to check that everyone has
+</I>&gt;<i> exactly the same layout. 
+</I>&gt;<i> 
+</I>&gt;<i> Of course, in multiple dimensions you generally don't want internal guards
+</I>&gt;<i> on anything that you're not going to stencil, so in practice it isn't
+</I>clear
+&gt;<i> how often this practice will really pay off. (Internal guards can consume
+</I>a
+&gt;<i> lot of memory in 3D.)
+</I>
+We encounter this mainly with using temporaries (to do CSE). So f.i.
+
+ temp(I) = a(I) + b(I);
+ c(I) = temp(I-1) + temp(I+1);
+
+or when using in-place stencils which need a temporary, too, like
+
+ temp(I) = a(I) + b(I);
+ a(I) = temp(I-1) + temp(I+1);
+
+
+Oh - and this happens quite often so that for our local testing cluster 3d
+simulations are unusable without this optimization (maybe a SCore bug with
+extreme load, too, though).
+
+Do you have any starting hints where to look at to implement what you
+suggested? I.e. where is the layout matching done (f.e. for a multipatch
+engine)?
+
+Thanks, Richard.
+
+--
+Richard Guenther &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">richard.guenther at uni-tuebingen.de</A>&gt;
+WWW: <A HREF="http://www.tat.physik.uni-tuebingen.de/~rguenth/">http://www.tat.physik.uni-tuebingen.de/~rguenth/</A>
+The GLAME Project: <A HREF="http://www.glame.de/">http://www.glame.de/</A>
+
+-------------- next part --------------
+An HTML attachment was scrubbed...
+URL: &lt;<A HREF="http://sourcerytools.com/pipermail/pooma-dev/attachments/20020927/f92a58af/attachment.html">http://sourcerytools.com/pipermail/pooma-dev/attachments/20020927/f92a58af/attachment.html</A>&gt;
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001078.html">[pooma-dev] Assigning to internal guards
+</A></li>
+	
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1076">[ date ]</a>
+              <a href="thread.html#1076">[ thread ]</a>
+              <a href="subject.html#1076">[ subject ]</a>
+              <a href="author.html#1076">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

@@ -1,0 +1,433 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [vsipl++] Matlab IO
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20Matlab%20IO&In-Reply-To=%3C44C0DC08.4060103%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000588.html">
+   <LINK REL="Next"  HREF="000590.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[vsipl++] Matlab IO</H1>
+    <B>Jules Bergmann</B> 
+    <A HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20Matlab%20IO&In-Reply-To=%3C44C0DC08.4060103%40codesourcery.com%3E"
+       TITLE="[vsipl++] Matlab IO">jules at codesourcery.com
+       </A><BR>
+    <I>Fri Jul 21 13:52:08 UTC 2006</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000588.html">Matlab IO
+</A></li>
+        <LI>Next message: <A HREF="000590.html">[patch] Fix png example failure, ICC fix
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#599">[ date ]</a>
+              <a href="thread.html#599">[ thread ]</a>
+              <a href="subject.html#599">[ subject ]</a>
+              <a href="author.html#599">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Assem Salama wrote:
+ &gt; Everyone,
+ &gt;  This is new Matlab IO iterator interface.
+
+Assem,
+
+I have a few comments below (Don't be discouraged by the number!)
+This is looking good.
+
+				-- Jules
+
+ &gt; Index: src/vsip_csl/GNUmakefile.inc.in
+ &gt; ===================================================================
+ &gt; --- src/vsip_csl/GNUmakefile.inc.in	(revision 144405)
+ &gt; +++ src/vsip_csl/GNUmakefile.inc.in	(working copy)
+ &gt; @@ -22,8 +22,10 @@
+ &gt;  endif
+ &gt;  src_vsip_csl_cxx_objects := $(patsubst $(srcdir)/%.cpp, %.$(OBJEXT),\
+ &gt;                                $(src_vsip_csl_cxx_sources))
+ &gt; -cxx_sources += $(src_vsip_csl_cxx_sources)
+ &gt;
+ &gt; +cxx_sources += $(src_vsip_csl_cxx_sources) matlab_file.cpp
+
+ &gt; +cxx_objects += $(src_vsip_csl_cxx_objects) matlab_file.$(OBJEXT)
+ &gt; +
+
+[1] We use nested makefiles (i.e. the top level makefile includes all
+the other makefiles in the source tree, that's why they have .inc
+suffixes.
+
+This means we have to be careful with our variable names so that
+two different GNUmakefile.inc files don't inadvertantly trample
+on each other.  To do this, we have a convention that variables
+local to a particular GNUmakefile.inc have a prefix related to
+the directory path.  For src/vsip_csl/GNUmakefile.inc, the prefix
+is src_vsip_csl_ .
+
+Instead of creating a new variable 'cxx_objects' here, you should
+add the objects to the existing 'src_vsip_csl_cxx_objects' variable.
+
+ &gt;  libs += lib/libvsip_csl.a
+ &gt;
+ &gt;  ########################################################################
+ &gt; @@ -35,7 +37,7 @@
+ &gt;  clean::
+ &gt;  	rm -f lib/libvsip_csl.a
+ &gt;
+ &gt; -lib/libvsip_csl.a: $(src_vsip_csl_cxx_objects)
+ &gt; +lib/libvsip_csl.a: $(cxx_objects)
+
+[1b] and here you should revert to using src_vsip_csl_cxx_objects.
+
+ &gt;  	$(AR) rc $@ $^ || rm -f $@
+ &gt;
+ &gt;  # Install the extensions library and its header files.
+ &gt; Index: src/vsip_csl/matlab_file.hpp
+ &gt; ===================================================================
+
+ &gt; +#include &quot;vsip_csl/matlab_bin_formatter.hpp&quot;
+
+[2] Use angle-brackets for this include: &lt;...&gt;
+
+
+ &gt; +class Matlab_file
+ &gt; +{
+ &gt; +  public:
+ &gt; +    // Constructors
+ &gt; +    Matlab_file(std::string fname);
+ &gt; +
+ &gt; +  // classes
+ &gt; +  public:
+ &gt; +    class iterator
+ &gt; +    {
+ &gt; +      public:
+ &gt; +        iterator() {}
+
+[3] Is the default constructor necessary?  My guess is probably not.
+
+However, if it is necessary, it should initialize the iterator into
+a &quot;good&quot; state.  For example, it might set mf_ to NULL.
+
+Going down this path, if mf_ could be NULL, then all uses of mf_
+should check its validity (and probably through an exception if it is
+NULL).
+
+If we decide that the default constructor isn't necessary, we can
+replace this NULL check on use with a NULL check on construction.
+Better yet, we can store mf_ as a reference (Matlab_file&amp;) instead of
+a pointer.  Then it is guarenteed to be valid (you can't have a NULL
+reference).
+
+ &gt; +        iterator(bool end_iterator,Matlab_file *mf) :
+
+[4] Why not put the constructor parameters in the same order
+as the member order?  I.e. (mf, end_iterator).
+
+ &gt; +	  mf_(mf),
+ &gt; +	  end_iterator_(end_iterator) {}
+ &gt; +
+ &gt; +	void read_header() { mf_-&gt;is_ &gt;&gt; mf_-&gt;view_header_; }
+ &gt; +	std::istream *get_stream() { return &amp;(mf_-&gt;is_); }
+
+[5] We should be able to remove this function, see below.
+
+
+ &gt; +      public:
+ &gt; +	// copy constructors
+ &gt; +	iterator(iterator const &amp;obj) :
+ &gt; +          mf_(obj.mf_), end_iterator_(obj.end_iterator_) {}
+ &gt; +
+ &gt; +        // = operator
+ &gt; +	iterator&amp;
+ &gt; +	operator=(iterator &amp;src)
+ &gt; +	{
+ &gt; +	  this-&gt;mf_           = src.mf_;
+ &gt; +	  this-&gt;end_iterator_ = src.end_iterator_;
+ &gt; +	  return *this;
+ &gt; +	}
+
+[6] Can you put the copy constructor and assignment operator at the
+top of the class together with the other constructors?  In general,
+we try to lay out classes as:
+
+  - compile-time constants (typedefs, static variables, etc)
+  - constructors, destructors, assignment operators
+  - accessor member functions
+  - private member data
+
+Being consistent makes it easier to find things.
+
+ &gt; +
+ &gt; +      private:
+ &gt; +        Matlab_file *mf_;
+
+[7] (see above) it would be &quot;safer&quot; to store Matlab_file as a
+reference.  Then we don't have to check if mf_ is NULL on construction
+or on use.
+
+ &gt; +        bool end_iterator_;
+ &gt; +
+ &gt; +
+ &gt; +    };
+ &gt; +
+ &gt; +    friend class iterator;
+ &gt; +
+ &gt; +  public:
+ &gt; +    // iterator functions
+ &gt; +    iterator begin() { return begin_iterator_; };
+ &gt; +    iterator end() { return end_iterator_; };
+ &gt; +
+ &gt; +    // read a view from a matlab file after reading the header
+ &gt; +    template &lt;typename T,
+ &gt; +	      typename Block0,
+ &gt; +	      template &lt;typename,typename&gt; class View&gt;
+ &gt; +    void read_view(View&lt;T,Block0&gt; view, iterator  &amp;iter);
+ &gt; +
+ &gt; +  private:
+ &gt; +    Matlab_bin_hdr                    matlab_header_;
+ &gt; +    std::ifstream                     is_;
+ &gt; +    iterator                          begin_iterator_;
+ &gt; +    iterator                          end_iterator_;
+ &gt; +
+ &gt; +
+ &gt; +  // these variables are used for the iterator
+ &gt; +  private:
+ &gt; +    Matlab_view_header view_header_;
+ &gt; +    bool read_data_;
+ &gt; +    bool end_of_file_;
+ &gt; +    uint32_t length_;
+ &gt; +
+ &gt; +  // make a private copy constructor and assignment
+ &gt; +  private:
+ &gt; +    Matlab_file(Matlab_file const &amp; /*obj*/) {}
+ &gt; +    Matlab_file&amp; operator=(Matlab_file &amp; /*src*/)
+ &gt; +      {
+ &gt; +        VSIP_IMPL_THROW(std::runtime_error(
+ &gt; +          &quot;Trying to use Matlab_file assignment operator&quot;));
+ &gt; +        return *this;
+ &gt; +      }
+
+[8] It is better to leave the function bodies for these out.  I.e.
+
+	Matlab_file(Matlab_file const&amp;);
+
+would be preferrable.  This way, you can't inadvertantly make a copy
+inside of a member function.
+
+However, an even better approach (hint hint :), we have a special class
+you can derive from to indicate that copy and assignment are
+dissallowed:
+
+	#include &lt;vsip/impl/noncopyable.hpp&gt;
+
+	class Matlab_file : Non_copyable
+	{
+	   ...
+
+	   no need to make copy constructor and assignment private,
+	   Non_copyable does it for you
+	};
+
+ &gt; +
+ &gt; +};
+ &gt; +
+ &gt; +
+ &gt; 
++/*****************************************************************************
+ &gt; + * Definitions
+ &gt; + 
+*****************************************************************************/
+ &gt; +
+ &gt; +// read a view from a matlab file after reading the header
+ &gt; +template &lt;typename T,
+ &gt; +	  typename Block0,
+ &gt; +	  template &lt;typename,typename&gt; class View&gt;
+ &gt; +void Matlab_file::read_view(View&lt;T,Block0&gt; view, iterator  &amp;iter)
+ &gt; +{
+
+[9] it would be good to make the assumption that 'iter' is an iterator
+of 'this' explicit with an assertion:
+
+	assert(iter.mf == this);
+
+
+ &gt; +  typedef typename vsip::impl::Scalar_of&lt;T&gt;::type scalar_type;
+ &gt; +  vsip::dimension_type v_dim = vsip::impl::Dim_of_view&lt;View&gt;::dim;
+ &gt; +  Matlab_view_header *header = *iter;
+ &gt; +  std::istream *is = iter.get_stream();
+
+[10] since 'iter' belongs to 'this', 'iter.get_stream()' is equivalent
+to 'this-&gt;is_'.
+
+ &gt; +
+ &gt; +  // is this complex?
+
+[11] This comment describes what is being done below in a more direct
+fashion, which is good.  However, since it is phrased as a question,
+it might be confusiong to the reader.  In general, they might think
+that you were unsure of the following code and put a question in as a
+reminder to come back later.
+
+Can you repharse this?  &quot;Check that view and file are both complex or 
+scalar.&quot;
+
+ &gt; +  if(vsip::impl::Is_complex&lt;T&gt;::value &amp;&amp; !header-&gt;is_complex)
+ &gt; +    VSIP_IMPL_THROW(std::runtime_error(
+ &gt; +      &quot;Trying to read complex view into a real view&quot;));
+ &gt; +
+
+[12] Likewise for these comments:
+
+ &gt; +  // is the class ok?
+
+ &gt; +  // do dimensions agree?
+
+ &gt; +    // should we swap this field?
+
+
+
+ &gt; Index: tests/matlab_iterator_test.cpp
+
+[13] Since this file is in the &quot;tests/&quot; subdirectory, it is not
+necessary to put the word &quot;test&quot; in the filename.
+&quot;matlab_iterator.cpp&quot; is preferrable.
+
+ &gt; ===================================================================
+ &gt; --- tests/matlab_iterator_test.cpp	(revision 0)
+ &gt; +++ tests/matlab_iterator_test.cpp	(revision 0)
+ &gt; +
+ &gt; +#include &quot;test.hpp&quot;
+
+[14] Make sure to do a 'svn update' before committing this.
+&quot;test.hpp&quot; has moved into vsip_csl so you need to replace this with:
+
+	#include &lt;vsip_csl/test.hpp&gt;
+
+ &gt; +
+ &gt; +using namespace std;
+ &gt; +using namespace vsip;
+ &gt; +using namespace vsip_csl;
+ &gt; +
+ &gt; +#define MAX(a,b) ( (a&gt;b)? a:b)
+
+[15] Assem, you're an ole fashion C hacker! :)
+
+Instead of defining your own MAX macro, you should get in the habit
+of using C++'s std::max:
+
+Include algorithms:
+
+	#include &lt;algorithms&gt;
+
+Use it:
+
+	int x = std::max(a, b);
+
+Or if you have done a 'using namespace std;':
+
+	int x = max(a, b);
+
+
+
+ &gt; +template &lt;typename T&gt;
+ &gt; +void read_view_test(Matlab_file::iterator iterator, Matlab_file &amp;mf)
+ &gt; +{
+ &gt; +  Matlab_view_header *header = *iterator;
+ &gt; +  if(header-&gt;num_dims == 2 &amp;&amp; (header-&gt;dims[0] == 1 | 
+header-&gt;dims[1] == 1))
+ &gt; +  {
+ &gt; +    // vector
+ &gt; +    Vector&lt;T&gt; a(MAX(header-&gt;dims[0],header-&gt;dims[1]));
+
+[16] Why is it necessary to use MAX here?
+
+I assume that matlab distinguishes between row vectors and column
+vectors by storing them as either (N x 1) matrices (i.e. a column vector),
+or (1 x N) matrices (i.e. a row vector)?
+
+Since we don't distinguish between those cases in VSIPL++, I'm
+hesitant to export that interface and force the user to do a max.
+
+Instead, when we read the header for a vector, let's do two things:
+
+  1) Put the size into dims[0] and put 1 into dims[1].
+
+     This will make it easier for the majority of cases when it doesn't
+     matter.
+
+  2) Add a flag 'row_vector' that indicates when the vector was a row
+     vector, that is, when it was necessary to swap dims[0] and dims[1].
+
+     This will make it possible to determine what the vector was in
+     cases where it does matter.
+
+This suggests we need a similar capability to write column and row
+vectors.  If that is the case, let's not worry about it now, but
+instead file an enhancement issue.
+
+ &gt; +    mf.read_view(a,iterator);
+ &gt; +    view_test(a);
+ &gt; +  } else if(header-&gt;num_dims == 2)
+ &gt; +  {
+ &gt; +    // matrix
+ &gt; +    Matrix&lt;T&gt; a(header-&gt;dims[0],header-&gt;dims[1]);
+ &gt; +    mf.read_view(a,iterator);
+ &gt; +    view_test(a);
+ &gt; +  } else if(header-&gt;num_dims == 3)
+ &gt; +  {
+ &gt; +    // tensor
+ &gt; +    Tensor&lt;T&gt; a(header-&gt;dims[0],header-&gt;dims[1],header-&gt;dims[2]);
+ &gt; +    mf.read_view(a,iterator);
+ &gt; +    view_test(a);
+ &gt; +  }
+ &gt; +}
+ &gt; +
+ &gt; +int main()
+ &gt; +{
+ &gt; +  Matlab_file mf(&quot;temp.mat&quot;);
+
+[17] Where does &quot;temp.mat&quot; come from?  I assume it has been written
+already.
+
+That's fine, we just need to handle it properly.  As above, this test
+won't work when building the library outside of the source tree.
+
+Can you check how data files are handled by the fft tester?
+
+-- 
+Jules Bergmann
+CodeSourcery
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">jules at codesourcery.com</A>
+(650) 331-3385 x705
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000588.html">Matlab IO
+</A></li>
+	<LI>Next message: <A HREF="000590.html">[patch] Fix png example failure, ICC fix
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#599">[ date ]</a>
+              <a href="thread.html#599">[ thread ]</a>
+              <a href="subject.html#599">[ subject ]</a>
+              <a href="author.html#599">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">More information about the vsipl++
+mailing list</a><br>
+</body></html>

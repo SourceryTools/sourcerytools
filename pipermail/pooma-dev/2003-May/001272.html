@@ -1,0 +1,167 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [pooma-dev] Problem with Field::makeOwnCopy() and Relations
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bpooma-dev%5D%20Problem%20with%20Field%3A%3AmakeOwnCopy%28%29%20and%20Relations&In-Reply-To=%3CBA47B030-8BCD-11D7-B49D-000A27AF286E%40lanl.gov%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001271.html">
+   <LINK REL="Next"  HREF="001273.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[pooma-dev] Problem with Field::makeOwnCopy() and Relations</H1>
+    <B>John H. Hall</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bpooma-dev%5D%20Problem%20with%20Field%3A%3AmakeOwnCopy%28%29%20and%20Relations&In-Reply-To=%3CBA47B030-8BCD-11D7-B49D-000A27AF286E%40lanl.gov%3E"
+       TITLE="[pooma-dev] Problem with Field::makeOwnCopy() and Relations">jxyh at lanl.gov
+       </A><BR>
+    <I>Wed May 21 20:49:34 UTC 2003</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001271.html">[pooma-dev] Problem with Field::makeOwnCopy() and Relations
+</A></li>
+        <LI>Next message: <A HREF="001273.html">[pooma-dev] Problem with Field::makeOwnCopy() and Relations
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1272">[ date ]</a>
+              <a href="thread.html#1272">[ thread ]</a>
+              <a href="subject.html#1272">[ subject ]</a>
+              <a href="author.html#1272">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>
+On Wednesday, May 21, 2003, at 01:41  PM, Richard Guenther wrote:
+
+&gt;<i> Not only because you cannot take views of fields with &gt;1
+</I>&gt;<i> subfields and calling field.physicalDomain() is &quot;undefined&quot; for fields
+</I>&gt;<i> with &gt;1 subfield.
+</I>&gt;<i>
+</I>
+I remember the reason for the field.physicalDomain() being defined only 
+at the innermost subFields (what would it mean at higher levels since 
+it is different for each direction and centering?) But, I don't 
+remember a restriction on taking views of edge-centered fields for 
+example. We took views of these things all over the place. In fact our 
+field object factory was in the unoptimized case up to the second view 
+(third object) by the time we returned from its create function call. I 
+think you will have to be more specific in what you mean here.
+
+We even had multi-material fields with edge centering, so that they 
+would have a layer of subFields for each material and another layer of 
+subFields for each direction in the centering and we took views of 
+those all the time.
+
+Here is a routine from our object factory:
+
+// =====================================================================
+// This method now handles AllFace, AllEdge, and ReplicatedSubFields 
+(MMFields)
+// TecMesh::newField(const centering&amp; Center, const int numFields)
+// =====================================================================
+
+template&lt;class field&gt;
+field TecMesh::newField( const CenteringType&amp; center, const int 
+numFields, bool forceIt )
+{
+	typedef field::T_t T;
+	typedef field::Layout_t Layout_t;
+	enum { Dim = field::dimensions };
+
+	Vector&lt;Dim,Real&gt; origin;
+	LoadPoomaVector(origin,stdOrigin); //Copy STL vector (stdOrigin) into 
+POOMA vector (origin)
+	Vector&lt;Dim,Real&gt; spacings;
+	LoadPoomaVector(spacings,stdSpacing);
+	Ptr&lt;Layout_t&gt; pLayout = unwrap&lt;Ptr&lt;Layout_t&gt; &gt;(*getLayout());
+
+          Centering&lt;Dim&gt; Center = canonicalCentering&lt;Dim&gt;(center, 
+Continuous, AllDim);
+
+	if(( numFields &gt; 1 ) || (forceIt==true)) { // forceIt : e.g. A 
+1-material MM_Field needs a subField
+                                                                         
+      //for compatibility with general multimaterial case
+		field tField( numFields, Center,
+			*pLayout, origin, spacings ); // Actually create field
+                   ... // Initialize Boundary conditions, etc.
+		return tField; // return view of field
+	}
+	else {
+		field tField( Center, *pLayout, origin, spacings ); // Actually 
+create field
+                   ... // Initialize Boundary conditions, etc.
+		return tField; // return view of field
+	}
+}
+
+Notice, we are returning fields as views, not references to fields 
+(which would be referring back to deleted views). And for a 
+multi-material field with edge centering in 3-D with 10 materials there 
+would be 30 subFields at the leaf object level.
+
+We even violated the sanctity of the public interface for POOMA and set 
+it up where a Multi-Material field was pointing to the engine for a 
+single subField so that we could use the same data some times in a 
+single material expression and other times in a multi-material 
+expression (actually, a loop over materials to form expressions since 
+the POOMA team didn't have time to write the MMField loop expressions)
+
+So something like:
+       for(int n=0;n&lt;MM_IntEnergy.numMaterials();++n) {
+           MM_IntEnergy.material(n)  = where( MM_Mass.material(n) &gt; eps,
+                                     Old.MM_IntEnergy.material(n) - 
+(TmpWorkTerm * Dt)/MM_Mass.material(n),
+                                     0.0 );
+       }
+should become:
+           MM_IntEnergy  = where( MM_Mass &gt; eps,
+                                     Old.MM_IntEnergy - (TmpWorkTerm * 
+Dt)/MM_Mass,
+                                     0.0 );
+This would mean that POOMA could move all of the RHS updating outside 
+the loop so that no blocking would occur from material to material 
+during the loop.
+
+We could also refer to MM_IntEnergy.material(n) as simply IntEnergy for 
+the nth material (we have a bag-type generic object collection known as 
+the DataDirectory and the Material objects were derived from this 
+hierarchical container and therefore each material could have a field 
+known as &quot;IntEnergy&quot;). So that allowed expressions like IntEnergy*=0.5. 
+If the single material model got called for each material, then the 
+effect would be the same as MM_IntEnergy *= 0.5 which of course right 
+now requires a loop over materials.
+
+I am really curious what you mean here. Has something really 
+significant changed?
+John Hall
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001271.html">[pooma-dev] Problem with Field::makeOwnCopy() and Relations
+</A></li>
+	<LI>Next message: <A HREF="001273.html">[pooma-dev] Problem with Field::makeOwnCopy() and Relations
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1272">[ date ]</a>
+              <a href="thread.html#1272">[ thread ]</a>
+              <a href="subject.html#1272">[ subject ]</a>
+              <a href="author.html#1272">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

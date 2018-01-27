@@ -1,0 +1,1225 @@
+From stefan at codesourcery.com  Wed Jan  4 04:33:09 2006
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Tue, 03 Jan 2006 23:33:09 -0500
+Subject: PATCH: installation / packaging
+Message-ID: <43BB5005.4030903@codesourcery.com>
+
+The appended patch adds or completes the following targets:
+
+doc: builds quickstart, tutorial, and reference, in maintainer-mode
+
+doc2src: copies quickstart, tutorial, and reference into srcdir if
+          necessary (i.e. if srcdir != builddir)
+
+install: Using a new 'DESTDIR' variable, make can install into a
+          distinct 'virtual root', useful for 'bdist' target.
+
+sdist: Creates source distribution (including basically the full
+        source tree minus some CVS-related bookkeeping files as well
+        as some m4 temporaries.
+
+bdist: Creates binary distribution, by tarring all it can find
+        inside $DESTDIR.
+
+To create a source distribution simply do:
+
+configure
+make doc maintainer_mode=1
+make doc2src
+make sdist
+
+(The root directory name is determined from configure.ac to be
+  sourceryvsipl++-1.0, but for snapshot packages one could also call
+
+make sdist PACKAGE_VERSION=`date +%Y-%m-%d`
+)
+
+A typical command sequence to create a multi-config binary package
+would be:
+
+configure --some-optimization-flags
+make
+make doc maintainer_mode=1
+make install DESTDIR=tmp suffix=-opt
+configure --some-debug-flags
+make
+make install DESTDIR=tmp suffix=-debug
+make bdist DESTDIR=tmp
+
+Once the patch is approved I will make the necessary (and straight forward)
+changes to the src-release script to use this new build system logic.
+
+Mark, doc/csl-docbook/GNUmakefile.inc contains two changes:
+
+* I prefixed all installation paths with $(DESTDIR) to make the above
+   work for documentation.
+* I fixed the %.html target for the case where $(docbook_html) is not set,
+   as that case seems to have slipped through in Carlos' latest adjustments.
+
+
+Regards,
+		Stefan
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: packaging.patch
+Type: text/x-patch
+Size: 18350 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060103/d704f21b/attachment.bin>
+
+From mark at codesourcery.com  Wed Jan  4 04:57:25 2006
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Tue, 03 Jan 2006 20:57:25 -0800
+Subject: [vsipl++] PATCH: installation / packaging
+In-Reply-To: <43BB5005.4030903@codesourcery.com>
+References: <43BB5005.4030903@codesourcery.com>
+Message-ID: <43BB55B5.6020907@codesourcery.com>
+
+Stefan Seefeld wrote:
+> The appended patch adds or completes the following targets:
+
+Wow, very cool.
+
+>  ########################################################################
+> +# Variables
+> +########################################################################
+
+I would still call this "Internal Variables", just to be a little clearer.
+
+> +# Call this target explicitely to copy documentation back into the 
+
+explicitly
+
+> +# source directory.
+> +ifneq '$(srcdir)' '.'
+
+Would "ifneq $(srcdir) $(objdir)" be clearer and/or more robust?
+
+Other than that, it looks great to me.
+
+-- 
+Mark Mitchell
+CodeSourcery
+mark at codesourcery.com
+(650) 331-3385 x713
+
+
+From stefan at codesourcery.com  Wed Jan  4 05:07:00 2006
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Wed, 04 Jan 2006 00:07:00 -0500
+Subject: [vsipl++] PATCH: installation / packaging
+In-Reply-To: <43BB55B5.6020907@codesourcery.com>
+References: <43BB5005.4030903@codesourcery.com> <43BB55B5.6020907@codesourcery.com>
+Message-ID: <43BB57F4.7050200@codesourcery.com>
+
+Mark Mitchell wrote:
+
+[...]
+
+Thanks for your corrections.
+
+> Would "ifneq $(srcdir) $(objdir)" be clearer and/or more robust?
+
+It looks more clear indeed (an explaining comment would help, too).
+I'm not sure how much it helps with robustness. Is there any way
+$(objdir) would not be the current working directory ?
+
+> Other than that, it looks great to me.
+
+Thanks. I will wait for Jules to get a chance to review it, too, as
+he already looked into packaging issues so he might have some more
+comments.
+
+Thanks,
+		Stefan
+
+
+
+
+
+From mark at codesourcery.com  Wed Jan  4 05:12:26 2006
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Tue, 03 Jan 2006 21:12:26 -0800
+Subject: [vsipl++] PATCH: installation / packaging
+In-Reply-To: <43BB57F4.7050200@codesourcery.com>
+References: <43BB5005.4030903@codesourcery.com> <43BB55B5.6020907@codesourcery.com> <43BB57F4.7050200@codesourcery.com>
+Message-ID: <43BB593A.1000307@codesourcery.com>
+
+Stefan Seefeld wrote:
+
+>> Would "ifneq $(srcdir) $(objdir)" be clearer and/or more robust?
+
+Stefan pointed out on IRC that there's no such variable as $(objdir), so
+this was a lame suggestion on my part.
+
+-- 
+Mark Mitchell
+CodeSourcery
+mark at codesourcery.com
+(650) 331-3385 x713
+
+
+From jules at codesourcery.com  Wed Jan  4 16:22:22 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Wed, 04 Jan 2006 11:22:22 -0500
+Subject: [vsipl++] PATCH: installation / packaging
+In-Reply-To: <43BB5005.4030903@codesourcery.com>
+References: <43BB5005.4030903@codesourcery.com>
+Message-ID: <43BBF63E.4000300@codesourcery.com>
+
+Stefan Seefeld wrote:
+
+> The appended patch adds or completes the following targets:
+
+Stefan, this looks good.  Please check it in. -- Jules
+
+>
+> To create a source distribution simply do:
+>
+> configure
+> make doc maintainer_mode=1
+> make doc2src
+> make sdist
+
+Very nice!
+
+>
+> (The root directory name is determined from configure.ac to be
+>  sourceryvsipl++-1.0, but for snapshot packages one could also call
+>
+> make sdist PACKAGE_VERSION=`date +%Y-%m-%d`
+> )
+>
+> A typical command sequence to create a multi-config binary package
+> would be:
+>
+> configure --some-optimization-flags
+> make
+> make doc maintainer_mode=1
+> make install DESTDIR=tmp suffix=-opt
+> configure --some-debug-flags
+> make
+> make install DESTDIR=tmp suffix=-debug
+> make bdist DESTDIR=tmp
+
+
+IIUC, the DESTDIR is prepended to the different directories objdir, 
+libdir, etc.  I think this is the right thing to do, because it lets 
+build a binary package to live in an arbitrary system directory 
+(/opt/csl/vsipl++) without having to have modify that directory on our 
+build machine.
+
+However, there might be a problem when trying to build one copy of the 
+ATLAS/FFTW libraries to be used by all variants.  Consider:
+
+# first, build optimized version of VSIPL++, ATLAS, and FFTW
+prefix=/opt/vsipl++
+configure "opt-flags" --with-fft=builtin --with-lapack=builtin 
+--prefix=$prefix
+make
+make doc maintainer_mode=1
+make install DESTDIR=tmp suffix=-opt
+
+# second, build debug version of VSIPL++,
+# Don't build ATLAS and FFTW again, instead use the versions already in 
+/opt/vsipl++
+LDFLAGS="-L$prefix/lib"
+CPPFLAGS="-L$prefix/include"
+configure "debug-flags" --with-fft=fftw3 -with-lapack=atlas
+make
+make install DESTDIR=tmp suffix=-debug
+
+... make other variants ...
+... create alias (vsipl++.pc -> vsipl++-opt.pc)
+... make binary package ...
+
+
+When configuring for the debug build, the libraries for ATLAS and FFTW 
+will not be found, since they are in /tmp/opt/vsipl++, not 
+/opt/vsipl++.  Also, when making the debug library, the headers will not 
+be in the right spot either.
+
+A work around is to build the ATLAS and FFTW libraries for each variant 
+(optimized, debug, etc), rely on them to be overwritten so that only one 
+copy of those libraries are in the final package,  and make sure to 
+build the version of the external libraries that we want to keep last.  
+However, if we have many variants, this will result in a lot of time 
+spent building ATLAS.
+
+Another idea is to have ATLAS and FFTW installed on our build system so 
+that the bogus paths are not noticed by configure/make.  However this 
+makes the build process a little less robust.
+
+A final idea is to tell configure to trust that fftw3 and atlas are 
+present and not test for them.  ("--with-fft=trust-fftw3" ?).  We would 
+also need to handle the include paths during the make (via INT_CPPFLAGS?)
+
+Any thoughts on how to handle this?
+
+
+>
+>
+> Mark, doc/csl-docbook/GNUmakefile.inc contains two changes:
+>
+> * I prefixed all installation paths with $(DESTDIR) to make the above
+>   work for documentation.
+> * I fixed the %.html target for the case where $(docbook_html) is not 
+> set,
+>   as that case seems to have slipped through in Carlos' latest 
+> adjustments.
+
+Is there an email list that we should send csl-docbook CVS changes to?
+
+
+
+
+From stefan at codesourcery.com  Wed Jan  4 16:35:40 2006
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Wed, 04 Jan 2006 11:35:40 -0500
+Subject: [vsipl++] PATCH: installation / packaging
+In-Reply-To: <43BBF63E.4000300@codesourcery.com>
+References: <43BB5005.4030903@codesourcery.com> <43BBF63E.4000300@codesourcery.com>
+Message-ID: <43BBF95C.5010103@codesourcery.com>
+
+Jules Bergmann wrote:
+
+> IIUC, the DESTDIR is prepended to the different directories objdir, 
+> libdir, etc.  I think this is the right thing to do, because it lets 
+> build a binary package to live in an arbitrary system directory 
+> (/opt/csl/vsipl++) without having to have modify that directory on our 
+> build machine.
+
+Precisely. It allows an installation into a fake (virtual) root that
+then only contains the newly installed bits, so tar will not pick up
+any undesired pieces.
+
+> However, there might be a problem when trying to build one copy of the 
+> ATLAS/FFTW libraries to be used by all variants.  Consider:
+> 
+> # first, build optimized version of VSIPL++, ATLAS, and FFTW
+> prefix=/opt/vsipl++
+> configure "opt-flags" --with-fft=builtin --with-lapack=builtin 
+> --prefix=$prefix
+> make
+> make doc maintainer_mode=1
+> make install DESTDIR=tmp suffix=-opt
+> 
+> # second, build debug version of VSIPL++,
+> # Don't build ATLAS and FFTW again, instead use the versions already in 
+> /opt/vsipl++
+> LDFLAGS="-L$prefix/lib"
+> CPPFLAGS="-L$prefix/include"
+> configure "debug-flags" --with-fft=fftw3 -with-lapack=atlas
+> make
+> make install DESTDIR=tmp suffix=-debug
+> 
+> ... make other variants ...
+> ... create alias (vsipl++.pc -> vsipl++-opt.pc)
+> ... make binary package ...
+> 
+> 
+> When configuring for the debug build, the libraries for ATLAS and FFTW 
+> will not be found, since they are in /tmp/opt/vsipl++, not 
+> /opt/vsipl++.  Also, when making the debug library, the headers will not 
+> be in the right spot either.
+
+That's right. In fact, we touched that subject when discussing the suffix
+option previously. Being able to package all variants into a single prefix,
+and sharing the same set of headers, imposes some constraints on how much
+the different configurations can actually differ.
+I think we were discussing the suffix flag in the context of differing
+compilation flags (e.g. -g vs. -O3), but not e.g. using IPP vs. ATLAS.
+
+Such differences will probably have to be installed in distinct prefixes
+for a number of reasons, for example because the generated config header
+isn't the same.
+
+> A work around is to build the ATLAS and FFTW libraries for each variant 
+> (optimized, debug, etc), rely on them to be overwritten so that only one 
+> copy of those libraries are in the final package,  and make sure to 
+> build the version of the external libraries that we want to keep last.  
+> However, if we have many variants, this will result in a lot of time 
+> spent building ATLAS.
+
+I haven't looked into the vendor package compilation, but my impression
+was that we now have no way to distinguish different configurations
+at link time. Am I wrong ? The only configurations that can coexist
+are one configuration without and one with ATLAS (say). However, there
+is still the acconfig.hpp issue I mentioned above...
+
+> Another idea is to have ATLAS and FFTW installed on our build system so 
+> that the bogus paths are not noticed by configure/make.  However this 
+> makes the build process a little less robust.
+
+Indeed. I think we should make sure the compilation is as isolated as
+possible, and thus can be reproduced anywhere without reliance on external
+resources that aren't explicitely described in the documentation.
+
+> A final idea is to tell configure to trust that fftw3 and atlas are 
+> present and not test for them.  ("--with-fft=trust-fftw3" ?).  We would 
+> also need to handle the include paths during the make (via INT_CPPFLAGS?)
+> 
+> Any thoughts on how to handle this?
+
+I really doubt the suffix-only approach is able to deal with multiple
+vendor library versions. We really need different prefixes for that.
+
+>> Mark, doc/csl-docbook/GNUmakefile.inc contains two changes:
+>>
+>> * I prefixed all installation paths with $(DESTDIR) to make the above
+>>   work for documentation.
+>> * I fixed the %.html target for the case where $(docbook_html) is not 
+>> set,
+>>   as that case seems to have slipped through in Carlos' latest 
+>> adjustments.
+> 
+> 
+> Is there an email list that we should send csl-docbook CVS changes to?
+
+I had planned to send the changelog to gnu-internal.
+
+Regards,
+		Stefan
+
+
+
+
+From stefan at codesourcery.com  Wed Jan  4 19:10:58 2006
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Wed, 04 Jan 2006 14:10:58 -0500
+Subject: [vsipl++] PATCH: installation / packaging
+In-Reply-To: <43BBF63E.4000300@codesourcery.com>
+References: <43BB5005.4030903@codesourcery.com> <43BBF63E.4000300@codesourcery.com>
+Message-ID: <43BC1DC2.7050504@codesourcery.com>
+
+Jules Bergmann wrote:
+> Stefan Seefeld wrote:
+> 
+>> The appended patch adds or completes the following targets:
+> 
+> 
+> Stefan, this looks good.  Please check it in. -- Jules
+
+Done.
+
+Regards,
+		Stefan
+
+
+From stefan at codesourcery.com  Thu Jan  5 05:24:22 2006
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Thu, 05 Jan 2006 00:24:22 -0500
+Subject: [vsipl++] PATCH: installation / packaging
+In-Reply-To: <43BB5005.4030903@codesourcery.com>
+References: <43BB5005.4030903@codesourcery.com>
+Message-ID: <43BCAD86.6090003@codesourcery.com>
+
+The attached patch corrects a bug introduced by my last patch, and does
+some minor cleanup.
+
+We used to use the ':=' variant of Makefile variables in all places,
+though that appears to be problematic since some of the included
+helper makefiles add to them, some use them.
+I thus made two of the variables ($(objects) and $(deps)) lazy.
+While I'm slightly worried by the problem this revealed, I think
+this change is the simplest way to work around the issue.
+May be on the long term we can find a better way to deal with it.
+
+The test results file generated in the 'check-installed' target
+now includes the suffix variable, so you will see e.g. 'results-opt.qmr'
+when testing vsip++-opt.pc, etc.
+
+Committed.
+
+Regards,
+		Stefan
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: packaging2.patch
+Type: text/x-patch
+Size: 2709 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060105/20290b9d/attachment.bin>
+
+From syedmoin at dsl.net.pk  Thu Jan  5 17:04:27 2006
+From: syedmoin at dsl.net.pk (syedmoin at dsl.net.pk)
+Date: Thu,  5 Jan 2006 22:04:27 +0500
+Subject: sarsim demor prblm
+Message-ID: <20060105220427.rt43xfc8gsk0cswg@mail.dsl.net.pk>
+
+hi,
+ I am using Fedora Core 3 Linux on x86 architecture using GCC 4.1.I have
+uncompressed the vsipl++ 0.95 in /tmp directory . I have successfully compiled
+and installed the library. as in manual i have set the path names as well
+export PKG_CONFIG_PATH = /usr/local/lib/pkgconfig/
+
+[root at localhost sarsim]# pwd
+/tmp/sourceryvsipl++-0.95/apps/sarsim
+
+[root at localhost sarsim]# make -f GNUmakefile
+g++ -g -O2 -o sarsim sarsim.o -L/usr/local/lib -lvsip
+sarsim.o(.gnu.linkonce.t._ZN4vsip4impl7Fft_impINS_12const_VectorESt7complexIdES4_Li0ELi1ELj0ELNS_13alg_hint_typeE1ELb0EED2Ev[vsip::impl::Fft_imp<vsip::const_Vector,
+std::complex<double>, std::complex<double>, 0, 1, 0u, (vsip::alg_hint_type)1,
+false>::~Fft_imp()]+0x48): In function `vsip::impl::Fft_imp<vsip::const_Vector,
+std::complex<double>, std::complex<double>, 0, 1, 0u, (vsip::alg_hint_type)1,
+false>::~Fft_imp()':
+/usr/local/include/vsip/impl/refcount.hpp:331: undefined reference to
+`vsip::impl::Fft_core<1u, std::complex<double>, std::complex<double>,
+false>::~Fft_core()'
+sarsim.o(.gnu.linkonce.t._ZN4vsip3FftINS_12const_VectorESt7complexIdES3_Lin2ELNS_21return_mechanism_typeE1ELj0ELNS_13alg_hint_typeE1EED1Ev[vsip::Fft<vsip::const_Vector,
+std::complex<double>, std::complex<double>, -2, (vsip::return_mechanism_type)1,
+0u, (vsip::alg_hint_type)1>::~Fft()]+0x48): In function
+`vsip::Fft<vsip::const_Vector, std::complex<double>, std::complex<double>, -2,
+(vsip::return_mechanism_type)1, 0u, (vsip::alg_hint_type)1>::~Fft()':
+/usr/local/include/vsip/impl/refcount.hpp:331: undefined reference to
+`vsip::impl::Fft_core<1u, std::complex<double>, std::complex<double>,
+false>::~Fft_core()'
+sarsim.o(.gnu.linkonce.t._ZN4vsip3FftINS_12const_VectorESt7complexIdES3_Lin1ELNS_21return_mechanism_typeE1ELj0ELNS_13alg_hint_typeE1EED1Ev[vsip::Fft<vsip::const_Vector,
+std::complex<double>, std::complex<double>, -1, (vsip::return_mechanism_type)1,
+0u, (vsip::alg_hint_type)1>::~Fft()]+0x48): In function
+`vsip::Fft<vsip::const_Vector, std::complex<double>, std::complex<double>, -1,
+(vsip::return_mechanism_type)1, 0u, (vsip::alg_hint_type)1>::~Fft()':
+/usr/local/include/vsip/impl/refcount.hpp:331: undefined reference to
+`vsip::impl::Fft_core<1u, std::complex<double>, std::complex<double>,
+false>::~Fft_core()'
+sarsim.o(.gnu.linkonce.t._ZN4vsip4impl7Fft_impINS_12const_VectorESt7complexIdES4_Li0ELin1ELj0ELNS_13alg_hint_typeE1ELb0EEC2ERKNS_6DomainILj1EEEd[vsip::impl::Fft_imp<vsip::const_Vector,
+std::complex<double>, std::complex<double>, 0, -1, 0u, (vsip::alg_hint_type)1,
+false>::Fft_imp(vsip::Domain<1u> const&, double)]+0xe2): In function
+`vsip::impl::Fft_imp<vsip::const_Vector, std::complex<double>,
+std::complex<double>, 0, -1, 0u, (vsip::alg_hint_type)1,
+false>::Fft_imp(vsip::Domain<1u> const&, double)':
+/usr/local/include/vsip/impl/signal-fft.hpp:335: undefined reference to
+`vsip::impl::Fft_core<1u, std::complex<double>, std::complex<double>,
+false>::create_plan(vsip::Domain<1u> const&, int, int, unsigned int,
+std::complex<double>*, std::complex<double>*)'
+sarsim.o(.gnu.linkonce.t._ZN4vsip4impl7Fft_impINS_12const_VectorESt7complexIdES4_Li0ELin1ELj0ELNS_13alg_hint_typeE1ELb0EEC2ERKNS_6DomainILj1EEEd[vsip::impl::Fft_imp<vsip::const_Vector,
+std::complex<double>, std::complex<double>, 0, -1, 0u, (vsip::alg_hint_type)1,
+false>::Fft_imp(vsip::Domain<1u> const&, double)]+0x141): In function
+`vsip::impl::Fft_imp<vsip::const_Vector, std::complex<double>,
+std::complex<double>, 0, -1, 0u, (vsip::alg_hint_type)1,
+false>::Fft_imp(vsip::Domain<1u> const&, double)':
+/usr/local/include/vsip/impl/refcount.hpp:331: undefined reference to
+`vsip::impl::Fft_core<1u, std::complex<double>, std::complex<double>,
+false>::~Fft_core()'
+sarsim.o(.gnu.linkonce.t._ZN4vsip4impl7Fft_impINS_12const_VectorESt7complexIdES4_Li0ELi1ELj0ELNS_13alg_hint_typeE1ELb0EEC2ERKNS_6DomainILj1EEEd[vsip::impl::Fft_imp<vsip::const_Vector,
+std::complex<double>, std::complex<double>, 0, 1, 0u, (vsip::alg_hint_type)1,
+false>::Fft_imp(vsip::Domain<1u> const&, double)]+0xe2): In function
+`vsip::impl::Fft_imp<vsip::const_Vector, std::complex<double>,
+std::complex<double>, 0, 1, 0u, (vsip::alg_hint_type)1,
+false>::Fft_imp(vsip::Domain<1u> const&,
+double)':/usr/local/include/vsip/impl/signal-fft.hpp:335: undefined reference
+to `vsip::impl::Fft_core<1u, std::complex<double>, std::complex<double>,
+false>::create_plan(vsip::Domain<1u> const&, int, int, unsigned int,
+std::complex<double>*, std::complex<double>*)'
+sarsim.o(.gnu.linkonce.t._ZN4vsip4impl7Fft_impINS_12const_VectorESt7complexIdES4_Li0ELi1ELj0ELNS_13alg_hint_typeE1ELb0EEC2ERKNS_6DomainILj1EEEd[vsip::impl::Fft_imp<vsip::const_Vector,
+std::complex<double>, std::complex<double>, 0, 1, 0u, (vsip::alg_hint_type)1,
+false>::Fft_imp(vsip::Domain<1u> const&, double)]+0x141): In function
+`vsip::impl::Fft_imp<vsip::const_Vector, std::complex<double>,
+std::complex<double>, 0, 1, 0u, (vsip::alg_hint_type)1,
+false>::Fft_imp(vsip::Domain<1u> const&, double)':
+/usr/local/include/vsip/impl/refcount.hpp:331: undefined reference to
+`vsip::impl::Fft_core<1u, std::complex<double>, std::complex<double>,
+false>::~Fft_core()'
+sarsim.o(.gnu.linkonce.t._ZN6SarSimIdED2Ev[SarSim<double>::~SarSim()]+0x241): In
+function `SarSim<double>::~SarSim()':
+/usr/local/include/vsip/impl/refcount.hpp:331: undefined reference to
+`vsip::impl::Fft_core<1u, std::complex<double>, std::complex<double>,
+false>::~Fft_core()'
+sarsim.o(.gnu.linkonce.t._ZN6SarSimIdED2Ev[SarSim<double>::~SarSim()]+0x261):/usr/local/include/vsip/impl/refcount.hpp:331:
+undefined reference to `vsip::impl::Fft_core<1u, std::complex<double>,
+std::complex<double>, false>::~Fft_core()'
+sarsim.o(.gnu.linkonce.t._ZN6SarSimIdED2Ev[SarSim<double>::~SarSim()]+0x281):/usr/local/include/vsip/impl/refcount.hpp:331:
+undefined reference to `vsip::impl::Fft_core<1u, std::complex<double>,
+std::complex<double>, false>::~Fft_core()'
+sarsim.o(.gnu.linkonce.t._ZN6SarSimIdED2Ev[SarSim<double>::~SarSim()]+0x3cf):/usr/local/include/vsip/impl/refcount.hpp:331:
+undefined reference to `vsip::impl::Fft_core<1u, std::complex<double>,
+std::complex<double>, false>::~Fft_core()'
+sarsim.o(.gnu.linkonce.t._ZN6SarSimIdED2Ev[SarSim<double>::~SarSim()]+0x4b4):/usr/local/include/vsip/impl/refcount.hpp:331:
+more undefined references to `vsip::impl::Fft_core<1u, std::complex<double>,
+std::complex<double>, false>::~Fft_core()' followcollect2: ld returned 1 exit
+status
+make: *** [sarsim] Error 1
+[root at localhost sarsim]#
+
+
+
+can you tell me how to sort this error .To me it seems like some FFT library is
+missing
+
+
+Regards
+Syed Moinuddin
+MS comp Engineering
+UET Taxila Univeristy
+
+
+----------------------------------------------------------------
+This message was sent using IMP, the Internet Messaging Program.
+
+
+From don at codesourcery.com  Thu Jan  5 18:39:00 2006
+From: don at codesourcery.com (Don McCoy)
+Date: Thu, 05 Jan 2006 11:39:00 -0700
+Subject: [vsipl++] sarsim demor prblm
+In-Reply-To: <20060105220427.rt43xfc8gsk0cswg@mail.dsl.net.pk>
+References: <20060105220427.rt43xfc8gsk0cswg@mail.dsl.net.pk>
+Message-ID: <43BD67C4.8090003@codesourcery.com>
+
+syedmoin at dsl.net.pk wrote:
+
+>hi,
+> I am using Fedora Core 3 Linux on x86 architecture using GCC 4.1.I have
+>uncompressed the vsipl++ 0.95 in /tmp directory . I have successfully compiled
+>and installed the library. as in manual i have set the path names as well
+>export PKG_CONFIG_PATH = /usr/local/lib/pkgconfig/
+>
+><snip>
+>
+>can you tell me how to sort this error .To me it seems like some FFT library is
+>missing
+>  
+>
+Hello,
+
+You are correct - an FFT library is required.   Version 0.95 relied on 
+an external implementation such as FFTW 
+(http://www.fftw.org/index.html).  Version 1.0 includes a built-in 
+version to aid users who do not have an FFT library installed on their 
+system.
+
+If you are able to wait until next week, version 1.0 will be available 
+for download.  Please let us know if this information helped solve your 
+problem and thank you for trying Sourcery VSIPL++!
+
+-- 
+Don McCoy
+CodeSourcery
+
+
+
+From jules at codesourcery.com  Mon Jan  9 23:51:17 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Mon, 09 Jan 2006 18:51:17 -0500
+Subject: Fix dependencies for 'check' and 'install'
+Message-ID: <43C2F6F5.7070808@codesourcery.com>
+
+The install dependency fixes the problem we were seeing today with ATLAS 
+failing to install: it was not being built.  This is similar to problem 
+Stefan fixed with FFTW.
+
+Patch applied.
+
+             -- Jules
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: 1.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060109/9b64c489/attachment.ksh>
+
+From Ralf.Wildenhues at gmx.de  Wed Jan 11 08:10:29 2006
+From: Ralf.Wildenhues at gmx.de (Ralf Wildenhues)
+Date: Wed, 11 Jan 2006 09:10:29 +0100
+Subject: [vsipl++] Re: overriding autoconf's own exeext detection
+In-Reply-To: <43760937.60309@codesourcery.com>
+References: <4374AB36.6000202@codesourcery.com> <20051111170026.GA22634@iam.uni-bonn.de> <4374D00D.1030207@codesourcery.com> <20051112141340.GB10504@iam.uni-bonn.de> <43760937.60309@codesourcery.com>
+Message-ID: <20060111081029.GF31819@iam.uni-bonn.de>
+
+Hi Stefan,
+
+Sorry for the huge delay.  I waited a while for comments, and then
+forgot about this.
+
+* Stefan Seefeld wrote on Sat, Nov 12, 2005 at 04:24:39PM CET:
+> Ralf Wildenhues wrote:
+> >
+> >Not that I know of.  You can always define your own macro, for example
+> >a fixed version with the same name.  But that may be very fragile, not
+> >compatible with the next or previous Autoconf, or anything, so I would
+> >not recommend it.  Maybe AC_EXEEXT should offer a possibility to
+> >override it.
+> 
+> AC_EXEEXT is marked as obsolete, as autoconf detects the extension 
+> 'automatically'.  Oh well. It might have been better if autoconf,
+> recognizing its limitations, would keep a backdoor for developers to
+> override settings instead of forcing them to live with false guesses.
+> 
+> >Updated patch below.
+> 
+> Ok, that seems to work. Thanks !
+
+I have applied the patch as follows.
+
+Cheers,
+Ralf
+
+	* lib/autoconf/lang.m4 (_AC_COMPILER_OBJEXT_REJECT):
+	Add `*.map' and `.inf' for Green Hills compiler.
+	Reported by Stefan Seefeld <stefan at codesourcery.com>.
+
+Index: lib/autoconf/lang.m4
+===================================================================
+RCS file: /cvsroot/autoconf/autoconf/lib/autoconf/lang.m4,v
+retrieving revision 1.171
+diff -u -r1.171 lang.m4
+--- lib/autoconf/lang.m4	14 May 2005 07:00:40 -0000	1.171
++++ lib/autoconf/lang.m4	11 Jan 2006 08:09:30 -0000
+@@ -1,6 +1,7 @@
+ # This file is part of Autoconf.                       -*- Autoconf -*-
+ # Programming languages support.
+-# Copyright (C) 2000, 2001, 2002, 2004, 2005 Free Software Foundation, Inc.
++# Copyright (C) 2000, 2001, 2002, 2004, 2005, 2006 Free Software
++# Foundation, Inc.
+ #
+ # This program is free software; you can redistribute it and/or modify
+ # it under the terms of the GNU General Public License as published by
+@@ -421,6 +422,9 @@
+ #
+ # - *.xSYM
+ #   Created on BeOS.  Seems to be per executable.
++# 
++# - *.map, *.inf
++#   Created by the Green Hills compiler.
+ 
+ 
+ # _AC_COMPILER_OBJEXT_REJECT
+@@ -428,7 +432,7 @@
+ # Case/esac pattern matching the files to be ignored when looking for
+ # compiled object files.
+ m4_define([_AC_COMPILER_OBJEXT_REJECT],
+-[*.$ac_ext | *.xcoff | *.tds | *.d | *.pdb | *.xSYM | *.bb | *.bbg])
++[*.$ac_ext | *.xcoff | *.tds | *.d | *.pdb | *.xSYM | *.bb | *.bbg | *.map | *.inf])
+ 
+ 
+ # _AC_COMPILER_EXEEXT_REJECT
+
+
+From jules at codesourcery.com  Wed Jan 11 16:09:50 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Wed, 11 Jan 2006 11:09:50 -0500
+Subject: Parallel Reduction bits
+Message-ID: <43C52DCE.6050402@codesourcery.com>
+
+This patch does the following:
+
+* Implement and test get/put for distributed blocks.
+
+* Implement an 'assign_local' function to convert between distributed 
+and local views; implement a Working_view_holder to either create a 
+local copy of a distributed view or an alias of a local view.
+
+* Modify solvers (lu, qr, svd, toepsol) and signal processing objects to 
+use assign_local and/or working_view_holder.
+
+* Refactor reductions to use general dispatch.  Implement an evaluator 
+for parallel reductions.
+
+* Add missing traits and functions so that scalars can be used in 
+parallel expressions.
+
+* Have random to return views that can be used in local or distributed 
+contexts.
+
+                            -- Jules
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: pr.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060111/ea633731/attachment.ksh>
+
+From jules at codesourcery.com  Thu Jan 12 05:41:14 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Thu, 12 Jan 2006 00:41:14 -0500
+Subject: Fix for solver-lu
+Message-ID: <43C5EBFA.4090206@codesourcery.com>
+
+This patch fixes a problem with parallel reductions of expressions that 
+was causing the solver-lu test to fail.  It also changes the random 
+functions returning a matrix to return a Local_or_global view.
+
+Patch applied.
+
+             -- Jules
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: misc.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060112/b411accc/attachment.ksh>
+
+From don at codesourcery.com  Thu Jan 12 16:17:53 2006
+From: don at codesourcery.com (Don McCoy)
+Date: Thu, 12 Jan 2006 09:17:53 -0700
+Subject: [patch] 
+Message-ID: <43C68131.9010403@codesourcery.com>
+
+Attached is an update to the quickstart guide.
+
+Ok to commit?
+
+Regards,
+
+-- 
+Don McCoy
+CodeSourcery
+
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: qs.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060112/fc2226bf/attachment.ksh>
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: qs.diff
+Type: text/x-patch
+Size: 4773 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060112/fc2226bf/attachment.bin>
+
+From jules at codesourcery.com  Wed Jan 18 01:50:18 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Tue, 17 Jan 2006 20:50:18 -0500
+Subject: [patch] ATLAS/FFTW cross-compilation, scalar blocks in distr expr,
+ release.sh
+Message-ID: <43CD9EDA.8010902@codesourcery.com>
+
+This patch fixes cross-compilation (building a 32-bit library on a 
+64-bit machine) for ATLAS and FFTW.  For FFTW this is just passing the 
+host/build/target options.  For ATLAS, this also requires passing values 
+for some options that were previously being detected by running test 
+programs (i.e. SIMD variant, FORTRAN string convention, etc) and 
+removing hard-coded references to gcc.  (I've built the 
+"SerialBuiltin32" variant several times, and this seems to be working.)
+
+This patch also changes how binary expression blocks determine their 
+size.  If one operand block is a scalar block, the other operand is used 
+to determine size.  This allows scalar blocks in distributed expressions 
+to be reused directly in the local version of the expression.
+
+Finally, this patch includes yet another script that is a thin wrapper 
+on 'package' to automate parts of the release process.  The intent is 
+that a release process will look something like this:
+
+1. On Sethra, check out sources from CVS, build a source package:
+
+	release.sh -w src
+
+2. Manually copy the source package from sethra to cugel:
+
+	cp ...
+
+3. On Cugel, build and test binary packages from the source package:
+
+	relese.sh -w all
+
+In the future, if we put 'xep' on cugel, we can do the whole process on 
+one machine (although cugel doesn't seem to have the latest docbook 
+release -- that would also need fixed).
+
+					-- Jules
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: 1.diff
+Type: text/x-patch
+Size: 36154 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060117/533f5d5a/attachment.bin>
+
+From jules at codesourcery.com  Wed Jan 18 13:22:36 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Wed, 18 Jan 2006 08:22:36 -0500
+Subject: [patch] Config release options; add missing paths to release.sh
+Message-ID: <43CE411C.2080808@codesourcery.com>
+
+Patch applied. -- Jules
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: c.diff
+Type: text/x-patch
+Size: 2461 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060118/6fc8553d/attachment.bin>
+
+From jules at codesourcery.com  Thu Jan 19 00:31:01 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Wed, 18 Jan 2006 19:31:01 -0500
+Subject: [patch] Use -m32 for cross compilation.
+Message-ID: <43CEDDC5.4040804@codesourcery.com>
+
+Fixes to use '-m32' for cross compilation instead of host/build/target 
+options.  I ended up using a wrapper for ATLAS (gcc-m32.sh == "gcc 
+-m32") because it does not reliabily use CFLAGS.
+
+Patch applied.
+
+I'm going to fire off a set of builds momentarily.  Cross your fingers! :)
+
+Note: Don't pass -NDEBUG to ATLAS as its configuration programs do work 
+in the assert (for example: "assert(tmpnam(tnam))").
+
+				-- Jules
+
+
+
+From jules at codesourcery.com  Thu Jan 19 02:42:51 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Wed, 18 Jan 2006 21:42:51 -0500
+Subject: [patch] Pass -m32/-m64 to Lapack files compiled without optimization.
+Message-ID: <43CEFCAB.6080907@codesourcery.com>
+
+Assuming this looks OK, I'll apply this patch and restart the build 
+after cugel gets rebooted. -- Jules
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: lapack.diff
+Type: text/x-patch
+Size: 1997 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060118/24ab0c6d/attachment.bin>
+
+From jules at codesourcery.com  Thu Jan 19 03:17:23 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Wed, 18 Jan 2006 22:17:23 -0500
+Subject: [vsipl++] [patch] Pass -m32/-m64 to Lapack files compiled without
+ optimization.
+In-Reply-To: <43CEFCAB.6080907@codesourcery.com>
+References: <43CEFCAB.6080907@codesourcery.com>
+Message-ID: <43CF04C3.1060203@codesourcery.com>
+
+Updated.  Fixes 'make install' to not fail when $objdir/lib is empty.
+
+			-- Jules
+
+Jules Bergmann wrote:
+> Assuming this looks OK, I'll apply this patch and restart the build 
+> after cugel gets rebooted. -- Jules
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: lapack.diff
+Type: text/x-patch
+Size: 2616 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060118/cf337854/attachment.bin>
+
+From don at codesourcery.com  Thu Jan 19 22:17:27 2006
+From: don at codesourcery.com (Don McCoy)
+Date: Thu, 19 Jan 2006 15:17:27 -0700
+Subject: [patch] example makefile
+Message-ID: <43D00FF7.4060204@codesourcery.com>
+
+The attached patch adds a makefile that is to be used to compile the 
+examples after installing the library.  The quickstart guide has been 
+updated to reflect this change.
+
+Regards,
+
+-- 
+Don McCoy
+CodeSourcery
+
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: ex.diff
+Type: text/x-patch
+Size: 17773 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060119/418c8f44/attachment.bin>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: ex.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060119/418c8f44/attachment.ksh>
+
+From jules at codesourcery.com  Thu Jan 19 23:17:05 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Thu, 19 Jan 2006 18:17:05 -0500
+Subject: [vsipl++] [patch] example makefile
+In-Reply-To: <43D00FF7.4060204@codesourcery.com>
+References: <43D00FF7.4060204@codesourcery.com>
+Message-ID: <43D01DF1.8020306@codesourcery.com>
+
+Don, this looks good.  Please check it in. -- Jules
+
+
+  Don McCoy wrote:
+> The attached patch adds a makefile that is to be used to compile the 
+> examples after installing the library.  The quickstart guide has been 
+> updated to reflect this change.
+> 
+> Regards,
+
+
+From jules at codesourcery.com  Thu Jan 19 23:39:14 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Thu, 19 Jan 2006 18:39:14 -0500
+Subject: [patch] Prefix mangling
+Message-ID: <43D02322.1090704@codesourcery.com>
+
+This patch adds:
+
+  * set-prefix.sh script to adjust the prefixes in the pkg-config .pc
+    files after a binary package has been installed on a user machine.
+
+    For example, suppose you untar the package in your home directory:
+
+	cd $HOME
+	tar xfj sourceryvsipl++-....tar.bz2
+	$HOME/usr/local/sbin/set-prefix.sh
+	export PKG_CONFIG_PATH=$HOME/usr/local/lib/pkgconfig
+
+    and you're in business.
+
+    The set-prefix.sh gets installed in usr/local/sbin of the tarball.
+    Is there a better place?  I was tempted to put it in the same
+    directory as the .pc files.
+
+  * fix-intel-pkg-config.sh script to post-process the .pc files so that
+    references to IPP and MKL library paths are done through variables.
+    Two new variables are added (ipp_prefix and mkl_prefix).  References
+    to the hard-coded paths are replaced with references through the
+    variables.  This post processing is done at the end of configure,
+    after vsipl++.pc has been generated.
+
+    This allows (a) the paths to IPP and MKL to be more easily
+    overridden, for example
+	pkg-config --define-variable=ipp_prefix=/new/prefix/to/ipp
+    (b) the set-prefix.sh script to adjust the prefixes after
+    package installation.
+
+    For example, continuing the example above, suppose your IPP
+    library is also installed in your home directory ($HOME/ipp).
+    By passing an '-i' option to set-prefix.sh:
+
+	$HOME/usr/local/sbin/set-prefix.sh -i $HOME/ipp
+
+    The .pc files will be updated accordingly.
+
+  * Documentation for using set-prefix.sh in the quickstart.
+
+  * Stand-alone makefiles for building the tests and benchmarks
+    using pkg-config.
+
+				-- Jules
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: pref.diff
+Type: text/x-patch
+Size: 25429 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060119/735222ba/attachment.bin>
+
+From jules at codesourcery.com  Fri Jan 20 21:24:24 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Fri, 20 Jan 2006 16:24:24 -0500
+Subject: [patch] Final cleanup before building 1.0
+Message-ID: <43D15508.9000003@codesourcery.com>
+
+The biggest change here is the updated config files.  Instead of 
+building a single 64-bit version using the builtin libraries, we now 
+build two: one for EM64T (P4E64+SSE3) and one for AMD64 (HAMMER64+SSE2). 
+  See the comment in config for more details.
+
+A preliminary test of SerialBuiltin{32,EM64T,AMD64} looked good.  After 
+checking this in, I'm going to tag the library V_1_0 and start a build!
+
+				-- Jules
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: final.diff
+Type: text/x-patch
+Size: 16008 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060120/eda4b877/attachment.bin>
+
+From jules at codesourcery.com  Sun Jan 22 08:50:27 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Sun, 22 Jan 2006 03:50:27 -0500
+Subject: [patch] ATLAS/FFTW config updates
+Message-ID: <43D34753.20407@codesourcery.com>
+
+Patch applied.
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: perf.diff
+Type: text/x-patch
+Size: 15770 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060122/e23d044c/attachment.bin>
+
+From jules at codesourcery.com  Mon Jan 23 00:46:00 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Sun, 22 Jan 2006 19:46:00 -0500
+Subject: [patch] Add titles to all quickstart example blocks.
+Message-ID: <43D42748.9080106@codesourcery.com>
+
+A non-text attachment was scrubbed...
+Name: qs.diff
+Type: text/x-patch
+Size: 2124 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060122/3a659f3c/attachment.bin>
+
+From don at codesourcery.com  Mon Jan 23 04:09:19 2006
+From: don at codesourcery.com (Don McCoy)
+Date: Sun, 22 Jan 2006 21:09:19 -0700
+Subject: [patch] README
+Message-ID: <43D456EF.8070503@codesourcery.com>
+
+This patch updates the configuration instructions in the README file.
+
+Committed.
+
+-- 
+Don McCoy
+CodeSourcery
+
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: rm.diff
+Type: text/x-patch
+Size: 1556 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060122/702f8d05/attachment.bin>
+
+From stefan at codesourcery.com  Wed Jan 25 23:10:02 2006
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Wed, 25 Jan 2006 18:10:02 -0500
+Subject: patch: Set up parallel service(s) during testing.
+Message-ID: <43D8054A.9060908@codesourcery.com>
+
+The attached patch adds a new 'ParallelService' resource to the
+test database which, if lam is used, runs 'lamboot' in its SetUp
+method and 'wipe' during CleanUp. (We can complete this whenever
+other services are needed for other MPI implementations.)
+
+This new resource is associated with all tests that live under
+the 'parallel/' subdirectory. (The next logical step is thus to
+identify all tests requiring this service and move them.)
+
+Ok to commit ?
+
+Regards,
+		Stefan
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: parallel.patch
+Type: text/x-patch
+Size: 10498 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060125/c8b8e253/attachment.bin>
+
+From jules at codesourcery.com  Thu Jan 26 19:46:53 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Thu, 26 Jan 2006 14:46:53 -0500
+Subject: [vsipl++] patch: Set up parallel service(s) during testing.
+In-Reply-To: <43D8054A.9060908@codesourcery.com>
+References: <43D8054A.9060908@codesourcery.com>
+Message-ID: <43D9272D.4060807@codesourcery.com>
+
+Stefan Seefeld wrote:
+> The attached patch adds a new 'ParallelService' resource to the
+> test database which, if lam is used, runs 'lamboot' in its SetUp
+> method and 'wipe' during CleanUp. (We can complete this whenever
+> other services are needed for other MPI implementations.)
+> 
+> This new resource is associated with all tests that live under
+> the 'parallel/' subdirectory. (The next logical step is thus to
+> identify all tests requiring this service and move them.)
+> 
+> Ok to commit ?
+
+Stefan, looks good, please check it in.
+
+Here are some thoughts on how we might want to do parallel testing.
+
+All of our parallel tests work (in theory) with any number of procesors 
+from 1 to infinity.  We should continue to run all tests with a single 
+processor by default.  I.e. 'qmtest run' would run every test either 
+directly, or via 'mpirun -np 1 test".
+
+There should be some way to run the parallel tests with a specifed 
+number of processors.  Since they're off in a separate directory, maybe 
+it looks something like:
+
+	qmtest run -mpiopt "-np 2" parallel
+
+If qmtest just does an 'lamboot' with no other options, all processors 
+are virtual that run on the same host.  I.e. even though cugel only has 
+2 CPUs, you could run parallel tests with 8 processors.  This won't run 
+8 times faster, but it will stress communications, etc. and is a 
+valuable form of testing.
+
+However, it is possible to pass a configuration file (called the "LAM 
+boot schema") to lamboot to tell it what set of machines to run 
+processes on, other than the local host.  We could in theory pass a 
+configuration file with sethra, cugel, and sparrowhack and then run 
+tests on 6 phyiscal processors.  We shouldn't hardcode this config file 
+into either qmtest or configure, it is enough to add an option that 
+passes an optional bhost file to lamboot, i.e.
+
+	qmtest run -mpiopt "-np 2" -bhost BHOSTFILE parallel
+
+With this in place, when building a release on cugel, we might do:
+
+	# test everything with 1 processor:
+	qmtest run
+
+	# test parallel tests with 2 and 4 processors:
+	qmtest run -mpiopt "-np 2" parallel
+	qmtest run -mpiopt "-np 4" parallel
+
+When running the GTRI cluster, we could be bold and try larger 
+configurations:
+
+	qmtest run -bhost cluster -mpiopt "-mp 64" parallel
+
+
+If you want to avoid cluttering up the qmtest option space with MPI 
+specific options like -mpiopt and -bhost, you might have a single option 
+that allows parameters to be passed to the chosen par-services:
+
+	qmtest run -paropt "np=2" -paropt "bhost=host.file" parallel
+
+				-- Jules
+
+
+From jules at codesourcery.com  Thu Jan 26 21:12:14 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Thu, 26 Jan 2006 16:12:14 -0500
+Subject: [patch] Test coverage for split complex
+Message-ID: <43D93B2E.3060402@codesourcery.com>
+
+This patch is a bit of a grab bag:
+
+  * Adds support to request split-complex when using the
+    Storage class.
+  * Uses this in expr-coverage to test split-complex cases.
+  * Adds multiply coverage to expr-coverage.
+  * Adds some vector-multiply benchnmark cases.
+  * Updates the README.bin-pkg and VERSIONS.
+
+			-- Jules
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: split.diff
+Type: text/x-patch
+Size: 20279 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060126/e8df42ce/attachment.bin>
+
+From don at codesourcery.com  Tue Jan 31 23:27:51 2006
+From: don at codesourcery.com (Don McCoy)
+Date: Tue, 31 Jan 2006 16:27:51 -0700
+Subject: [patch] 'cxxflags' in example makefile
+Message-ID: <43DFF277.4020705@codesourcery.com>
+
+This patch updates an error in the example makefile and in the 
+explanation of same in the quickstart guide.
+
+Committed.
+
+-- 
+Don McCoy
+CodeSourcery
+
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: exmake.diff
+Type: text/x-patch
+Size: 2508 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060131/dcfda5aa/attachment.bin>
+

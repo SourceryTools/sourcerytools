@@ -1,0 +1,1546 @@
+From tarjeik at chemcon.no  Wed Dec 11 12:03:07 2002
+From: tarjeik at chemcon.no (Tarjei Knapstad)
+Date: 11 Dec 2002 13:03:07 +0100
+Subject: SMARTS compile problems (again)
+Message-ID: <1039608187.18849.5.camel@cc-intern01>
+
+Hi.
+
+I wanted to try POOMA today, and compile it together with SMARTS to be
+able to run in parallel using threads on a Mosix cluster. However,
+SMARTS 1.2 fails miserably to compile on my distribution (RH 8.0 using
+gcc3.2), and after about half an hour of trying to patch things up I
+finally gave in. I found a suggestion for a fix over at the pooma-dev
+mailing list at CodeSourcery but this did nothing to remedy the problem
+(au contraire).
+
+Is there any further development going on with SMARTS? If so, is there a
+snapshot or something similar which will compile on newer compilers?
+(the smarts cvs module seems to be outdated by a couple of years as
+well)
+
+Regards,
+-- 
+Tarjei Knapstad, MSc
+Computer Science Manager
+
+ChemCon AS                         
+Professor Brochs vei 6             Phone: +47 73 54 03 73    
+7030 Trondheim                     Fax:   +47 73 94 38 61  
+Norway	                           Email: tarjei at chemcon.no
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: signature.asc
+Type: application/pgp-signature
+Size: 189 bytes
+Desc: This is a digitally signed message part
+URL: <http://sourcerytools.com/pipermail/pooma-dev/attachments/20021211/2b8cffaf/attachment.pgp>
+
+From rguenth at tat.physik.uni-tuebingen.de  Wed Dec 11 12:03:49 2002
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Wed, 11 Dec 2002 13:03:49 +0100 (CET)
+Subject: [pooma-dev] SMARTS compile problems (again)
+In-Reply-To: <1039608187.18849.5.camel@cc-intern01>
+Message-ID: <Pine.LNX.4.33.0212111302060.10722-100000@bellatrix.tat.physik.uni-tuebingen.de>
+
+On 11 Dec 2002, Tarjei Knapstad wrote:
+
+> Hi.
+>
+> I wanted to try POOMA today, and compile it together with SMARTS to be
+> able to run in parallel using threads on a Mosix cluster. However,
+> SMARTS 1.2 fails miserably to compile on my distribution (RH 8.0 using
+> gcc3.2), and after about half an hour of trying to patch things up I
+> finally gave in. I found a suggestion for a fix over at the pooma-dev
+> mailing list at CodeSourcery but this did nothing to remedy the problem
+> (au contraire).
+
+You may need to investigate which symbol you need to define to prevent
+your libc/gcc pthread headers being included. The exact symbol name
+(was _BITS_PTHREADTYPES_H for gcc-3.0.3 and glibc-2.2.2) may vary.
+
+Richard.
+
+--
+Richard Guenther <richard.guenther at uni-tuebingen.de>
+WWW: http://www.tat.physik.uni-tuebingen.de/~rguenth/
+
+
+
+From tarjeik at chemcon.no  Thu Dec 12 10:26:39 2002
+From: tarjeik at chemcon.no (Tarjei Knapstad)
+Date: 12 Dec 2002 11:26:39 +0100
+Subject: [pooma-dev] SMARTS compile problems (again)
+In-Reply-To: 	<Pine.LNX.4.33.0212111302060.10722-100000@bellatrix.tat.physik.uni-tuebingen
+	.de>
+References: 	<Pine.LNX.4.33.0212111302060.10722-100000@bellatrix.tat.physik.uni-tuebingen
+	.de>
+Message-ID: <1039688800.18896.89.camel@cc-intern01>
+
+On Wed, 2002-12-11 at 13:03, Richard Guenther wrote:
+> On 11 Dec 2002, Tarjei Knapstad wrote:
+> 
+> > Hi.
+> >
+> > I wanted to try POOMA today, and compile it together with SMARTS to be
+> > able to run in parallel using threads on a Mosix cluster. However,
+> > SMARTS 1.2 fails miserably to compile on my distribution (RH 8.0 using
+> > gcc3.2), and after about half an hour of trying to patch things up I
+> > finally gave in. I found a suggestion for a fix over at the pooma-dev
+> > mailing list at CodeSourcery but this did nothing to remedy the problem
+> > (au contraire).
+> 
+> You may need to investigate which symbol you need to define to prevent
+> your libc/gcc pthread headers being included. The exact symbol name
+> (was _BITS_PTHREADTYPES_H for gcc-3.0.3 and glibc-2.2.2) may vary.
+> 
+Well, this is in fact the include guard in my bits/pthreadtypes.h, but
+defining the include guard and omitting this file results in more
+trouble like:
+
+/usr/include/wchar.h:164: non-local function `int wcscasecmp_l(const
+wchar_t*, 
+   const wchar_t*, __gthread_mutex_unlock(void**)::__locale_struct*)'
+uses 
+   local type `__gthread_mutex_unlock(void**)::__locale_struct'
+
+So I tried omitting the ghtread stuff as well using
+-D_GLIBCPP_GCC_GTHR_POSIX_H which gets rid of the above type of errors,
+but results in:
+
+/usr/include/c++/3.2/bits/stl_threads.h:86: `__gthread_mutex_lock'
+undeclared
+
+My final attempt thus being to avoid this header as well, 
+-D__SGI_STL_INTERNAL_THREADS_H:
+
+/usr/include/c++/3.2/bits/stl_alloc.h:574: `__threads' was not declared
+in this scope
+
+Now, I can hardly force stl_alloc.h out of the way with any success :)
+
+If anyone can provide me with any further clues (or if someone
+'thread-savvy' with a RH 8.0 box could have a stab at this) I'd be
+greatful.
+
+Cheers,
+--
+Tarjei
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: signature.asc
+Type: application/pgp-signature
+Size: 189 bytes
+Desc: This is a digitally signed message part
+URL: <http://sourcerytools.com/pipermail/pooma-dev/attachments/20021212/a896a264/attachment.pgp>
+
+From rguenth at tat.physik.uni-tuebingen.de  Thu Dec 12 10:58:28 2002
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Thu, 12 Dec 2002 11:58:28 +0100 (CET)
+Subject: [pooma-dev] SMARTS compile problems (again)
+In-Reply-To: <1039688800.18896.89.camel@cc-intern01>
+Message-ID: <Pine.LNX.4.33.0212121156400.10722-100000@bellatrix.tat.physik.uni-tuebingen.de>
+
+On 12 Dec 2002, Tarjei Knapstad wrote:
+
+> On Wed, 2002-12-11 at 13:03, Richard Guenther wrote:
+> > On 11 Dec 2002, Tarjei Knapstad wrote:
+> >
+> > > Hi.
+> > >
+> > > I wanted to try POOMA today, and compile it together with SMARTS to be
+> > > able to run in parallel using threads on a Mosix cluster. However,
+> > > SMARTS 1.2 fails miserably to compile on my distribution (RH 8.0 using
+> > > gcc3.2), and after about half an hour of trying to patch things up I
+> > > finally gave in. I found a suggestion for a fix over at the pooma-dev
+> > > mailing list at CodeSourcery but this did nothing to remedy the problem
+> > > (au contraire).
+> >
+> > You may need to investigate which symbol you need to define to prevent
+> > your libc/gcc pthread headers being included. The exact symbol name
+> > (was _BITS_PTHREADTYPES_H for gcc-3.0.3 and glibc-2.2.2) may vary.
+> >
+> Well, this is in fact the include guard in my bits/pthreadtypes.h, but
+> defining the include guard and omitting this file results in more
+> trouble like:
+>
+> /usr/include/wchar.h:164: non-local function `int wcscasecmp_l(const
+> wchar_t*,
+>    const wchar_t*, __gthread_mutex_unlock(void**)::__locale_struct*)'
+> uses
+>    local type `__gthread_mutex_unlock(void**)::__locale_struct'
+>
+> So I tried omitting the ghtread stuff as well using
+> -D_GLIBCPP_GCC_GTHR_POSIX_H which gets rid of the above type of errors,
+> but results in:
+>
+> /usr/include/c++/3.2/bits/stl_threads.h:86: `__gthread_mutex_lock'
+> undeclared
+
+Well - ok, my simple workaround seems to not work with recent gcc/libc,
+so fixing SMARTS remains. Basically all the pthread_* stuff in SMARTS
+needs to be renamed to not pollute the pthread namespace. Or someone
+needs to evaluate wether SMARTS can use the pthread stuff from existing
+libc - but thats probably a bigger task.
+
+Richard.
+
+--
+Richard Guenther <richard.guenther at uni-tuebingen.de>
+WWW: http://www.tat.physik.uni-tuebingen.de/~rguenth/
+
+
+
+From rguenth at tat.physik.uni-tuebingen.de  Mon Dec 16 15:55:52 2002
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Mon, 16 Dec 2002 16:55:52 +0100 (CET)
+Subject: InlineEvaluator implementation question
+Message-ID: <Pine.LNX.4.33.0212161645500.10722-100000@bellatrix.tat.physik.uni-tuebingen.de>
+
+Hi!
+
+Does anyone remember why we create copies of the LHS and RHS inside
+the KernelEvaluator<InlineKernelTag>::evaluate() methods (within
+ReductionEvaluator<InlineKernelTag>::evaluate() is similar code)? I.e.
+there is code like
+
+  template<class LHS,class Op,class RHS,class Domain>
+  inline static void evaluate(const LHS& lhs,const Op& op,const RHS& rhs,
+                              const Domain& domain,WrappedInt<1>)
+  {
+    CTAssert(Domain::unitStride);
+    PAssert(domain[0].first() == 0);
+    LHS localLHS(lhs);
+    RHS localRHS(rhs);
+    int e0 = domain[0].length();
+    for (int i0=0; i0<e0; ++i0)
+      op(localLHS(i0),localRHS.read(i0));
+  }
+
+instead of
+
+  template<class LHS,class Op,class RHS,class Domain>
+  inline static void evaluate(const LHS& lhs,const Op& op,const RHS& rhs,
+                              const Domain& domain,WrappedInt<1>)
+  {
+    CTAssert(Domain::unitStride);
+    PAssert(domain[0].first() == 0);
+    int e0 = domain[0].length();
+    for (int i0=0; i0<e0; ++i0)
+      op(lhs(i0),rhs.read(i0));
+  }
+
+Changing the evaluate methods to not copy saves some code size but doesnt
+seem to affect performance (checked gcc3.0 only).
+
+Richard.
+
+--
+Richard Guenther <richard.guenther at uni-tuebingen.de>
+WWW: http://www.tat.physik.uni-tuebingen.de/~rguenth/
+
+
+
+From mark at codesourcery.com  Mon Dec 16 16:30:55 2002
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Mon, 16 Dec 2002 08:30:55 -0800
+Subject: InlineEvaluator implementation question
+In-Reply-To: <Pine.LNX.4.33.0212161645500.10722-100000@bellatrix.tat.physik.uni-tuebingen.de>
+Message-ID: <108530000.1040056255@warlock.codesourcery.com>
+
+
+
+--On Monday, December 16, 2002 04:55:52 PM +0100 Richard Guenther 
+<rguenth at tat.physik.uni-tuebingen.de> wrote:
+
+> Hi!
+>
+> Does anyone remember why we create copies of the LHS and RHS inside
+> the KernelEvaluator<InlineKernelTag>::evaluate() methods (within
+> ReductionEvaluator<InlineKernelTag>::evaluate() is similar code)? I.e.
+> there is code like
+>
+>   template<class LHS,class Op,class RHS,class Domain>
+>   inline static void evaluate(const LHS& lhs,const Op& op,const RHS& rhs,
+>                               const Domain& domain,WrappedInt<1>)
+>   {
+>     CTAssert(Domain::unitStride);
+>     PAssert(domain[0].first() == 0);
+>     LHS localLHS(lhs);
+>     RHS localRHS(rhs);
+>     int e0 = domain[0].length();
+>     for (int i0=0; i0<e0; ++i0)
+>       op(localLHS(i0),localRHS.read(i0));
+>   }
+
+I'm pretty sure that this copy allowed some C++ compilers (KCC) to see
+that some parts of lhs/rhs were loop-invariant, and then hoist references
+to those fields out of the loop.  (The compiler can see that nothing can
+modify localLHS; it's less obvious to it that nothing can modify rhs
+since it doesn't know what else might point to that location.)
+
+-- 
+Mark Mitchell                mark at codesourcery.com
+CodeSourcery, LLC            http://www.codesourcery.com
+
+
+From rguenth at tat.physik.uni-tuebingen.de  Mon Dec 16 19:38:11 2002
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Mon, 16 Dec 2002 20:38:11 +0100 (CET)
+Subject: [pooma-dev] Re: InlineEvaluator implementation question
+In-Reply-To: <108530000.1040056255@warlock.codesourcery.com>
+Message-ID: <Pine.LNX.4.44.0212162035260.1000-100000@goofy>
+
+On Mon, 16 Dec 2002, Mark Mitchell wrote:
+
+> --On Monday, December 16, 2002 04:55:52 PM +0100 Richard Guenther
+> <rguenth at tat.physik.uni-tuebingen.de> wrote:
+>
+> > Hi!
+> >
+> > Does anyone remember why we create copies of the LHS and RHS inside
+> > the KernelEvaluator<InlineKernelTag>::evaluate() methods (within
+> > ReductionEvaluator<InlineKernelTag>::evaluate() is similar code)? I.e.
+> > there is code like
+> >
+> >   template<class LHS,class Op,class RHS,class Domain>
+> >   inline static void evaluate(const LHS& lhs,const Op& op,const RHS& rhs,
+> >                               const Domain& domain,WrappedInt<1>)
+> >   {
+> >     CTAssert(Domain::unitStride);
+> >     PAssert(domain[0].first() == 0);
+> >     LHS localLHS(lhs);
+> >     RHS localRHS(rhs);
+> >     int e0 = domain[0].length();
+> >     for (int i0=0; i0<e0; ++i0)
+> >       op(localLHS(i0),localRHS.read(i0));
+> >   }
+>
+> I'm pretty sure that this copy allowed some C++ compilers (KCC) to see
+> that some parts of lhs/rhs were loop-invariant, and then hoist references
+> to those fields out of the loop.  (The compiler can see that nothing can
+> modify localLHS; it's less obvious to it that nothing can modify rhs
+> since it doesn't know what else might point to that location.)
+
+Hmm - as both, lhs and rhs are declared const, isnt this enough to tell
+the compiler? Or has the compiler to assume every function call can have
+a side-effect on any (but local) variable?
+
+Well, at least gcc creates worse (larger) code with copying than without.
+
+Richard.
+
+
+
+From oldham at codesourcery.com  Mon Dec 16 19:42:27 2002
+From: oldham at codesourcery.com (Jeffrey Oldham)
+Date: Mon, 16 Dec 2002 11:42:27 -0800
+Subject: [pooma-dev] Re: InlineEvaluator implementation question
+References: <Pine.LNX.4.44.0212162035260.1000-100000@goofy>
+Message-ID: <3DFE2CA3.60004@codesourcery.com>
+
+Richard Guenther wrote:
+> On Mon, 16 Dec 2002, Mark Mitchell wrote:
+> 
+> 
+>>--On Monday, December 16, 2002 04:55:52 PM +0100 Richard Guenther
+>><rguenth at tat.physik.uni-tuebingen.de> wrote:
+>>
+>>
+>>>Hi!
+>>>
+>>>Does anyone remember why we create copies of the LHS and RHS inside
+>>>the KernelEvaluator<InlineKernelTag>::evaluate() methods (within
+>>>ReductionEvaluator<InlineKernelTag>::evaluate() is similar code)? I.e.
+>>>there is code like
+>>>
+>>>  template<class LHS,class Op,class RHS,class Domain>
+>>>  inline static void evaluate(const LHS& lhs,const Op& op,const RHS& rhs,
+>>>                              const Domain& domain,WrappedInt<1>)
+>>>  {
+>>>    CTAssert(Domain::unitStride);
+>>>    PAssert(domain[0].first() == 0);
+>>>    LHS localLHS(lhs);
+>>>    RHS localRHS(rhs);
+>>>    int e0 = domain[0].length();
+>>>    for (int i0=0; i0<e0; ++i0)
+>>>      op(localLHS(i0),localRHS.read(i0));
+>>>  }
+>>
+>>I'm pretty sure that this copy allowed some C++ compilers (KCC) to see
+>>that some parts of lhs/rhs were loop-invariant, and then hoist references
+>>to those fields out of the loop.  (The compiler can see that nothing can
+>>modify localLHS; it's less obvious to it that nothing can modify rhs
+>>since it doesn't know what else might point to that location.)
+> 
+> 
+> Hmm - as both, lhs and rhs are declared const, isnt this enough to tell
+> the compiler? Or has the compiler to assume every function call can have
+> a side-effect on any (but local) variable?
+> 
+> Well, at least gcc creates worse (larger) code with copying than without.
+
+Using the copies measurably reduced execution time in previous experiments.
+
+Thanks,
+Jeffrey D. Oldham
+oldham at codesourcery.com
+
+
+
+From mark at codesourcery.com  Mon Dec 16 19:42:17 2002
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Mon, 16 Dec 2002 11:42:17 -0800
+Subject: [pooma-dev] Re: InlineEvaluator implementation question
+In-Reply-To: <Pine.LNX.4.44.0212162035260.1000-100000@goofy>
+Message-ID: <19870000.1040067737@warlock.codesourcery.com>
+
+
+> Hmm - as both, lhs and rhs are declared const, isnt this enough to tell
+> the compiler? Or has the compiler to assume every function call can have
+> a side-effect on any (but local) variable?
+
+This is the classic "pointer aliasing" problem for compilers; the
+modifications to lhs (via the write operatin in the loop) might,
+from the compiler's point of view, change the rhs.  The copies allow
+a good compiler to tell that this cannot happen.
+
+> Well, at least gcc creates worse (larger) code with copying than without.
+
+Yes; GCC has a ways to go in this regard.
+
+-- 
+Mark Mitchell                mark at codesourcery.com
+CodeSourcery, LLC            http://www.codesourcery.com
+
+
+From rguenth at tat.physik.uni-tuebingen.de  Mon Dec 16 20:00:35 2002
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Mon, 16 Dec 2002 21:00:35 +0100 (CET)
+Subject: [pooma-dev] Re: InlineEvaluator implementation question
+In-Reply-To: <19870000.1040067737@warlock.codesourcery.com>
+Message-ID: <Pine.LNX.4.44.0212162057120.1000-100000@goofy>
+
+On Mon, 16 Dec 2002, Mark Mitchell wrote:
+
+>
+> > Hmm - as both, lhs and rhs are declared const, isnt this enough to tell
+> > the compiler? Or has the compiler to assume every function call can have
+> > a side-effect on any (but local) variable?
+>
+> This is the classic "pointer aliasing" problem for compilers; the
+> modifications to lhs (via the write operatin in the loop) might,
+> from the compiler's point of view, change the rhs.  The copies allow
+> a good compiler to tell that this cannot happen.
+
+Ah, of course. But only change the data (via the engines data pointer
+which is aliasing), the lhs/rhs objects themselves usually will not alias
+as they are of different types (in nearly all cases). So the copy doesnt
+help the aliasing problem?
+
+> > Well, at least gcc creates worse (larger) code with copying than without.
+>
+> Yes; GCC has a ways to go in this regard.
+>
+> --
+> Mark Mitchell                mark at codesourcery.com
+> CodeSourcery, LLC            http://www.codesourcery.com
+>
+
+
+
+From mark at codesourcery.com  Mon Dec 16 20:37:07 2002
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Mon, 16 Dec 2002 12:37:07 -0800
+Subject: [pooma-dev] Re: InlineEvaluator implementation question
+In-Reply-To: <Pine.LNX.4.44.0212162057120.1000-100000@goofy>
+Message-ID: <27250000.1040071027@warlock.codesourcery.com>
+
+
+
+--On Monday, December 16, 2002 09:00:35 PM +0100 Richard Guenther 
+<rguenth at tat.physik.uni-tuebingen.de> wrote:
+
+> On Mon, 16 Dec 2002, Mark Mitchell wrote:
+>
+>>
+>> > Hmm - as both, lhs and rhs are declared const, isnt this enough to tell
+>> > the compiler? Or has the compiler to assume every function call can
+>> > have a side-effect on any (but local) variable?
+>>
+>> This is the classic "pointer aliasing" problem for compilers; the
+>> modifications to lhs (via the write operatin in the loop) might,
+>> from the compiler's point of view, change the rhs.  The copies allow
+>> a good compiler to tell that this cannot happen.
+>
+> Ah, of course. But only change the data (via the engines data pointer
+> which is aliasing), the lhs/rhs objects themselves usually will not alias
+> as they are of different types (in nearly all cases). So the copy doesnt
+> help the aliasing problem?
+
+It's more complicated than that, and different compilers handle it
+differently.  It's true that typed-based aliasing helps -- but it
+doesn't always help enough.
+
+That code is there because Jeffrey and I sat and stared at KCC output for
+a week -- we know it helps for that compiler.
+
+Unfortunately, I'm going to have a hard time reconstructing our full
+analysis.
+
+-- 
+Mark Mitchell                mark at codesourcery.com
+CodeSourcery, LLC            http://www.codesourcery.com
+
+
+From rguenth at tat.physik.uni-tuebingen.de  Mon Dec 16 21:59:57 2002
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Mon, 16 Dec 2002 22:59:57 +0100 (CET)
+Subject: [PATCH] Add missing global iterators for DomainLayout
+Message-ID: <Pine.LNX.4.44.0212162254370.1000-100000@goofy>
+
+The following patch allows one to iterate over all global patches
+(for serial IO) even if only using a DomainLayout.
+
+Tested on serial powerpc-unknown-linux-gnu with (obviously) no
+regressions.
+
+2002Dec16  Richard Guenther <richard.guenther at uni-tuebingen.de>
+
+        * Layout/DomainLayout.h: added beginGlobal(), endGlobal()
+        iterators, sizeGlobal() as in LayoutBase
+
+--- r2/src/Layout/DomainLayout.h	2001-08-30 03:15:27.000000000 +0200
++++ pooma-bugfixes/r2/src/Layout/DomainLayout.h	2002-12-16 20:57:53.000000000 +0100
+@@ -339,6 +339,29 @@
+       return size();
+     }
+
++  // Return begin and end iterators for the list of all global subdomains
++
++  inline iterator beginGlobal()
++    {
++      return begin();
++    }
++  inline iterator endGlobal()
++    {
++      return end();
++    }
++  inline const_iterator beginGlobal() const
++    {
++      return begin();
++    }
++  inline const_iterator endGlobal() const
++    {
++      return end();
++    }
++  inline long sizeGlobal() const
++    {
++      return size();
++    }
++
+   // Return begin and end iterators for the list of all remote subdomains
+
+   inline iterator beginRemote()
+
+
+
+From rguenth at tat.physik.uni-tuebingen.de  Tue Dec 17 10:22:51 2002
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Tue, 17 Dec 2002 11:22:51 +0100 (CET)
+Subject: PatchFunction and Remote engines
+Message-ID: <Pine.LNX.4.33.0212171115150.10722-100000@bellatrix.tat.physik.uni-tuebingen.de>
+
+Hi!
+
+The PatchFunction (resp. the PatchEvaluator<>) seem to miss
+specializations for RemoteMultiPatchEvaluatorTag and
+RemoteSinglePatchEvaluatorTag - can they be implemented in
+the sense of MultiArgEvaluator.h? Or is there a better way
+to do stencil like operations on multiple arguments than
+using PatchFunction?
+
+I.e. I'd like to do
+
+  new = stencil(old, related1, related2);
+
+and am currently investigating to try using
+
+  PatchFunction<>(new, old, related1, related2);
+
+
+Thanks for any hints, Richard.
+
+Btw. - how do PatchFunction and MultiArgEvaluator (ScalarCode) relate?
+They seem to be similar in functionality.
+
+--
+Richard Guenther <richard.guenther at uni-tuebingen.de>
+WWW: http://www.tat.physik.uni-tuebingen.de/~rguenth/
+
+
+
+From rguenth at tat.physik.uni-tuebingen.de  Tue Dec 17 18:59:26 2002
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Tue, 17 Dec 2002 19:59:26 +0100 (CET)
+Subject: [PATCH] Fix compile warnings
+Message-ID: <Pine.LNX.4.44.0212171949580.561-100000@goofy>
+
+The following patch fixes compiler warnings mainly due to missing
+typename keywords and misordered initializers. Some unused variables
+are removed, too.
+
+Tested on serial powerpc-linux by compiling and running the complete
+testsuite.
+
+2002Dec17  Richard Guenther <richard.guenther at uni-tuebingen.de>
+
+        * Utilities/algorithms.h: kill unused variable.
+        Utilities/Benchmark.cmpl.cpp: likewise.
+        Field/tests/NearestNeighbors.cpp: added missing typenames.
+        Field/FieldCentering.cmpl.cpp: likewise.
+        Evaluator/PatchFunction.h: likewise.
+        Engine/tests/brickviewbase_test2.cpp: likewise.
+        Engine/tests/brickviewbase_test3.cpp: likewise.
+        Engine/tests/brickviewbase_test4.cpp: likewise.
+        Utilities/Inform.cmpl.cpp: re-ordered initializers to
+        match declaration order.
+        Layout/SparseTileLayout.cpp: likewise.
+        Layout/Node.h: likewise.
+        Layout/LayoutBase.h: likewise.
+        Layout/DynamicLayout.h: likewise.
+        Evaluator/SimpleIntersector.h: likewise.
+        Evaluator/PatchKernel.h: likewise.
+        Engine/ViewEngine.h: likewise.
+        Engine/Stencil.h: likewise.
+        Engine/RemoteDynamicEngine.h: likewise.
+        Engine/DynamicEngine.cpp: likewise.
+        Connect/Connector.h: likewise.
+
+diff -Nru a/r2/src/Connect/Connector.h b/r2/src/Connect/Connector.h
+--- a/r2/src/Connect/Connector.h	Tue Dec 17 19:45:14 2002
++++ b/r2/src/Connect/Connector.h	Tue Dec 17 19:45:14 2002
+@@ -150,7 +150,7 @@
+   // and the transfer mode.
+
+   ConnectorBase(const char *conname, ConnectionBase &c, int mode)
+-    : name_m(conname), connection_m(&c), mode_m(mode)
++    : connection_m(&c), name_m(conname), mode_m(mode)
+     {
+       PAssert(mode == ConnectionBase::in ||
+ 	      mode == ConnectionBase::out ||
+diff -Nru a/r2/src/Engine/DynamicEngine.cpp b/r2/src/Engine/DynamicEngine.cpp
+--- a/r2/src/Engine/DynamicEngine.cpp	Tue Dec 17 19:45:14 2002
++++ b/r2/src/Engine/DynamicEngine.cpp	Tue Dec 17 19:45:14 2002
+@@ -486,8 +486,8 @@
+ template <class T>
+ Engine<1,T,DynamicView>::
+ Engine(const Engine<1,T,Dynamic> &engine, const Interval<1> &dom)
+-: data_m(engine.dataBlock(), dom.first() - engine.domain().first()),
+-  domain_m(Interval<1>(dom.length())),
++: domain_m(Interval<1>(dom.length())),
++  data_m(engine.dataBlock(), dom.first() - engine.domain().first()),
+   stride_m(1)
+ {
+   // The engine's data pointer should be at the beginning.
+diff -Nru a/r2/src/Engine/RemoteDynamicEngine.h b/r2/src/Engine/RemoteDynamicEngine.h
+--- a/r2/src/Engine/RemoteDynamicEngine.h	Tue Dec 17 19:45:14 2002
++++ b/r2/src/Engine/RemoteDynamicEngine.h	Tue Dec 17 19:45:14 2002
+@@ -616,8 +616,8 @@
+ Engine<1, T, Remote<Dynamic> >::
+ Engine(const Engine<1, T, Remote<Dynamic> > &modelEngine)
+   : owningContext_m(modelEngine.owningContext()),
+-    domain_m(modelEngine.domain()),
+-    localEnginePtr_m(modelEngine.localEnginePtr_m)
++    localEnginePtr_m(modelEngine.localEnginePtr_m),
++    domain_m(modelEngine.domain())
+ {
+ }
+
+@@ -626,8 +626,8 @@
+ Engine(const Engine<1, T, Remote<Dynamic> > &modelEngine,
+        const EngineConstructTag &)
+   : owningContext_m(modelEngine.owningContext()),
+-    domain_m(modelEngine.domain()),
+-    localEnginePtr_m(modelEngine.localEnginePtr_m)
++    localEnginePtr_m(modelEngine.localEnginePtr_m),
++    domain_m(modelEngine.domain())
+ {
+ }
+
+diff -Nru a/r2/src/Engine/Stencil.h b/r2/src/Engine/Stencil.h
+--- a/r2/src/Engine/Stencil.h	Tue Dec 17 19:45:14 2002
++++ b/r2/src/Engine/Stencil.h	Tue Dec 17 19:45:14 2002
+@@ -779,12 +779,13 @@
+   enum { dimensions = Intersect::dimensions };
+
+   StencilIntersector(const This_t &model)
+-    : intersector_m(model.intersector_m),
+-      domain_m(model.domain_m)
++    : domain_m(model.domain_m),
++      intersector_m(model.intersector_m)
+   { }
+
+   StencilIntersector(const Interval<Dim> &domain, const Intersect &intersect)
+-    : intersector_m(intersect), domain_m(domain)
++    : domain_m(domain),
++      intersector_m(intersect)
+   { }
+
+   This_t &operator=(const This_t &model)
+diff -Nru a/r2/src/Engine/ViewEngine.h b/r2/src/Engine/ViewEngine.h
+--- a/r2/src/Engine/ViewEngine.h	Tue Dec 17 19:45:14 2002
++++ b/r2/src/Engine/ViewEngine.h	Tue Dec 17 19:45:14 2002
+@@ -476,7 +476,7 @@
+
+   ViewIntersector(const ViewIndexer<ViewD1, ViewD2> &indexer,
+ 		  const Intersector<Dim> &model)
+-    : indexer_m(indexer), pdata_m(model.data())
++    : pdata_m(model.data()), indexer_m(indexer)
+   {
+     // We haven't yet implemented the case where the view doesn't have
+     // the same dimensions as the original expression
+diff -Nru a/r2/src/Engine/tests/brickviewbase_test2.cpp b/r2/src/Engine/tests/brickviewbase_test2.cpp
+--- a/r2/src/Engine/tests/brickviewbase_test2.cpp	Tue Dec 17 19:45:14 2002
++++ b/r2/src/Engine/tests/brickviewbase_test2.cpp	Tue Dec 17 19:45:14 2002
+@@ -89,7 +89,7 @@
+   // simply a matter of summing up the offset in a particular
+   // direction multiplied by the stride in that direction.
+
+-  typedef Interval<Dim>::iterator Iterator_t;
++  typedef typename Interval<Dim>::iterator Iterator_t;
+
+   Iterator_t ploc = AV.domain().begin();
+   while (ploc != AV.domain().end())
+diff -Nru a/r2/src/Engine/tests/brickviewbase_test3.cpp b/r2/src/Engine/tests/brickviewbase_test3.cpp
+--- a/r2/src/Engine/tests/brickviewbase_test3.cpp	Tue Dec 17 19:45:14 2002
++++ b/r2/src/Engine/tests/brickviewbase_test3.cpp	Tue Dec 17 19:45:14 2002
+@@ -89,7 +89,7 @@
+   // simply a matter of summing up the offset in a particular
+   // direction multiplied by the stride in that direction.
+
+-  typedef Interval<Dim>::iterator Iterator_t;
++  typedef typename Interval<Dim>::iterator Iterator_t;
+
+   Iterator_t ploc = AV.domain().begin();
+   while (ploc != AV.domain().end())
+diff -Nru a/r2/src/Engine/tests/brickviewbase_test4.cpp b/r2/src/Engine/tests/brickviewbase_test4.cpp
+--- a/r2/src/Engine/tests/brickviewbase_test4.cpp	Tue Dec 17 19:45:14 2002
++++ b/r2/src/Engine/tests/brickviewbase_test4.cpp	Tue Dec 17 19:45:14 2002
+@@ -89,7 +89,7 @@
+   // simply a matter of summing up the offset in a particular
+   // direction multiplied by the stride in that direction.
+
+-  typedef Interval<Dim>::iterator Iterator_t;
++  typedef typename Interval<Dim>::iterator Iterator_t;
+
+   Iterator_t ploc = AV.domain().begin();
+   while (ploc != AV.domain().end())
+diff -Nru a/r2/src/Evaluator/PatchFunction.h b/r2/src/Evaluator/PatchFunction.h
+--- a/r2/src/Evaluator/PatchFunction.h	Tue Dec 17 19:45:14 2002
++++ b/r2/src/Evaluator/PatchFunction.h	Tue Dec 17 19:45:14 2002
+@@ -298,7 +298,7 @@
+
+     expressionApply(a1, IntersectorTag<Inter_t>(inter));
+
+-    Inter_t::const_iterator i = inter.begin();
++    typename Inter_t::const_iterator i = inter.begin();
+     while (i != inter.end())
+     {
+       PatchEvaluator<SinglePatchEvaluatorTag>().evaluate(a1(*i),function);
+@@ -323,7 +323,7 @@
+     expressionApply(a1, IntersectorTag<Inter_t>(inter));
+     expressionApply(a2, IntersectorTag<Inter_t>(inter));
+
+-    Inter_t::const_iterator i = inter.begin();
++    typename Inter_t::const_iterator i = inter.begin();
+     while (i != inter.end())
+     {
+       PatchEvaluator<SinglePatchEvaluatorTag>().evaluate2(a1(*i), a2(*i),
+@@ -344,7 +344,7 @@
+     expressionApply(a2, IntersectorTag<Inter_t>(inter));
+     expressionApply(a3, IntersectorTag<Inter_t>(inter));
+
+-    Inter_t::const_iterator i = inter.begin();
++    typename Inter_t::const_iterator i = inter.begin();
+     while (i != inter.end())
+     {
+       PatchEvaluator<SinglePatchEvaluatorTag>().
+diff -Nru a/r2/src/Evaluator/PatchKernel.h b/r2/src/Evaluator/PatchKernel.h
+--- a/r2/src/Evaluator/PatchKernel.h	Tue Dec 17 19:45:14 2002
++++ b/r2/src/Evaluator/PatchKernel.h	Tue Dec 17 19:45:14 2002
+@@ -70,7 +70,7 @@
+ public:
+   PatchKernel(const A1& a1, const Function& function, bool write = true)
+     : Pooma::Iterate_t(Pooma::scheduler()),
+-      a1_m(a1), function_m(function), write_m(write)
++      write_m(write), a1_m(a1), function_m(function)
+   {
+     DataObjectRequest<BlockAffinity> getAffinity;
+     hintAffinity(engineFunctor(a1_m.engine(),getAffinity));
+@@ -237,8 +237,8 @@
+   ParticleKernel(const Array& array, const Function& function, int patchID,
+ 		  bool write1)
+     : Pooma::Iterate_t(Pooma::scheduler()),
+-      array_m(array), function_m(function), patchID_m(patchID),
+-      write1_m(write1)
++      write1_m(write1), array_m(array), function_m(function),
++      patchID_m(patchID)
+   {
+     hintAffinity(engineFunctor(array_m.engine(),
+ 			       DataObjectRequest<BlockAffinity>()));
+diff -Nru a/r2/src/Evaluator/SimpleIntersector.h b/r2/src/Evaluator/SimpleIntersector.h
+--- a/r2/src/Evaluator/SimpleIntersector.h	Tue Dec 17 19:45:14 2002
++++ b/r2/src/Evaluator/SimpleIntersector.h	Tue Dec 17 19:45:14 2002
+@@ -86,7 +86,7 @@
+   // Default constructor is trival.
+
+   inline SimpleIntersectorData(const Interval<Dim> &domain)
+-    : domain_m(domain), seenFirst_m(false)
++    : seenFirst_m(false), domain_m(domain)
+   {
+   }
+
+diff -Nru a/r2/src/Evaluator/tests/ReductionTest4.cpp b/r2/src/Evaluator/tests/ReductionTest4.cpp
+--- a/r2/src/Evaluator/tests/ReductionTest4.cpp	Tue Dec 17 19:45:14 2002
++++ b/r2/src/Evaluator/tests/ReductionTest4.cpp	Tue Dec 17 19:45:14 2002
+@@ -45,8 +45,8 @@
+
+   Loc<1> blocks2(2), blocks5(5);
+   UniformGridPartition<1> partition2(blocks2), partition5(blocks5);
+-  UniformGridLayout<1> layout2(Interval<1>(10), partition2),
+-    layout5(Interval<1>(10), partition5);
++  UniformGridLayout<1> layout2(Interval<1>(10), partition2, DistributedTag()),
++    layout5(Interval<1>(10), partition5, DistributedTag());
+   Array<1, int, MultiPatch<UniformTag, Remote<Brick> > > a(layout2),
+     b(layout5);
+   Array<1, int> c(10);
+diff -Nru a/r2/src/Field/FieldCentering.cmpl.cpp b/r2/src/Field/FieldCentering.cmpl.cpp
+--- a/r2/src/Field/FieldCentering.cmpl.cpp	Tue Dec 17 19:45:14 2002
++++ b/r2/src/Field/FieldCentering.cmpl.cpp	Tue Dec 17 19:45:14 2002
+@@ -40,10 +40,10 @@
+ CanonicalCentering<Dim>::CanonicalCentering()
+ {
+   Centering<Dim> centering;
+-  Centering<Dim>::Orientation orientation;
+-  Centering<Dim>::Position position;
+-  Centering<Dim>::Orientations orientations[Dim][2];
+-  Centering<Dim>::Positions positions[Dim][2];
++  typename Centering<Dim>::Orientation orientation;
++  typename Centering<Dim>::Position position;
++  typename Centering<Dim>::Orientations orientations[Dim][2];
++  typename Centering<Dim>::Positions positions[Dim][2];
+   enum { x = 0, y, z };
+
+   // Create the tables if necessary.
+diff -Nru a/r2/src/Field/tests/NearestNeighbors.cpp b/r2/src/Field/tests/NearestNeighbors.cpp
+--- a/r2/src/Field/tests/NearestNeighbors.cpp	Tue Dec 17 19:45:14 2002
++++ b/r2/src/Field/tests/NearestNeighbors.cpp	Tue Dec 17 19:45:14 2002
+@@ -44,7 +44,7 @@
+ checkForFieldOffset(const FieldOffsetList<Dim> &lst,
+ 		    const FieldOffset<Dim> &offset)
+ {
+-  for (FieldOffsetList<Dim>::size_type index = 0;
++  for (typename FieldOffsetList<Dim>::size_type index = 0;
+        index < lst.size();
+        ++index)
+     if (lst[index] == offset)
+@@ -124,8 +124,8 @@
+ 	      const Centering<Dim> &inputCentering,
+ 	      const Centering<Dim> &outputCentering)
+ {
+-  typedef std::vector<FieldOffsetList<Dim> >::size_type nn_size_type;
+-  typedef FieldOffsetList<Dim>::size_type fol_size_type;
++  typedef typename std::vector<FieldOffsetList<Dim> >::size_type nn_size_type;
++  typedef typename FieldOffsetList<Dim>::size_type fol_size_type;
+   PInsist(nn.size() == outputCentering.size(),
+ 	  "Nearest neighbors and output centering must have the same length.");
+
+diff -Nru a/r2/src/Layout/DynamicLayout.h b/r2/src/Layout/DynamicLayout.h
+--- a/r2/src/Layout/DynamicLayout.h	Tue Dec 17 19:45:14 2002
++++ b/r2/src/Layout/DynamicLayout.h	Tue Dec 17 19:45:14 2002
+@@ -1402,10 +1402,10 @@
+   template <class DT>
+   inline DynamicLayoutViewData(const Layout_t &layout,
+                                const Domain<1, DT> &dom)
+-  : layout_m(layout),
++  : id_m(Unique::get()),
++    layout_m(layout),
+     domain_m(dom.unwrap().length()),
+-    baseDomain_m(dom.unwrap()),
+-    id_m(Unique::get()),
++    baseDomain_m(dom.unwrap()),
+     subdomainsComputed_m(false)
+   {
+     // The layout passed in must be initialized.
+@@ -1420,9 +1420,9 @@
+
+   template <class DT>
+   DynamicLayoutViewData(const ViewLayout_t &layout, const Domain<1, DT> &dom)
+-  : layout_m(layout.baseLayout()),
++  : id_m(Unique::get()),
++    layout_m(layout.baseLayout()),
+     domain_m(dom.unwrap().length()),
+-    id_m(Unique::get()),
+     subdomainsComputed_m(false)
+   {
+     // The layout passed in must be initialized.
+diff -Nru a/r2/src/Layout/LayoutBase.h b/r2/src/Layout/LayoutBase.h
+--- a/r2/src/Layout/LayoutBase.h	Tue Dec 17 19:45:14 2002
++++ b/r2/src/Layout/LayoutBase.h	Tue Dec 17 19:45:14 2002
+@@ -820,8 +820,8 @@
+
+   template <class DT>
+   LayoutBaseViewData(const L &layout, const SliceDomain<DT> &dom)
+-  : layout_m(layout), indexer_m(dom),
+-    id_m(Unique::get()), subdomainsComputed_m(false)
++  : id_m(Unique::get()), layout_m(layout), indexer_m(dom),
++    subdomainsComputed_m(false)
+   {
+     // We are a slice and our dimensions must be consistent with us
+     // and the layout we're being spawned by.
+@@ -863,11 +863,12 @@
+ 		      GuardLayers_t ig,
+ 		      GuardLayers_t eg)
+   :
++    id_m(Unique::get()),
+     layout_m(layout),
+-    indexer_m(indexer, dom),
+-    id_m(Unique::get()), subdomainsComputed_m(false),
+     internalGuards_m(ig),
+-    externalGuards_m(eg)
++    externalGuards_m(eg),
++    indexer_m(indexer, dom),
++    subdomainsComputed_m(false)
+   {
+     // The layout passed in must be initialized.
+
+@@ -886,9 +887,9 @@
+ 		      const LV &viewLayout,
+ 		      const Indexer_t indexer,
+ 		      const SliceDomain<DT> &dom)
+-     : layout_m(layout),
++     : id_m(Unique::get()), layout_m(layout),
+      indexer_m(indexer),
+-     id_m(Unique::get()), subdomainsComputed_m(false)
++     subdomainsComputed_m(false)
+   {
+     // Our dimensionality must be the same as the slice's reduced
+     // dimensionality.
+diff -Nru a/r2/src/Layout/Node.h b/r2/src/Layout/Node.h
+--- a/r2/src/Layout/Node.h	Tue Dec 17 19:45:14 2002
++++ b/r2/src/Layout/Node.h	Tue Dec 17 19:45:14 2002
+@@ -109,7 +109,7 @@
+   // The default constructor initializing to empty domains.
+
+   Node()
+-    : context_m(0), global_m(0), local_m(-1), affinity_m(-1)
++    : local_m(-1), global_m(0), context_m(0), affinity_m(-1)
+   {
+   }
+
+diff -Nru a/r2/src/Layout/SparseTileLayout.cpp b/r2/src/Layout/SparseTileLayout.cpp
+--- a/r2/src/Layout/SparseTileLayout.cpp	Tue Dec 17 19:45:14 2002
++++ b/r2/src/Layout/SparseTileLayout.cpp	Tue Dec 17 19:45:14 2002
+@@ -705,7 +705,6 @@
+
+   for( a = dmti.first ;a != dmti.second; ++a)
+     {
+-      int globalID = (*a).first;
+       int nodeListIndex = (*a).second;
+
+       outDomain =  intersect(a.domain(), fulld);
+@@ -760,7 +759,6 @@
+
+   for( a = dmti.first ;a != dmti.second; ++a)
+     {
+-      int globalID = (*a).first;
+       int nodeListIndex = (*a).second;
+
+
+@@ -858,9 +856,8 @@
+
+ template<int Dim>
+ SparseTileLayout<Dim>::SparseTileLayout()
+-  : Observable<This_t>(*this),
+-    LayoutBase<Dim,SparseTileLayoutData<Dim> >
+-              (new LayoutData_t())
++  : LayoutBase<Dim,SparseTileLayoutData<Dim> >(new LayoutData_t()),
++  Observable<This_t>(*this)
+ {
+   pdata_m->attach(*this);
+ }
+@@ -869,9 +866,9 @@
+ SparseTileLayout<Dim>::SparseTileLayout(Domain_t & boundingbox,
+ 					const PatchList_t &patchlist,
+ 					const ReplicatedTag &)
+-  : Observable<This_t>(*this),
+-   LayoutBase<Dim,SparseTileLayoutData<Dim> >
+-             (new LayoutData_t(boundingbox,patchlist,LocalMapper<Dim>()))
++  : LayoutBase<Dim,SparseTileLayoutData<Dim> >
++    (new LayoutData_t(boundingbox,patchlist,LocalMapper<Dim>())),
++  Observable<This_t>(*this)
+ {
+   pdata_m->attach(*this);
+ }
+@@ -880,9 +877,9 @@
+ SparseTileLayout<Dim>::SparseTileLayout(Domain_t & boundingbox,
+ 					const PatchList_t &patchlist,
+ 					const DistributedTag &)
+-  : Observable<This_t>(*this),
+-   LayoutBase<Dim,SparseTileLayoutData<Dim> >
+-             (new LayoutData_t(boundingbox,patchlist,DistributedMapper<Dim>()))
++  : LayoutBase<Dim,SparseTileLayoutData<Dim> >
++    (new LayoutData_t(boundingbox,patchlist,DistributedMapper<Dim>())),
++  Observable<This_t>(*this)
+ {
+   pdata_m->attach(*this);
+ }
+@@ -891,20 +888,20 @@
+ 					const GuardLayers_t & globalGL,
+ 					const PatchList_t  & patchlist,
+ 					const DistributedTag &)
+-  : Observable<This_t>(*this),
+-    LayoutBase<Dim,SparseTileLayoutData<Dim> >
+-              (new LayoutData_t(boundingbox,globalGL,patchlist,DistributedMapper<Dim>()))
++  : LayoutBase<Dim,SparseTileLayoutData<Dim> >
++  (new LayoutData_t(boundingbox,globalGL,patchlist,DistributedMapper<Dim>())),
++  Observable<This_t>(*this)
+ {
+   pdata_m->attach(*this);
+ }
+-   template<int Dim>
++template<int Dim>
+ SparseTileLayout<Dim>::SparseTileLayout(const Domain_t &boundingbox,
+ 					const GuardLayers_t & globalGL,
+ 					const PatchList_t  & patchlist,
+ 					const ReplicatedTag &)
+-  : Observable<This_t>(*this),
+-    LayoutBase<Dim,SparseTileLayoutData<Dim> >
+-              (new LayoutData_t(boundingbox,globalGL,patchlist,LocalMapper<Dim>()))
++  : LayoutBase<Dim,SparseTileLayoutData<Dim> >
++  (new LayoutData_t(boundingbox,globalGL,patchlist,LocalMapper<Dim>())),
++  Observable<This_t>(*this)
+ {
+   pdata_m->attach(*this);
+ }
+@@ -915,13 +912,13 @@
+ 		   const GuardLayers_t & externalGL,
+ 		   const PatchList_t  & patchlist,
+ 		   const DistributedTag &)
+-  : Observable<This_t>(*this),
+-    LayoutBase<Dim,SparseTileLayoutData<Dim> >
++  : LayoutBase<Dim,SparseTileLayoutData<Dim> >
+               (new LayoutData_t(boundingbox,
+ 				internalGL,
+ 				externalGL,
+ 				patchlist,
+-				DistributedMapper<Dim>()))
++				DistributedMapper<Dim>())),
++  Observable<This_t>(*this)
+ {
+   pdata_m->attach(*this);
+ }
+@@ -932,22 +929,22 @@
+ 		   const GuardLayers_t & externalGL,
+ 		   const PatchList_t  & patchlist,
+ 		   const ReplicatedTag &)
+-  : Observable<This_t>(*this),
+-    LayoutBase<Dim,SparseTileLayoutData<Dim> >
++  : LayoutBase<Dim,SparseTileLayoutData<Dim> >
+               (new LayoutData_t(boundingbox,
+ 				internalGL,
+ 				externalGL,
+ 				patchlist,
+-				LocalMapper<Dim>()))
++				LocalMapper<Dim>())),
++  Observable<This_t>(*this)
+ {
+   pdata_m->attach(*this);
+ }
+
+ template<int Dim>
+ SparseTileLayout<Dim>::SparseTileLayout(const Domain_t &boundingbox)
+-  : Observable<This_t>(*this),
+-    LayoutBase<Dim,SparseTileLayoutData<Dim> >
+-              (new LayoutData_t(boundingbox))
++  : LayoutBase<Dim,SparseTileLayoutData<Dim> >
++    (new LayoutData_t(boundingbox)),
++  Observable<This_t>(*this)
+ {
+   pdata_m->attach(*this);
+ }
+@@ -955,9 +952,9 @@
+  template<int Dim>
+ SparseTileLayout<Dim>:: SparseTileLayout(const Domain_t &boundingbox,
+ 		   const GuardLayers_t & globalGL)
+-  : Observable<This_t>(*this),
+-   LayoutBase<Dim,SparseTileLayoutData<Dim> >
+-             (new LayoutData_t(boundingbox,globalGL))
++  : LayoutBase<Dim,SparseTileLayoutData<Dim> >
++    (new LayoutData_t(boundingbox,globalGL)),
++  Observable<This_t>(*this)
+ {
+   pdata_m->attach(*this);
+ }
+@@ -966,9 +963,9 @@
+ SparseTileLayout<Dim>::SparseTileLayout(const Domain_t &boundingbox,
+ 					const GuardLayers_t & internalGL,
+ 					const GuardLayers_t & externalGL)
+-  : Observable<This_t>(*this),
+-    LayoutBase<Dim,SparseTileLayoutData<Dim> >
+-              (new LayoutData_t(boundingbox,internalGL,externalGL))
++  : LayoutBase<Dim,SparseTileLayoutData<Dim> >
++    (new LayoutData_t(boundingbox,internalGL,externalGL)),
++  Observable<This_t>(*this)
+ {
+   pdata_m->attach(*this);
+ }
+@@ -979,9 +976,9 @@
+ SparseTileLayout<Dim>::SparseTileLayout(const Domain_t &bbox,
+ 					const Partitioner &gpar,
+ 					const DistributedTag &)
+-  : Observable<This_t>(*this),
+-   LayoutBase<Dim,SparseTileLayoutData<Dim> >
+-             (new LayoutData_t(bbox, gpar,DistributedMapper<Dim>(gpar)) )
++  : LayoutBase<Dim,SparseTileLayoutData<Dim> >
++    (new LayoutData_t(bbox, gpar,DistributedMapper<Dim>(gpar))),
++  Observable<This_t>(*this)
+ {
+   pdata_m->attach(*this);
+ }
+@@ -990,9 +987,9 @@
+ SparseTileLayout<Dim>::SparseTileLayout(const Domain_t &bbox,
+ 					const Partitioner &gpar,
+ 					const ReplicatedTag &)
+-  : Observable<This_t>(*this),
+-   LayoutBase<Dim,SparseTileLayoutData<Dim> >
+-             (new LayoutData_t(bbox, gpar,LocalMapper<Dim>()) )
++  : LayoutBase<Dim,SparseTileLayoutData<Dim> >
++    (new LayoutData_t(bbox, gpar,LocalMapper<Dim>())),
++  Observable<This_t>(*this)
+ {
+   pdata_m->attach(*this);
+ }
+@@ -1001,8 +998,8 @@
+
+ template<int Dim>
+ SparseTileLayout<Dim>::SparseTileLayout(const This_t &model)
+-  : Observable<This_t>(*this),
+-    LayoutBase<Dim,SparseTileLayoutData<Dim> >(model.pdata_m)
++  : LayoutBase<Dim,SparseTileLayoutData<Dim> >(model.pdata_m),
++  Observable<This_t>(*this)
+ {
+    pdata_m->attach(*this);
+ }
+diff -Nru a/r2/src/Utilities/Benchmark.cmpl.cpp b/r2/src/Utilities/Benchmark.cmpl.cpp
+--- a/r2/src/Utilities/Benchmark.cmpl.cpp	Tue Dec 17 19:45:14 2002
++++ b/r2/src/Utilities/Benchmark.cmpl.cpp	Tue Dec 17 19:45:14 2002
+@@ -317,7 +317,7 @@
+       Pooma::perr << "Variation " << variation_m << std::endl;
+       Pooma::perr.setPrefix("  ");
+     }
+-  int i = 0, size = impls_m.size();
++  int size = impls_m.size();
+   for (int i = 0; i < size; ++i)
+     {
+       Pooma::perr << i << "\t  " << impls_m[i]->type();
+diff -Nru a/r2/src/Utilities/Inform.cmpl.cpp b/r2/src/Utilities/Inform.cmpl.cpp
+--- a/r2/src/Utilities/Inform.cmpl.cpp	Tue Dec 17 19:45:14 2002
++++ b/r2/src/Utilities/Inform.cmpl.cpp	Tue Dec 17 19:45:14 2002
+@@ -77,14 +77,14 @@
+ public:
+   // Constructor which takes the ostream to use and the destination context
+   InformStream(std::ostream *s, Inform::Context_t oc)
+-    : stream_m(s), outputContext_m(oc), close_m(false), level_m(0)
++    : stream_m(s), close_m(false), outputContext_m(oc), level_m(0)
+   {
+     PAssert(s != 0);
+   }
+
+   // Constructor which takes a filename, and opens a file.
+   InformStream(const char *fname, int mode, Inform::Context_t oc)
+-    : stream_m(0), outputContext_m(oc), close_m(true), level_m(0)
++    : stream_m(0), close_m(true), outputContext_m(oc), level_m(0)
+   {
+     PAssert(fname != 0);
+     PAssert(mode == Inform::out || mode == Inform::app);
+@@ -239,8 +239,8 @@
+ //-----------------------------------------------------------------------------
+
+ Inform::Inform(const char *prefix, Context_t outputContext)
+-  : prefix_m(""), level_m(0), message_m(0), nextID_m(0), buffer_m(0),
+-    outputContext_m(outputContext)
++  : prefix_m(""), outputContext_m(outputContext), level_m(0),
++    message_m(0), buffer_m(0), nextID_m(0)
+ {
+   // Create a connection to cout
+   open(outputContext);
+@@ -264,8 +264,8 @@
+
+ Inform::Inform(const char *prefix, const char *fname, int writemode,
+ 	       Context_t outputContext)
+-  : prefix_m(""), level_m(0), message_m(0), nextID_m(0), buffer_m(0),
+-    outputContext_m(outputContext)
++  : prefix_m(""), outputContext_m(outputContext), level_m(0),
++    message_m(0), buffer_m(0), nextID_m(0)
+ {
+   // Create a connection to the given file
+   open(fname, writemode, outputContext);
+@@ -284,8 +284,8 @@
+
+ Inform::Inform(const char *prefix, std::ostream &outstream,
+                Context_t outputContext)
+-  : prefix_m(""), level_m(0), message_m(0), nextID_m(0), buffer_m(0),
+-    outputContext_m(outputContext)
++  : prefix_m(""), outputContext_m(outputContext), level_m(0),
++    message_m(0), buffer_m(0), nextID_m(0)
+ {
+   // Create a connection to the given file
+   open(outstream, outputContext);
+diff -Nru a/r2/src/Utilities/Pool.cmpl.cpp b/r2/src/Utilities/Pool.cmpl.cpp
+--- a/r2/src/Utilities/Pool.cmpl.cpp	Tue Dec 17 19:45:14 2002
++++ b/r2/src/Utilities/Pool.cmpl.cpp	Tue Dec 17 19:45:14 2002
+@@ -41,14 +41,14 @@
+
+ Pool::Pool(size_t sz)
+   :
++  // The first one. Start out with nothing there.
++  head_m(0),
+   // The number of outstanding allocs.
+   outstandingAllocs_m(0),
+   // The size of each block
+   bsize_m(roundToAlign(sz)),
+   // Number of blocks
+-  nblock_m(blocksInPage(bsize_m)),
+-  // The first one. Start out with nothing there.
+-  head_m(0)
++  nblock_m(blocksInPage(bsize_m))
+ {
+ }
+
+@@ -60,14 +60,14 @@
+
+ Pool::Pool()
+   :
++  // The first one. Start out with nothing there.
++  head_m(0),
+   // The number of outstanding allocs.
+   outstandingAllocs_m(0),
+   // The size of each block
+   bsize_m(0),
+   // Number of blocks
+-  nblock_m(0),
+-  // The first one. Start out with nothing there.
+-  head_m(0)
++  nblock_m(0)
+ {
+ }
+
+diff -Nru a/r2/src/Utilities/algorithms.h b/r2/src/Utilities/algorithms.h
+--- a/r2/src/Utilities/algorithms.h	Tue Dec 17 19:45:14 2002
++++ b/r2/src/Utilities/algorithms.h	Tue Dec 17 19:45:14 2002
+@@ -144,23 +144,25 @@
+   typedef typename DataTraits_t::difference_type  Diff_t;
+ #endif
+   typedef typename DataTraits_t::value_type       Value_t;
+-  const Diff_t len = end - begin;
+
+   // Comment out this test for long data block and just use std::copy
+   // because std::advance does not work correctly with MS header files
+   // when tmp is not a pointer or a std::iterator type.
++#if 0
++  const Diff_t len = end - begin;
+
+-  //  if (len < 100)
++  if (len < 100)
+     return std::copy(begin, end, dest);
+-  /*
+-    else
++  else
+     {
+       memmove(&(*dest), &(*begin), len*sizeof(Value_t));
+       It2 tmp(dest);
+       std::advance(tmp,len);
+       return tmp;
+     }
+-  */
++#else
++  return std::copy(begin, end, dest);
++#endif
+ }
+
+ //-----------------------------------------------------------------------------
+
+
+
+From rguenth at tat.physik.uni-tuebingen.de  Tue Dec 17 20:41:01 2002
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Tue, 17 Dec 2002 21:41:01 +0100 (CET)
+Subject: [RFC] tests/makefile changes
+Message-ID: <Pine.LNX.4.44.0212172119540.561-100000@goofy>
+
+Hi!
+
+I have patches to change all current tests/makefile to something like
+the following (example from Evaluator/tests):
+
+PROJECT_ROOT = $(shell cd ../../..; pwd)
+include $(PROJECT_ROOT)/config/head.mk
+
+PASS=APP
+
+TESTS = compressibleTest1 evaluatorTest1 evaluatorTest3 \
+        ReductionTest1 ReductionTest2 ReductionTest3 ReductionTest4
+
+default:: $(TESTS)
+
+.PHONY: $(TESTS)
+
+$(TESTS):: %: $(ODIR)/%
+        $(MPIRUN) $(ODIR)/$@ $(TSTOPTS) 1>$@.out 2>&1 || $(MPIRUN) $(ODIR)/$@ -v $(TSTOPTS)
+
+$(ODIR)/%: $(ODIR)/%.o
+        $(LinkToSuite)
+
+include $(SHARED_ROOT)/tail.mk
+
+
+This canonicalizes rules and calling with MPIRUN and TSTOPTS variables, a
+global make check can then just $(MAKE) -C directory on the individual
+test dirs. Does this look sane? Any objections to changing the makefiles
+this way, or even better ideas?
+
+Richard.
+
+
+
+From rguenth at tat.physik.uni-tuebingen.de  Wed Dec 18 22:19:58 2002
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Wed, 18 Dec 2002 23:19:58 +0100 (CET)
+Subject: [PATCH] fix cheetah_root
+Message-ID: <Pine.LNX.4.44.0212182315570.953-100000@goofy>
+
+Hi!
+
+The following patch fixes the CHEETAH_ROOT variable to match
+the one in the suite file. Tested by using the makefile stub
+generated with an installed pooma/cheetah.
+
+2002Dec18  Richard Guenther <richard.guenther at uni-tuebingen.de>
+
+	* configure: fix CHEETAH_ROOT variable.
+
+--- configure	6 Oct 2001 00:18:59 -0000	1.105
++++ configure	18 Dec 2002 21:58:37 -0000
+@@ -2239,7 +2239,7 @@
+   if ($cheetah)
+     {
+       print MFILE "### settings needed to use CHEETAH for communication\n";
+-      print MFILE "CHEETAH_ROOT          = $cheetah_dir\n";
++      print MFILE "CHEETAH_ROOT          = $cheetah_dir/$cheetah_arch\n";
+       print MFILE "include \$(CHEETAH_ROOT)/$cheetah_lib_subdir/$cheetah_include_makefile\n";
+       print MFILE "\n";
+     }
+
+
+
+From rguenth at tat.physik.uni-tuebingen.de  Wed Dec 18 22:41:00 2002
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Wed, 18 Dec 2002 23:41:00 +0100 (CET)
+Subject: [PATCH] fix Doof3d benchmark
+Message-ID: <Pine.LNX.4.44.0212182339460.953-100000@goofy>
+
+
+2002Dec18  Richard Guenther <richard.guenther at uni-tuebingen.de>
+
+        * benchmarks/Doof3d/Doof3dInP2.h: add Pooma::blockAndEvaluate()
+	before accessing result.
+
+--- benchmarks/Doof3d/Doof3dInP2.h	4 Jul 2000 05:06:39 -0000	1.16
++++ benchmarks/Doof3d/Doof3dInP2.h	18 Dec 2002 22:20:15 -0000
+@@ -94,6 +94,8 @@
+       a_m(I-1,J,  K+1) + a_m(I,  J,  K+1) + a_m(I+1,J,  K+1) +
+       a_m(I-1,J+1,K+1) + a_m(I,  J+1,K+1) + a_m(I+1,J+1,K+1));
+
++    Pooma::blockAndEvaluate();
++
+     // save results for checking
+     check_m = b_m(n_m / 2, n_m / 2, n_m / 2);
+   }
+@@ -213,6 +215,8 @@
+   void run() {
+     // apply diffusion stencil
+     b_m(I,J, K) = stencil_m( a_m );
++
++    Pooma::blockAndEvaluate();
+
+     // save results for checking
+     check_m = b_m(n_m/2,n_m/2,n_m/2);
+
+
+
+From rguenth at tat.physik.uni-tuebingen.de  Wed Dec 18 22:46:03 2002
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Wed, 18 Dec 2002 23:46:03 +0100 (CET)
+Subject: [PATCH] fix FieldEngine::makeOwnCopy()
+Message-ID: <Pine.LNX.4.44.0212182342500.953-100000@goofy>
+
+
+The following patch tries to make FieldEngine::makeOwnCopy() compile
+and work. Tested by compiling and running some application code.
+
+I dont really know if this is the right fix - but it appearantly
+works for me. Maybe we need a testcase.
+
+
+2002Dec18  Richard Guenther <richard.guenther at uni-tuebingen.de>
+
+	* Field/FieldEngine/FieldEngine.h (makeOwnCopy): fix non-compiling
+	code.
+
+--- src/Field/FieldEngine/FieldEngine.h	1 Jul 2002 22:25:53 -0000	1.3
++++ src/Field/FieldEngine/FieldEngine.h	18 Dec 2002 22:41:20 -0000
+@@ -587,6 +587,10 @@
+   {
+     PAssert(data_m.isValid());
+
++    // Remember data_m as model
++
++    RefCountedBlockPtr<Data_t> model = data_m;
++
+     // Create a blank slate of engines:
+
+     data_m = RefCountedBlockPtr<Data_t>();
+@@ -600,7 +604,7 @@
+     {
+       for (int c = 0; c < centering_m.size(); ++ c)
+       {
+-        data(m, c) = model.data(m, c);
++        data(m, c) = model[m*stride_m + c];
+         data(m, c).engine().makeOwnCopy();
+         data(m, c).relations().makeOwnCopy(s);
+       }
+
+
+
+From rguenth at tat.physik.uni-tuebingen.de  Thu Dec 19 13:30:13 2002
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Thu, 19 Dec 2002 14:30:13 +0100 (CET)
+Subject: Using gcc3.0 to compile POOMA
+Message-ID: <Pine.LNX.4.33.0212191427410.10722-100000@bellatrix.tat.physik.uni-tuebingen.de>
+
+Hi!
+
+I was just using gcc3.0 (CVS head) for POOMA and now noticed that
+even at -O the NearestNeighbors test from the Field testsuite is
+failing (works at -O0). Also gcc3.0 contains loop optimizer bugs
+that cause lots of regressions if -funroll-loops is used. So I
+recommend people _not_ to use gcc3.0 to do anything with POOMA.
+
+I'll check whats up with gcc3.2, but that seems to be confused by
+either my binutils or my libc version.
+
+Richard.
+
+--
+Richard Guenther <richard.guenther at uni-tuebingen.de>
+WWW: http://www.tat.physik.uni-tuebingen.de/~rguenth/
+
+
+
+From rguenth at tat.physik.uni-tuebingen.de  Thu Dec 19 15:59:57 2002
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Thu, 19 Dec 2002 16:59:57 +0100 (CET)
+Subject: [pooma-dev] Using gcc3.0 to compile POOMA
+In-Reply-To: <Pine.LNX.4.33.0212191427410.10722-100000@bellatrix.tat.physik.uni-tuebingen.de>
+Message-ID: <Pine.LNX.4.33.0212191655460.10722-100000@bellatrix.tat.physik.uni-tuebingen.de>
+
+On Thu, 19 Dec 2002, Richard Guenther wrote:
+
+> Hi!
+>
+> I was just using gcc3.0 (CVS head) for POOMA and now noticed that
+> even at -O the NearestNeighbors test from the Field testsuite is
+> failing (works at -O0).
+
+Same problem with current gcc3.2 CVS (-O2 -fomit-frame-pointer
+-march=athlon) :/
+
+With gcc3.3 CVS and the same flags the test segfaults...
+
+Oh well ;)
+
+> Also gcc3.0 contains loop optimizer bugs
+> that cause lots of regressions if -funroll-loops is used. So I
+> recommend people _not_ to use gcc3.0 to do anything with POOMA.
+>
+> I'll check whats up with gcc3.2, but that seems to be confused by
+> either my binutils or my libc version.
+>
+> Richard.
+>
+> --
+> Richard Guenther <richard.guenther at uni-tuebingen.de>
+> WWW: http://www.tat.physik.uni-tuebingen.de/~rguenth/
+>
+
+--
+Richard Guenther <richard.guenther at uni-tuebingen.de>
+WWW: http://www.tat.physik.uni-tuebingen.de/~rguenth/
+
+
+
+From Ajaykumar.Poondla at gold.sdsmt.edu  Wed Dec 25 08:40:48 2002
+From: Ajaykumar.Poondla at gold.sdsmt.edu (Ajay Kumar Poondla)
+Date: Wed, 25 Dec 2002 01:40:48 -0700
+Subject: regarding POOMA
+Message-ID: <1040805648.3e096f1050aa3@gold.sdsmt.edu>
+
+hi,
+   I am a graduate student in CS at SDSM&T. I just started with POOMA. 
+Currently we are having a beowulf cluster at Mathematics and Computer Science 
+Department. I downloaded the POOMA-2.3.0. I am trying to compile a simple hello 
+world program. I was not successful. Could you please give me the directions 
+for doing so.
+
+thanks,
+
+with regards,
+Ajay
+ 
+ 
+
+
+
+
+-------------------------------------------------
+This mail sent through IMP: http://horde.org/imp/
+
+
+From rguenth at tat.physik.uni-tuebingen.de  Sat Dec 28 18:56:35 2002
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Sat, 28 Dec 2002 19:56:35 +0100 (CET)
+Subject: [pooma-dev] regarding POOMA
+In-Reply-To: <1040805648.3e096f1050aa3@gold.sdsmt.edu>
+Message-ID: <Pine.LNX.4.44.0212281954470.505-100000@goofy>
+
+On Wed, 25 Dec 2002, Ajay Kumar Poondla wrote:
+
+> hi,
+>    I am a graduate student in CS at SDSM&T. I just started with POOMA.
+> Currently we are having a beowulf cluster at Mathematics and Computer Science
+> Department. I downloaded the POOMA-2.3.0. I am trying to compile a simple hello
+> world program. I was not successful. Could you please give me the directions
+> for doing so.
+
+You need to elaborate more what is going wrong. For a start you may want
+to look at the various examples in the examples/ subdirectory.
+
+Also you may want to use pooma-2.4.0 rather than 2.3.0, available from
+http://www.codesourcery.com/pooma/pooma_download
+
+Richard.
+
+
+

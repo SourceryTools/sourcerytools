@@ -1,0 +1,252 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [vsipl++] Matlab IO
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20Matlab%20IO&In-Reply-To=%3C4492F8B3.5040305%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000530.html">
+   <LINK REL="Next"  HREF="000521.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[vsipl++] Matlab IO</H1>
+    <B>Jules Bergmann</B> 
+    <A HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20Matlab%20IO&In-Reply-To=%3C4492F8B3.5040305%40codesourcery.com%3E"
+       TITLE="[vsipl++] Matlab IO">jules at codesourcery.com
+       </A><BR>
+    <I>Fri Jun 16 18:30:11 UTC 2006</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000530.html">[vsipl++] Matlab IO
+</A></li>
+        <LI>Next message: <A HREF="000521.html">[patch] Dispatch fixes
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#524">[ date ]</a>
+              <a href="thread.html#524">[ thread ]</a>
+              <a href="subject.html#524">[ subject ]</a>
+              <a href="author.html#524">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Assem Salama wrote:
+&gt;<i> Everyone,
+</I>&gt;<i>  I apologize about last e-mail, I forgot to include layout.hpp in the 
+</I>&gt;<i> patch.
+</I>&gt;<i> 
+</I>
+Assem,
+
+This looks good.  Three small comments:
+
+  - delete old get_real_ptr/get_imag_ptr functions
+  - make new get_real_ptr/get_imag_ptr functions static members of
+    Storage (and use storage_type::get_real_ptr(...) to access them).
+  - change type of 'sz' from int32_t to uint32_t.
+
+Also, please coordinate with Stefan, I believe he had some 
+questions/comments for you on this patch.
+
+Once the items above are fixed and Stefan's happy, please check it in.
+
+				thanks,
+				-- Jules
+
+&gt;<i> +  
+</I>
+You should delete these now that they've been moved to layout.hpp:
+
+&gt;<i> +  template&lt;typename T&gt;
+</I>&gt;<i> +  inline T* get_real_ptr(std::pair&lt;T*,T*&gt; ptr)
+</I>&gt;<i> +    { return ptr.first; }
+</I>&gt;<i> +  template&lt;typename T&gt;
+</I>&gt;<i> +  inline T* get_real_ptr(T* ptr)
+</I>&gt;<i> +    { return ptr; }
+</I>&gt;<i> +
+</I>&gt;<i> +  template&lt;typename T&gt;
+</I>&gt;<i> +  inline T* get_imag_ptr(std::pair&lt;T*,T*&gt; ptr)
+</I>&gt;<i> +    { return ptr.second; }
+</I>&gt;<i> +  template&lt;typename T&gt;
+</I>&gt;<i> +  inline T* get_imag_ptr(T* ptr)
+</I>&gt;<i> +    { return ptr; }
+</I>&gt;<i> +
+</I>&gt;<i> +
+</I>&gt;<i> +
+</I>
+&gt;<i> +}
+</I>&gt;<i> +// operator to write a view to a matlab file
+</I>&gt;<i> +template &lt;typename T,
+</I>&gt;<i> +          typename Block0,
+</I>&gt;<i> +	  template &lt;typename,typename&gt; class const_View&gt;
+</I>&gt;<i> +inline
+</I>&gt;<i> +std::ostream&amp;
+</I>&gt;<i> +operator&lt;&lt;(
+</I>&gt;<i> +  std::ostream&amp;                                       o,
+</I>&gt;<i> +  Matlab_bin_formatter&lt;const_View&lt;T,Block0&gt; &gt; const&amp;  mbf)
+</I>&gt;<i> +{
+</I>&gt;<i> +  typedef typename vsip::impl::Scalar_of&lt;T&gt;::type scalar_type;
+</I>&gt;<i> +  matlab::data_element temp_data_element;
+</I>&gt;<i> +  int32_t    sz;
+</I>
+Since 'sz' is going into a uint32_t (m_view.header.size), it should be a 
+  unit32_t too.
+
+...
+
+&gt;<i> +  m_view.header.size = sz;
+</I>&gt;<i> +
+</I>&gt;<i> +  o.write(reinterpret_cast&lt;char*&gt;(&amp;m_view),sizeof(m_view));
+</I>&gt;<i> +
+</I>&gt;<i> +  // write array name
+</I>&gt;<i> +  o.write(mbf.name.c_str(),mbf.name.length());
+</I>&gt;<i> +  // pad
+</I>&gt;<i> +  { 
+</I>&gt;<i> +    char c=0;
+</I>&gt;<i> +    for(vsip::length_type i=0;i&lt;((8-mbf.name.length())&amp;0x7);i++) o.write(&amp;c,1);
+</I>&gt;<i> +  }
+</I>&gt;<i> +
+</I>&gt;<i> +  // write data
+</I>&gt;<i> +  {
+</I>&gt;<i> +  
+</I>&gt;<i> +    // make sure we don't need a copy if we use Ext data
+</I>&gt;<i> +    if(vsip::impl::Ext_data_cost&lt;Block0,
+</I>&gt;<i> +      typename matlab::Matlab_desired_LP&lt;const_View&gt;::type &gt;::value==0)
+</I>&gt;<i> +    {
+</I>&gt;<i> +      vsip::impl::Ext_data&lt;Block0,
+</I>&gt;<i> +	                 typename matlab::Matlab_desired_LP&lt;const_View&gt;::type &gt;
+</I>&gt;<i> +	     
+</I>&gt;<i> +	       m_ext(mbf.view.block());
+</I>&gt;<i> +
+</I>&gt;<i> +      typedef typename vsip::impl::Ext_data&lt;Block0,
+</I>&gt;<i> +	typename matlab::Matlab_desired_LP&lt;const_View&gt;::type &gt;::storage_type
+</I>&gt;<i> +		storage_type;
+</I>&gt;<i> +
+</I>&gt;<i> +      storage_type tmp_storage;
+</I>&gt;<i> +
+</I>&gt;<i> +      temp_data_element.type = matlab::Matlab_header_traits&lt;sizeof(scalar_type),
+</I>&gt;<i> +                  std::numeric_limits&lt;scalar_type&gt;::is_signed,
+</I>&gt;<i> +                  std::numeric_limits&lt;scalar_type&gt;::is_integer&gt;::value_type;
+</I>&gt;<i> +
+</I>&gt;<i> +      temp_data_element.size = num_points*sizeof(scalar_type);
+</I>&gt;<i> +      for(int i=0;i&lt;=vsip::impl::Is_complex&lt;T&gt;::value;i++)
+</I>&gt;<i> +      {
+</I>&gt;<i> +        o.write(reinterpret_cast&lt;char*&gt;(&amp;temp_data_element),
+</I>&gt;<i> +                  sizeof(temp_data_element));
+</I>&gt;<i> +        if(i==0) o.write(reinterpret_cast&lt;char*&gt;
+</I>&gt;<i> +             (tmp_storage.get_real_ptr(m_ext.data())),
+</I>
+Once you make get_real_ptr a static member of Storage, you should do:
+
+		storage_type::get_real_ptr(m_ext.data())),
+
+&gt;<i> +                  num_points*sizeof(scalar_type));
+</I>&gt;<i> +        else o.write(reinterpret_cast&lt;char*&gt;
+</I>&gt;<i> +             (tmp_storage.get_imag_ptr(m_ext.data())),
+</I>&gt;<i> +                  num_points*sizeof(scalar_type));
+</I>&gt;<i> +      }
+</I>&gt;<i> +    }
+</I>&gt;<i> +    else
+</I>&gt;<i> +    {
+</I>&gt;<i> +      typedef matlab::Subview_helper&lt;const_View&lt;T,Block0&gt; &gt; subview;
+</I>&gt;<i> +      typedef typename subview::realview_type r_v;
+</I>&gt;<i> +      typedef typename subview::imagview_type i_v;
+</I>&gt;<i> +      typedef typename vsip::impl::Scalar_of&lt;T&gt;::type sT;
+</I>&gt;<i> +
+</I>&gt;<i> +      // conventional way
+</I>&gt;<i> +      temp_data_element.type = matlab::Matlab_header_traits&lt;sizeof(scalar_type),
+</I>&gt;<i> +                  std::numeric_limits&lt;scalar_type&gt;::is_signed,
+</I>&gt;<i> +                  std::numeric_limits&lt;scalar_type&gt;::is_integer&gt;::value_type;
+</I>&gt;<i> +
+</I>&gt;<i> +      temp_data_element.size = num_points*sizeof(scalar_type);
+</I>&gt;<i> +      for(int i=0;i&lt;=vsip::impl::Is_complex&lt;T&gt;::value;i++)
+</I>&gt;<i> +      {
+</I>&gt;<i> +        o.write(reinterpret_cast&lt;char*&gt;(&amp;temp_data_element),
+</I>&gt;<i> +                  sizeof(temp_data_element));
+</I>&gt;<i> +        if(i==0) matlab::write&lt;sT,r_v&gt;(o,subview::real(mbf.view));
+</I>&gt;<i> +        else     matlab::write&lt;sT,i_v&gt;(o,subview::imag(mbf.view));
+</I>&gt;<i> +      }
+</I>&gt;<i> +    }
+</I>&gt;<i> +  }
+</I>&gt;<i> +
+</I>&gt;<i> +  return o;
+</I>&gt;<i> +}
+</I>
+
+&gt;<i>  
+</I>&gt;<i>  #endif // VSIP_CSL_OUTPUT_HPP
+</I>&gt;<i> Index: layout.hpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: /home/cvs/Repository/vpp/src/vsip/impl/layout.hpp,v
+</I>&gt;<i> retrieving revision 1.23
+</I>&gt;<i> diff -u -r1.23 layout.hpp
+</I>&gt;<i> --- layout.hpp	14 May 2006 02:21:04 -0000	1.23
+</I>&gt;<i> +++ layout.hpp	16 Jun 2006 10:21:06 -0000
+</I>&gt;<i> @@ -1089,6 +1089,12 @@
+</I>&gt;<i>  
+</I>&gt;<i>    static type offset(type ptr, stride_type stride)
+</I>&gt;<i>    { return ptr + stride; }
+</I>
+These should be static member functions:
+
+&gt;<i> +
+</I>&gt;<i> +  T* get_real_ptr(type ptr)
+</I>&gt;<i> +    { return ptr; }
+</I>&gt;<i> +  T* get_imag_ptr(type ptr)
+</I>&gt;<i> +    { return ptr; }
+</I>&gt;<i> +
+</I>&gt;<i>  };
+</I>&gt;<i>  
+</I>&gt;<i>  
+</I>&gt;<i> @@ -1147,6 +1153,12 @@
+</I>&gt;<i>  
+</I>&gt;<i>    static type offset(type ptr, stride_type stride)
+</I>&gt;<i>    { return type(ptr.first + stride, ptr.second + stride); }
+</I>&gt;<i> +
+</I>
+Likewise:
+
+&gt;<i> +  T* get_real_ptr(type ptr)
+</I>&gt;<i> +    { return ptr.first; }
+</I>&gt;<i> +  T* get_imag_ptr(type ptr)
+</I>&gt;<i> +    { return ptr.second; }
+</I>&gt;<i> +
+</I>&gt;<i>  };
+</I>&gt;<i>  
+</I>&gt;<i>  
+</I>
+
+-- 
+Jules Bergmann
+CodeSourcery
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">jules at codesourcery.com</A>
+(650) 331-3385 x705
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000530.html">[vsipl++] Matlab IO
+</A></li>
+	<LI>Next message: <A HREF="000521.html">[patch] Dispatch fixes
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#524">[ date ]</a>
+              <a href="thread.html#524">[ thread ]</a>
+              <a href="subject.html#524">[ subject ]</a>
+              <a href="author.html#524">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">More information about the vsipl++
+mailing list</a><br>
+</body></html>

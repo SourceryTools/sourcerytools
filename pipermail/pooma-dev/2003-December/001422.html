@@ -1,0 +1,311 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [PATCH] Clean up testsuite wrt messaging support
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20Clean%20up%20testsuite%20wrt%20messaging%20support&In-Reply-To=%3CPine.LNX.4.58.0312182011020.621%40goofy%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001421.html">
+   <LINK REL="Next"  HREF="001424.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[PATCH] Clean up testsuite wrt messaging support</H1>
+    <B>Richard Guenther</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20Clean%20up%20testsuite%20wrt%20messaging%20support&In-Reply-To=%3CPine.LNX.4.58.0312182011020.621%40goofy%3E"
+       TITLE="[PATCH] Clean up testsuite wrt messaging support">rguenth at tat.physik.uni-tuebingen.de
+       </A><BR>
+    <I>Thu Dec 18 19:15:00 UTC 2003</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001421.html">[pooma-dev] Merging native MPI parallelization
+</A></li>
+        <LI>Next message: <A HREF="001424.html">[pooma-dev] [PATCH] Clean up testsuite wrt messaging support
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1422">[ date ]</a>
+              <a href="thread.html#1422">[ thread ]</a>
+              <a href="subject.html#1422">[ subject ]</a>
+              <a href="author.html#1422">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Hi!
+
+The following fall out during testing the new and old messaging support.
+They mostly fix testsuite deadlocks due to missing finalization or enable
+the test for serial runs, too.
+
+Ok?
+
+Richard.
+
+
+2003Dec18  Richard Guenther &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">richard.guenther at uni-tuebingen.de</A>&gt;
+
+	* Array/tests/array_test28.cpp: run always, be verbose about
+	what is failing.
+	Domain/tests/IteratorPairDomainTest1.cpp: properly finalize.
+	Domain/tests/IteratorPairDomainTest2.cpp: likewise.
+	Domain/tests/domaintest.cpp: likewise.
+	Domain/tests/indirectionlist_test1.cpp: likewise.
+	Evaluator/tests/ReductionTest4.cpp: run always, block at the
+	right place.
+	Pooma/tests/pabort.cpp: try to properly finalize.
+
+Index: Array/tests/array_test28.cpp
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/Array/tests/array_test28.cpp,v
+retrieving revision 1.3
+diff -u -u -r1.3 array_test28.cpp
+--- Array/tests/array_test28.cpp	21 Nov 2003 17:35:16 -0000	1.3
++++ Array/tests/array_test28.cpp	18 Dec 2003 19:03:41 -0000
+@@ -49,8 +49,6 @@
+   Pooma::initialize(argc, argv);
+   Pooma::Tester tester(argc, argv);
+
+-#if POOMA_CHEETAH
+-
+   Interval&lt;3&gt; I3(6,6,6);
+   Array&lt;3&gt; a0(I3), b0(I3);
+   Array&lt;3, double, Remote&lt;CompressibleBrick&gt; &gt; a1(I3), b1(I3);
+@@ -68,34 +66,48 @@
+   b1 = 1.0;
+   b2 = 2.0;
+   b3 = 3.0;
+-
+-  a0 = b0; tester.check(all(a0 == 0.0));
+-  a1 = b1; tester.check(all(a1 == 1.0));
+-  a2 = b2; tester.check(all(a2 == 2.0));
+-  a3 = b3; tester.check(all(a3 == 3.0));
+-
+-  a0 = b1; tester.check(all(a0 == 1.0));
+-  a1 = b2; tester.check(all(a1 == 2.0));
+-  a2 = b3; tester.check(all(a2 == 3.0));
+-  a3 = b0; tester.check(all(a3 == 0.0));
+-
+-  a0 = b2; tester.check(all(a0 == 2.0));
+-  a1 = b3; tester.check(all(a1 == 3.0));
+-  a2 = b0; tester.check(all(a2 == 0.0));
+-  a3 = b1; tester.check(all(a3 == 1.0));
+-
+-  a0 = b3; tester.check(all(a0 == 3.0));
+-  a1 = b0; tester.check(all(a1 == 0.0));
+-  a2 = b1; tester.check(all(a2 == 1.0));
+-  a3 = b2; tester.check(all(a3 == 2.0));
++
++  a0 = b0; tester.check(&quot;Brick                      = Brick\n\t&quot;,
++			all(a0 == 0.0));
++  a1 = b1; tester.check(&quot;Remote&lt;CBrick&gt;             = Remote&lt;CBrick&gt;\n\t&quot;,
++			all(a1 == 1.0));
++  a2 = b2; tester.check(&quot;MultiPatch&lt;Remote&lt;Brick&gt;&gt;  = MultiPatch&lt;Remote&lt;Brick&gt;&gt;\n\t&quot;,
++			all(a2 == 2.0));
++  a3 = b3; tester.check(&quot;MultiPatch&lt;Remote&lt;CBrick&gt;&gt; = MultiPatch&lt;Remote&lt;CBrick&gt;&gt;\n\t&quot;,
++			all(a3 == 3.0));
++
++  a0 = b1; tester.check(&quot;Brick                      = Remote&lt;CBrick&gt;\n\t&quot;,
++			all(a0 == 1.0));
++  a1 = b2; tester.check(&quot;Remote&lt;CBrick&gt;             = MultiPatch&lt;Remote&lt;Brick&gt;&gt;\n\t&quot;,
++			all(a1 == 2.0));
++  a2 = b3; tester.check(&quot;MultiPatch&lt;Remote&lt;Brick&gt;&gt;  = MultiPatch&lt;Remote&lt;CBrick&gt;&gt;\n\t&quot;,
++			all(a2 == 3.0));
++  a3 = b0; tester.check(&quot;MultiPatch&lt;Remote&lt;CBrick&gt;&gt; = Brick\n\t&quot;,
++			all(a3 == 0.0));
++
++  a0 = b2; tester.check(&quot;Brick                      = MultiPatch&lt;Remote&lt;Brick&gt;&gt;\n\t&quot;,
++			all(a0 == 2.0));
++  a1 = b3; tester.check(&quot;Remote&lt;CBrick&gt;             = MultiPatch&lt;Remote&lt;CBrick&gt;&gt;\n\t&quot;,
++			all(a1 == 3.0));
++  a2 = b0; tester.check(&quot;MultiPatch&lt;Remote&lt;Brick&gt;&gt;  = Brick\n\t&quot;,
++			all(a2 == 0.0));
++  a3 = b1; tester.check(&quot;MultiPatch&lt;Remote&lt;CBrick&gt;&gt; = Remote&lt;CBrick&gt;\n\t&quot;,
++			all(a3 == 1.0));
++
++  a0 = b3; tester.check(&quot;Brick                      = MultiPatch&lt;Remote&lt;CBrick&gt;&gt;\n\t&quot;,
++			all(a0 == 3.0));
++  a1 = b0; tester.check(&quot;Remote&lt;CBrick&gt;             = Brick\n\t&quot;,
++			all(a1 == 0.0));
++  a2 = b1; tester.check(&quot;MultiPatch&lt;Remote&lt;Brick&gt;&gt;  = Remote&lt;CBrick&gt;\n\t&quot;,
++			all(a2 == 1.0));
++  a3 = b2; tester.check(&quot;MultiPatch&lt;Remote&lt;CBrick&gt;&gt; = MultiPatch&lt;Remote&lt;Brick&gt;&gt;\n\t&quot;,
++			all(a3 == 2.0));
+
+   Array&lt;3, Vector&lt;2, double&gt;, Remote&lt;Brick&gt; &gt; a4(I3);
+
+   a4 = Vector&lt;2, double&gt;(1.0, 2.0);
+
+-  tester.check(all(a4.comp(1) == 2.0));
+-
+-#endif // POOMA_CHEETAH
++  tester.check(&quot;a4.comp(1)&quot;, all(a4.comp(1) == 2.0));
+
+   int ret = tester.results( &quot;array_test28&quot; );
+   Pooma::finalize();
+Index: Domain/tests/IteratorPairDomainTest1.cpp
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/Domain/tests/IteratorPairDomainTest1.cpp,v
+retrieving revision 1.1
+diff -u -u -r1.1 IteratorPairDomainTest1.cpp
+--- Domain/tests/IteratorPairDomainTest1.cpp	9 Apr 2001 21:33:04 -0000	1.1
++++ Domain/tests/IteratorPairDomainTest1.cpp	18 Dec 2003 19:03:43 -0000
+@@ -179,7 +179,8 @@
+
+   tester.out() &lt;&lt; &quot;Finished IteratorPairDomain test 1.\n&quot; &lt;&lt; endl;
+
+-  int res = tester.results(&quot;IteratorPairDomainTest1 &quot; );
++  int res = tester.results(&quot;IteratorPairDomainTest1&quot;);
++  Pooma::finalize();
+   return res;
+ }
+
+Index: Domain/tests/IteratorPairDomainTest2.cpp
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/Domain/tests/IteratorPairDomainTest2.cpp,v
+retrieving revision 1.1
+diff -u -u -r1.1 IteratorPairDomainTest2.cpp
+--- Domain/tests/IteratorPairDomainTest2.cpp	9 Apr 2001 21:33:04 -0000	1.1
++++ Domain/tests/IteratorPairDomainTest2.cpp	18 Dec 2003 19:03:43 -0000
+@@ -89,7 +89,8 @@
+
+   tester.out() &lt;&lt; &quot;Finished IteratorPairDomain test 2.\n&quot; &lt;&lt; endl;
+
+-  int res = tester.results(&quot;IteratorPairDomainTest &quot; );
++  int res = tester.results(&quot;IteratorPairDomainTest2&quot;);
++  Pooma::finalize();
+   return res;
+ }
+
+Index: Domain/tests/domaintest.cpp
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/Domain/tests/domaintest.cpp,v
+retrieving revision 1.17
+diff -u -u -r1.17 domaintest.cpp
+--- Domain/tests/domaintest.cpp	7 Jun 2000 03:21:42 -0000	1.17
++++ Domain/tests/domaintest.cpp	18 Dec 2003 19:03:44 -0000
+@@ -553,10 +553,9 @@
+     tester.out() &lt;&lt; &quot;  split([3.5,4]) ==&gt; &quot; &lt;&lt; a4 &lt;&lt; &quot;, &quot; &lt;&lt; a5 &lt;&lt; std::endl;
+   }
+
+-  tester.results(&quot;domaintest&quot;);
++  int ret = tester.results(&quot;domaintest&quot;);
+   Pooma::finalize();
+-
+-  return 0;
++  return ret;
+ }
+
+ // ACL:rcsinfo
+Index: Domain/tests/indirectionlist_test1.cpp
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/Domain/tests/indirectionlist_test1.cpp,v
+retrieving revision 1.6
+diff -u -u -r1.6 indirectionlist_test1.cpp
+--- Domain/tests/indirectionlist_test1.cpp	22 Jan 2003 23:39:27 -0000	1.6
++++ Domain/tests/indirectionlist_test1.cpp	18 Dec 2003 19:03:45 -0000
+@@ -94,7 +94,10 @@
+   tester.out() &lt;&lt; roo &lt;&lt; std::endl;
+
+   tester.out() &lt;&lt; &quot;Finished IndirectionList test.&quot; &lt;&lt; std::endl &lt;&lt; std::endl;
+-  return 0;
++
++  int res = tester.results(&quot;indirectionlist_test1&quot;);
++  Pooma::finalize();
++  return res;
+ }
+
+ // ACL:rcsinfo
+Index: Evaluator/tests/ReductionTest4.cpp
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/Evaluator/tests/ReductionTest4.cpp,v
+retrieving revision 1.3
+diff -u -u -r1.3 ReductionTest4.cpp
+--- Evaluator/tests/ReductionTest4.cpp	17 Dec 2002 18:39:04 -0000	1.3
++++ Evaluator/tests/ReductionTest4.cpp	18 Dec 2003 19:03:46 -0000
+@@ -41,8 +41,6 @@
+   Pooma::initialize(argc,argv);
+   Pooma::Tester tester(argc,argv);
+
+-#if POOMA_CHEETAH
+-
+   Loc&lt;1&gt; blocks2(2), blocks5(5);
+   UniformGridPartition&lt;1&gt; partition2(blocks2), partition5(blocks5);
+   UniformGridLayout&lt;1&gt; layout2(Interval&lt;1&gt;(10), partition2, DistributedTag()),
+@@ -51,8 +49,6 @@
+     b(layout5);
+   Array&lt;1, int&gt; c(10);
+
+-  Pooma::blockAndEvaluate();
+-
+   for (int i = 0; i &lt; 10; i++)
+     {
+       a(i) = i + 1;
+@@ -60,6 +56,8 @@
+       c(i) = i % 5;
+     }
+
++  Pooma::blockAndEvaluate();
++
+   int ret;
+   bool bret;
+
+@@ -111,8 +109,6 @@
+   tester.out() &lt;&lt; ret &lt;&lt; std::endl;
+
+   // Finish.
+-
+-#endif // POOMA_CHEETAH
+
+   int return_status = tester.results(&quot;ReductionTest4&quot;);
+
+Index: Pooma/tests/pabort.cpp
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/Pooma/tests/pabort.cpp,v
+retrieving revision 1.1
+diff -u -u -r1.1 pabort.cpp
+--- Pooma/tests/pabort.cpp	30 Jan 2003 20:03:53 -0000	1.1
++++ Pooma/tests/pabort.cpp	18 Dec 2003 19:03:47 -0000
+@@ -69,6 +69,7 @@
+   // This test is *expected* to abort.
+   tester-&gt;check(handler_ok);
+   int res = tester-&gt;results(&quot;pAbort&quot;);
++  Pooma::finalize();
+   exit(res);
+ }
+
+@@ -95,6 +96,7 @@
+
+   // If we get here, the call to Pooma::pAbort did not work.
+   int res = tester-&gt;results(&quot;pAbort&quot;);
++  Pooma::finalize();
+   return res;
+ }
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001421.html">[pooma-dev] Merging native MPI parallelization
+</A></li>
+	<LI>Next message: <A HREF="001424.html">[pooma-dev] [PATCH] Clean up testsuite wrt messaging support
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1422">[ date ]</a>
+              <a href="thread.html#1422">[ thread ]</a>
+              <a href="subject.html#1422">[ subject ]</a>
+              <a href="author.html#1422">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

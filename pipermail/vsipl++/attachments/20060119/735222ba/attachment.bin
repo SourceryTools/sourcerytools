@@ -1,0 +1,841 @@
+Index: ChangeLog
+===================================================================
+RCS file: /home/cvs/Repository/vpp/ChangeLog,v
+retrieving revision 1.379
+diff -u -r1.379 ChangeLog
+--- ChangeLog	19 Jan 2006 19:52:21 -0000	1.379
++++ ChangeLog	19 Jan 2006 23:37:30 -0000
+@@ -1,3 +1,23 @@
++2006-01-19 Jules Bergmann  <jules@codesourcery.com>
++
++	* GNUmakefile.in: Install set-prefix.sh and README.bin-pkg.
++	* README.bin-pkg: New file, readme and release notes for
++	  binary package.
++	* doc/quickstart/quickstart.xml: Document use of set-prefix.sh
++	  command to update pkg-config prefixes for Sourcery VSIPL++,
++	  IPP, and MKL.
++	* scripts/fix-intel-pkg-config.sh: New file, utility script to
++	  post-process .pc files so that IPP and MKL prefixes are stored
++	  as variables.
++	* configure.ac: ... use fix-intel-pkg-config.sh.
++	* scripts/release.sh: Update IPP and MKL paths.  New option to
++	  specify distdir.
++	* scripts/set-prefix.sh: New file, script to modify prefixes
++	  in pkg-config files after library installation. 
++	* benchmarks/make.standalone: New file, stand-alone makefile for 
++	  benchmarks.
++	* tests/make.standalone: New file, stand-alone makefile for tests.
++
+ 2006-01-19  Stefan Seefeld  <stefan@codesourcery.com>
+ 
+ 	* scripts/package: Support 'host' and 'cvstag' options.
+@@ -37,7 +57,6 @@
+ 	  platform to RHEL 4.  Added LAM 7.0.6 to the list of 
+ 	  packages VSIPL++ is tested against.
+ 
+->>>>>>> 1.378
+ 2006-01-18  Stefan Seefeld  <stefan@codesourcery.com>
+ 
+ 	* scripts/config: Minor adjustments to changes on the build machine.
+Index: GNUmakefile.in
+===================================================================
+RCS file: /home/cvs/Repository/vpp/GNUmakefile.in,v
+retrieving revision 1.43
+diff -u -r1.43 GNUmakefile.in
+--- GNUmakefile.in	19 Jan 2006 00:49:01 -0000	1.43
++++ GNUmakefile.in	19 Jan 2006 23:37:30 -0000
+@@ -39,6 +39,7 @@
+ PACKAGE_VERSION := @PACKAGE_VERSION@
+ INSTALL := @INSTALL@
+ INSTALL_DATA := @INSTALL_DATA@
++INSTALL_SCRIPT := @INSTALL_SCRIPT@
+ distname:= $(PACKAGE_TARNAME)-$(PACKAGE_VERSION)
+ 
+ # Order matters for the various directory variables, as autoconf makes some
+@@ -48,6 +49,7 @@
+ datadir := @datadir@
+ includedir := @includedir@
+ libdir := @libdir@
++sbindir := @sbindir@
+ # The directory for putting data that is specific to this package.
+ # This is not a standard variable name.
+ pkgdatadir := $(datadir)/$(PACKAGE_TARNAME)
+@@ -325,6 +327,10 @@
+ 
+ install::
+ 	$(install_pc)
++	$(INSTALL) -d $(DESTDIR)$(sbindir)
++	$(INSTALL_SCRIPT) $(srcdir)/scripts/set-prefix.sh $(DESTDIR)$(sbindir)
++	$(INSTALL) -d $(DESTDIR)$(docdir)
++	$(INSTALL_SCRIPT) $(srcdir)/README.bin-pkg $(DESTDIR)$(docdir)
+ 
+ mostlyclean::
+ 	rm -f $(objects)
+Index: README.bin-pkg
+===================================================================
+RCS file: README.bin-pkg
+diff -N README.bin-pkg
+--- /dev/null	1 Jan 1970 00:00:00 -0000
++++ README.bin-pkg	19 Jan 2006 23:37:30 -0000
+@@ -0,0 +1,84 @@
++README for Sourcery VSIPL++ Binary Packages
++-------------------------------------------
++
++Sourcery VSIPL++ is a high-quality implementation of the VSIPL++ API,
++developed by CodeSourcery, LLC.
++
++This software has been released under the GNU Public License (GPL).
++For more details, see the COPYRIGHT file.
++
++Sourcery VSIPL++ binary packages are pre-compiled for specific
++systems and architectures.  They make it fast and easy to get
++started using VSIPL++.
++
++For detailed instructions on installing Sourcery VSIPL++ binary
++packages, please consult the instructions in doc/quickstart/quickstart.pdf.
++
++However, for the impatient, it is possible to this Sourcery VSIPL++
++binary package in /usr/local by:
++
++	cd /
++	tar xfj sourceryvsipl++-<package_name>.tar.bz2
++
++To use this installation, put /usr/local/lib/pkgconfig
++into your PKG_CONFIG_PATH:
++
++	export PKG_CONFIG_PATH=/usr/local/lib/pkgconfig
++
++See /usr/local/share/sourceryvsipl++/example for an example
++program and Makefile.
++
++It is also possible to install the binary package in another location.
++Please consult doc/quickstart/quickstart.pdf for more details.
++
++For more information, please visit CodeSourcery's VSIPL++ website
++(www.codesourcery.com/vsiplplusplus).  There you can download the
++latest versions of Sourcery VSIPL++, find documentation on VSIPL++,
++report bugs in Sourcery VSIPL++, and find out about commercial support
++that CodeSourcery offers for VSIPL++.
++
++Thank you, we hope you enjoy using Sourcery VSIPL++!
++
++			-- The Sourcery VSIPL++ team at CodeSourcery.
++
++
++
++RELEASE NOTES for Sourcery VSIPL++ 1.0 Binary Packages
++------------------------------------------------------
++
++The binary packages are built for Red Hat Enterprise Linux version 4.0,
++However, they should work with other GNU/Linux distributions that
++provide the following packages:
++
++	* GCC 3.4
++
++(Sourcery G++ provides binary packages for GCC 3.4.  They can be
++downloaded from www.codesourcery.com/gnu_toolchains).
++
++
++The binary packages using built-in math libraries
++(sourceryvsipl++-{ser,par}-builtin-*.tar.bz2) require the following
++architectural features:
++
++	* SSE2 instruction set.
++
++Using these binary packages on processors not implementing these
++features may result in illegal instruction errors.
++
++
++The binary packages using the Intel math libraries
++(sourceryvsipl++-{ser,par}-intel-*.tar.bz2) are built for the
++following library versions, installed at the locations in
++parenthesis:
++
++	* IPP 4.2  (/opt/intel/ipp)
++	* MKL 7.21 (/opt/intel/mkl)
++
++Using these binary packages with IPP or MKL installed at other locations
++is possible:
++
++ 1) Edit the Sourcery VSIPL++ pkg-config files (lib/pkgconfig/vsipl++.pc
++    and lib/pkgconfig/vsipl++-debug.pc) to refer to the installed locations,
++    or
++ 2) Create symbolic links from /opt/intel/ipp and /opt/intel/mkl to
++    the installed locations.
+Index: configure.ac
+===================================================================
+RCS file: /home/cvs/Repository/vpp/configure.ac,v
+retrieving revision 1.76
+diff -u -r1.76 configure.ac
+--- configure.ac	19 Jan 2006 04:08:26 -0000	1.76
++++ configure.ac	19 Jan 2006 23:37:30 -0000
+@@ -1181,9 +1181,9 @@
+ 	# ATLAS because it does not always use CFLAGS.
+ 	ATLAS_CC="$CC"
+         if test "$CC" == "gcc"; then
+-          if expr "$CFLAGS" : ".*-m32"; then
++          if expr "$CFLAGS" : ".*-m32" > /dev/null; then
+ 	    ATLAS_CC="$atlas_dir/bin/gcc-m32.sh"
+-          elif expr "$CFLAGS" : ".*-m64"; then
++          elif expr "$CFLAGS" : ".*-m64" > /dev/null; then
+ 	    ATLAS_CC="$atlas_dir/bin/gcc-m64.sh"
+ 	  fi
+         fi
+@@ -1391,3 +1391,24 @@
+ # Done.
+ #
+ AC_OUTPUT
++
++#
++# Tidy up IPP and MKL prefixes (if any) in .pc file
++#
++fix_pc_opt=""
++if test "$enable_ipp" == "yes" -a "$with_ipp_prefix" != ""; then
++  fix_pc_opt="$fix_pc_opt -i $with_ipp_prefix"
++fi
++if expr "$lapack_found" : "mkl" > /dev/null; then
++  if test "$with_mkl_prefix" != ""; then
++    fix_pc_opt="$fix_pc_opt -m $with_mkl_prefix"
++  fi
++fi
++
++if test "x$fix_pc_opt" != "x"; then
++  # if $srcdir is relative, correct by chdir into scripts/*.
++  fix_pc="`(cd $srcdir/scripts; echo \"$PWD\")`"/fix-intel-pkg-config.sh
++
++  $fix_pc -d -p vsipl++.pc $fix_pc_opt
++fi
++
+Index: benchmarks/make.standalone
+===================================================================
+RCS file: benchmarks/make.standalone
+diff -N benchmarks/make.standalone
+--- /dev/null	1 Jan 1970 00:00:00 -0000
++++ benchmarks/make.standalone	19 Jan 2006 23:37:31 -0000
+@@ -0,0 +1,112 @@
++########################################################################
++#
++# File:   benchmarks/make.standalone
++# Author: Jules Bergmann
++# Date:   2006-01-19
++#
++# Contents: Standalone Makefile for VSIPL++ benchmarks
++#
++# Useful for building benchmarks for an installed library.
++#
++########################################################################
++
++# EXAMPLES:
++#
++# To compile the fft benchmark for an installed with .pc files visible in
++# PKG_CONFIG_PATH:
++#
++#   make -f make.standalone fft
++#
++# To compile the fft benchmark for a library that has been installed into
++# a non-standard prefix, or whose .pc files are not in PKG_CONFIG_PATH:
++#
++#   make -f make.standalone PREFIX=/path/to/library fft
++#
++
++
++
++########################################################################
++# Configuration Variables
++########################################################################
++
++# Variables in this section can be set by the user on the command line.
++
++# Prefix of installed library.  Not necessary if your .pc files are in
++# PKG_CONFIG_PATH and if they have the correct prefix.
++PREFIX   = 
++
++# Package to use.  For binary packages, this should either be 'vsipl++'
++# to use the release version of the library, or 'vsipl++-debug' to
++# use the debug version of the library.  For source packages, this
++# should most likely be 'vsipl++', unless a suffix was given during
++# installation.
++PKG      = vsipl++
++
++# Object file extension
++OBJEXT   = o
++
++# Executable file extension
++EXEEXT   =  
++
++
++########################################################################
++# Internal Variables
++########################################################################
++
++# Variables in this section should not be modified.
++
++# Logic to call pkg-config with PREFIX, if specified.
++ifdef $PREFIX
++   PC    = env PKG_CONFIG_PATH=$(PREFIX)/lib/pkgconfig \
++	   pkg-config --define-variable=prefix=$(PREFIX) $(PKG)
++else
++   PC    = pkg-config $(PKG)
++endif
++
++
++CXX      := $(shell $(PC) --variable=cxx )
++CXXFLAGS := $(shell $(PC) --cflags       ) \
++	    $(shell $(PC) --variable=cxxflags )
++LIBS     := $(shell $(PC) --libs         )
++
++CXXFLAGS := $(CXXFLAGS) -I../tests
++
++
++sources := $(wildcard *.cpp)
++objects := $(patsubst %.cpp, %.$(OBJEXT), $(sources))
++exes    := $(patsubst %.cpp, %$(EXEEXT),  $(sources))
++tests   := $(patsubst %.cpp, %.test,      $(sources))
++
++exes_special   := main$(EXEEXT)
++exes_def_build := $(filter-out $(exes_special), $(exes)) 
++
++
++
++########################################################################
++# Targets
++########################################################################
++
++all: $(tests)
++
++check: $(tests)
++
++vars:
++	@echo "CXX     : " $(CXX)
++	@echo "CXXFLAGS: " $(CXXFLAGS)
++	@echo "LIBS    : " $(LIBS)
++
++clean:
++	rm -rf *.exe *.o
++
++
++
++
++########################################################################
++# Implicit Rules
++########################################################################
++
++$(exes_def_build): %$(EXEEXT) : %.$(OBJEXT) main.$(OBJEXT)
++	$(CXX) $(LDFLAGS) -o $@ $^ $(LIBS) || rm -f $@
++
++%.o: %.cpp
++	$(CXX) -c $(CXXFLAGS) -o $@ $< || rm -f $@
+Index: doc/quickstart/quickstart.xml
+===================================================================
+RCS file: /home/cvs/Repository/vpp/doc/quickstart/quickstart.xml,v
+retrieving revision 1.20
+diff -u -r1.20 quickstart.xml
+--- doc/quickstart/quickstart.xml	18 Jan 2006 18:30:42 -0000	1.20
++++ doc/quickstart/quickstart.xml	19 Jan 2006 23:37:31 -0000
+@@ -950,9 +950,53 @@
+     </section>
+     <section>
+     <title>Other Install Locations</title>
++
++    <para>
++       It is possible to install Sourcery VSIPL++ into other prefixes
++       other than /usr/local.  However, because the pkg-config files
++       have the install prefix hard-coded, it is necessary to run the
++       <command>set-prefix.sh</command> script after untarring to set
++       the correct installation prefixes.
++    </para>
++
++    <para>
++       The <command>set-prefix.sh</command> is located in the
++       <filename>usr/local/sbin</filename> of the tarball.
++       It should be run with a specified path and no arguments.
++    </para>
++
++    <para>
++       For example, to install a binary package in $HOME/usr/local:
++    </para>
++
++    <example>
++     <screen>
++> cd $HOME
++> tar xfj sourceryvsipl++-pkgname.tar.bz2
++> $HOME/usr/local/sbin/set-prefix.sh
++> export PKG_CONFIG_PATH=$HOME/usr/local/lib/pkgconfig
++     </screen>
++    </example>
++
+     <para>
+-       Alternatively, it is possible to install the tarball outside of the root directory.
+-       This requires passing the prefix to pkg-config in order to extract the correct
++       For example, to install a binary package into
++       <filename>/opt/vsipl++</filename>:
++    </para>
++
++    <example>
++     <screen>
++> cd /opt
++> tar xfj sourceryvsipl++-pkgname.tar.bz2
++> mv usr/local vsipl++
++> /opt/vsipl++/sbin/set-prefix.sh
++> export PKG_CONFIG_PATH=/opt/vsipl++/lib/pkgconfig
++     </screen>
++    </example>
++
++    <para>
++       Alternatively, it is possible to install the tarball outside of
++       /usr/local and not update the pkg-config files.  This requires
++       passing the prefix to pkg-config in order to extract the correct
+        compilation options needed in order to build Sourcery VSIPL++ programs.
+ 
+        An example Makefile:
+@@ -967,6 +1011,93 @@
+     </para>
+ 
+    </section>
++   <section>
++    <title>Intel IPP and MKL Libraries</title>
++    <para>
++     Sourcery VSIPL++ binary packages that use the Intel IPP and
++     MKL libraries have the paths to those libraries hard-coded
++     into their pkg-config files.  For IPP, the default path is
++     <filename>/opt/intel/ipp</filename>.  For MKL, the default
++     path is <filename>/opt/intel/mkl</filename>.
++    </para>
++
++    <para>
++     If IPP and/or MKL are not installed in these locations, it
++     is necessary to either:
++     <itemizedlist>
++      <listitem><para>
++       Update the pkg-config file paths using <command>set-prefix.sh</command>.
++      </para> </listitem>
++      <listitem><para>
++       Create a symbolic link from the default install location to
++       the actual install location.
++      </para> </listitem>
++      <listitem><para>
++       Manually specify the paths to IPP and MKL on each invocation
++       of pkg-config.
++      </para> </listitem>
++     </itemizedlist>
++     Each of the options is described in more detail below.
++    </para>
++
++    <para>
++     Using the <command>set-prefix.sh</command> script in the
++     <filename>usr/local/sbin</filename>, it is possible
++     to update the pkg-config files with the correct installation
++     prefixes for IPP and MKL.  <command>set-prefix.sh</command>
++     takes two options <option>-i IPP_PREFIX</option> and
++     <option>-m MKL_PREFIX</option> to specify prefixes for IPP
++     and MKL.
++    </para>
++
++    <para>
++     For example, assuming that the library has been installed into
++     <filename>/usr/local</filename> and that IPP is installed
++     in <filename>/opt/intel/ipp41</filename>:
++    </para>
++
++    <example>
++     <screen>
++> /usr/local/sbin/set-prefix.sh -i /opt/intel/ipp41
++     </screen>
++    </example>
++
++    <para>
++     Using symbolic links, it is possible to direct
++     <filename>/opt/intel/ipp</filename> and
++     <filename>/opt/intel/mkl</filename> to the actual installation
++     libraries.
++    </para>
++	
++    <para>
++     For example, assuming that IPP is installed in
++     <filename>/opt/intel/ipp41</filename>:
++    </para>
++
++    <example>
++     <screen>
++> ln -s /opt/intel/ipp41 /opt/intel/ipp
++     </screen>
++    </example>
++
++    <para>
++     Finally, it is possible to manually pass the prefixes for
++     IPP and MKL to pkg-config program on each invocation.
++    </para>
++
++    <para>
++     For example, assuming that IPP is installed in
++     <filename>/opt/intel/ipp41</filename> and that MKL is
++     installed in <filename>/opt/intel/mkl821</filename>, to
++     query <option>--libs</option> from <command>pkg-config</command>:
++    </para>
++
++    <example>
++LIBS = `pkg-config --define-variable=ipp_prefix=/usr/local/ipp41  \
++                   --define-variable=mkl_prefix=/usr/local/mkl821 \
++                   --libs vsipl++`
++    </example>
++   </section>
+   </section>
+  </chapter>
+ 
+Index: scripts/fix-intel-pkg-config.sh
+===================================================================
+RCS file: scripts/fix-intel-pkg-config.sh
+diff -N scripts/fix-intel-pkg-config.sh
+--- /dev/null	1 Jan 1970 00:00:00 -0000
++++ scripts/fix-intel-pkg-config.sh	19 Jan 2006 23:37:31 -0000
+@@ -0,0 +1,66 @@
++#! /bin/sh
++
++########################################################################
++#
++# File:   fix-intel-pkg-config.sh
++# Author: Jules Bergmann
++# Date:   2005-01-19
++#
++# Contents:
++#   Edit pkg-config files to put install prefixes for Intel libraries
++#   (IPP and MKL) into variables.
++#
++########################################################################
++
++# SYNOPSIS
++#   fix-intel-pkg-config.sh -p PCFILE [-i IPPDIR] [-m MKLDIR]
++#
++
++# IPP Prefix
++ipp_prefix="/opt/intel/ipp"
++
++# MKL Prefix
++mkl_prefix="/opt/intel/mkl"
++
++drop_ipp_arch="no"
++
++# .pc file
++pcfile=""
++
++while getopts "p:i:m:d" arg; do
++    case $arg in
++	p)
++	    pcfile=$OPTARG
++	    ;;
++	i)
++	    ipp_prefix=$OPTARG
++	    ;;
++	m)
++	    mkl_prefix=$OPTARG
++	    ;;
++	d)
++	    drop_ipp_arch="yes";
++	    ;;
++	\?)
++            error "usage: fix-intel-pkg-config.sh -p PCFILE [-i IPPDIR] [-m MKLDIR]"
++	    ;;
++    esac
++done
++
++if test ! -f "$pcfile"; then
++  error "error: fix-intel-pkg-config.sh -p PCFILE option required"
++fi
++
++if test "$drop_ipp_arch" == "yes"; then
++  ipp_prefix=`dirname $ipp_prefix`
++fi
++
++echo "ipp_prefix=$ipp_prefix" >  $pcfile.new
++echo "mkl_prefix=$mkl_prefix" >> $pcfile.new
++
++cat $pcfile | sed -e "s|$ipp_prefix/|\${ipp_prefix}/|g"	\
++            | sed -e "s|$mkl_prefix/|\${mkl_prefix}/|g" >> $pcfile.new
++
++if test -f "$pcfile.new"; then
++  mv $pcfile.new $pcfile
++fi
+Index: scripts/release.sh
+===================================================================
+RCS file: /home/cvs/Repository/vpp/scripts/release.sh,v
+retrieving revision 1.3
+diff -u -r1.3 release.sh
+--- scripts/release.sh	19 Jan 2006 00:49:25 -0000	1.3
++++ scripts/release.sh	19 Jan 2006 23:37:31 -0000
+@@ -44,9 +44,10 @@
+ srcdir="sourceryvsipl++-1.0"
+ test_srcdir="$srcdir"
+ srcpkg="$srcdir.tar.bz2"
++distdir="vpp-dist"
+ debug="yes"
+ 
+-while getopts "w:d:c:p:C:t:" arg; do
++while getopts "w:d:c:p:C:t:D:" arg; do
+     case $arg in
+ 	w)
+ 	    what=$OPTARG
+@@ -66,6 +67,9 @@
+ 	t)
+ 	    test_srcdir=$OPTARG
+ 	    ;;
++	D)
++	    distdir=$OPTARG
++	    ;;
+ 	\?)
+             error "usage: release.sh [-v VERSION]"
+ 	    ;;
+@@ -89,8 +93,8 @@
+ GC_DIR=/opt/gc6.6/lib
+ DOT_DIR=/usr/local/graphviz-2.6
+ 
+-ipp_dir=/opt/intel/ipp41_eval
+-mkl_dir=/opt/intel/mkl721
++ipp_dir=/opt/intel/ipp
++mkl_dir=/opt/intel/mkl
+ 
+ export PATH=$TOOL_DIR/sourceryg++/bin
+ export PATH=$PATH:$TOOL_DIR/bin
+@@ -186,9 +190,10 @@
+ 
+     echo "Test: $pkg ($pkgfile)"
+ 
+-    rm -rf vpp-dist
+-    $package test_bdist --verbose					\
++    rm -rf $distdir
++    $package test_bdist --verbose				\
+ 	--packagefile=$pkgfile					\
++	--distdir=$distdir					\
+ 	--srcdir=$test_srcdir					\
+ 	--configfile=$cfgfile					\
+ 	--builddir=$builddir					\
+Index: scripts/set-prefix.sh
+===================================================================
+RCS file: scripts/set-prefix.sh
+diff -N scripts/set-prefix.sh
+--- /dev/null	1 Jan 1970 00:00:00 -0000
++++ scripts/set-prefix.sh	19 Jan 2006 23:37:31 -0000
+@@ -0,0 +1,113 @@
++#! /usr/bin/env bash
++
++########################################################################
++#
++# File:   set-prefix.sh
++# Author: Jules Bergmann
++# Date:   2005-12-20
++#
++# Contents:
++#   Changes install prefixes for a Sourcery VSIPL++ binary package.
++#
++########################################################################
++
++########################################################################
++# Notes
++########################################################################
++
++# SYNOPSIS
++#   set-prefix.sh [-p PREFIX]
++#                 [-l PKGCONFIG_DIR]
++#                 [-i IPP_PREFIX]
++#                 [-m IPP_PREFIX]
++#
++# DESCRIPTION
++#   Sets the prefix variables in the a Sourcery VSIPL++ binary package's
++#   .pc files.
++#
++#   PREFIX is the library installation prefix that will be inserted
++#   into pkg-config .pc files.  It can either be specified with the
++#   -p option, or guessed (using the location of the set-prefix.sh
++#   script).
++#
++#   PKGCONFIG_DIR is the directory containing the library's .pc
++#   files.  It can either be specified with the -l option, or
++#   if it is in the standard location ($prefix/lib/pkgconfig),
++#   derived from the library PREFIX.  
++#
++#   IPP_PREFIX and MKL_PREFIX are the IPP and MKL prefixes.  They
++#   are specified with the -i and -m options.
++#
++#   It is always necessary to specify or guess the library prefix,
++#   since this determines the location of the pkg-config files.
++#   The library prefix will always be updated, even if the old and
++#   new prefix are the same. However, if the IPP or MKL prefix are
++#   not set, they will not be substituted.
++#
++# EXAMPLES
++#
++
++
++########################################################################
++# Subroutines
++########################################################################
++
++prefix=`dirname $0`		# directory where set-prefix.sh is located.
++				#   in src package: scripts/set-prefix.sh
++				#   in bin package: sbin/set-prefix.sh
++prefix="`(cd $prefix; echo \"$PWD\")`"
++prefix=`dirname $prefix`	# Go up 1 level to package root.
++
++pcdir='*use-default*'
++
++while getopts "xp:l:i:m:" arg; do
++    case $arg in
++	p)
++	    prefix=$OPTARG
++	    ;;
++	l)
++	    pcdir=$OPTARG
++	    ;;
++	i)
++	    ipp_prefix=$OPTARG
++	    ;;
++	m)
++	    mkl_prefix=$OPTARG
++	    ;;
++    esac
++done
++
++if test "$pcdir" == '*use-default*'; then
++  pcdir="$prefix/lib/pkgconfig"
++fi
++
++echo "VSIPL++ prefix  : " $prefix
++echo "  pkgconfig dir : " $pcdir
++if test "x$ipp_prefix" != "x"; then
++  echo "IPP prefix      : " $ipp_prefix
++fi
++if test "x$mkl_prefix" != "x"; then
++  echo "MKL prefix      : " $mkl_prefix
++fi
++
++for file in `ls $pcdir/*.pc`; do
++  cat $file | sed -e "s|^prefix=.*$|prefix=$prefix|" > $file.tmp
++
++  if test "x$ipp_prefix" != "x"; then
++    cat $file.tmp | sed -e "s|^ipp_prefix=.*$|ipp_prefix=$ipp_prefix|" \
++		> $file.tmp2
++    mv $file.tmp2 $file.tmp
++  fi
++
++  if test "x$mkl_prefix" != "x"; then
++    cat $file.tmp | sed -e "s|^mkl_prefix=.*$|mkl_prefix=$mkl_prefix|" \
++		> $file.tmp2
++    mv $file.tmp2 $file.tmp
++  fi
++
++  if test -f "$file.tmp"; then
++    mv $file.tmp $file
++  else
++    echo "set-prefix.sh: error processing '" $file "'"
++  fi
++done
+Index: tests/make.standalone
+===================================================================
+RCS file: tests/make.standalone
+diff -N tests/make.standalone
+--- /dev/null	1 Jan 1970 00:00:00 -0000
++++ tests/make.standalone	19 Jan 2006 23:37:31 -0000
+@@ -0,0 +1,104 @@
++########################################################################
++#
++# File:   tests/make.standalone
++# Author: Jules Bergmann
++# Date:   2006-01-19
++#
++# Contents: Standalone Makefile for VSIPL++ tests
++#
++# Useful for running tests on a library that has been installed.
++# Prints PASS or FAIL for each test run.
++#
++########################################################################
++
++# EXAMPLES:
++#
++# To test a library that has been installed and whose .pc files are
++# visible in PKG_CONFIG_PATH:
++#
++#   make -f make.standalone
++#
++# To test a library that has been installed into a non-standard
++# prefix, or whose .pc files are not in PKG_CONFIG_PATH:
++#
++#   make -f make.standalone PREFIX=/path/to/library
++#
++
++
++
++########################################################################
++# Configuration Variables
++########################################################################
++
++# Variables in this section can be set by the user on the command line.
++
++# Prefix of installed library.  Not necessary if your .pc files are in
++# PKG_CONFIG_PATH and if they have the correct prefix.
++PREFIX   = 
++
++# Package to use.  For binary packages, this should either be 'vsipl++'
++# to use the release version of the library, or 'vsipl++-debug' to
++# use the debug version of the library.  For source packages, this
++# should most likely be 'vsipl++', unless a suffix was given during
++# installation.
++PKG      = vsipl++
++
++
++
++########################################################################
++# Internal Variables
++########################################################################
++
++# Variables in this section should not be modified.
++
++# Logic to call pkg-config with PREFIX, if specified.
++ifdef $PREFIX
++   PC    = env PKG_CONFIG_PATH=$(PREFIX)/lib/pkgconfig \
++	   pkg-config --define-variable=prefix=$(PREFIX) $(PKG)
++else
++   PC    = pkg-config $(PKG)
++endif
++
++
++CXX      = $(shell $(PC) --variable=cxx )
++CXXFLAGS = $(shell $(PC) --cflags       ) \
++	   $(shell $(PC) --variable=cxxflags )
++LIBS     = $(shell $(PC) --libs         )
++
++
++sources := $(wildcard *.cpp)
++tests   := $(patsubst %.cpp, %.test, $(sources))
++
++
++
++########################################################################
++# Targets
++########################################################################
++
++all: $(tests)
++
++check: $(tests)
++
++vars:
++	@echo "CXX     : " $(CXX)
++	@echo "CXXFLAGS: " $(CXXFLAGS)
++	@echo "LIBS    : " $(LIBS)
++
++clean:
++	rm -rf *.exe *.o
++
++
++
++
++########################################################################
++# Implicit Rules
++########################################################################
++
++%.test: %.exe
++	@ ($< && echo "PASS: $<") || echo "FAIL: $<"
++
++%.exe: %.o
++	@ $(CXX) $(CXXFLAGS) -o $@ $< $(LIBS) || rm -f $@
++
++%.o: %.cpp
++	@ $(CXX) -c $(CXXFLAGS) -o $@ $< || rm -f $@

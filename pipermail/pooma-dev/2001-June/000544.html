@@ -1,0 +1,219 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [pooma-dev] Compilation problem with gcc-3.0
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bpooma-dev%5D%20Compilation%20problem%20with%20gcc-3.0&In-Reply-To=%3C5.0.1.4.2.20010627145214.02d17d70%40cic-mail.lanl.gov%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000543.html">
+   <LINK REL="Next"  HREF="000546.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[pooma-dev] Compilation problem with gcc-3.0</H1>
+    <B>Mark Zander</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bpooma-dev%5D%20Compilation%20problem%20with%20gcc-3.0&In-Reply-To=%3C5.0.1.4.2.20010627145214.02d17d70%40cic-mail.lanl.gov%3E"
+       TITLE="[pooma-dev] Compilation problem with gcc-3.0">zander at lanl.gov
+       </A><BR>
+    <I>Wed Jun 27 21:07:39 UTC 2001</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000543.html">Compilation problem with gcc-3.0
+</A></li>
+        <LI>Next message: <A HREF="000546.html">[pooma-dev] Compilation problem with gcc-3.0
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#544">[ date ]</a>
+              <a href="thread.html#544">[ thread ]</a>
+              <a href="subject.html#544">[ subject ]</a>
+              <a href="author.html#544">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Dave,
+
+unwrap takes an AnyType and attempts to turn it into a specific type. At 
+the time I wanted to write it as a function:
+
+         T* t = unwrap&lt;T*&gt;(any);
+
+Unfortunately, that syntax wasn't available to me in the compilers we were 
+using. Is that explicit function specification? Not having that available I 
+templated a whole class, and with a dummy constructor could end up with 
+(almost) the same syntax:
+
+         T* t = unwrap&lt;T*&gt;()(any);
+
+Later, after the code was well in place, I realized that a static member 
+function would be more efficient and wouldn't rely on an optimizing 
+compiler to delete the code of a dummy constructor:
+
+         T* t = unwrap&lt;T*&gt;::do_it(any);
+
+Can we just rewrite unwrap as a function and get rid of all of those dummy 
+constructors as shown in the first example above?
+
+By the way your example for unwrap is wrong, it should be:
+
+template&lt;class T&gt;
+struct unwrap
+{
+     T* operator()( Ptr&lt;AnyType&gt;) {}
+};
+
+But maybe we could rewrite it as:
+
+template&lt;class T&gt;
+T* unwrap(Ptr&lt;AnyType&gt;) {}
+
+Please stop by my office some time so we can finish hashing this out. Even 
+though an improved compiler will compile this awkward construct, the 
+compiler features are available such that we can eliminate the awkward 
+construct altogether.
+
+Mark
+
+
+At 01:55 PM 6/27/2001 -0600, Dave Nystrom wrote:
+&gt;<i>Hi Mark,
+</I>&gt;<i>
+</I>&gt;<i>John and I have been doing a little work to try and compile our stuff with
+</I>&gt;<i>gcc-3.0 which just came out.  We have been able to compile Pooma 2
+</I>&gt;<i>successfully with gcc-3.0 and several people on the Pooma 2 support contract
+</I>&gt;<i>are using it - so, we are optimistic about our chances.  Last night we ran
+</I>&gt;<i>into a problem in TecFramework for which John was able to contrive a
+</I>&gt;<i>workaround.  The message below which I am bouncing to you I sent to Mark
+</I>&gt;<i>Mitchell and the pooma-dev mailing list.  Also, below, I have included Mark
+</I>&gt;<i>Mitchell's response in which he offers another workaround.  So, there are two
+</I>&gt;<i>workarounds to this ubiquitous construct that TecFramework uses.  We don't
+</I>&gt;<i>really understand Mark's workaround but it is a one liner versus our two
+</I>&gt;<i>liner.  Assuming it really works, John says that it would be easier to go
+</I>&gt;<i>back and change the one liner than the two liner when gcc-3.1 is released.
+</I>&gt;<i>Anyway, what do you and Sid think is the best way to resolve this problem.
+</I>&gt;<i>We are very interested in being able to build and run with gcc if possible.
+</I>&gt;<i>
+</I>&gt;<i>Dave Nystrom                    email: <A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">wdn at lanl.gov</A>
+</I>&gt;<i>LANL X-3                        phone: 505-667-7913     fax: 505-665-3046
+</I>&gt;<i>
+</I>&gt;<i>--------------------------original-message-to-mark-mitchell-------------------------------
+</I>&gt;<i>Below is a small test case that includes two functions, find1 and find2.
+</I>&gt;<i>When I try to compile this with the g++ from gcc-3.0, I get the following
+</I>&gt;<i>error:
+</I>&gt;<i>
+</I>&gt;<i>saltydog % make
+</I>&gt;<i>g++ -c -o tUnwrapKernel.o tUnwrapKernel.cc
+</I>&gt;<i>tUnwrapKernel.cc: In member function `void X&lt;C&gt;::find2(Ptr&lt;AnyType&gt;)':
+</I>&gt;<i>tUnwrapKernel.cc:33: parse error before `;' token
+</I>&gt;<i>make: *** [tUnwrapKernel.o] Error 1
+</I>&gt;<i>
+</I>&gt;<i>The construct in the find2 function, i.e.
+</I>&gt;<i>&quot;C* pClass( unwrap&lt;C*&gt;()(*object) );&quot; is ubiquitous in our TecFramework
+</I>&gt;<i>library package.  John Hall and I experimented last night with various
+</I>&gt;<i>attempts to eliminate the error by using typename, etc.  The only solution we
+</I>&gt;<i>found was to replace this construct with the two line construct that is in
+</I>&gt;<i>the find1 function.  The original construct compiles just fine with KCC-4.0
+</I>&gt;<i>using --strict.  Is the failure to compile a problem with gcc-3.0 or is KCC
+</I>&gt;<i>taking liberties that it should not.  If there is a problem with gcc, would
+</I>&gt;<i>it be possible to get a fix anytime soon.  We would like to get our code up
+</I>&gt;<i>and running with gcc but making this change in so many places in our source
+</I>&gt;<i>code base would be tedious and undesirable if there is really a problem with
+</I>&gt;<i>gcc.  Also, we do not really own TecFramework and making these changes would
+</I>&gt;<i>require negotiation with other people - this is not really that big of a deal
+</I>&gt;<i>but we would just as soon avoid it if possible.
+</I>&gt;<i>
+</I>&gt;<i>Thanks,
+</I>&gt;<i>
+</I>&gt;<i>Dave Nystrom                    email: <A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">wdn at lanl.gov</A>
+</I>&gt;<i>LANL X-3                        phone: 505-667-7913     fax: 505-665-3046
+</I>&gt;<i>
+</I>&gt;<i>--------------------------------test.cc---------------------------------------
+</I>&gt;<i>class AnyType
+</I>&gt;<i>{};
+</I>&gt;<i>
+</I>&gt;<i>template&lt;class T&gt;
+</I>&gt;<i>class Ptr
+</I>&gt;<i>{
+</I>&gt;<i>   public:
+</I>&gt;<i>     Ptr( T* inT ) : t(inT) {}
+</I>&gt;<i>     T* operator*() { return t; }
+</I>&gt;<i>
+</I>&gt;<i>   private:
+</I>&gt;<i>     T* t;
+</I>&gt;<i>};
+</I>&gt;<i>
+</I>&gt;<i>template&lt;class T&gt;
+</I>&gt;<i>struct unwrap
+</I>&gt;<i>{
+</I>&gt;<i>     Ptr&lt;AnyType&gt; operator()( T&amp; ) {}
+</I>&gt;<i>};
+</I>&gt;<i>
+</I>&gt;<i>template&lt;class C&gt;
+</I>&gt;<i>class X
+</I>&gt;<i>{
+</I>&gt;<i>   public:
+</I>&gt;<i>     void find1( Ptr&lt;AnyType&gt; object )
+</I>&gt;<i>     {
+</I>&gt;<i>         unwrap&lt;C*&gt; myUnwrap;
+</I>&gt;<i>         C* pClass( myUnwrap(*object));
+</I>&gt;<i>     }
+</I>&gt;<i>
+</I>&gt;<i>     void find2( Ptr&lt;AnyType&gt; object )
+</I>&gt;<i>     {
+</I>&gt;<i>         C* pClass( unwrap&lt;C*&gt;()(*object));
+</I>&gt;<i>     }
+</I>&gt;<i>};
+</I>&gt;<i>
+</I>&gt;<i>---------------------------------------mark-mitchell's-response---------------------------------------
+</I>&gt;<i>--On Wednesday, June 27, 2001 01:55:14 PM -0600 Dave Nystrom &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">wdn at lanl.gov</A>&gt;
+</I>&gt;<i>wrote:
+</I>&gt;<i>
+</I>&gt;<i> &gt; Below is a small test case that includes two functions, find1 and find2.
+</I>&gt;<i> &gt; When I try to compile this with the g++ from gcc-3.0, I get the following
+</I>&gt;<i> &gt; error:
+</I>&gt;<i>
+</I>&gt;<i>Yes, this is a famous problem in GCC -- it uses a YACC parser that
+</I>&gt;<i>doesn't have enough look-ahead to see whether or not that construct
+</I>&gt;<i>is a function-declaration or an expression.  We need a new parser.
+</I>&gt;<i>
+</I>&gt;<i>I've begged LANL to let me do that for years -- and they agreed!  In
+</I>&gt;<i>fact, what I'm working on right now, is writing a nice bright shiny new
+</I>&gt;<i>C++ parser -- and it aready gets this example correct.  So, I'd expect
+</I>&gt;<i>this to be fixed in G++ 3.1, probably ready in about 6 months.  And,
+</I>&gt;<i>in development snaphots before that.
+</I>&gt;<i>
+</I>&gt;<i>Besides the workaround you found, another one that usually works is:
+</I>&gt;<i>
+</I>&gt;<i>   C* pclass ((0, unwrap&lt;C*&gt;()(*object)));
+</I>&gt;<i>
+</I>&gt;<i>The `0' can't appear in a parameter-declaration, so g++ knows pclass
+</I>&gt;<i>is a variable, and not a function.
+</I>
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000543.html">Compilation problem with gcc-3.0
+</A></li>
+	<LI>Next message: <A HREF="000546.html">[pooma-dev] Compilation problem with gcc-3.0
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#544">[ date ]</a>
+              <a href="thread.html#544">[ thread ]</a>
+              <a href="subject.html#544">[ subject ]</a>
+              <a href="author.html#544">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>
