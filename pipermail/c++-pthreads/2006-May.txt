@@ -1,0 +1,140 @@
+From JeeBee at troefpunt.nl  Wed May 17 16:08:12 2006
+From: JeeBee at troefpunt.nl (JeeBee)
+Date: Wed, 17 May 2006 18:08:12 +0200
+Subject: problem with pthread_cancel
+Message-ID: <pan.2006.05.17.16.08.08.451119@troefpunt.nl>
+
+-------- Problem description ----------
+
+Using the pthread library, I tried to implement a multi-threading application.
+At each time, at most one thread should be running. Therefore, when I create a new
+thread, it immediately waits using pthread_cond_wait. And it's signalled when it should
+proceed (using pam_resume and pam_suspend).
+
+It seems to work perfectly, until I make use of pam_destroy, to destory a thread that
+is not running.
+The problem is, when the pthread_cancel is called, this thread is in a pthread_cond_wait.
+That is a cancellation point, and the thread does exit. However, AFTER this new threads
+do not run anymore. I create a new one, and it will get blocked in pthread_cond_wait.
+
+Can anybody spot the mistake? Something wrong with a mutex_lock / unlock ?
+Should macro pam_destory do more than only a call to pthread_cancel ?
+
+Thanks in advance,
+JeeBee.
+
+-------- fragment of pam.m ------------
+
+// destroy thread pro
+// IN: pam_proc *pro
+#define pam_destroy(pro) do { \
+  if(pthread_cancel((pro)->tid->thread)) { \
+	pam_fatal("pam_destroy: could not cancel thread"); \
+  } \
+} while(0)
+
+// resume current thread
+#define pam_resume() do { \
+  /*printf("Signalling thread %d to continue.\n", pam_root->tid->thread);*/ \
+  pthread_mutex_lock(&condition_mutex); \
+  pthread_cond_signal(&pam_root->tid->condition_cond); \
+} while(0)
+
+// suspend old thread
+// IN: pam_proc *old
+#define pam_suspend(old) do { \
+  pthread_cond_wait(&old->tid->condition_cond, &condition_mutex); \
+  pthread_mutex_unlock(&condition_mutex); \
+} while(0)
+
+// context switch from old to pam_root
+// IN: pam_proc *old
+#define pam_context(old) do { \
+  if(pam_root->tid != NULL) { \
+	pam_resume(); \
+	pam_suspend(old); \
+  } else { /* NULL proc, resume peer */ \
+	pam_peer(old); \
+  } \
+} while(0)
+
+// transfer control to pam_root and destroy old
+// IN: pam_proc old
+#define pam_resume_destroy(old) do { \
+  pam_resume(); \
+  pthread_mutex_unlock(&condition_mutex); \
+  pthread_exit(NULL); \
+} while(0)
+  
+#endif
+
+----------- pthreads.c -----------------------
+
+#include "pthreads.h"
+
+#define STACKSIZE (1024*1024) /* 1Mb per thread */
+
+//int pthread_counter = 0;
+//struct sched_param pthread_sched_param;
+pthread_attr_t pthread_attr;
+pthread_mutex_t condition_mutex;
+pthread_cond_t thread_create_cond;
+
+int pam_pthread_setup() {
+  int rc = 0;
+  size_t stacksize;
+  
+  pthread_mutex_init(&condition_mutex, NULL);
+  pthread_cond_init(&thread_create_cond, NULL);
+  
+  pthread_attr_init(&pthread_attr);
+  if((rc = pthread_attr_setdetachstate(&pthread_attr, PTHREAD_CREATE_DETACHED))) {
+	fprintf(stderr, "pthread_attr_setdetachstate() returns non-zero (%d).", rc);
+	return rc;
+  }
+ 
+  /* Check stack size */
+  if((rc = pthread_attr_getstacksize(&pthread_attr, &stacksize))) {
+	fprintf(stderr, "pthread_attr_getstacksize() returns non-zero (%d).", rc);
+	return rc;
+  }
+  if(stacksize < STACKSIZE) {
+	if((rc = pthread_attr_setstacksize(&pthread_attr, STACKSIZE))) {
+	  fprintf(stderr, "pthread_attr_setstacksize() returns non-zero (%d).", rc);
+	  return rc;
+	}
+  }
+  return 0;
+}
+
+void* pam_pthread_func_wrapper(void *arg) {
+  pam_tid *me = (pam_tid *) arg;
+  
+  //printf("Entering the func wrapper for new thread %d.\n", (int)me->thread);
+
+  // pam_suspend
+  pthread_mutex_lock(&condition_mutex);
+  pthread_cond_signal(&thread_create_cond);
+  //printf("Now %d is waiting to be signalled.\n", (int)me->thread);
+  pthread_cond_wait(&me->condition_cond, &condition_mutex);
+  pthread_mutex_unlock(&condition_mutex);
+  
+  //printf("Call to func pointer by thread %d.\n", (int)me->thread);
+  me->func();
+  pthread_exit(0);
+  return NULL;
+}
+
+// Create a suspended thread
+int pam_pthread_create(pam_tid *tid) {
+  int rc = 0;
+  if((rc = pthread_create(&tid->thread,
+		  &pthread_attr, pam_pthread_func_wrapper,
+		  (void *)tid) != 0)) {
+	fprintf(stderr, "pthread_create() returns non-zero (%d).\n", rc);
+  }
+  return 0;
+}
+
+
+

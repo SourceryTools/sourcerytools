@@ -1,0 +1,1137 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [PATCH] MPI support for SerialAsync scheduler
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20MPI%20support%20for%20SerialAsync%20scheduler&In-Reply-To=%3C3FF9D783.5030504%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001454.html">
+   <LINK REL="Next"  HREF="001463.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[PATCH] MPI support for SerialAsync scheduler</H1>
+    <B>Jeffrey D. Oldham</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20MPI%20support%20for%20SerialAsync%20scheduler&In-Reply-To=%3C3FF9D783.5030504%40codesourcery.com%3E"
+       TITLE="[PATCH] MPI support for SerialAsync scheduler">oldham at codesourcery.com
+       </A><BR>
+    <I>Mon Jan  5 21:30:43 UTC 2004</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001454.html">[PATCH] MPI support for SerialAsync scheduler
+</A></li>
+        <LI>Next message: <A HREF="001463.html">[pooma-dev] Re: [PATCH] MPI support for SerialAsync scheduler
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1458">[ date ]</a>
+              <a href="thread.html#1458">[ thread ]</a>
+              <a href="subject.html#1458">[ subject ]</a>
+              <a href="author.html#1458">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Richard Guenther wrote:
+&gt;<i> The patch was tested as usual.
+</I>&gt;<i> 
+</I>&gt;<i> Ok to commit?
+</I>
+I have some questions and comments interspersed below.
+
+&gt;<i> Thanks, Richard.
+</I>&gt;<i> 
+</I>&gt;<i> 
+</I>&gt;<i> 2004Jan02  Richard Guenther &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">richard.guenther at uni-tuebingen.de</A>&gt;
+</I>&gt;<i> 
+</I>&gt;<i> 	* src/Threads/IterateSchedulers/SerialAsync.h: doxygenifize,
+</I>&gt;<i> 	add std::stack&lt;int&gt; for generation tracking, add support for
+</I>&gt;<i> 	asyncronous MPI requests.
+</I>
+Add an 'h' to spell asynchronous.
+
+&gt;<i> 	src/Threads/IterateSchedulers/SerialAsync.cmpl.cpp: define
+</I>&gt;<i> 	new static variables.
+</I>&gt;<i> 
+</I>&gt;<i> --- /home/richard/src/pooma/cvs/r2/src/Threads/IterateSchedulers/SerialAsync.h	2000-06-09 00:16:50.000000000 +0200
+</I>&gt;<i> +++ Threads/IterateSchedulers/SerialAsync.h	2004-01-02 00:40:16.000000000 +0100
+</I>&gt;<i> @@ -42,48 +42,38 @@
+</I>&gt;<i>  // DataObject&lt;SerialAsync&gt;
+</I>&gt;<i>  //-----------------------------------------------------------------------------
+</I>&gt;<i> 
+</I>&gt;<i> -#include &lt;iostream&gt;
+</I>&gt;<i> -
+</I>&gt;<i>  #ifndef _SerialAsync_h_
+</I>&gt;<i>  #define _SerialAsync_h_
+</I>&gt;<i> -/*
+</I>&gt;<i> -LIBRARY:
+</I>&gt;<i> -        SerialAsync
+</I>&gt;<i> -
+</I>&gt;<i> -CLASSES: IterateScheduler
+</I>&gt;<i> -
+</I>&gt;<i> -CLASSES: DataObject
+</I>&gt;<i> -
+</I>&gt;<i> -CLASSES: Iterate
+</I>&gt;<i> -
+</I>&gt;<i> -OVERVIEW
+</I>&gt;<i> -        SerialAsync IterateScheduler is a policy template to create a
+</I>&gt;<i> -        dependence graphs and executes the graph respecting the
+</I>&gt;<i> -        dependencies without using threads. There is no parallelism,
+</I>&gt;<i> -        but Iterates may be executed out-of-order with respect to the
+</I>&gt;<i> -        program text.
+</I>&gt;<i> -
+</I>&gt;<i> ------------------------------------------------------------------------------*/
+</I>&gt;<i> -
+</I>&gt;<i> -//////////////////////////////////////////////////////////////////////
+</I>&gt;<i> 
+</I>&gt;<i> -//-----------------------------------------------------------------------------
+</I>&gt;<i> -// Overview:
+</I>&gt;<i> -// Smarts classes for times when you want no threads but you do want
+</I>&gt;<i> -// dataflow evaluation.
+</I>&gt;<i> -//-----------------------------------------------------------------------------
+</I>&gt;<i> -
+</I>&gt;<i> -//-----------------------------------------------------------------------------
+</I>&gt;<i> -// Typedefs:
+</I>&gt;<i> -//-----------------------------------------------------------------------------
+</I>&gt;<i> +/** @file
+</I>&gt;<i> + * @ingroup IterateSchedulers
+</I>&gt;<i> + * @brief
+</I>&gt;<i> + * Smarts classes for times when you want no threads but you do want
+</I>&gt;<i> + * dataflow evaluation.
+</I>&gt;<i> + *
+</I>&gt;<i> + * SerialAsync IterateScheduler is a policy template to create a
+</I>&gt;<i> + * dependence graphs and executes the graph respecting the
+</I>&gt;<i> + * dependencies without using threads.
+</I>&gt;<i> + * There is no (thread level) parallelism, but Iterates may be executed
+</I>&gt;<i> + * out-of-order with respect to the program text. Also this scheduler is
+</I>&gt;<i> + * used for message based parallelism in which case asyncronous execution
+</I>&gt;<i> + * leads to reduced communication latencies.
+</I>&gt;<i> + */
+</I>&gt;<i> 
+</I>&gt;<i>  //-----------------------------------------------------------------------------
+</I>&gt;<i>  // Includes:
+</I>&gt;<i>  //-----------------------------------------------------------------------------
+</I>&gt;<i> 
+</I>&gt;<i>  #include &lt;list&gt;
+</I>&gt;<i> +#include &lt;vector&gt;
+</I>&gt;<i> +#include &lt;map&gt;
+</I>&gt;<i> +#include &lt;set&gt;
+</I>&gt;<i> +#include &lt;functional&gt;
+</I>&gt;<i> +#include &lt;stack&gt;
+</I>&gt;<i>  #include &quot;Threads/IterateSchedulers/IterateScheduler.h&quot;
+</I>&gt;<i>  #include &quot;Threads/IterateSchedulers/Runnable.h&quot;
+</I>&gt;<i> +#include &quot;Tulip/Messaging.h&quot;
+</I>&gt;<i> +#include &quot;Utilities/PAssert.h&quot;
+</I>&gt;<i> 
+</I>&gt;<i>  //-----------------------------------------------------------------------------
+</I>&gt;<i>  // Forward Declarations:
+</I>&gt;<i> @@ -94,76 +84,261 @@
+</I>&gt;<i> 
+</I>&gt;<i>  namespace Smarts {
+</I>&gt;<i> 
+</I>&gt;<i> -#define MYID 0
+</I>&gt;<i> -#define MAX_CPUS 1
+</I>&gt;<i> -//
+</I>&gt;<i> -// Tag class for specializing IterateScheduler, Iterate and DataObject.
+</I>&gt;<i> -//
+</I>&gt;<i> +/**
+</I>&gt;<i> + * Tag class for specializing IterateScheduler, Iterate and DataObject.
+</I>&gt;<i> + */
+</I>&gt;<i> +
+</I>&gt;<i>  struct SerialAsync
+</I>&gt;<i>  {
+</I>&gt;<i> -  enum Action { Read, Write};
+</I>&gt;<i> +  enum Action { Read, Write };
+</I>&gt;<i>  };
+</I>&gt;<i> 
+</I>&gt;<i> 
+</I>&gt;<i> -//-----------------------------------------------------------------------------
+</I>&gt;<i> +/**
+</I>&gt;<i> + * Iterate&lt;SerialAsync&gt; is used to implement the SerialAsync
+</I>&gt;<i> + * scheduling policy.
+</I>&gt;<i> + *
+</I>&gt;<i> + * An Iterate is a non-blocking unit of concurrency that is used
+</I>&gt;<i> + * to describe a chunk of work. It inherits from the Runnable
+</I>&gt;<i> + * class and as all subclasses of Runnable, the user specializes
+</I>&gt;<i> + * the run() method to specify the operation.
+</I>&gt;<i> + * Iterate&lt;SerialAsync&gt; is a further specialization of the
+</I>&gt;<i> + * Iterate class to use the SerialAsync Scheduling algorithm to
+</I>&gt;<i> + * generate the data dependency graph for a data-driven
+</I>&gt;<i> + * execution.
+</I>&gt;<i> + */
+</I>&gt;<i> +
+</I>&gt;<i> +template&lt;&gt;
+</I>&gt;<i> +class Iterate&lt;SerialAsync&gt; : public Runnable
+</I>&gt;<i> +{
+</I>&gt;<i> +  friend class IterateScheduler&lt;SerialAsync&gt;;
+</I>&gt;<i> +  friend class DataObject&lt;SerialAsync&gt;;
+</I>&gt;<i> +
+</I>&gt;<i> +public:
+</I>&gt;<i> +
+</I>&gt;<i> +  typedef DataObject&lt;SerialAsync&gt; DataObject_t;
+</I>&gt;<i> +  typedef IterateScheduler&lt;SerialAsync&gt; IterateScheduler_t;
+</I>&gt;<i> +
+</I>&gt;<i> +
+</I>&gt;<i> +  /// The Constructor for this class takes the IterateScheduler and a
+</I>&gt;<i> +  /// CPU affinity.  CPU affinity has a default value of -1 which means
+</I>&gt;<i> +  /// it may run on any CPU available.
+</I>&gt;<i> +
+</I>&gt;<i> +  inline Iterate(IterateScheduler&lt;SerialAsync&gt; &amp; s, int affinity=-1)
+</I>&gt;<i> +    : scheduler_m(s), notifications_m(1), generation_m(-1), togo_m(1)
+</I>&gt;<i> +  {}
+</I>&gt;<i> +
+</I>&gt;<i> +  /// The dtor is virtual because the subclasses will need to add to it.
+</I>&gt;<i> +
+</I>&gt;<i> +  virtual ~Iterate() {}
+</I>&gt;<i> +
+</I>&gt;<i> +  /// The run method does the core work of the Iterate.
+</I>&gt;<i> +  /// It is supplied by the subclass.
+</I>&gt;<i> +
+</I>&gt;<i> +  virtual void run() = 0;
+</I>&gt;<i> +
+</I>&gt;<i> +  //@name Stubs for the affinities
+</I>&gt;<i> +  /// There is no such thing in serial.
+</I>&gt;<i> +  //@{
+</I>&gt;<i> +
+</I>&gt;<i> +  inline int affinity() const {return 0;}
+</I>&gt;<i> +
+</I>&gt;<i> +  inline int hintAffinity() const {return 0;}
+</I>&gt;<i> +
+</I>&gt;<i> +  inline void affinity(int) {}
+</I>&gt;<i> +
+</I>&gt;<i> +  inline void hintAffinity(int) {}
+</I>&gt;<i> +
+</I>&gt;<i> +  //@}
+</I>&gt;<i> +
+</I>&gt;<i> +  /// Notify is used to indicate to the Iterate that one of the data
+</I>&gt;<i> +  /// objects it had requested has been granted. To do this, we dec a
+</I>&gt;<i> +  /// dependence counter which, if equal to 0, the Iterate is ready for
+</I>&gt;<i> +  /// execution.
+</I>&gt;<i> +
+</I>&gt;<i> +  void notify()
+</I>&gt;<i> +  {
+</I>&gt;<i> +    if (--notifications_m == 0)
+</I>&gt;<i> +      add(this);
+</I>&gt;<i> +  }
+</I>&gt;<i> +
+</I>&gt;<i> +  /// How many notifications remain?
+</I>&gt;<i> +
+</I>&gt;<i> +  int notifications() const { return notifications_m; }
+</I>&gt;<i> +
+</I>&gt;<i> +  void addNotification() { notifications_m++; }
+</I>&gt;<i> +
+</I>&gt;<i> +  int&amp; generation() { return generation_m; }
+</I>&gt;<i> +
+</I>&gt;<i> +  int&amp; togo() { return togo_m; }
+</I>&gt;<i> +
+</I>&gt;<i> +protected:
+</I>&gt;<i> +
+</I>&gt;<i> +  /// What scheduler are we working with?
+</I>&gt;<i> +  IterateScheduler&lt;SerialAsync&gt; &amp;scheduler_m;
+</I>&gt;<i> +
+</I>&gt;<i> +  /// How many notifications should we receive before we can run?
+</I>&gt;<i> +  int notifications_m;
+</I>&gt;<i> +
+</I>&gt;<i> +  /// Which generation we were issued in.
+</I>&gt;<i> +  int generation_m;
+</I>&gt;<i> +
+</I>&gt;<i> +  /// How many times we need to go past a &quot;did something&quot; to be ready
+</I>&gt;<i> +  /// for destruction?
+</I>&gt;<i> +  int togo_m;
+</I>&gt;<i> +
+</I>&gt;<i> +};
+</I>&gt;<i> +
+</I>&gt;<i> +
+</I>&gt;<i> +/**
+</I>&gt;<i> + * FIXME.
+</I>&gt;<i> + */
+</I>
+I am wary of adding unfinished code to the code base.  At the very 
+least, we need a more extensive comment describing what is not finished.
+
+&gt;<i>  struct SystemContext
+</I>&gt;<i>  {
+</I>&gt;<i>    void addNCpus(int) {}
+</I>&gt;<i>    void wait() {}
+</I>&gt;<i>    void concurrency(int){}
+</I>&gt;<i> -  int concurrency() {return 1;}
+</I>&gt;<i> +  int concurrency() { return 1; }
+</I>&gt;<i>    void mustRunOn() {}
+</I>&gt;<i> 
+</I>&gt;<i>    // We have a separate message queue because they are
+</I>&gt;<i>    // higher priority.
+</I>&gt;<i> +  typedef Iterate&lt;SerialAsync&gt; *IteratePtr_t;
+</I>&gt;<i>    static std::list&lt;RunnablePtr_t&gt; workQueueMessages_m;
+</I>&gt;<i>    static std::list&lt;RunnablePtr_t&gt; workQueue_m;
+</I>&gt;<i> +#if POOMA_MPI
+</I>&gt;<i> +  static MPI_Request requests_m[1024];
+</I>
+What is this fixed constant of 1024?  Does this come from the MPI standard?
+
+&gt;<i> +  static std::map&lt;int, IteratePtr_t&gt; allocated_requests_m;
+</I>&gt;<i> +  static std::set&lt;int&gt; free_requests_m;
+</I>&gt;<i> +#endif
+</I>&gt;<i> +
+</I>&gt;<i> +
+</I>&gt;<i> +#if POOMA_MPI
+</I>&gt;<i> 
+</I>&gt;<i> -  ///////////////////////////
+</I>&gt;<i> -  // This function lets you check if there are iterates that are
+</I>&gt;<i> -  // ready to run.
+</I>&gt;<i> -  inline static
+</I>&gt;<i> -  bool workReady()
+</I>&gt;<i> +  /// Query, if we have lots of MPI_Request slots available
+</I>&gt;<i> +
+</I>&gt;<i> +  static bool haveLotsOfMPIRequests()
+</I>&gt;<i>    {
+</I>&gt;<i> -    return !(workQueue_m.empty() &amp;&amp; workQueueMessages_m.empty());
+</I>&gt;<i> +    return free_requests_m.size() &gt; 1024/2;
+</I>&gt;<i>    }
+</I>&gt;<i> 
+</I>&gt;<i> -  ///////////////////////////
+</I>&gt;<i> -  // Run an iterate if one is ready.
+</I>&gt;<i> -  inline static
+</I>&gt;<i> -  void runSomething()
+</I>&gt;<i> +  /// Get a MPI_Request slot, associated with an iterate
+</I>&gt;<i> +
+</I>&gt;<i> +  static MPI_Request* getMPIRequest(IteratePtr_t p)
+</I>&gt;<i>    {
+</I>&gt;<i> -    if (!workQueueMessages_m.empty())
+</I>&gt;<i> -    {
+</I>&gt;<i> -      // Get the top iterate.
+</I>&gt;<i> -      // Delete it from the queue.
+</I>&gt;<i> -      // Run the iterate.
+</I>&gt;<i> -      // Delete the iterate.  This could put more iterates in the queue.
+</I>&gt;<i> +    PInsist(!free_requests_m.empty(), &quot;No free MPIRequest slots.&quot;);
+</I>&gt;<i> +    int i = *free_requests_m.begin();
+</I>&gt;<i> +    free_requests_m.erase(free_requests_m.begin());
+</I>&gt;<i> +    allocated_requests_m[i] = p;
+</I>&gt;<i> +    p-&gt;togo()++;
+</I>&gt;<i> +    return &amp;requests_m[i];
+</I>&gt;<i> +  }
+</I>&gt;<i> 
+</I>&gt;<i> -      RunnablePtr_t p = workQueueMessages_m.front();
+</I>&gt;<i> -      workQueueMessages_m.pop_front();
+</I>&gt;<i> -      p-&gt;execute();
+</I>&gt;<i> +  static void releaseMPIRequest(int i)
+</I>&gt;<i> +  {
+</I>&gt;<i> +    IteratePtr_t p = allocated_requests_m[i];
+</I>&gt;<i> +    allocated_requests_m.erase(i);
+</I>&gt;<i> +    free_requests_m.insert(i);
+</I>&gt;<i> +    if (--(p-&gt;togo()) == 0)
+</I>&gt;<i>        delete p;
+</I>&gt;<i> -    }
+</I>&gt;<i> +  }
+</I>&gt;<i> +
+</I>&gt;<i> +  static bool waitForSomeRequests(bool mayBlock)
+</I>&gt;<i> +  {
+</I>&gt;<i> +    if (allocated_requests_m.empty())
+</I>&gt;<i> +      return false;
+</I>&gt;<i> +
+</I>&gt;<i> +    int last_used_request = allocated_requests_m.rbegin()-&gt;first;
+</I>&gt;<i> +    int finished[last_used_request+1];
+</I>&gt;<i> +    MPI_Status statuses[last_used_request+1];
+</I>&gt;<i> +    int nr_finished;
+</I>&gt;<i> +    int res;
+</I>&gt;<i> +    if (mayBlock)
+</I>&gt;<i> +      res = MPI_Waitsome(last_used_request+1, requests_m,
+</I>&gt;<i> +			 &amp;nr_finished, finished, statuses);
+</I>&gt;<i>      else
+</I>&gt;<i> -    {
+</I>&gt;<i> -      if (!workQueue_m.empty())
+</I>&gt;<i> -      {
+</I>&gt;<i> -	RunnablePtr_t p = workQueue_m.front();
+</I>&gt;<i> -	workQueue_m.pop_front();
+</I>&gt;<i> -	p-&gt;execute();
+</I>&gt;<i> -	delete p;
+</I>&gt;<i> +      res = MPI_Testsome(last_used_request+1, requests_m,
+</I>&gt;<i> +			 &amp;nr_finished, finished, statuses);
+</I>&gt;<i> +    PAssert(res == MPI_SUCCESS || res == MPI_ERR_IN_STATUS);
+</I>&gt;<i> +    if (nr_finished == MPI_UNDEFINED)
+</I>&gt;<i> +      return false;
+</I>&gt;<i> +
+</I>&gt;<i> +    // release finised requests
+</I>&gt;<i> +    while (nr_finished--) {
+</I>&gt;<i> +      if (res == MPI_ERR_IN_STATUS) {
+</I>&gt;<i> +	if (statuses[nr_finished].MPI_ERROR != MPI_SUCCESS) {
+</I>&gt;<i> +	  char msg[MPI_MAX_ERROR_STRING+1];
+</I>&gt;<i> +	  int len;
+</I>&gt;<i> +	  MPI_Error_string(statuses[nr_finished].MPI_ERROR, msg, &amp;len);
+</I>&gt;<i> +	  msg[len] = '\0';
+</I>&gt;<i> +	  PInsist(0, msg);
+</I>&gt;<i> +	}
+</I>&gt;<i>        }
+</I>&gt;<i> +      releaseMPIRequest(finished[nr_finished]);
+</I>&gt;<i>      }
+</I>&gt;<i> +    return true;
+</I>&gt;<i> +  }
+</I>&gt;<i> +
+</I>&gt;<i> +#else
+</I>&gt;<i> +
+</I>&gt;<i> +  static bool waitForSomeRequests(bool mayBlock)
+</I>&gt;<i> +  {
+</I>&gt;<i> +    return false;
+</I>&gt;<i> +  }
+</I>&gt;<i> +
+</I>&gt;<i> +#endif
+</I>&gt;<i> +
+</I>&gt;<i> +
+</I>&gt;<i> +  /// This function lets you check if there are iterates that are
+</I>&gt;<i> +  /// ready to run.
+</I>&gt;<i> +
+</I>&gt;<i> +  static bool workReady()
+</I>&gt;<i> +  {
+</I>&gt;<i> +    return !(workQueue_m.empty()
+</I>&gt;<i> +	     &amp;&amp; workQueueMessages_m.empty()
+</I>&gt;<i> +#if POOMA_MPI
+</I>&gt;<i> +	     &amp;&amp; allocated_requests_m.empty()
+</I>&gt;<i> +#endif
+</I>&gt;<i> +	     );
+</I>&gt;<i> +  }
+</I>&gt;<i> +
+</I>&gt;<i> +  /// Run an iterate if one is ready.  Returns if progress
+</I>&gt;<i> +  /// was made.
+</I>&gt;<i> +
+</I>&gt;<i> +  static bool runSomething(bool mayBlock = true)
+</I>&gt;<i> +  {
+</I>&gt;<i> +    // do work in this order to minimize communication latency:
+</I>&gt;<i> +    // - issue all messages
+</I>&gt;<i> +    // - do some regular work
+</I>&gt;<i> +    // - wait for messages to complete
+</I>&gt;<i> +
+</I>&gt;<i> +    RunnablePtr_t p = NULL;
+</I>&gt;<i> +    if (!workQueueMessages_m.empty()) {
+</I>&gt;<i> +      p = workQueueMessages_m.front();
+</I>&gt;<i> +      workQueueMessages_m.pop_front();
+</I>&gt;<i> +    } else if (!workQueue_m.empty()) {
+</I>&gt;<i> +      p = workQueue_m.front();
+</I>&gt;<i> +      workQueue_m.pop_front();
+</I>&gt;<i> +    }
+</I>&gt;<i> +
+</I>&gt;<i> +    if (p) {
+</I>&gt;<i> +      p-&gt;execute();
+</I>&gt;<i> +      Iterate&lt;SerialAsync&gt; *it = dynamic_cast&lt;IteratePtr_t&gt;(p);
+</I>&gt;<i> +      if (it) {
+</I>&gt;<i> +	if (--(it-&gt;togo()) == 0)
+</I>&gt;<i> +	  delete it;
+</I>&gt;<i> +      } else
+</I>&gt;<i> +	delete p;
+</I>&gt;<i> +      return true;
+</I>&gt;<i> +
+</I>&gt;<i> +    } else
+</I>&gt;<i> +      return waitForSomeRequests(mayBlock);
+</I>&gt;<i>    }
+</I>&gt;<i> 
+</I>&gt;<i>  };
+</I>&gt;<i> 
+</I>&gt;<i> -inline void addRunnable(RunnablePtr_t rn)
+</I>&gt;<i> -{
+</I>&gt;<i> -  SystemContext::workQueue_m.push_front(rn);
+</I>&gt;<i> -}
+</I>&gt;<i> +/// Adds a runnable to the appropriate work-queue.
+</I>&gt;<i> 
+</I>&gt;<i>  inline void add(RunnablePtr_t rn)
+</I>&gt;<i>  {
+</I>&gt;<i> @@ -182,25 +357,18 @@
+</I>&gt;<i>  inline  void wait() {}
+</I>&gt;<i>  inline  void mustRunOn(){}
+</I>&gt;<i> 
+</I>&gt;<i> -/*------------------------------------------------------------------------
+</I>&gt;<i> -CLASS
+</I>&gt;<i> -	IterateScheduler_Serial_Async
+</I>&gt;<i> -
+</I>&gt;<i> -	Implements a asynchronous scheduler for a data driven execution.
+</I>&gt;<i> -	Specializes a IterateScheduler.
+</I>&gt;<i> -
+</I>&gt;<i> -KEYWORDS
+</I>&gt;<i> -	Data-parallelism, Native-interface, IterateScheduler.
+</I>&gt;<i> -
+</I>&gt;<i> -DESCRIPTION
+</I>&gt;<i> -
+</I>&gt;<i> -        The SerialAsync IterateScheduler, Iterate and DataObject
+</I>&gt;<i> -	implement a SMARTS scheduler that does dataflow without threads.
+</I>&gt;<i> -	What that means is that when you hand iterates to the
+</I>&gt;<i> -	IterateScheduler it stores them up until you call
+</I>&gt;<i> -	IterateScheduler::blockingEvaluate(), at which point it evaluates
+</I>&gt;<i> -	iterates until the queue is empty.
+</I>&gt;<i> ------------------------------------------------------------------------------*/
+</I>&gt;<i> +
+</I>&gt;<i> +/**
+</I>&gt;<i> + * Implements a asynchronous scheduler for a data driven execution.
+</I>&gt;<i> + * Specializes a IterateScheduler.
+</I>&gt;<i> + *
+</I>&gt;<i> + * The SerialAsync IterateScheduler, Iterate and DataObject
+</I>&gt;<i> + * implement a SMARTS scheduler that does dataflow without threads.
+</I>&gt;<i> + * What that means is that when you hand iterates to the
+</I>&gt;<i> + * IterateScheduler it stores them up until you call
+</I>&gt;<i> + * IterateScheduler::blockingEvaluate(), at which point it evaluates
+</I>&gt;<i> + * iterates until the queue is empty.
+</I>&gt;<i> + */
+</I>&gt;<i> 
+</I>&gt;<i>  template&lt;&gt;
+</I>&gt;<i>  class IterateScheduler&lt;SerialAsync&gt;
+</I>&gt;<i> @@ -212,196 +380,128 @@
+</I>&gt;<i>    typedef DataObject&lt;SerialAsync&gt; DataObject_t;
+</I>&gt;<i>    typedef Iterate&lt;SerialAsync&gt; Iterate_t;
+</I>&gt;<i> 
+</I>&gt;<i> -  ///////////////////////////
+</I>&gt;<i> -  // Constructor
+</I>&gt;<i> -  //
+</I>&gt;<i> -  IterateScheduler() {}
+</I>&gt;<i> -
+</I>&gt;<i> -  ///////////////////////////
+</I>&gt;<i> -  // Destructor
+</I>&gt;<i> -  //
+</I>&gt;<i> -  ~IterateScheduler() {}
+</I>&gt;<i> -  void setConcurrency(int) {}
+</I>&gt;<i> -
+</I>&gt;<i> -  //---------------------------------------------------------------------------
+</I>&gt;<i> -  // Mutators.
+</I>&gt;<i> -  //---------------------------------------------------------------------------
+</I>&gt;<i> -
+</I>&gt;<i> -  ///////////////////////////
+</I>&gt;<i> -  // Tells the scheduler that the parser thread is starting a new
+</I>&gt;<i> -  // data-parallel statement.  Any Iterate that is handed off to the
+</I>&gt;<i> -  // scheduler between beginGeneration() and endGeneration() belongs
+</I>&gt;<i> -  // to the same data-paralllel statement and therefore has the same
+</I>&gt;<i> -  // generation number.
+</I>&gt;<i> -  //
+</I>&gt;<i> -  inline void beginGeneration() { }
+</I>&gt;<i> -
+</I>&gt;<i> -  ///////////////////////////
+</I>&gt;<i> -  // Tells the scheduler that no more Iterates will be handed off for
+</I>&gt;<i> -  // the data parallel statement that was begun with a
+</I>&gt;<i> -  // beginGeneration().
+</I>&gt;<i> -  //
+</I>&gt;<i> -  inline void endGeneration() {}
+</I>&gt;<i> -
+</I>&gt;<i> -  ///////////////////////////
+</I>&gt;<i> -  // The parser thread calls this method to evaluate the generated
+</I>&gt;<i> -  // graph until all the nodes in the dependence graph has been
+</I>&gt;<i> -  // executed by the scheduler.  That is to say, the scheduler
+</I>&gt;<i> -  // executes all the Iterates that has been handed off to it by the
+</I>&gt;<i> -  // parser thread.
+</I>&gt;<i> -  //
+</I>&gt;<i> -  inline
+</I>&gt;<i> -  void blockingEvaluate();
+</I>&gt;<i> -
+</I>&gt;<i> -  ///////////////////////////
+</I>&gt;<i> -  // The parser thread calls this method to ask the scheduler to run
+</I>&gt;<i> -  // the given Iterate when the dependence on that Iterate has been
+</I>&gt;<i> -  // satisfied.
+</I>&gt;<i> -  //
+</I>&gt;<i> -  inline void handOff(Iterate&lt;SerialAsync&gt;* it);
+</I>&gt;<i> +  IterateScheduler()
+</I>&gt;<i> +    : generation_m(0)
+</I>&gt;<i> +  {}
+</I>&gt;<i> 
+</I>&gt;<i> -  inline
+</I>&gt;<i> -  void releaseIterates() { }
+</I>&gt;<i> +  ~IterateScheduler() {}
+</I>&gt;<i> 
+</I>&gt;<i> -protected:
+</I>&gt;<i> -private:
+</I>&gt;<i> +  void setConcurrency(int) {}
+</I>&gt;<i> 
+</I>&gt;<i> -  typedef std::list&lt;Iterate_t*&gt; Container_t;
+</I>&gt;<i> -  typedef Container_t::iterator Iterator_t;
+</I>&gt;<i> +  /// Tells the scheduler that the parser thread is starting a new
+</I>&gt;<i> +  /// data-parallel statement.  Any Iterate that is handed off to the
+</I>&gt;<i> +  /// scheduler between beginGeneration() and endGeneration() belongs
+</I>&gt;<i> +  /// to the same data-paralllel statement and therefore has the same
+</I>&gt;<i> +  /// generation number.
+</I>&gt;<i> +  /// Nested invocations are handled as being part of the outermost
+</I>&gt;<i> +  /// generation.
+</I>&gt;<i> 
+</I>&gt;<i> -};
+</I>&gt;<i> +  void beginGeneration()
+</I>&gt;<i> +  {
+</I>&gt;<i> +    // Ensure proper overflow behavior.
+</I>&gt;<i> +    if (++generation_m &lt; 0)
+</I>&gt;<i> +      generation_m = 0;
+</I>&gt;<i> +    generationStack_m.push(generation_m);
+</I>&gt;<i> +  }
+</I>&gt;<i> 
+</I>&gt;<i> -//-----------------------------------------------------------------------------
+</I>&gt;<i> +  /// Tells the scheduler that no more Iterates will be handed off for
+</I>&gt;<i> +  /// the data parallel statement that was begun with a
+</I>&gt;<i> +  /// beginGeneration().
+</I>&gt;<i> 
+</I>&gt;<i> -/*------------------------------------------------------------------------
+</I>&gt;<i> -CLASS
+</I>&gt;<i> -	Iterate_SerialAsync
+</I>&gt;<i> -
+</I>&gt;<i> -	Iterate&lt;SerialAsync&gt; is used to implement the SerialAsync
+</I>&gt;<i> -	scheduling policy.
+</I>&gt;<i> -
+</I>&gt;<i> -KEYWORDS
+</I>&gt;<i> -	Data_Parallelism, Native_Interface, IterateScheduler, Data_Flow.
+</I>&gt;<i> -
+</I>&gt;<i> -DESCRIPTION
+</I>&gt;<i> -        An Iterate is a non-blocking unit of concurrency that is used
+</I>&gt;<i> -	to describe a chunk of work. It inherits from the Runnable
+</I>&gt;<i> -	class and as all subclasses of Runnable, the user specializes
+</I>&gt;<i> -	the run() method to specify the operation.
+</I>&gt;<i> -	Iterate&lt;SerialAsync&gt; is a further specialization of the
+</I>&gt;<i> -	Iterate class to use the SerialAsync Scheduling algorithm to
+</I>&gt;<i> -	generate the data dependency graph for a data-driven
+</I>&gt;<i> -	execution.  */
+</I>&gt;<i> +  void endGeneration()
+</I>&gt;<i> +  {
+</I>&gt;<i> +    PAssert(inGeneration());
+</I>&gt;<i> +    generationStack_m.pop();
+</I>&gt;<i> 
+</I>&gt;<i> -template&lt;&gt;
+</I>&gt;<i> -class Iterate&lt;SerialAsync&gt; : public Runnable
+</I>&gt;<i> -{
+</I>&gt;<i> -  friend class IterateScheduler&lt;SerialAsync&gt;;
+</I>&gt;<i> -  friend class DataObject&lt;SerialAsync&gt;;
+</I>&gt;<i> +#if POOMA_MPI
+</I>&gt;<i> +    // this is a safe point to block until we have &quot;lots&quot; of MPI Requests
+</I>&gt;<i> +    if (!inGeneration())
+</I>&gt;<i> +      while (!SystemContext::haveLotsOfMPIRequests())
+</I>&gt;<i> +	SystemContext::runSomething(true);
+</I>&gt;<i> +#endif
+</I>&gt;<i> +  }
+</I>&gt;<i> 
+</I>&gt;<i> -public:
+</I>&gt;<i> +  /// Wether we are inside a generation and may not safely block.
+</I>&gt;<i> 
+</I>&gt;<i> -  typedef DataObject&lt;SerialAsync&gt; DataObject_t;
+</I>&gt;<i> -  typedef IterateScheduler&lt;SerialAsync&gt; IterateScheduler_t;
+</I>&gt;<i> +  bool inGeneration() const
+</I>&gt;<i> +  {
+</I>&gt;<i> +    return !generationStack_m.empty();
+</I>&gt;<i> +  }
+</I>&gt;<i> 
+</I>&gt;<i> +  /// What the current generation is.
+</I>&gt;<i> 
+</I>&gt;<i> -  ///////////////////////////
+</I>&gt;<i> -  // The Constructor for this class takes the IterateScheduler and a
+</I>&gt;<i> -  // CPU affinity.  CPU affinity has a default value of -1 which means
+</I>&gt;<i> -  // it may run on any CPU available.
+</I>&gt;<i> -  //
+</I>&gt;<i> -  inline Iterate(IterateScheduler&lt;SerialAsync&gt; &amp; s, int affinity=-1);
+</I>&gt;<i> -
+</I>&gt;<i> -  ///////////////////////////
+</I>&gt;<i> -  // The dtor is virtual because the subclasses will need to add to it.
+</I>&gt;<i> -  //
+</I>&gt;<i> -  virtual ~Iterate() {}
+</I>&gt;<i> +  int generation() const
+</I>&gt;<i> +  {
+</I>&gt;<i> +    if (!inGeneration())
+</I>&gt;<i> +      return -1;
+</I>&gt;<i> +    return generationStack_m.top();
+</I>&gt;<i> +  }
+</I>&gt;<i> 
+</I>&gt;<i> -  ///////////////////////////
+</I>&gt;<i> -  // The run method does the core work of the Iterate.
+</I>&gt;<i> -  // It is supplied by the subclass.
+</I>&gt;<i> -  //
+</I>&gt;<i> -  virtual void run() = 0;
+</I>&gt;<i> +  /// The parser thread calls this method to evaluate the generated
+</I>&gt;<i> +  /// graph until all the nodes in the dependence graph has been
+</I>&gt;<i> +  /// executed by the scheduler.  That is to say, the scheduler
+</I>&gt;<i> +  /// executes all the Iterates that has been handed off to it by the
+</I>&gt;<i> +  /// parser thread.
+</I>&gt;<i> 
+</I>&gt;<i> -  ///////////////////////////
+</I>&gt;<i> -  // Stub in all the affinities, because there is no such thing
+</I>&gt;<i> -  // in serial.
+</I>&gt;<i> -  //
+</I>&gt;<i> -  inline int affinity() const {return 0;}
+</I>&gt;<i> -  ///////////////////////////
+</I>&gt;<i> -  // Stub in all the affinities, because there is no such thing
+</I>&gt;<i> -  // in serial.
+</I>&gt;<i> -  //
+</I>&gt;<i> -  inline int hintAffinity() const {return 0;}
+</I>&gt;<i> -  ///////////////////////////
+</I>&gt;<i> -  // Stub in all the affinities, because there is no such thing
+</I>&gt;<i> -  // in serial.
+</I>&gt;<i> -  //
+</I>&gt;<i> -  inline void affinity(int) {}
+</I>&gt;<i> -  ///////////////////////////
+</I>&gt;<i> -  // Stub in all the affinities, because there is no such thing
+</I>&gt;<i> -  // in serial.
+</I>&gt;<i> -  //
+</I>&gt;<i> -  inline void hintAffinity(int) {}
+</I>&gt;<i> +  void blockingEvaluate()
+</I>&gt;<i> +  {
+</I>&gt;<i> +    if (inGeneration()) {
+</I>&gt;<i> +      // It's not safe to block inside a generation, so
+</I>&gt;<i> +      // just do as much as we can without blocking.
+</I>&gt;<i> +      while (SystemContext::runSomething(false))
+</I>&gt;<i> +	;
+</I>&gt;<i> +
+</I>&gt;<i> +    } else {
+</I>&gt;<i> +      // Loop as long as there is anything in the queue.
+</I>&gt;<i> +      while (SystemContext::workReady())
+</I>&gt;<i> +        SystemContext::runSomething(true);
+</I>&gt;<i> +    }
+</I>&gt;<i> +  }
+</I>&gt;<i> 
+</I>&gt;<i> -  ///////////////////////////
+</I>&gt;<i> -  // Notify is used to indicate to the Iterate that one of the data
+</I>&gt;<i> -  // objects it had requested has been granted. To do this, we dec a
+</I>&gt;<i> -  // dependence counter which, if equal to 0, the Iterate is ready for
+</I>&gt;<i> -  // execution.
+</I>&gt;<i> -  //
+</I>&gt;<i> -  inline void notify();
+</I>&gt;<i> -
+</I>&gt;<i> -  ///////////////////////////
+</I>&gt;<i> -  // How many notifications remain?
+</I>&gt;<i> -  //
+</I>&gt;<i> -  inline
+</I>&gt;<i> -  int notifications() const { return notifications_m; }
+</I>&gt;<i> +  /// The parser thread calls this method to ask the scheduler to run
+</I>&gt;<i> +  /// the given Iterate when the dependence on that Iterate has been
+</I>&gt;<i> +  /// satisfied.
+</I>&gt;<i> 
+</I>&gt;<i> -  inline void addNotification()
+</I>&gt;<i> +  void handOff(Iterate&lt;SerialAsync&gt;* it)
+</I>&gt;<i>    {
+</I>&gt;<i> -    notifications_m++;
+</I>&gt;<i> +    // No action needs to be taken here.  Iterates will make their
+</I>&gt;<i> +    // own way into the execution queue.
+</I>&gt;<i> +    it-&gt;generation() = generation();
+</I>&gt;<i> +    it-&gt;notify();
+</I>&gt;<i>    }
+</I>&gt;<i> 
+</I>&gt;<i> -protected:
+</I>&gt;<i> +  void releaseIterates() { }
+</I>&gt;<i> 
+</I>&gt;<i> -  // What scheduler are we working with?
+</I>&gt;<i> -  IterateScheduler&lt;SerialAsync&gt; &amp;scheduler_m;
+</I>&gt;<i> +private:
+</I>&gt;<i> 
+</I>&gt;<i> -  // How many notifications should we receive before we can run?
+</I>&gt;<i> -  int notifications_m;
+</I>&gt;<i> +  typedef std::list&lt;Iterate_t*&gt; Container_t;
+</I>&gt;<i> +  typedef Container_t::iterator Iterator_t;
+</I>&gt;<i> 
+</I>&gt;<i> -private:
+</I>&gt;<i> -  // Set notifications dynamically and automatically every time a
+</I>&gt;<i> -  // request is made by the iterate
+</I>&gt;<i> -  void incr_notifications() { notifications_m++;}
+</I>&gt;<i> +  static std::stack&lt;int&gt; generationStack_m;
+</I>&gt;<i> +  int generation_m;
+</I>&gt;<i> 
+</I>&gt;<i>  };
+</I>&gt;<i> 
+</I>&gt;<i> 
+</I>&gt;<i> -//-----------------------------------------------------------------------------
+</I>&gt;<i> -
+</I>&gt;<i> -/*------------------------------------------------------------------------
+</I>&gt;<i> -CLASS
+</I>&gt;<i> -	DataObject_SerialAsync
+</I>&gt;<i> -
+</I>&gt;<i> -	Implements a asynchronous scheduler for a data driven execution.
+</I>&gt;<i> -KEYWORDS
+</I>&gt;<i> -	Data-parallelism, Native-interface, IterateScheduler.
+</I>&gt;<i> -
+</I>&gt;<i> -DESCRIPTION
+</I>&gt;<i> -        The DataObject Class is used introduce a type to represent
+</I>&gt;<i> -	a resources (normally) blocks of data) that Iterates contend
+</I>&gt;<i> -	for atomic access. Iterates make request for either a read or
+</I>&gt;<i> -	write to the DataObjects. DataObjects may grant the request if
+</I>&gt;<i> -	the object is currently available. Otherwise, the request is
+</I>&gt;<i> -	enqueue in a queue private to the data object until the
+</I>&gt;<i> -	DataObject is release by another Iterate. A set of read
+</I>&gt;<i> -	requests may be granted all at once if there are no
+</I>&gt;<i> -	intervening write request to that DataObject.
+</I>&gt;<i> -	DataObject&lt;SerialAsync&gt; is a specialization of DataObject for
+</I>&gt;<i> -	the policy template SerialAsync.
+</I>&gt;<i> -*/
+</I>&gt;<i> +/**
+</I>&gt;<i> + * Implements a asynchronous scheduler for a data driven execution.
+</I>&gt;<i> + *
+</I>&gt;<i> + * The DataObject Class is used introduce a type to represent
+</I>&gt;<i> + * a resources (normally) blocks of data) that Iterates contend
+</I>&gt;<i> + * for atomic access. Iterates make request for either a read or
+</I>&gt;<i> + * write to the DataObjects. DataObjects may grant the request if
+</I>&gt;<i> + * the object is currently available. Otherwise, the request is
+</I>&gt;<i> + * enqueue in a queue private to the data object until the
+</I>&gt;<i> + * DataObject is release by another Iterate. A set of read
+</I>&gt;<i> + * requests may be granted all at once if there are no
+</I>&gt;<i> + * intervening write request to that DataObject.
+</I>&gt;<i> + * DataObject&lt;SerialAsync&gt; is a specialization of DataObject for
+</I>&gt;<i> + * the policy template SerialAsync.
+</I>&gt;<i> + *
+</I>&gt;<i> + * There are two ways data can be used: to read or to write.
+</I>&gt;<i> + * Don't change this to give more than two states;
+</I>&gt;<i> + * things inside depend on that.
+</I>&gt;<i> + */
+</I>&gt;<i> 
+</I>&gt;<i>  template&lt;&gt;
+</I>&gt;<i>  class DataObject&lt;SerialAsync&gt;
+</I>&gt;<i> @@ -413,54 +513,56 @@
+</I>&gt;<i>    typedef IterateScheduler&lt;SerialAsync&gt; IterateScheduler_t;
+</I>&gt;<i>    typedef Iterate&lt;SerialAsync&gt; Iterate_t;
+</I>&gt;<i> 
+</I>&gt;<i> -  // There are two ways data can be used: to read or to write.
+</I>&gt;<i> -  // Don't change this to give more than two states:
+</I>&gt;<i> -  // things inside depend on that.
+</I>&gt;<i> -
+</I>&gt;<i> -  ///////////////////////////
+</I>&gt;<i> -  // Construct the data object with an empty set of requests
+</I>&gt;<i> -  // and the given affinity.
+</I>&gt;<i> -  //
+</I>&gt;<i> -  inline DataObject(int affinity=-1);
+</I>&gt;<i> +
+</I>&gt;<i> +  /// Construct the data object with an empty set of requests
+</I>&gt;<i> +  /// and the given affinity.
+</I>&gt;<i> +
+</I>&gt;<i> +  DataObject(int affinity=-1)
+</I>&gt;<i> +    : released_m(queue_m.end()), notifications_m(0)
+</I>&gt;<i> +  {
+</I>&gt;<i> +    // released_m to the end of the queue (which should) also be the
+</I>&gt;<i> +    // beginning.  notifications_m to zero, since nothing has been
+</I>&gt;<i> +    // released yet.
+</I>&gt;<i> +  }
+</I>&gt;<i> 
+</I>&gt;<i> -  ///////////////////////////
+</I>&gt;<i> -  // for compatibility with other SMARTS schedulers, accept
+</I>&gt;<i> -  // Scheduler arguments (unused)
+</I>&gt;<i> -  //
+</I>&gt;<i> -  inline
+</I>&gt;<i> -  DataObject(int affinity, IterateScheduler&lt;SerialAsync&gt;&amp;);
+</I>&gt;<i> -
+</I>&gt;<i> -  ///////////////////////////
+</I>&gt;<i> -  // Stub out affinity because there is no affinity in serial.
+</I>&gt;<i> -  //
+</I>&gt;<i> -  inline int affinity() const { return 0; }
+</I>&gt;<i> -
+</I>&gt;<i> -  ///////////////////////////
+</I>&gt;<i> -  // Stub out affinity because there is no affinity in serial.
+</I>&gt;<i> -  //
+</I>&gt;<i> -  inline void affinity(int) {}
+</I>&gt;<i> +  /// for compatibility with other SMARTS schedulers, accept
+</I>&gt;<i> +  /// Scheduler arguments (unused)
+</I>&gt;<i> 
+</I>&gt;<i> -  ///////////////////////////
+</I>&gt;<i> -  // An iterate makes a request for a certain action in a certain
+</I>&gt;<i> -  // generation.
+</I>&gt;<i> -  //
+</I>&gt;<i> -  inline
+</I>&gt;<i> -  void request(Iterate&lt;SerialAsync&gt;&amp;, SerialAsync::Action);
+</I>&gt;<i> -
+</I>&gt;<i> -  ///////////////////////////
+</I>&gt;<i> -  // An iterate finishes and tells the DataObject it no longer needs
+</I>&gt;<i> -  // it.  If this is the last release for the current set of
+</I>&gt;<i> -  // requests, have the IterateScheduler release some more.
+</I>&gt;<i> -  //
+</I>&gt;<i> -  inline void release(SerialAsync::Action);
+</I>&gt;<i> +  inline DataObject(int affinity, IterateScheduler&lt;SerialAsync&gt;&amp;)
+</I>&gt;<i> +    : released_m(queue_m.end()), notifications_m(0)
+</I>&gt;<i> +  {}
+</I>&gt;<i> +
+</I>&gt;<i> +  /// Stub out affinity because there is no affinity in serial.
+</I>&gt;<i> +
+</I>&gt;<i> +  int affinity() const { return 0; }
+</I>&gt;<i> +
+</I>&gt;<i> +  /// Stub out affinity because there is no affinity in serial.
+</I>&gt;<i> +
+</I>&gt;<i> +  void affinity(int) {}
+</I>&gt;<i> +
+</I>&gt;<i> +  /// An iterate makes a request for a certain action in a certain
+</I>&gt;<i> +  /// generation.
+</I>&gt;<i> +
+</I>&gt;<i> +  inline void request(Iterate&lt;SerialAsync&gt;&amp;, SerialAsync::Action);
+</I>&gt;<i> +
+</I>&gt;<i> +  /// An iterate finishes and tells the DataObject it no longer needs
+</I>&gt;<i> +  /// it.  If this is the last release for the current set of
+</I>&gt;<i> +  /// requests, have the IterateScheduler release some more.
+</I>&gt;<i> +
+</I>&gt;<i> +  void release(SerialAsync::Action)
+</I>&gt;<i> +  {
+</I>&gt;<i> +    if (--notifications_m == 0)
+</I>&gt;<i> +      releaseIterates();
+</I>&gt;<i> +  }
+</I>&gt;<i> 
+</I>&gt;<i> -protected:
+</I>&gt;<i>  private:
+</I>&gt;<i> 
+</I>&gt;<i> -  // If release needs to let more iterates go, it calls this.
+</I>&gt;<i> +  /// If release needs to let more iterates go, it calls this.
+</I>&gt;<i>    inline void releaseIterates();
+</I>&gt;<i> 
+</I>&gt;<i> -  // The type for a request.
+</I>&gt;<i> +  /**
+</I>&gt;<i> +   * The type for a request.
+</I>&gt;<i> +   */
+</I>&gt;<i>    class Request
+</I>&gt;<i>    {
+</I>&gt;<i>    public:
+</I>&gt;<i> @@ -475,135 +577,27 @@
+</I>&gt;<i>      SerialAsync::Action act_m;
+</I>&gt;<i>    };
+</I>&gt;<i> 
+</I>&gt;<i> -  // The type of the queue and iterator.
+</I>&gt;<i> +  /// The type of the queue and iterator.
+</I>&gt;<i>    typedef std::list&lt;Request&gt; Container_t;
+</I>&gt;<i>    typedef Container_t::iterator Iterator_t;
+</I>&gt;<i> 
+</I>&gt;<i> -  // The list of requests from various iterates.
+</I>&gt;<i> -  // They're granted in FIFO order.
+</I>&gt;<i> +  /// The list of requests from various iterates.
+</I>&gt;<i> +  /// They're granted in FIFO order.
+</I>&gt;<i>    Container_t queue_m;
+</I>&gt;<i> 
+</I>&gt;<i> -  // Pointer to the last request that has been granted.
+</I>&gt;<i> +  /// Pointer to the last request that has been granted.
+</I>&gt;<i>    Iterator_t released_m;
+</I>&gt;<i> 
+</I>&gt;<i> -  // The number of outstanding notifications.
+</I>&gt;<i> +  /// The number of outstanding notifications.
+</I>&gt;<i>    int notifications_m;
+</I>&gt;<i>  };
+</I>&gt;<i> 
+</I>&gt;<i> -//////////////////////////////////////////////////////////////////////
+</I>&gt;<i> -//
+</I>&gt;<i> -// Inline implementation of the functions for
+</I>&gt;<i> -// IterateScheduler&lt;SerialAsync&gt;
+</I>&gt;<i> -//
+</I>&gt;<i> -//////////////////////////////////////////////////////////////////////
+</I>&gt;<i> -
+</I>&gt;<i> -//
+</I>&gt;<i> -// IterateScheduler&lt;SerialAsync&gt;::handOff(Iterate&lt;SerialAsync&gt;*)
+</I>&gt;<i> -// No action needs to be taken here.  Iterates will make their
+</I>&gt;<i> -// own way into the execution queue.
+</I>&gt;<i> -//
+</I>&gt;<i> -
+</I>&gt;<i> -inline void
+</I>&gt;<i> -IterateScheduler&lt;SerialAsync&gt;::handOff(Iterate&lt;SerialAsync&gt;* it)
+</I>&gt;<i> -{
+</I>&gt;<i> -  it-&gt;notify();
+</I>&gt;<i> -}
+</I>&gt;<i> -
+</I>&gt;<i> -//////////////////////////////////////////////////////////////////////
+</I>&gt;<i> -//
+</I>&gt;<i> -// Inline implementation of the functions for Iterate&lt;SerialAsync&gt;
+</I>&gt;<i> -//
+</I>&gt;<i> -//////////////////////////////////////////////////////////////////////
+</I>&gt;<i> -
+</I>&gt;<i> -//
+</I>&gt;<i> -// Iterate&lt;SerialAsync&gt;::Iterate
+</I>&gt;<i> -// Construct with the scheduler and the number of notifications.
+</I>&gt;<i> -// Ignore the affinity.
+</I>&gt;<i> -//
+</I>&gt;<i> -
+</I>&gt;<i> -inline
+</I>&gt;<i> -Iterate&lt;SerialAsync&gt;::Iterate(IterateScheduler&lt;SerialAsync&gt;&amp; s, int)
+</I>&gt;<i> -: scheduler_m(s), notifications_m(1)
+</I>&gt;<i> -{
+</I>&gt;<i> -}
+</I>&gt;<i> -
+</I>&gt;<i> -//
+</I>&gt;<i> -// Iterate&lt;SerialAsync&gt;::notify
+</I>&gt;<i> -// Notify the iterate that a DataObject is ready.
+</I>&gt;<i> -// Decrement the counter, and if it is zero, alert the scheduler.
+</I>&gt;<i> -//
+</I>&gt;<i> -
+</I>&gt;<i> -inline void
+</I>&gt;<i> -Iterate&lt;SerialAsync&gt;::notify()
+</I>&gt;<i> -{
+</I>&gt;<i> -  if ( --notifications_m == 0 )
+</I>&gt;<i> -  {
+</I>&gt;<i> -    add(this);
+</I>&gt;<i> -  }
+</I>&gt;<i> -}
+</I>&gt;<i> -
+</I>&gt;<i> -//////////////////////////////////////////////////////////////////////
+</I>&gt;<i> -//
+</I>&gt;<i> -// Inline implementation of the functions for DataObject&lt;SerialAsync&gt;
+</I>&gt;<i> -//
+</I>&gt;<i> -//////////////////////////////////////////////////////////////////////
+</I>&gt;<i> -
+</I>&gt;<i> -//
+</I>&gt;<i> -// DataObject::DataObject()
+</I>&gt;<i> -// Initialize:
+</I>&gt;<i> -//   released_m to the end of the queue (which should) also be the
+</I>&gt;<i> -//   beginning.  notifications_m to zero, since nothing has been
+</I>&gt;<i> -//   released yet.
+</I>&gt;<i> -//
+</I>&gt;<i> -
+</I>&gt;<i> -inline
+</I>&gt;<i> -DataObject&lt;SerialAsync&gt;::DataObject(int)
+</I>&gt;<i> -: released_m(queue_m.end()), notifications_m(0)
+</I>&gt;<i> -{
+</I>&gt;<i> -}
+</I>&gt;<i> -
+</I>&gt;<i> -//
+</I>&gt;<i> -// void DataObject::release(Action)
+</I>&gt;<i> -// An iterate has finished and is telling the DataObject that
+</I>&gt;<i> -// it is no longer needed.
+</I>&gt;<i> -//
+</I>&gt;<i> +/// void DataObject::releaseIterates(SerialAsync::Action)
+</I>&gt;<i> +/// When the last released iterate dies, we need to
+</I>&gt;<i> +/// look at the beginning of the queue and tell more iterates
+</I>&gt;<i> +/// that they can access this data.
+</I>&gt;<i> 
+</I>&gt;<i>  inline void
+</I>&gt;<i> -DataObject&lt;SerialAsync&gt;::release(SerialAsync::Action)
+</I>&gt;<i> -{
+</I>&gt;<i> -  if ( --notifications_m == 0 )
+</I>&gt;<i> -    releaseIterates();
+</I>&gt;<i> -}
+</I>&gt;<i> -
+</I>&gt;<i> -
+</I>&gt;<i> -
+</I>&gt;<i> -//-----------------------------------------------------------------------------
+</I>&gt;<i> -//
+</I>&gt;<i> -// void IterateScheduler&lt;SerialAsync&gt;::blockingEvaluate
+</I>&gt;<i> -// Evaluate all the iterates in the queue.
+</I>&gt;<i> -//
+</I>&gt;<i> -//-----------------------------------------------------------------------------
+</I>&gt;<i> -inline
+</I>&gt;<i> -void
+</I>&gt;<i> -IterateScheduler&lt;SerialAsync&gt;::blockingEvaluate()
+</I>&gt;<i> -{
+</I>&gt;<i> -  // Loop as long as there is anything in the queue.
+</I>&gt;<i> -  while (SystemContext::workReady())
+</I>&gt;<i> -  {
+</I>&gt;<i> -    SystemContext::runSomething();
+</I>&gt;<i> -  }
+</I>&gt;<i> -}
+</I>&gt;<i> -
+</I>&gt;<i> -//-----------------------------------------------------------------------------
+</I>&gt;<i> -//
+</I>&gt;<i> -// void DataObject::releaseIterates(SerialAsync::Action)
+</I>&gt;<i> -// When the last released iterate dies, we need to
+</I>&gt;<i> -// look at the beginning of the queue and tell more iterates
+</I>&gt;<i> -// that they can access this data.
+</I>&gt;<i> -//
+</I>&gt;<i> -//-----------------------------------------------------------------------------
+</I>&gt;<i> -inline
+</I>&gt;<i> -void
+</I>&gt;<i>  DataObject&lt;SerialAsync&gt;::releaseIterates()
+</I>&gt;<i>  {
+</I>&gt;<i>    // Get rid of the reservations that have finished.
+</I>&gt;<i> @@ -622,14 +616,17 @@
+</I>&gt;<i>        released_m-&gt;iterate().notify();
+</I>&gt;<i>        ++notifications_m;
+</I>&gt;<i> 
+</I>&gt;<i> -      // Record what action that one will take.
+</I>&gt;<i> +      // Record what action that one will take
+</I>&gt;<i> +      // and record its generation number
+</I>&gt;<i>        SerialAsync::Action act = released_m-&gt;act();
+</I>&gt;<i> +      int generation = released_m-&gt;iterate().generation();
+</I>&gt;<i> 
+</I>&gt;<i>        // Look at the next iterate.
+</I>&gt;<i>        ++released_m;
+</I>&gt;<i> 
+</I>&gt;<i>        // If the first one was a read, release more.
+</I>&gt;<i>        if ( act == SerialAsync::Read )
+</I>&gt;<i> +	{
+</I>&gt;<i> 
+</I>&gt;<i>          // As long as we aren't at the end and we have more reads...
+</I>&gt;<i>          while ((released_m != end) &amp;&amp;
+</I>&gt;<i> @@ -642,29 +639,30 @@
+</I>&gt;<i>              // And go on to the next.
+</I>&gt;<i>              ++released_m;
+</I>&gt;<i>            }
+</I>&gt;<i> +
+</I>&gt;<i> +	}
+</I>&gt;<i> +
+</I>&gt;<i>      }
+</I>&gt;<i>  }
+</I>&gt;<i> 
+</I>&gt;<i> +/// void DataObject::request(Iterate&amp;, action)
+</I>&gt;<i> +/// An iterate makes a reservation with this DataObject for a given
+</I>&gt;<i> +/// action in a given generation.  The request may be granted
+</I>&gt;<i> +/// immediately.
+</I>&gt;<i> 
+</I>&gt;<i> -//
+</I>&gt;<i> -// void DataObject::request(Iterate&amp;, action)
+</I>&gt;<i> -// An iterate makes a reservation with this DataObject for a given
+</I>&gt;<i> -// action in a given generation.  The request may be granted
+</I>&gt;<i> -// immediately.
+</I>&gt;<i> -//
+</I>&gt;<i> -inline
+</I>&gt;<i> -void
+</I>&gt;<i> +inline void
+</I>&gt;<i>  DataObject&lt;SerialAsync&gt;::request(Iterate&lt;SerialAsync&gt;&amp; it,
+</I>&gt;<i>                                   SerialAsync::Action act)
+</I>&gt;<i> 
+</I>&gt;<i>  {
+</I>&gt;<i>    // The request can be granted immediately if:
+</I>&gt;<i>    // The queue is currently empty, or
+</I>&gt;<i> -  // The request is a read and everything in the queue is a read.
+</I>&gt;<i> +  // the request is a read and everything in the queue is a read,
+</I>&gt;<i> +  // or (with relaxed conditions), everything is the same generation.
+</I>&gt;<i> 
+</I>&gt;<i>    // Set notifications dynamically and automatically
+</I>&gt;<i>    //     every time a request is made by the iterate
+</I>&gt;<i> -  it.incr_notifications();
+</I>&gt;<i> +  it.notifications_m++;
+</I>&gt;<i> 
+</I>&gt;<i>    bool allReleased = (queue_m.end() == released_m);
+</I>&gt;<i>    bool releasable =  queue_m.empty() ||
+</I>&gt;<i> @@ -691,17 +689,11 @@
+</I>&gt;<i>  }
+</I>&gt;<i> 
+</I>&gt;<i> 
+</I>&gt;<i> -//----------------------------------------------------------------------
+</I>&gt;<i> -
+</I>&gt;<i> -
+</I>&gt;<i> -//
+</I>&gt;<i> -// End of Smarts namespace.
+</I>&gt;<i> -//
+</I>&gt;<i> -}
+</I>&gt;<i> +} // namespace Smarts
+</I>&gt;<i> 
+</I>&gt;<i>  //////////////////////////////////////////////////////////////////////
+</I>&gt;<i> 
+</I>&gt;<i> -#endif     // POOMA_PACKAGE_CLASS_H
+</I>&gt;<i> +#endif     // _SerialAsync_h_
+</I>&gt;<i> 
+</I>&gt;<i>  /***************************************************************************
+</I>&gt;<i>   * $RCSfile: SerialAsync.h,v $   $Author: sa_smith $
+</I>&gt;<i> --- /home/richard/src/pooma/cvs/r2/src/Threads/IterateSchedulers/SerialAsync.cmpl.cpp	2000-04-12 02:08:06.000000000 +0200
+</I>&gt;<i> +++ Threads/IterateSchedulers/SerialAsync.cmpl.cpp	2004-01-02 00:40:16.000000000 +0100
+</I>&gt;<i> @@ -82,6 +82,12 @@
+</I>&gt;<i> 
+</I>&gt;<i>  std::list&lt;RunnablePtr_t&gt; SystemContext::workQueueMessages_m;
+</I>&gt;<i>  std::list&lt;RunnablePtr_t&gt; SystemContext::workQueue_m;
+</I>&gt;<i> +#if POOMA_MPI
+</I>&gt;<i> +  MPI_Request SystemContext::requests_m[1024];
+</I>&gt;<i> +  std::map&lt;int, SystemContext::IteratePtr_t&gt; SystemContext::allocated_requests_m;
+</I>&gt;<i> +  std::set&lt;int&gt; SystemContext::free_requests_m;
+</I>&gt;<i> +#endif
+</I>&gt;<i> +std::stack&lt;int&gt; IterateScheduler&lt;SerialAsync&gt;::generationStack_m;
+</I>&gt;<i> 
+</I>&gt;<i>  }
+</I>&gt;<i> 
+</I>
+
+-- 
+Jeffrey D. Oldham
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">oldham at codesourcery.com</A>
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001454.html">[PATCH] MPI support for SerialAsync scheduler
+</A></li>
+	<LI>Next message: <A HREF="001463.html">[pooma-dev] Re: [PATCH] MPI support for SerialAsync scheduler
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1458">[ date ]</a>
+              <a href="thread.html#1458">[ thread ]</a>
+              <a href="subject.html#1458">[ subject ]</a>
+              <a href="author.html#1458">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

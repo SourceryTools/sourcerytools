@@ -1,0 +1,301 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [RFC] Merge some ScalarCode improvements
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5BRFC%5D%20Merge%20some%20ScalarCode%20improvements&In-Reply-To=%3CPine.LNX.4.53.0407201147070.2199%40bellatrix.tat.physik.uni-tuebingen.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001666.html">
+   <LINK REL="Next"  HREF="001668.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[RFC] Merge some ScalarCode improvements</H1>
+    <B>Richard Guenther</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5BRFC%5D%20Merge%20some%20ScalarCode%20improvements&In-Reply-To=%3CPine.LNX.4.53.0407201147070.2199%40bellatrix.tat.physik.uni-tuebingen.de%3E"
+       TITLE="[RFC] Merge some ScalarCode improvements">rguenth at tat.physik.uni-tuebingen.de
+       </A><BR>
+    <I>Tue Jul 20 09:51:21 UTC 2004</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001666.html">[pooma-dev] Re: [PATCH] Another Stencil test
+</A></li>
+        <LI>Next message: <A HREF="001668.html">[RFA] better igc up-to-date-ness tracking, optimized igc communication
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1662">[ date ]</a>
+              <a href="thread.html#1662">[ thread ]</a>
+              <a href="subject.html#1662">[ subject ]</a>
+              <a href="author.html#1662">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Hi!
+
+I have some improvements to ScalarCode which enhance its usability and
+performance.  Unfortunately these patches depend on changes to
+ScalarCodeInfo which in turn change user-visible API.  Patch to
+ScalarCodeInfo appended below for reference.  The main change is
+templating ScalarCodeInfo on dimension and number of MultiArg arguments.
+
+Are you interested in having such changes merged?  Part of the changes
+would be bugfixes to allow arbitrary expressions as ScalarCode arguments
+(it doesnt handle updating guards correctly for shifted arguments at the
+moment).
+
+Richard.
+
+--
+Richard Guenther &lt;richard dot guenther at uni-tuebingen dot de&gt;
+WWW: <A HREF="http://www.tat.physik.uni-tuebingen.de/~rguenth/">http://www.tat.physik.uni-tuebingen.de/~rguenth/</A>
+-------------- next part --------------
+*** pooma-bk/r2/src/Evaluator/ScalarCodeInfo.h	Thu Oct 23 14:39:32 2003
+--- pooma-bib/r2/src/Evaluator/ScalarCodeInfo.h	Thu Jul 15 11:31:53 2004
+***************
+*** 56,61 ****
+--- 56,62 ----
+  //-----------------------------------------------------------------------------
+  
+  #include &quot;Layout/INode.h&quot;
++ #include &quot;Layout/GuardLayers.h&quot;
+  
+  //-----------------------------------------------------------------------------
+  // Forward Declarations:
+***************
+*** 67,143 ****
+  //
+  //-----------------------------------------------------------------------------
+  
+  class ScalarCodeInfo
+  {
+  public:
+!   typedef std::vector&lt;int&gt;  Extents_t;
+    typedef std::vector&lt;bool&gt; BoolVector_t;
+  
+    ScalarCodeInfo()
+    {
+-     arguments_m = 0;
+-     dimensions_m = 0;
+-   }
+- 
+-   /// The number of arguments of the ScalarCode functor. This needs to be
+-   /// called before any of write() and useGuards().
+-   void arguments(int n)
+-   {
+-     PAssert(n &gt; 0);
+- 
+-     arguments_m = n;
+-     writers_m.resize(n);
+-     readers_m.resize(n);
+-     useGuards_m.resize(n);
+- 
+-     int i;
+-     for (i = 0; i &lt; n; ++i)
+-     {
+-       writers_m[i]   = false;
+-       readers_m[i]   = true;
+-       useGuards_m[i] = true;
+-     }
+      writers_m[0] = true;
+      readers_m[0] = false;
+    }
+  
+!   /// The number of dimensions the arguments to the ScalarCode functor
+!   /// span. This needs to be specified before any of the lowerExtent()
+!   /// and upperExtent().
+!   void dimensions(int n)
+!   {
+!     PAssert(n &gt; 0);
+! 
+!     dimensions_m = n;
+!     lower_m.resize(n);
+!     upper_m.resize(n);
+  
+!     int i;
+!     for (i = 0; i &lt; n; ++i)
+!     {
+!       lower_m[i] = 0;
+!       upper_m[i] = 0;
+!     }
+    }
+  
+!   /// Lower extent for dimension i. This specifies the (maximum) stencil size.
+!   /// Note that you need to make sure a view extending the physical domain by
+!   /// this amount can be taken of every argument to the functor.
+! 
+!   int &amp;lowerExtent(int i)
+    {
+!     return lower_m[i];
+    }
+  
+!   /// Upper extent for dimension i. This specifies the (maximum) stencil size.
+!   /// Note that you need to make sure a view extending the physical domain by
+!   /// this amount can be taken of every argument to the functor.
+! 
+!   int &amp;upperExtent(int i)
+    {
+!     return upper_m[i];
+    }
+!  
+    /// Specify whether argument i is written to, writing allows reading. This
+    /// triggers notifying the engine after writing and possibly dirtying
+    /// relations attached to a written field.
+--- 68,111 ----
+  //
+  //-----------------------------------------------------------------------------
+  
++ template &lt;int Dim, int size&gt;
+  class ScalarCodeInfo
+  {
+  public:
+!   enum { dimensions = Dim };
+!   enum { arguments = size };
+! 
+    typedef std::vector&lt;bool&gt; BoolVector_t;
+  
+    ScalarCodeInfo()
++     : extent_m(GuardLayers&lt;Dim&gt;(0)),
++       useGuards_m(arguments, true),
++       writers_m(arguments, false),
++       readers_m(arguments, true)
+    {
+      writers_m[0] = true;
+      readers_m[0] = false;
+    }
+  
+!   /// Specify the shape of the guard layers used. This is used for taking
+!   /// views of the arguments.
+  
+!   void extent(const GuardLayers&lt;Dim&gt; &amp;g)
+!   {
+!     extent_m = g;
+    }
+  
+!   GuardLayers&lt;Dim&gt;&amp; extent()
+    {
+!     return extent_m;
+    }
+  
+!   const GuardLayers&lt;Dim&gt;&amp; extent() const
+    {
+!     return extent_m;
+    }
+! 
+! 
+    /// Specify whether argument i is written to, writing allows reading. This
+    /// triggers notifying the engine after writing and possibly dirtying
+    /// relations attached to a written field.
+***************
+*** 170,220 ****
+  
+    /// The domain we take the view of before passing it to the functors
+    /// operator() method.
+!   template&lt;int D&gt;
+!   inline Interval&lt;D&gt; extendDomain(const Interval&lt;D&gt; &amp;domain)
+    {
+!     Interval&lt;D&gt; ret;
+!     int d;
+!     for (d = 0; d &lt; D; ++d)
+!     {
+!       ret[d] =
+! 	        Interval&lt;1&gt;(
+!     		    domain[d].first() - lower_m[d],
+!     		    domain[d].last() + upper_m[d]
+! 		    );
+!     }
+!     return ret;
+    }
+  
+    /// The domain evaluation takes place on the viewed (zero-based!) engine.
+!   template&lt;int D&gt;
+!   inline Interval&lt;D&gt; evaluationDomain(const Interval&lt;D&gt; &amp;domain)
+    {
+!     Interval&lt;D&gt; ret;
+!     int d;
+!     for (d = 0; d &lt; D; ++d)
+      {
+!       ret[d] =
+! 	Interval&lt;1&gt;(
+! 		    lower_m[d],
+! 		    domain[d].last() - domain[d].first()  + lower_m[d]
+! 		    );
+      }
+      return ret;
+    }
+  
+!   template&lt;int D&gt;
+!   inline INode&lt;D&gt; extendDomain(const INode&lt;D&gt; &amp;inode)
+    {
+!     return INode&lt;D&gt;(inode, extendDomain(inode.domain()));
+    }
+  
+  private:
+  
+!   int       arguments_m;
+!   int       dimensions_m;
+!   Extents_t upper_m;
+!   Extents_t lower_m;
+    BoolVector_t useGuards_m;
+    BoolVector_t writers_m;
+    BoolVector_t readers_m;
+--- 138,169 ----
+  
+    /// The domain we take the view of before passing it to the functors
+    /// operator() method.
+!   inline Interval&lt;Dim&gt; extendDomain(const Interval&lt;Dim&gt; &amp;domain) const
+    {
+!     return grow(domain, extent_m);
+    }
+  
+    /// The domain evaluation takes place on the viewed (zero-based!) engine.
+!   inline Interval&lt;Dim&gt; evaluationDomain(const Interval&lt;Dim&gt; &amp;domain) const
+    {
+!     Interval&lt;Dim&gt; ret;
+!     for (int d = 0; d &lt; Dim; ++d)
+      {
+!       ret[d] = Interval&lt;1&gt;(extent_m.lower(d),
+! 			   domain[d].last() - domain[d].first()
+! 			   + extent_m.lower(d));
+      }
+      return ret;
+    }
+  
+!   inline INode&lt;Dim&gt; extendDomain(const INode&lt;Dim&gt; &amp;inode) const
+    {
+!     return INode&lt;Dim&gt;(inode, extendDomain(inode.domain()));
+    }
+  
+  private:
+  
+!   GuardLayers&lt;Dim&gt; extent_m;
+    BoolVector_t useGuards_m;
+    BoolVector_t writers_m;
+    BoolVector_t readers_m;
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001666.html">[pooma-dev] Re: [PATCH] Another Stencil test
+</A></li>
+	<LI>Next message: <A HREF="001668.html">[RFA] better igc up-to-date-ness tracking, optimized igc communication
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1662">[ date ]</a>
+              <a href="thread.html#1662">[ thread ]</a>
+              <a href="subject.html#1662">[ subject ]</a>
+              <a href="author.html#1662">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

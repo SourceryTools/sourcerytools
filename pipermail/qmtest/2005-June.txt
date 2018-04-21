@@ -1,0 +1,1427 @@
+From rpoppe65 at hotmail.com  Mon Jun  6 12:39:43 2005
+From: rpoppe65 at hotmail.com (Richard Poppe)
+Date: Mon, 06 Jun 2005 14:39:43 +0200
+Subject: Problem with transition from 'Run test' to 'Show results'
+Message-ID: <BAY1-F2624C132B53094C56C7C61C4FB0@phx.gbl>
+
+I have seen a strange behaviour in the transition of 'Run test' to 'Show 
+results' and could not find out whether it is a known issue.
+The transition is not correct when my test is running more than a few 
+seconds. To reproduce the behaviour, I have made a test with following 
+specifications:
+Windows 2000, QMTest 2.2
+TestName msword
+Class command.ExecTest
+Program C:\Program Files\Microsoft Office\Office\WINWORD.EXE
+Target class thread_target.ThreadTarget
+
+Running this test using the webbased GUI (Run - This test) will start up 
+winword.
+When i close winword directly, then QMTest will go to the following page:
+http://127.0.0.1:3503/test/show-results
+
+This is the correct behaviour.
+
+
+Issue description:
+------------------------
+Start the test (thus winword) and wait a few seconds (lets say at least 10 
+seconds) before closing winword. When winword is stopped now then QMTest 
+comes with:
+
+In internet explorer an error page "The page cannot be displayed".
+( URL= http://127.0.0.1:3503/test/run-tests?ids=msword )
+
+In Firefox a message box pops up with title "Alert" and message "The 
+document contains no data".
+( status line: javascript:run_test(); )
+
+It is however possible during the time that winword (or the test) is 
+running, to go manually (with View - Results) to the page
+http://127.0.0.1:3503/test/show-results
+
+This page is updated every few seconds.
+When closing winword with this page active, will correctly show the result 
+at the next refresh.
+
+_________________________________________________________________
+Direct antwoord op je vragen: gebruik MSN Messenger http://messenger.msn.nl/
+
+
+
+From mark at codesourcery.com  Fri Jun 10 20:57:17 2005
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Fri, 10 Jun 2005 13:57:17 -0700
+Subject: PATCH: Quote exception formats
+Message-ID: <200506102057.j5AKvHdE020596@sethra.codesourcery.com>
+
+
+When an uncaught exception occurs while running a test, QMTest records
+the exeption in the qmtest.exception result annotation.  This
+annotation should be stored as preformatted text; otherwise, it gets
+mangled when being displayed by the results formatters.
+
+--
+Mark Mitchell
+CodeSourcery, LLC
+mark at codesourcery.com
+
+2005-06-10  Mark Mitchell  <mark at codesourcery.com>
+
+	* qm/test/result.py (Result.NoteException): Quote exception
+	string. 
+
+Index: qm/test/result.py
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/test/result.py,v
+retrieving revision 1.26
+diff -c -5 -p -r1.26 result.py
+*** qm/test/result.py	31 Mar 2004 10:32:44 -0000	1.26
+--- qm/test/result.py	10 Jun 2005 20:47:55 -0000
+*************** class Result:
+*** 312,322 ****
+          if exception_type is ContextException:
+              self["qmtest.context_variable"] = exc_info[1].key
+              
+          self.SetOutcome(outcome)
+          self[Result.CAUSE] = cause
+!         self[Result.EXCEPTION] = "%s: %s" % exc_info[:2]
+          self[Result.TRACEBACK] \
+              = self.Quote(qm.format_traceback(exc_info))
+  
+          
+      def MakeDomNode(self, document):
+--- 312,323 ----
+          if exception_type is ContextException:
+              self["qmtest.context_variable"] = exc_info[1].key
+              
+          self.SetOutcome(outcome)
+          self[Result.CAUSE] = cause
+!         self[Result.EXCEPTION] \
+!             = self.Quote("%s: %s" % exc_info[:2])
+          self[Result.TRACEBACK] \
+              = self.Quote(qm.format_traceback(exc_info))
+  
+          
+      def MakeDomNode(self, document):
+
+
+From mark at codesourcery.com  Fri Jun 10 21:00:05 2005
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Fri, 10 Jun 2005 14:00:05 -0700
+Subject: PATCH: Remove minor code duplication
+Message-ID: <200506102100.j5AL05xB002427@sethra.codesourcery.com>
+
+
+Since we have __CheckExtensionKind, we may as well use it.
+
+--
+Mark Mitchell
+CodeSourcery, LLC
+mark at codesourcery.com
+
+2005-06-10  Mark Mitchell  <mark at codesourcery.com>
+
+	* qm/test/cmdline.py (QMTest.__ExecuteRegister): Use
+	__CheckExtensionKind. 
+
+Index: qm/test/cmdline.py
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/test/cmdline.py,v
+retrieving revision 1.105
+diff -c -5 -p -r1.105 cmdline.py
+*** qm/test/cmdline.py	31 May 2005 15:48:37 -0000	1.105
+--- qm/test/cmdline.py	10 Jun 2005 20:57:27 -0000
+*************** Valid formats are %s.
+*** 1074,1087 ****
+              return 2
+          kind = self.__arguments[0]
+          class_name = self.__arguments[1]
+  
+          # Check that the KIND is valid.
+!         if kind not in base.extension_kinds:
+!             raise qm.cmdline.CommandError, \
+!                   qm.error("invalid extension kind",
+!                            kind = kind)
+  
+          # Check that the CLASS_NAME is well-formed.
+          if class_name.count('.') != 1:
+              raise qm.cmdline.CommandError, \
+                    qm.error("invalid class name",
+--- 1074,1084 ----
+              return 2
+          kind = self.__arguments[0]
+          class_name = self.__arguments[1]
+  
+          # Check that the KIND is valid.
+!         self.__CheckExtensionKind(self, kind)
+  
+          # Check that the CLASS_NAME is well-formed.
+          if class_name.count('.') != 1:
+              raise qm.cmdline.CommandError, \
+                    qm.error("invalid class name",
+
+
+From mark at codesourcery.com  Fri Jun 10 21:30:44 2005
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Fri, 10 Jun 2005 14:30:44 -0700
+Subject: PATCH: RemoteHost support
+Message-ID: <200506102130.j5ALUi1Q004761@sethra.codesourcery.com>
+
+
+This patch adds a new abstraction (called RemoteHost) that can be used
+for running programs remotely.  (This facility is in contrast to the
+QMTest "Target" abstraction, which allows you to run *tests* remotely;
+this facility allows a test running on one machine to run a program on
+another.)
+
+The basic facilities provided by a RemoteHost are the abilitiies to
+run programs remotely, as well as copy files back and forth between
+the local and remove hosts.  There are presently three incarnations:
+
+* LocalHost, which is the special case of a RemoteHost that happens to
+  the machine on which QMTest is running
+
+* SSHHost, which is a host accessible by "ssh" or "rsh"
+
+* Simulator, which is a semi-hosted simulator, using the same
+  filesystem as the local host, but with a simulator used to run
+  programs.
+
+These facilities are tied into CompilerTable/CompilerTest, so that you
+can now set a context variable to run your tests remotely.
+
+For example, we have a PowerPC machine called "knight".  I created a
+remote host file for "knight" like so:
+
+  qmtest create --attribute host_name=knight remote_host ssh_host.SSHHost 
+    > knight
+
+Then, I created a context file like so:
+
+  CompilerTable.languages=cplusplus
+  CompilerTable.cplusplus_kind=GCC
+  CompilerTable.cplusplus_path=powerpc-none-linux-gnu-g++
+  CompilerTable.target=knight
+
+Then, "qmtest run" (in an appropriate database, on another machine)
+automatically runs the programs created by the cross-compiler on
+knight, using SSH.
+
+--
+Mark Mitchell
+CodeSourcery, LLC
+mark at codesourcery.com
+
+2005-06-10  Mark Mitchell  <mark at codesourcery.com>
+
+	* qm/remote_host.py: New file.
+	* qm/test/base.py (__extension_bases): Add "remote_host".
+	(extension_kinds): Derive automatically from __extension_base.
+	* qm/test/classes/classes.qmc: Add local_host.LocalHost,
+	ssh_host.SSHHost, ssh_host.RSHHost, and simulator.Simulator.
+	* qm/test/classes/compiler.py (Compiler.GetExecutableExtension):
+	New method.
+	(Compiler.GetObjectExtension): Likewise.
+	* qm/test/classes/compiler_table.py (CompilerTable.Setup): Fix
+	typos and thinkos.  Set up CompilerTable.target.
+	* qm/test/classes/compiler_test.py (CompiledExecutable): Remove.
+	(CompilerTest._GetObjectFileName): Fix typo in comment.
+	(CompilerTest.Run): Save the compiler.
+	(CompilerTest._RunExecutable): Use the RemoteHost provided by the
+	compiler table.
+	* qm/test/classes/local_host.py: New file.
+	* qm/test/classes/simulator.py: Likewise.
+	* qm/test/classes/ssh_host.py: Likewise.
+
+Index: qm/remote_host.py
+===================================================================
+RCS file: qm/remote_host.py
+diff -N qm/remote_host.py
+*** /dev/null	1 Jan 1970 00:00:00 -0000
+--- qm/remote_host.py	10 Jun 2005 21:21:05 -0000
+***************
+*** 0 ****
+--- 1,159 ----
++ ########################################################################
++ #
++ # File:   remote_host.py
++ # Author: Mark Mitchell
++ # Date:   2005-06-03
++ #
++ # Contents:
++ #   RemoteHost
++ #
++ # Copyright (c) 2005 by CodeSourcery, LLC.  All rights reserved. 
++ #
++ ########################################################################
++ 
++ ########################################################################
++ # Imports
++ #######################################################################
++ 
++ from   qm.executable import RedirectedExecutable
++ from   qm.extension import Extension
++ import os.path
++ 
++ ########################################################################
++ # Classes
++ #######################################################################
++ 
++ class RemoteHost(Extension):
++     """A 'RemoteHost' is a logical machine.
++ 
++     Each logical machine has a default directory.  When a file is
++     uploaded to or downloaded from the machine, and a relative patch
++     is specified, the patch is relative to the default directory.
++     Similarly, when a program is run on the remote machine, its
++     initial working directory is the default directory.
++ 
++     The interface presented by 'RemoteHost' is a lowest common
++     denominator.  The objective is not to expose all the functionality
++     of any host; rather it is to provide an interface that can be used
++     on many hosts."""
++ 
++     kind = "remote_host"
++     
++     class Executable(RedirectedExecutable):
++         """An 'Executable' is a simple redirected executable.
++ 
++         The standard error and standard output streams are combined
++         into a single stream.
++ 
++         The standard input is not closed before
++         invoking the program because SSH hangs if its standard input
++         is closed before it is invoked.  For example, running:
++ 
++            ssh machine echo hi <&-
++ 
++         will hang with some versions of SSH."""     
++ 
++         def _StderrPipe(self):
++ 
++             return None
++ 
++ 
++ 
++     def Run(self, arguments, environment = None, timeout = -1):
++         """Run a program on the remote host.
++ 
++         'path' -- The name of the program to run, on the remote host.
++         If 'path' is an absolute path or contains no directory
++         separators it is used unmodified; otherwise (i.e., if it is a
++         relative path containing at least one separator) it is
++         interpreted relative to the default directory.
++         
++         'arguments' -- The sequence of arguments that should be passed
++         to the program.
++ 
++         'environment' -- If not 'None', a dictionary of pairs of
++         strings to add to the environment of the running program.
++         
++         'timeout' -- The number of seconds the program is permitted
++         to execute.  After the 'timeout' expires, the program will be
++         terminated.  However, in some cases (such as when using 'rsh')
++         it will be the local side of the connection that is closed.
++         The remote side of the connection may or may not continue to
++         operate, depending on the vagaries of the remote operating
++         system.
++         
++         returns -- A pair '(status, output)'.  The 'status' is the
++         exit status returned by the program, or 'None' if the exit
++         status is not available.  The 'output' is a string giving the
++         combined standard output and standard error output from the
++         program.""" 
++ 
++         raise NotImplementedError
++ 
++ 
++     def UploadFile(self, local_file, remote_file = None):
++         """Copy 'local_file' to 'remote_file'.
++ 
++         'local_file' -- The name of the file on the local machine.
++ 
++         'remote_file' -- The name of the file on the remote machine.
++         The 'remote_file' must be a relative path.  It is interpreted
++         relative to the default directory.  If 'None', the
++         'remote_file' is placed in the default directory using the
++         basename of the 'local_file'.
++ 
++         If the 'local_file' and 'remote_file' are the same, then this
++         function succeeds, but takes no action."""
++ 
++         raise NotImplementedError
++ 
++ 
++     def DownloadFile(self, remote_file, local_file):
++         """Copy 'remote_file' to 'local_file'.
++ 
++         'remote_file' -- The name of the file on the remote machine.
++         The 'remote_file' must be a relative path.  It is interpreted
++         relative to the default directory.
++ 
++         'local_file' -- The name of the file on the local machine.  If
++         'None', the 'local_file' is placed in the current directory
++         using the basename of the 'remote_file'.
++ 
++         If the 'local_file' and 'remote_file' are the same, then this
++         function succeeds, but takes no action."""
++ 
++         raise NotImplementedError
++ 
++ 
++     def UploadAndRun(self, path, arguments, environment = None,
++                      timeout = -1):
++         """Run a program on the remote host.
++ 
++         'path' -- The name of the program to run, as a path on the
++         local machine.
++ 
++         'arguments' -- As for 'Run'.
++ 
++         'environment' -- As for 'Run'.
++         
++         'timeout' -- As for 'Run'.
++ 
++         returns -- As for 'Run'.
++ 
++         The program is uploaded to the default directory on the remote
++         host.""" 
++         
++         self.UploadFile(path)
++         return self.Run(os.path.join(os.path.curdir,
++                                      os.path.basename(path)),
++                         arguments,
++                         environment,
++                         timeout)
++         
++         
++     def DeleteFile(self, remote_file):
++         """Delete the 'remote_file'.
++ 
++         'remote_file' -- A relative path to the file to be deleted."""
++ 
++         raise NotImplementedError
+Index: qm/test/base.py
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/test/base.py,v
+retrieving revision 1.98
+diff -c -5 -p -r1.98 base.py
+*** qm/test/base.py	25 Aug 2004 10:11:38 -0000	1.98
+--- qm/test/base.py	10 Jun 2005 21:21:05 -0000
+*************** def _result_from_dom(node):
+*** 384,425 ****
+  
+  ########################################################################
+  # variables
+  ########################################################################
+  
+- extension_kinds = [ 'database',
+-                     'label',
+-                     'resource',
+-                     'result_reader',
+-                     'result_stream',
+-                     'suite',
+-                     'target',
+-                     'test', ]
+- """Names of different kinds of QMTest extension classes."""
+- 
+- __class_caches = {}
+- """A dictionary of loaded class caches.
+- 
+- The keys are the kinds in 'extension_kinds'.  The associated value
+- is itself a dictionary mapping class names to class objects."""
+- 
+- # Initialize the caches.
+- for kind in extension_kinds:
+-     __class_caches[kind] = {}
+- 
+  import qm.test.database
+  import qm.label
+  import qm.test.resource
+  import qm.test.result_reader
+  import qm.test.result_stream
+  import qm.test.suite
+  import qm.test.target
+  import qm.test.test
+  
+  __extension_bases = {
+      'database' : qm.test.database.Database,
+      'label' : qm.label.Label,
+      'resource' : qm.test.resource.Resource,
+      'result_reader' : qm.test.result_reader.ResultReader,
+      'result_stream' : qm.test.result_stream.ResultStream,
+      'suite' : qm.test.suite.Suite,
+      'target' : qm.test.target.Target,
+--- 384,407 ----
+  
+  ########################################################################
+  # variables
+  ########################################################################
+  
+  import qm.test.database
+  import qm.label
++ import qm.remote_host
+  import qm.test.resource
+  import qm.test.result_reader
+  import qm.test.result_stream
+  import qm.test.suite
+  import qm.test.target
+  import qm.test.test
+  
+  __extension_bases = {
+      'database' : qm.test.database.Database,
+      'label' : qm.label.Label,
++     'remote_host' : qm.remote_host.RemoteHost,
+      'resource' : qm.test.resource.Resource,
+      'result_reader' : qm.test.result_reader.ResultReader,
+      'result_stream' : qm.test.result_stream.ResultStream,
+      'suite' : qm.test.suite.Suite,
+      'target' : qm.test.target.Target,
+*************** __extension_bases = {
+*** 427,436 ****
+--- 409,432 ----
+      }
+  """A map from extension class kinds to base classes.
+  
+  An extension class of a particular 'kind' must be derived from
+  'extension_bases[kind]'."""
++ 
++ extension_kinds = __extension_bases.keys()
++ """Names of different kinds of QMTest extension classes."""
++ extension_kinds.sort()
++ 
++ __class_caches = {}
++ """A dictionary of loaded class caches.
++ 
++ The keys are the kinds in 'extension_kinds'.  The associated value
++ is itself a dictionary mapping class names to class objects."""
++ 
++ # Initialize the caches.
++ for kind in extension_kinds:
++     __class_caches[kind] = {}
+  
+  ########################################################################
+  # Local Variables:
+  # mode: python
+  # indent-tabs-mode: nil
+Index: qm/test/classes/classes.qmc
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/test/classes/classes.qmc,v
+retrieving revision 1.17
+diff -c -5 -p -r1.17 classes.qmc
+*** qm/test/classes/classes.qmc	14 Apr 2005 21:40:01 -0000	1.17
+--- qm/test/classes/classes.qmc	10 Jun 2005 21:21:05 -0000
+***************
+*** 25,30 ****
+--- 25,34 ----
+   <class kind="test" name="python.ExecTest"/>
+   <class kind="test" name="python.StringExceptionTest"/>
+   <class kind="label" name="file_label.FileLabel"/>
+   <class kind="label" name="python_label.PythonLabel"/>
+   <class kind="suite" name="explicit_suite.ExplicitSuite"/>
++  <class kind="remote_host" name="local_host.LocalHost"/>
++  <class kind="remote_host" name="ssh_host.SSHHost"/>
++  <class kind="remote_host" name="ssh_host.RSHHost"/>
++  <class kind="remote_host" name="simulator.Simulator"/>
+  </class-directory>
+Index: qm/test/classes/compiler.py
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/test/classes/compiler.py,v
+retrieving revision 1.3
+diff -c -5 -p -r1.3 compiler.py
+*** qm/test/classes/compiler.py	6 Jun 2005 19:00:49 -0000	1.3
+--- qm/test/classes/compiler.py	10 Jun 2005 21:21:06 -0000
+*************** class Compiler:
+*** 269,279 ****
+--- 269,303 ----
+          'ldflags' -- A list of strings indicating options to the
+          linker, or 'None' if there are no flags."""
+  
+          self._ldflags = ldflags
+  
++ 
++     def GetExecutableExtension(self):
++         """Return the extension for executables.
++ 
++         returns -- The extension (including leading '.', if
++         applicable) for executable files created by this compiler."""
++ 
++         if sys.platform == "win32":
++             return ".exe"
++         else:
++             return ""
++ 
+          
++     def GetObjectExtension(self):
++         """Return the extension for object files.
++ 
++         returns -- The extension (including leading '.', if
++         applicable) for object files created by this compiler."""
++ 
++         if sys.platform == "win32":
++             return ".obj"
++         else:
++             return ".o"
++         
++     
+      def _GetModeSwitches(self, mode):
+          """Return the compilation switches for the compilation 'mode'.
+  
+          'mode' -- The compilation mode (one of 'Compiler.modes').
+  
+Index: qm/test/classes/compiler_table.py
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/test/classes/compiler_table.py,v
+retrieving revision 1.2
+diff -c -5 -p -r1.2 compiler_table.py
+*** qm/test/classes/compiler_table.py	16 Apr 2005 00:06:03 -0000	1.2
+--- qm/test/classes/compiler_table.py	10 Jun 2005 21:21:06 -0000
+*************** based on context variables provided by t
+*** 20,30 ****
+--- 20,32 ----
+  ########################################################################
+  # Imports
+  ########################################################################
+  
+  import compiler
++ import qm
+  from   qm.test.resource import Resource
++ from   local_host import LocalHost
+  
+  ########################################################################
+  # Classes
+  ########################################################################
+  
+*************** class CompilerTable(Resource):
+*** 62,77 ****
+        are run with these options, followed by any test-specific
+        options.  For example, if the user wants to test the compiler
+        when run with '-O2', the user would put '-O2' in the 'l_options'
+        context variable.
+  
+!     The 'CompilerTable' resource provides a context variable called
+!     'CompilerTable.compilers' to all tests that depend upon the
+!     resource.  The 'compilers' variable is a map from language names
+!     to instances of 'Compiler'.  Test classes should obtain the
+!     'Compiler' to use when compiling source files by using this
+!     map."""
+  
+      def SetUp(self, context, result):
+  
+          # There are no compilers yet.
+          compilers = {}
+--- 64,87 ----
+        are run with these options, followed by any test-specific
+        options.  For example, if the user wants to test the compiler
+        when run with '-O2', the user would put '-O2' in the 'l_options'
+        context variable.
+  
+!     The 'CompilerTable' resource provides the following context
+!     variables to all tests that depend upon the resource:
+! 
+!     - 'CompilerTable.compilers'
+! 
+!        The 'compilers' variable is a map from language names to
+!        instances of 'Compiler'.  Test classes should obtain the
+!        'Compiler' to use when compiling source files by using this
+!        map.
+! 
+!     - 'CompilerTable.target'
+! 
+!        An instance of 'RemoteHost' that can be used to run compiler
+!        programs."""
+  
+      def SetUp(self, context, result):
+  
+          # There are no compilers yet.
+          compilers = {}
+*************** class CompilerTable(Resource):
+*** 83,99 ****
+          for l in languages:
+              # Retrieve information from the context.
+              kind = context["CompilerTable." + l + "_kind"].strip()
+              path = context["CompilerTable." + l + "_path"].strip()
+              # Look for (optional) command-line options.
+!             opts = context.get("CompilerTable." + l + "_options", []).split()
+!             ldflags = context.get("CompilerTable." + l + "_ldflags", []).split()
+              # Find the Python class corresponding to this compiler.
+              compiler_class = compiler.__dict__[kind]
+              # Instantiate the compiler.
+              c = compiler_class(path, opts)
+              c.SetLDFlags(ldflags)
+              # Store it in the compilers map.
+              compilers[l] = c
+              
+          # Make the table available to tests.
+!         context["CompilerTable.compiler_table"] = compilers
+--- 93,132 ----
+          for l in languages:
+              # Retrieve information from the context.
+              kind = context["CompilerTable." + l + "_kind"].strip()
+              path = context["CompilerTable." + l + "_path"].strip()
+              # Look for (optional) command-line options.
+!             opts = context.get("CompilerTable." + l + "_options",
+!                                "").split()
+!             ldflags = context.get("CompilerTable." + l + "_ldflags",
+!                                   "").split()
+              # Find the Python class corresponding to this compiler.
+              compiler_class = compiler.__dict__[kind]
+              # Instantiate the compiler.
+              c = compiler_class(path, opts)
+              c.SetLDFlags(ldflags)
+              # Store it in the compilers map.
+              compilers[l] = c
+              
+          # Make the table available to tests.
+!         context["CompilerTable.compilers"] = compilers
+! 
+!         # For backwards compatibility, we recognize this old
+!         # context variable here.
+!         interpreter = context.get("CompilerTest.interpreter")
+!         if interpreter:
+!             interpreter = interpreter.split()
+!             arguments = { simulator : interpreter[0],
+!                           simulator_args : interpreter[1:] }
+!             target = qm.test.classes.Simulator(arguments)
+!         else:
+!             target_desc = context.get("CompilerTable.target")
+!             if target_desc is None:
+!                 target = LocalHost({})
+!             else:
+!                 f = lambda n: qm.test.base.get_extension_class(n,
+!                                                                "remote_host",
+!                                                                None)
+!                 host_class, arguments \
+!                     = qm.extension.parse_descriptor(target_desc, f)
+!                 target = host_class(arguments)
+!         context["CompilerTable.target"] = target
+Index: qm/test/classes/compiler_test.py
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/test/classes/compiler_test.py,v
+retrieving revision 1.1
+diff -c -5 -p -r1.1 compiler_test.py
+*** qm/test/classes/compiler_test.py	14 Apr 2005 21:40:01 -0000	1.1
+--- qm/test/classes/compiler_test.py	10 Jun 2005 21:21:06 -0000
+*************** import string
+*** 21,44 ****
+  
+  ########################################################################
+  # Classes
+  ########################################################################
+  
+- class CompiledExecutable(TimeoutRedirectedExecutable):
+-     """A 'CompiledExecutable' is one generated by a compiler."""
+- 
+-     def _StdinPipe(self):
+-         """Return a pipe to which to redirect the standard input.
+- 
+-         returns -- A pipe, or 'None' if the standard input should be
+-         closed in the child."""
+- 
+-         # There is no input available for the child.
+-         return None
+- 
+- 
+-             
+  class CompilationStep:
+      """A single compilation step."""
+  
+      def __init__(self, mode, files, options, output, diagnostics):
+          """Construct a new 'CompilationStep'.
+--- 21,30 ----
+*************** class CompilerBase:
+*** 181,191 ****
+                  # reason for the test to fail.
+                  pass
+  
+  
+      def _GetObjectFileName(self, source_file_name, object_extension):
+!         """Return the default object file name for 'soruce_file_name'.
+  
+          'source_file_name' -- A string giving the name of a source
+          file.
+  
+          'object_extension' -- The extension used for object files.
+--- 167,177 ----
+                  # reason for the test to fail.
+                  pass
+  
+  
+      def _GetObjectFileName(self, source_file_name, object_extension):
+!         """Return the default object file name for 'source_file_name'.
+  
+          'source_file_name' -- A string giving the name of a source
+          file.
+  
+          'object_extension' -- The extension used for object files.
+*************** class CompilerTest(Test, CompilerBase):
+*** 215,225 ****
+          modified by this method to indicate outcomes other than
+          'Result.PASS' or to add annotations."""
+  
+          # Get the compiler to use for this test.
+          compiler = self._GetCompiler(context)
+! 
+          # If an executable is generated, executable_path will contain
+          # the generated path.
+          executable_path = None
+          # See what we need to run this test.
+          steps = self._GetCompilationSteps(context)
+--- 201,212 ----
+          modified by this method to indicate outcomes other than
+          'Result.PASS' or to add annotations."""
+  
+          # Get the compiler to use for this test.
+          compiler = self._GetCompiler(context)
+!         self._compiler = compiler
+!         
+          # If an executable is generated, executable_path will contain
+          # the generated path.
+          executable_path = None
+          # See what we need to run this test.
+          steps = self._GetCompilationSteps(context)
+*************** class CompilerTest(Test, CompilerBase):
+*** 334,361 ****
+          'result' -- A 'Result' object.  The outcome will be
+          'Result.PASS' when this method is called.  The 'result' may be
+          modified by this method to indicate outcomes other than
+          'Result.PASS' or to add annotations."""
+  
+-         # Create an object representing the executable.
+-         timeout = context.get("CompilerTest.execution_timeout", -1)
+-         executable = CompiledExecutable(timeout)
+-         # Compute the command line for the executable.
+-         interpreter = context.get("CompilerTest.interpreter")
+-         if interpreter:
+-             arguments = interpreter.split() + [path]
+-         else:
+-             arguments = [path]
+          # Compute the result annotation prefix.
+          prefix = self._GetAnnotationPrefix() + "execution_"
+          # Record the command line.
+!         result[prefix + "command"] = \
+!             "<tt>" + string.join(arguments) + "</tt>"
+          # Compute the environment.
+          library_dirs = self._GetLibraryDirectories(context)
+          if library_dirs:
+-             environment = os.environ.copy()
+              # Update LD_LIBRARY_PATH.  On IRIX 6, this variable
+              # goes by other names, so we update them too.  It is
+              # harmless to do this on other systems.
+              for variable in ['LD_LIBRARY_PATH',
+                               'LD_LIBRARYN32_PATH',
+--- 321,339 ----
+          'result' -- A 'Result' object.  The outcome will be
+          'Result.PASS' when this method is called.  The 'result' may be
+          modified by this method to indicate outcomes other than
+          'Result.PASS' or to add annotations."""
+  
+          # Compute the result annotation prefix.
+          prefix = self._GetAnnotationPrefix() + "execution_"
+          # Record the command line.
+!         path = os.path.join(self._GetDirectory(context), path)
+!         result[prefix + "command"] = "<tt>" + path + "</tt>"
+! 
+          # Compute the environment.
+          library_dirs = self._GetLibraryDirectories(context)
+          if library_dirs:
+              # Update LD_LIBRARY_PATH.  On IRIX 6, this variable
+              # goes by other names, so we update them too.  It is
+              # harmless to do this on other systems.
+              for variable in ['LD_LIBRARY_PATH',
+                               'LD_LIBRARYN32_PATH',
+*************** class CompilerTest(Test, CompilerBase):
+*** 367,382 ****
+              environment[variable] = new_path
+          else:
+              # Use the default values.
+              environment = None
+  
+!         status = executable.Run(arguments,
+!                                 environment = environment,
+!                                 dir = self._GetDirectory(context))
+!         # Remember the output streams.
+!         result[prefix + "stdout"] = result.Quote(executable.stdout)
+!         result[prefix + "stderr"] = result.Quote(executable.stderr)
+          # Check the output status.
+          self._CheckStatus(result, prefix, "Executable", status)
+  
+  
+      def _CheckOutput(self, context, result, prefix, output, diagnostics):
+--- 345,363 ----
+              environment[variable] = new_path
+          else:
+              # Use the default values.
+              environment = None
+  
+!         target = context["CompilerTable.target"]
+!         timeout = context.get("CompilerTest.execution_timeout", -1)
+!         status, output = target.UploadAndRun(path,
+!                                              [],
+!                                              environment,
+!                                              timeout)
+!         target.DeleteFile(path)
+!         # Record the output.
+!         result[prefix + "output"] = result.Quote(output)
+          # Check the output status.
+          self._CheckStatus(result, prefix, "Executable", status)
+  
+  
+      def _CheckOutput(self, context, result, prefix, output, diagnostics):
+Index: qm/test/classes/local_host.py
+===================================================================
+RCS file: qm/test/classes/local_host.py
+diff -N qm/test/classes/local_host.py
+*** /dev/null	1 Jan 1970 00:00:00 -0000
+--- qm/test/classes/local_host.py	10 Jun 2005 21:21:06 -0000
+***************
+*** 0 ****
+--- 1,75 ----
++ ########################################################################
++ #
++ # File:   local_host.py
++ # Author: Mark Mitchell
++ # Date:   2005-06-03
++ #
++ # Contents:
++ #   LocalHost
++ #
++ # Copyright (c) 2005 by CodeSourcery, LLC.  All rights reserved. 
++ #
++ ########################################################################
++ 
++ ########################################################################
++ # Imports
++ #######################################################################
++ 
++ import os
++ import os.path
++ from   qm.remote_host import RemoteHost
++ import shutil
++ 
++ ########################################################################
++ # Classes
++ #######################################################################
++ 
++ class LocalHost(RemoteHost):
++     """A 'LocalHost' is the machine on which Python is running.
++ 
++     The default directory for a 'LocalHost' is the current working
++     directory for this Python process."""
++ 
++     def Run(self, path, arguments, environment = None, timeout = -1):
++ 
++         # Compute the full environment for the child.
++         if environment is not None:
++             new_environment = os.environ.copy()
++             new_environment.update(environment)
++             environment = new_environment
++         executable = self.Executable(timeout)
++         status = executable.Run([path] + arguments, environment)
++         return (status, executable.stdout)
++ 
++ 
++     def UploadFile(self, local_file, remote_file = None):
++ 
++         if remote_file is None:
++             remote_file = os.path.basename(local_file)
++         # Do not copy the files if they are the same.
++         if not self._SameFile(local_file, remote_file):
++             shutil.copy(local_file, remote_file)
++ 
++ 
++     def DownloadFile(self, remote_file, local_file = None):
++ 
++         return self.UploadFile(remote_file, local_file)
++ 
++ 
++     def _SameFile(self, file1, file2):
++         """Return true iff 'file1' and 'file2' are the same file.
++ 
++         returns -- True iff 'file1' and 'file2' are the same file,
++         even if they have different names."""
++ 
++         if not os.path.exists(file1) or not os.path.exists(file2):
++             return False
++         if hasattr(os.path, "samefile"):
++             return os.path.samefile(file1, file2)
++         return (os.path.normcase(os.path.abspath(file1))
++                 == os.path.normcase(os.path.abspath(file2)))
++ 
++ 
++     def DeleteFile(self, remote_file):
++ 
++         os.remove(remote_file)
+Index: qm/test/classes/simulator.py
+===================================================================
+RCS file: qm/test/classes/simulator.py
+diff -N qm/test/classes/simulator.py
+*** /dev/null	1 Jan 1970 00:00:00 -0000
+--- qm/test/classes/simulator.py	10 Jun 2005 21:21:06 -0000
+***************
+*** 0 ****
+--- 1,45 ----
++ ########################################################################
++ #
++ # File:   simulator.py
++ # Author: Mark Mitchell
++ # Date:   2005-06-03
++ #
++ # Contents:
++ #   Simulator
++ #
++ # Copyright (c) 2005 by CodeSourcery, LLC.  All rights reserved. 
++ #
++ ########################################################################
++ 
++ ########################################################################
++ # Imports
++ #######################################################################
++ 
++ from local_host import LocalHost
++ from qm.fields import TextField, SetField
++ 
++ ########################################################################
++ # Classes
++ #######################################################################
++ 
++ class Simulator(LocalHost):
++     """A 'Simulator' is a semi-hosted simulation environment.
++ 
++     The local file system is shared with the simulated machine.  A
++     simulator is used to execute programs."""
++ 
++     simulator = TextField(
++         description = """The simulation program."""
++         )
++ 
++     # Any arguments that must be provided to the simulator.
++     simulator_args = SetField(
++         TextField(description = """Arguments to the simulation program."""))
++     
++     def Run(self, path, arguments, environment = None, timeout = -1):
++ 
++         arguments = self.simulator_args + [path] + arguments
++         return super(Simulator, self.Run(self.simulator,
++                                          arguments,
++                                          environment,
++                                          timeout))
+Index: qm/test/classes/ssh_host.py
+===================================================================
+RCS file: qm/test/classes/ssh_host.py
+diff -N qm/test/classes/ssh_host.py
+*** /dev/null	1 Jan 1970 00:00:00 -0000
+--- qm/test/classes/ssh_host.py	10 Jun 2005 21:21:06 -0000
+***************
+*** 0 ****
+--- 1,211 ----
++ ########################################################################
++ #
++ # File:   ssh_host.py
++ # Author: Mark Mitchell
++ # Date:   2005-06-03
++ #
++ # Contents:
++ #   SSHHost, RSHHost
++ #
++ # Copyright (c) 2005 by CodeSourcery, LLC.  All rights reserved. 
++ #
++ ########################################################################
++ 
++ ########################################################################
++ # Imports
++ #######################################################################
++ 
++ from   local_host import LocalHost
++ import os
++ import os.path
++ from   qm.fields import TextField, SetField
++ import qm.common
++ import sys
++ 
++ ########################################################################
++ # Classes
++ #######################################################################
++ 
++ class SSHHost(LocalHost):
++     """An 'SSHHost' is accessible via 'ssh' or a similar program."""
++ 
++     # If not empty, the name of the remote host. 
++     host_name = TextField()
++     # The path to "ssh".
++     ssh_program = TextField(
++         default_value = "ssh",
++         description = """The path to the remote shell program."""
++         )
++     # Any arguments that must be provided to "ssh". 
++     ssh_args = SetField(
++         TextField(description =
++                   """The arguments to the remote shell program."""))
++     # The path to "scp".
++     scp_program = TextField(
++         default_value = "scp",
++         description = """The path to the remote copy program."""
++         )
++     # Any arguments that must be provided to "scp".
++     scp_args = SetField(
++         TextField(description =
++                   """The arguments to the remote copy program."""))
++     # The default directory on the remote system.
++     default_dir = TextField(
++         description = """The default directory on the remote system."""
++         )
++ 
++     nfs_dir = TextField(
++         description = """The default directory, as seen from the local host.
++     
++         If not empty, 'nfs_dir' is a directory on the local machine
++         that is equivalent to the default directory on the remote
++         machine.  In that case, files will be copied to and from this
++         directory on the local machine, rather than by using
++         'scp'."""
++         )
++ 
++     user_name = TextField(
++         description = """The user name on the remote host.
++ 
++         If not empty, the user name that should be used when
++         connecting to the remote host."""
++         )
++     
++     def Run(self, path, arguments, environment = None, timeout = -1):
++ 
++         if self.default_dir and not os.path.isabs(path):
++             if (path.find(os.path.sep) != -1
++                 or (os.path.altsep
++                     and path.find(os.path.altsep) != -1)):
++                 path = os.path.join(self.default_dir, path)
++         path, arguments = self._FormSSHCommandLine(path, arguments,
++                                                    environment)
++         return super(SSHHost, self).Run(path, arguments, None, timeout)
++ 
++ 
++     def UploadFile(self, local_file, remote_file = None):
++ 
++         if remote_file is None:
++             remote_file = os.path.basename(local_file)
++         if self.nfs_dir:
++             remote_file = os.path.join(self.nfs_dir, remote_file)
++             super(SSHHost, self).UploadFile(local_file, remote_file)
++         else:    
++             if self.default_dir:
++                 remote_file = os.path.join(self.default_dir, remote_file)
++             command = self._FormSCPCommandLine(True, local_file,
++                                                remote_file)
++             executable = self.Executable()
++             status = executable.Run(command)
++             if ((sys.platform != "win32"
++                  and (not os.WIFEXITED(status)
++                       or os.WEXITSTATUS(status) != 0))
++                 or (sys.platform == "win32" and status != 0)):
++                 raise qm.common.QMException("could not upload file")
++         
++ 
++     def DownloadFile(self, remote_file, local_file = None):
++ 
++         if local_file is None:
++             local_file = os.path.basename(remote_file)
++         if self.nfs_dir:
++             remote_file = os.path.join(self.nfs_dir, remote_file)
++             super(SSHHost, self).DownloadFile(remote_file, local_file)
++         else:
++             if self.default_dir:
++                 remote_file = os.path.join(self.default_dir, remote_file)
++             command = self._FormSCPCommandLine(False, local_file,
++                                                remote_file)
++             executable = self.Executable()
++             executable.Run(command)
++ 
++ 
++     def DeleteFile(self, remote_file):
++ 
++         if self.default_dir:
++             remote_file = os.path.join(self.default_dir, remote_file)
++         return self.Run("rm", [remote_file])
++ 
++         
++     def _FormSSHCommandLine(self, path, arguments, environment = None):
++         """Form the 'ssh' command line.
++ 
++         'path' -- The remote command, in the same format expected by
++         'Run'. 
++         
++         'arguments' -- The arguments to the remote command.
++ 
++         'environment' -- As for 'Run'.
++ 
++         returns -- A pair '(path, arguments)' describing the command
++         to run on the local machine that will execute the remote
++         command."""
++ 
++         command = self.ssh_args + [self.host_name]
++         if self.user_name:
++             command += ["-l", self.user_name]
++         if environment is not None:
++             command.append("env")
++             for (k, v) in environment.iteritems():
++                 command.append("%s=%s" % (k, v))
++         command.append(path)
++         command += arguments
++ 
++         return self.ssh_program, command
++ 
++ 
++     def _FormSCPCommandLine(self, upload, local_file, remote_file):
++         """Form the 'scp' command line.
++ 
++         'upload' -- True iff the 'local_file' should be copied to the
++         remote host.
++ 
++         'local_file' -- The path to the local file.
++ 
++         'remote_file' -- The path to the remote file.
++ 
++         returns -- The list of arguments for a command to run on the
++         local machine that will perform the file copy."""
++ 
++         if self.default_dir:
++             remote_file = os.path.join(self.default_dir, remote_file)
++         remote_file = self.host_name + ":" + remote_file
++         if self.user_name:
++             remote_file = self.user_name + "@" + remote_file
++         command = [self.scp_program] + self.scp_args
++         if upload:
++             command += [local_file, remote_file]
++         else:
++             command += [remote_file, local_file]
++ 
++         return command    
++ 
++ 
++ 
++ class RSHHost(SSHHost):
++     """An 'RSHHost' is an 'SSHHost' that uses 'rsh' instead of 'ssh'.
++ 
++     The reason that 'RSHHost' is a separate class is that (a) that
++     makes it easier for users to construct an 'SSHHost', and (b) 'rsh'
++     does not return the exit code of the remote program, so 'Run'
++     requires adjustment."""
++ 
++     # Override the default values.
++     ssh_program = TextField(
++         default_value = "rsh",
++         description = """The path to the remote shell program."""
++         )
++     scp_program = TextField(
++         default_value = "rcp",
++         description = """The path to the remote copy program."""
++         )
++ 
++     def Run(self, path, arguments, environment = None, timeout = -1):
++ 
++         status, output = \
++                 super(RSHHost, self).Run(path, arguments,
++                                          environment, timeout)
++         # The exit status of 'rsh' is not the exit status of the
++         # remote program.  The exit status of the remote program is
++         # unavailable. 
++         return (None, output)
+
+
+From stefan at codesourcery.com  Mon Jun 13 14:30:37 2005
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Mon, 13 Jun 2005 10:30:37 -0400
+Subject: [qmtest] PATCH: RemoteHost support
+In-Reply-To: <200506102130.j5ALUi1Q004761@sethra.codesourcery.com>
+References: <200506102130.j5ALUi1Q004761@sethra.codesourcery.com>
+Message-ID: <42AD988D.4050301@codesourcery.com>
+
+Mark,
+
+this patch looks great ! Just some minor questions:
+
+Mark Mitchell wrote:
+> This patch adds a new abstraction (called RemoteHost) that can be used
+> for running programs remotely.  (This facility is in contrast to the
+> QMTest "Target" abstraction, which allows you to run *tests* remotely;
+> this facility allows a test running on one machine to run a program on
+> another.)
+
+Why don't you call the extension 'Host' and make 'RemoteHost' and 'LocalHost'
+subclasses ? I understand that the whole point of the abstraction is to
+enable remote execution, it just sounds funny to define 'LocalHost' as
+a subclass of 'RemoveHost'.
+
+
+> !     The 'CompilerTable' resource provides the following context
+> !     variables to all tests that depend upon the resource:
+> ! 
+> !     - 'CompilerTable.compilers'
+> ! 
+> !        The 'compilers' variable is a map from language names to
+> !        instances of 'Compiler'.  Test classes should obtain the
+> !        'Compiler' to use when compiling source files by using this
+> !        map.
+
+It seems the names defined for 'CompilerTable.languages' are just
+conventions that user code (i.e. specific test / resource classes)
+need to know about. However, wouldn't it be good to standardize
+at least the names for the most common languages ?
+In my first encounter with the CompilerTable it wasn't obvious
+to me whether C++ would be spelled 'cplusplus', 'cxx', or something
+else.
+
+CompilerTable previously defined 'CompilerTable.compiler_table', instead
+of 'CompilerTable.compilers'. While I think the new name is clearer,
+I'm wondering whether any code still expects 'compiler_table', i.e.
+whether the above change breaks backward compatibility. If not, all the
+better.
+
+Thanks,
+		Stefan
+
+
+From mark at codesourcery.com  Mon Jun 13 16:58:26 2005
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Mon, 13 Jun 2005 09:58:26 -0700
+Subject: [qmtest] PATCH: RemoteHost support
+In-Reply-To: <42AD988D.4050301@codesourcery.com>
+References: <200506102130.j5ALUi1Q004761@sethra.codesourcery.com> <42AD988D.4050301@codesourcery.com>
+Message-ID: <42ADBB32.1010701@codesourcery.com>
+
+Stefan Seefeld wrote:
+> Mark,
+> 
+> this patch looks great ! Just some minor questions:
+> 
+> Mark Mitchell wrote:
+> 
+>> This patch adds a new abstraction (called RemoteHost) that can be used
+>> for running programs remotely.  (This facility is in contrast to the
+>> QMTest "Target" abstraction, which allows you to run *tests* remotely;
+>> this facility allows a test running on one machine to run a program on
+>> another.)
+> 
+> 
+> Why don't you call the extension 'Host' and make 'RemoteHost' and 
+> 'LocalHost'
+> subclasses ? I understand that the whole point of the abstraction is to
+> enable remote execution, it just sounds funny to define 'LocalHost' as
+> a subclass of 'RemoveHost'.
+
+Yes, I was being a little bit cute.  But, I really did want to emphasize 
+the "remote" aspect of the class; things like "UploadFile" don't 
+generally make sense with a local host; it just happens that we treat 
+local hosts as a special case of remote ones.  I also thought that 
+"Host" would be more likely to conflict with other classes; maybe, for 
+example, people have "Host" classes that have methods like "GetIPAddr".
+
+I don't feel very strongly, though; if you think "Host" is better, I'll 
+change it.  What do you think?
+
+>> !     The 'CompilerTable' resource provides the following context
+>> !     variables to all tests that depend upon the resource:
+>> ! !     - 'CompilerTable.compilers'
+>> ! !        The 'compilers' variable is a map from language names to
+>> !        instances of 'Compiler'.  Test classes should obtain the
+>> !        'Compiler' to use when compiling source files by using this
+>> !        map.
+> 
+> 
+> It seems the names defined for 'CompilerTable.languages' are just
+> conventions that user code (i.e. specific test / resource classes)
+> need to know about. However, wouldn't it be good to standardize
+> at least the names for the most common languages ?
+> In my first encounter with the CompilerTable it wasn't obvious
+> to me whether C++ would be spelled 'cplusplus', 'cxx', or something
+> else.
+> 
+> CompilerTable previously defined 'CompilerTable.compiler_table', instead
+> of 'CompilerTable.compilers'. While I think the new name is clearer,
+> I'm wondering whether any code still expects 'compiler_table', i.e.
+> whether the above change breaks backward compatibility. If not, all the
+> better.
+
+We can get away with this change.  The only user of the CompilerTable 
+stuff is the CodeSourcery C++ ABI Testsuite, which has its own version 
+of CompilerTest (at present), and will (soon) be adjusted to the use the 
+new version in QMTest.  So, there are no users of the old spelling, 
+except for possible users of QMTest CVS in the last few weeks.
+
+-- 
+Mark Mitchell
+CodeSourcery, LLC
+mark at codesourcery.com
+(916) 791-8304
+
+
+From stefan at codesourcery.com  Mon Jun 13 17:13:20 2005
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Mon, 13 Jun 2005 13:13:20 -0400
+Subject: [qmtest] PATCH: RemoteHost support
+In-Reply-To: <42ADBB32.1010701@codesourcery.com>
+References: <200506102130.j5ALUi1Q004761@sethra.codesourcery.com> <42AD988D.4050301@codesourcery.com> <42ADBB32.1010701@codesourcery.com>
+Message-ID: <42ADBEB0.6020201@codesourcery.com>
+
+Mark Mitchell wrote:
+
+> Yes, I was being a little bit cute.  But, I really did want to emphasize 
+> the "remote" aspect of the class; things like "UploadFile" don't 
+> generally make sense with a local host; it just happens that we treat 
+> local hosts as a special case of remote ones.  I also thought that 
+> "Host" would be more likely to conflict with other classes; maybe, for 
+> example, people have "Host" classes that have methods like "GetIPAddr".
+> 
+> I don't feel very strongly, though; if you think "Host" is better, I'll 
+> change it.  What do you think?
+
+I think your documentation makes it very clear that the class serves as
+an abstraction to transfer and execute files on (potentially remote) hosts,
+so I don't see much potential for confusion. :-)
+Yes, I'd prefer to call it 'qm.host.Host' and the extension kind a 'host'.
+
+Thanks,
+		Stefan
+
+
+From mark at codesourcery.com  Mon Jun 13 22:42:47 2005
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Mon, 13 Jun 2005 15:42:47 -0700
+Subject: [qmtest] PATCH: RemoteHost support
+In-Reply-To: <42ADBEB0.6020201@codesourcery.com>
+References: <200506102130.j5ALUi1Q004761@sethra.codesourcery.com> <42AD988D.4050301@codesourcery.com> <42ADBB32.1010701@codesourcery.com> <42ADBEB0.6020201@codesourcery.com>
+Message-ID: <42AE0BE7.2060206@codesourcery.com>
+
+Stefan Seefeld wrote:
+> Mark Mitchell wrote:
+> 
+>> Yes, I was being a little bit cute.  But, I really did want to 
+>> emphasize the "remote" aspect of the class; things like "UploadFile" 
+>> don't generally make sense with a local host; it just happens that we 
+>> treat local hosts as a special case of remote ones.  I also thought 
+>> that "Host" would be more likely to conflict with other classes; 
+>> maybe, for example, people have "Host" classes that have methods like 
+>> "GetIPAddr".
+>>
+>> I don't feel very strongly, though; if you think "Host" is better, 
+>> I'll change it.  What do you think?
+> 
+> 
+> I think your documentation makes it very clear that the class serves as
+> an abstraction to transfer and execute files on (potentially remote) hosts,
+> so I don't see much potential for confusion. :-)
+> Yes, I'd prefer to call it 'qm.host.Host' and the extension kind a 'host'.
+
+I checked in the attached patch.
+
+-- 
+Mark Mitchell
+CodeSourcery, LLC
+mark at codesourcery.com
+(916) 791-8304
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: host.patch
+URL: <http://sourcerytools.com/pipermail/qmtest/attachments/20050613/162fb790/attachment.ksh>
+

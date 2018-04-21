@@ -1,0 +1,343 @@
+
+Index: src/vsip/signal.hpp
+===================================================================
+RCS file: /home/cvs/Repository/vpp/src/vsip/signal.hpp,v
+retrieving revision 1.12
+diff -c -p -r1.12 signal.hpp
+*** src/vsip/signal.hpp	5 Dec 2005 21:12:39 -0000	1.12
+--- src/vsip/signal.hpp	5 Dec 2005 21:56:18 -0000
+***************
+*** 21,26 ****
+--- 21,27 ----
+  #include <vsip/impl/signal-window.hpp>
+  #include <vsip/impl/signal-fir.hpp>
+  #include <vsip/impl/signal-freqswap.hpp>
++ #include <vsip/impl/signal-histo.hpp>
+  
+  
+  #endif // VSIP_SIGNAL_HPP
+Index: src/vsip/impl/signal-histo.hpp
+===================================================================
+RCS file: src/vsip/impl/signal-histo.hpp
+diff -N src/vsip/impl/signal-histo.hpp
+*** /dev/null	1 Jan 1970 00:00:00 -0000
+--- src/vsip/impl/signal-histo.hpp	5 Dec 2005 21:56:18 -0000
+***************
+*** 0 ****
+--- 1,137 ----
++ /* Copyright (c) 2005 by CodeSourcery, LLC.  All rights reserved. */
++ 
++ /** @file    vsip/impl/signal-histo.hpp
++     @author  Don McCoy
++     @date    2005-11-29
++     @brief   VSIPL++ Library: Histogram functions [signal.histo]
++ */
++ 
++ #ifndef VSIP_IMPL_SIGNAL_HISTO_HPP
++ #define VSIP_IMPL_SIGNAL_HISTO_HPP
++ 
++ /***********************************************************************
++   Included Files
++ ***********************************************************************/
++ 
++ #include <iomanip>
++ 
++ #include <vsip/support.hpp>
++ #include <vsip/vector.hpp>
++ #include <vsip/matrix.hpp>
++ 
++ 
++ /***********************************************************************
++   Declarations
++ ***********************************************************************/
++ 
++ namespace vsip
++ {
++ 
++ 
++ template <template <typename, typename> class const_View = const_Vector,
++           typename T = VSIP_DEFAULT_VALUE_TYPE>
++ class Histogram
++ {
++ public:
++   // Constructor and destructor [signal.histo.constructors]
++   Histogram(
++     T min_value,
++     T max_value,
++     length_type num_bin)
++       VSIP_THROW((std::bad_alloc))
++       : min_(min_value),
++         max_(max_value),
++         num_bin_(num_bin),
++         hist_(num_bin)
++     {
++       assert( min_ < max_ );
++       assert( num_bin_ >= 3 );
++       
++       delta_ = (max_ - min_) / (num_bin_ - 2);
++ 
++       index_type n = num_bin_;
++       while ( n-- )
++         hist_.put(n, 0);
++     }
++ 
++   ~Histogram() VSIP_NOTHROW
++     {}
++ 
++ 
++   // Histogram operators [signal.histo.operators]
++   template <typename Block>
++   const_Vector<T>
++   operator()(
++     const_Vector<T, Block> data,
++     bool accumulate = false)
++       VSIP_NOTHROW
++     {
++       if ( accumulate == false )
++       {
++         index_type n = num_bin_;
++         while ( n-- )
++           hist_.put(n, 0);
++       }
++ 
++       for ( index_type i = 0; i < data.size(); ++i )
++       { 
++         if ( data(i) < min_ )
++           hist_.put( 0, hist_.get(0) + 1 );
++         else
++         if ( data(i) >= max_ )
++           hist_.put( num_bin_ - 1, hist_.get(num_bin_ - 1) + 1 );
++         else
++         {
++           index_type n = (index_type)((data(i) - min_) / delta_);
++           hist_.put( n + 1, hist_.get(n + 1) + 1 );
++         }
++       }
++       return hist_;
++     }
++ 
++   template <typename Block>
++   const_Vector<T>
++   operator()(
++     const_Matrix<T, Block> data,
++     bool accumulate = false)
++       VSIP_NOTHROW
++     {
++       if ( accumulate == false )
++       {
++         index_type n = num_bin_;
++         while ( n-- )
++           hist_.put(n, 0);
++       }
++ 
++       for ( index_type i = 0; i < data.size(0); ++i )
++         for ( index_type j = 0; j < data.size(1); ++j )
++         { 
++           if ( data(i, j) < min_ )
++             hist_.put( 0, hist_.get(0) + 1 );
++           else
++           if ( data(i, j) >= max_ )
++             hist_.put( num_bin_ - 1, hist_.get(num_bin_ - 1) + 1 );
++           else
++           {
++             index_type n = (index_type)((data(i, j) - min_) / delta_);
++             hist_.put( n + 1, hist_.get(n + 1) + 1 );
++           }
++         }
++       return hist_;
++     }
++ 
++ 
++ private:
++   T min_;
++   T max_;
++   T delta_;
++   length_type const num_bin_;
++   Vector<T> hist_;
++ };
++ 
++ 
++ 
++ 
++ } // namespace vsip
++ 
++ #endif // VSIP_IMPL_SIGNAL_HISTO_HPP
+Index: tests/histogram.cpp
+===================================================================
+RCS file: tests/histogram.cpp
+diff -N tests/histogram.cpp
+*** /dev/null	1 Jan 1970 00:00:00 -0000
+--- tests/histogram.cpp	5 Dec 2005 21:56:18 -0000
+***************
+*** 0 ****
+--- 1,170 ----
++ /* Copyright (c) 2005 by CodeSourcery, LLC.  All rights reserved. */
++ 
++ /** @file    tests/histogram.cpp
++     @author  Don McCoy
++     @date    2005-12-05
++     @brief   VSIPL++ Library: Histogram unit tests [signal.histo]
++ */
++ 
++ /***********************************************************************
++   Included Files
++ ***********************************************************************/
++ 
++ #include <vsip/initfin.hpp>
++ #include <vsip/support.hpp>
++ #include <vsip/signal.hpp>
++ #include <vsip/random.hpp>
++ #include "test.hpp"
++ 
++ using namespace vsip;
++ 
++ /***********************************************************************
++   Definitions
++ ***********************************************************************/
++ 
++ template <typename T>
++ void
++ test_vector_histogram( length_type size )
++ {
++   Vector<double> tmp(size);
++   Rand<double> rgen(0);
++   tmp = rgen.randu(size) * 8;
++ 
++   Vector<T> v(size);
++   for ( index_type i = 0; i < size; ++i )
++     v.put(i, static_cast<T>(tmp.get(i)) );
++ 
++   // with even bin sizes
++   {
++     Histogram<const_Vector, T> h(2, 6, 4);
++ 
++     Vector<scalar_i> q(4);
++     q = h(v);
++ 
++     for ( index_type b = 0; b < 4; ++b )
++     {
++       scalar_i count = 0;
++       for ( index_type i = 0; i < size; ++i )
++         if ( (T(b * 2) <= v(i)) && (v(i) < T((b + 1) * 2)) )
++           ++count;
++       assert( q(b) == count );
++     }
++   }
++ 
++   // with all values within specified range
++   {
++     Histogram<const_Vector, T> h(0, 8, 10);
++ 
++     Vector<scalar_i> q(10);
++     q = h(v);
++ 
++     for ( index_type b = 0; b < 8; ++b )
++     {
++       scalar_i count = 0;
++       for ( index_type i = 0; i < size; ++i )
++         if ( (T(b) <= v(i)) && (v(i) < T(b + 1)) )
++           ++count;
++       assert( q(b+1) == count );
++     }
++     assert( q(0) == 0 );
++     assert( q(9) == 0 );
++ 
++     // verify it can accumulate results
++     Vector<scalar_i> q2(10);
++     q2 = h(v, true);
++ 
++     for ( index_type b = 0; b < 8; ++b )
++       assert( q2(b+1) == 2 * q(b+1) );
++     assert( q2(0) == 0 );
++     assert( q2(9) == 0 );
++   }
++ }
++ 
++ 
++ template <typename T>
++ void
++ test_matrix_histogram( length_type rows, length_type cols )
++ {
++   Matrix<double> tmp(rows, cols);
++   Rand<double> rgen(0);
++   tmp = rgen.randu(rows, cols) * 8.0;
++ 
++   Matrix<T> m(rows, cols);
++   for ( index_type i = 0; i < rows; ++i )
++     for ( index_type j = 0; j < cols; ++j )
++       m.put(i, j, static_cast<T>(tmp.get(i, j)));
++ 
++   // with even bin sizes
++   {
++     Histogram<const_Matrix, T> h(2, 6, 4);
++ 
++     Vector<scalar_i> q(4);
++     q = h(m);
++ 
++     for ( index_type b = 0; b < 4; ++b )
++     {
++       scalar_i count = 0;
++       for ( index_type i = 0; i < rows; ++i )
++         for ( index_type j = 0; j < cols; ++j )
++           if ( (T(b * 2) <= m(i, j)) && (m(i, j) < T((b + 1) * 2)) )
++             ++count;
++       assert( q(b) == count );
++     }
++   }
++ 
++   // with all values within specified range
++   {
++     Histogram<const_Matrix, T> h(0, 8, 10);
++ 
++     Vector<scalar_i> q(10);
++     q = h(m);
++ 
++     for ( index_type b = 0; b < 8; ++b )
++     {
++       scalar_i count = 0;
++       for ( index_type i = 0; i < rows; ++i )
++         for ( index_type j = 0; j < cols; ++j )
++           if ( (T(b) <= m(i, j)) && (m(i, j) < T(b + 1)) )
++             ++count;
++       assert( q(b+1) == count );
++     }
++     assert( q(0) == 0 );
++     assert( q(9) == 0 );
++ 
++     // verify it can accumulate results
++     Vector<scalar_i> q2(10);
++     q2 = h(m, true);
++ 
++     for ( index_type b = 0; b < 8; ++b )
++       assert( q2(b+1) == 2 * q(b+1) );
++     assert( q2(0) == 0 );
++     assert( q2(9) == 0 );
++   }
++ }
++ 
++ 
++ 
++ template <typename T>
++ void
++ cases_by_type()
++ {
++   test_vector_histogram<T>( 1024 );
++   test_matrix_histogram<T>( 32, 32 );
++ }
++   
++ 
++ 
++ 
++ int
++ main ()
++ {
++   vsipl init;
++ 
++   cases_by_type<float>();
++   cases_by_type<double>();
++   cases_by_type<long double>();
++   cases_by_type<int>();
++   cases_by_type<long>();
++ 
++   return EXIT_SUCCESS;
++ }

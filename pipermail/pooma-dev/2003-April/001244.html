@@ -1,0 +1,156 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [pooma-dev] [PATCH] Fix Engine&lt;.., MultiPatch&lt;..&gt; &gt;::makeOwnC	 opy()
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bpooma-dev%5D%20%5BPATCH%5D%20Fix%20Engine%3C..%2C%20MultiPatch%3C..%3E%20%3E%3A%3AmakeOwnC%0A%09%20opy%28%29&In-Reply-To=%3CF871BB04B0EA224A821A5274C31DF315150461%40proxim-sf001.santafe.proximation.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001243.html">
+   <LINK REL="Next"  HREF="001245.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[pooma-dev] [PATCH] Fix Engine&lt;.., MultiPatch&lt;..&gt; &gt;::makeOwnC	 opy()</H1>
+    <B>James Crotinger</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bpooma-dev%5D%20%5BPATCH%5D%20Fix%20Engine%3C..%2C%20MultiPatch%3C..%3E%20%3E%3A%3AmakeOwnC%0A%09%20opy%28%29&In-Reply-To=%3CF871BB04B0EA224A821A5274C31DF315150461%40proxim-sf001.santafe.proximation.com%3E"
+       TITLE="[pooma-dev] [PATCH] Fix Engine&lt;.., MultiPatch&lt;..&gt; &gt;::makeOwnC	 opy()">jcrotinger at proximation.com
+       </A><BR>
+    <I>Tue Apr 22 18:23:27 UTC 2003</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001243.html">[pooma-dev] [PATCH] Fix Engine&lt;.., MultiPatch&lt;..&gt; &gt;::makeOwnC opy()
+</A></li>
+        <LI>Next message: <A HREF="001245.html">[pooma-dev] [PATCH] Fix Engine&lt;.., MultiPatch&lt;..&gt; &gt;::makeOwnC  opy()
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1244">[ date ]</a>
+              <a href="thread.html#1244">[ thread ]</a>
+              <a href="subject.html#1244">[ subject ]</a>
+              <a href="author.html#1244">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Ah - gotcha. I missed the '-'. 
+
+The right thing is to fix makeOwnCopy, of course. This looks like a traits
+problem - the MultiPatchEngine::PatchContainer_t is a RCBPtr of engines, but
+the underlying engines have shallow copy semantics. There is a traits class
+that marks shallow-copy objects appropriately and that can be used to
+implement copy correctly. In ElementProperties.h there is an
+ElementProperties base class called MakeOwnCopyProperties that is set up to
+handle this - what there should be, somewhere, is a specialization:
+
+  template &lt;int Dim, class T, class ETag&gt;
+  template &lt;&gt;
+  struct ElementProperties&lt;Engine&lt;Dim,T,ETag&gt; &gt;
+    : public MakeOwnCopyProperties&lt;Engine&lt;Dim,T,ETag&gt; &gt;
+  { };
+
+What puzzles me is that I see this specialization (a partial one) for Brick
+and several others. So this ought to work for MultiPatch&lt;Brick&gt; and any of
+the other engines that have done this specialization. (It will not work on
+views - we went around on this and ultimately decided that doing makeOwnCopy
+on a view should not be allowed)
+
+Hmmm. I don't see a specialization for Remote&lt;Brick&gt;. (Just saw your
+example.) Is this failing for both Brick and Remote&lt;Brick&gt;? The lack of a
+ElementProperties specialization for Remote&lt;Brick&gt; is a bug. Any class that
+has shallow copy semantics and that implements the makeOwnCopy() function
+should specialize ElementProperties as above. 
+
+At any rate, it would probably be good to step through the old code and see
+where it is ending up in the wrong specialization of ElementProperties.
+That's a bug that could bite in other places.
+
+Looks like spotted another bug wrt the dirty flag - that deep copy is needed
+regardless of how the engines are copied.
+
+	Jim
+
+------------------------------------------------------------------------
+James A. Crotinger                           email:     <A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">jimc at numerix.com</A>
+NumeriX, LLC                                 phone:  (505) 424-4477 x104
+2960 Rodeo Park Dr. W.
+Santa Fe, NM 87505
+ 
+
+-----Original Message-----
+From: Richard Guenther [mailto:<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">rguenth at tat.physik.uni-tuebingen.de</A>] 
+Sent: Tuesday, April 22, 2003 11:51 AM
+To: James Crotinger
+Cc: '<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">pooma-dev at pooma.codesourcery.com</A>'; 'Jeffrey D. Oldham'
+Subject: RE: [pooma-dev] [PATCH] Fix Engine&lt;.., MultiPatch&lt;..&gt; &gt;::makeOwnC
+opy()
+
+On Tue, 22 Apr 2003, James Crotinger wrote:
+
+&gt;<i> Hmmm. I don't have time to play with this, but something looks wrong. The
+</I>&gt;<i> sequence
+</I>&gt;<i>
+</I>&gt;<i> 	data_m.makeOwnCopy();
+</I>&gt;<i> 	if (data_m.isShared())
+</I>
+Well ;) I attached a unified patch, the data_m.makeOwnCopy() is removed,
+the rest added. The problem is, the data_m.makeOwnCopy() does not work.
+
+Richard.
+
+&gt;<i> 2003 Apr 22  Richard Guenther &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">richard.guenther at uni-tuebingen.de</A>&gt;
+</I>&gt;<i>
+</I>&gt;<i> 	* Engine/MultiPatchEngine.cpp: do makeOwnCopy() manually.
+</I>&gt;<i>
+</I>&gt;<i> ===== MultiPatchEngine.cpp 1.3 vs edited =====
+</I>&gt;<i> --- 1.3/r2/src/Engine/MultiPatchEngine.cpp	Fri Jan 24 10:35:52 2003
+</I>&gt;<i> +++ edited/MultiPatchEngine.cpp	Tue Apr 22 17:42:04 2003
+</I>&gt;<i> @@ -244,8 +244,17 @@
+</I>&gt;<i>  Engine&lt;Dim, T, MultiPatch&lt;LayoutTag,PatchTag&gt; &gt;::
+</I>&gt;<i>  makeOwnCopy()
+</I>&gt;<i>  {
+</I>&gt;<i> -  data_m.makeOwnCopy();
+</I>&gt;<i> -
+</I>&gt;<i> +  PAssert(data_m.isValid());
+</I>&gt;<i> +  if (data_m.isShared()) {
+</I>&gt;<i> +    PatchContainer_t model = data_m;
+</I>&gt;<i> +    data_m = PatchContainer_t(model.size());
+</I>&gt;<i> +    for (int i=0; i&lt;model.size(); ++i) {
+</I>&gt;<i> +      data_m[i] = model[i];
+</I>&gt;<i> +      data_m[i].makeOwnCopy();
+</I>&gt;<i> +    }
+</I>&gt;<i> +    pDirty_m = new bool(*pDirty_m);
+</I>&gt;<i> +  }
+</I>&gt;<i> +
+</I>&gt;<i>    return *this;
+</I>&gt;<i>  }
+</I>&gt;<i>
+</I>&gt;<i>
+</I>-------------- next part --------------
+An HTML attachment was scrubbed...
+URL: &lt;<A HREF="http://sourcerytools.com/pipermail/pooma-dev/attachments/20030422/2996316c/attachment.html">http://sourcerytools.com/pipermail/pooma-dev/attachments/20030422/2996316c/attachment.html</A>&gt;
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001243.html">[pooma-dev] [PATCH] Fix Engine&lt;.., MultiPatch&lt;..&gt; &gt;::makeOwnC opy()
+</A></li>
+	<LI>Next message: <A HREF="001245.html">[pooma-dev] [PATCH] Fix Engine&lt;.., MultiPatch&lt;..&gt; &gt;::makeOwnC  opy()
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1244">[ date ]</a>
+              <a href="thread.html#1244">[ thread ]</a>
+              <a href="subject.html#1244">[ subject ]</a>
+              <a href="author.html#1244">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

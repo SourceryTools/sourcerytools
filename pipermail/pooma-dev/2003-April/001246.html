@@ -1,0 +1,814 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> GCC 3.2 on Redhat 8.0--a fair number of compiler warnings?
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20GCC%203.2%20on%20Redhat%208.0--a%20fair%20number%20of%20compiler%20warnings%3F&In-Reply-To=%3C24752b2dfd3ec609e6c9582a2ede3a5b3ea6f32a%40locuspharma.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001245.html">
+   <LINK REL="Next"  HREF="001247.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>GCC 3.2 on Redhat 8.0--a fair number of compiler warnings?</H1>
+    <B>George Talbot</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20GCC%203.2%20on%20Redhat%208.0--a%20fair%20number%20of%20compiler%20warnings%3F&In-Reply-To=%3C24752b2dfd3ec609e6c9582a2ede3a5b3ea6f32a%40locuspharma.com%3E"
+       TITLE="GCC 3.2 on Redhat 8.0--a fair number of compiler warnings?">gtalbot at locuspharma.com
+       </A><BR>
+    <I>Wed Apr 23 20:10:35 UTC 2003</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001245.html">[pooma-dev] [PATCH] Fix Engine&lt;.., MultiPatch&lt;..&gt; &gt;::makeOwnC  opy()
+</A></li>
+        <LI>Next message: <A HREF="001247.html">[pooma-dev] GCC 3.2 on Redhat 8.0--a fair number of compiler warnings?
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1246">[ date ]</a>
+              <a href="thread.html#1246">[ thread ]</a>
+              <a href="subject.html#1246">[ subject ]</a>
+              <a href="author.html#1246">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Hi,
+
+New POOMA II user.  Got everything to compile and link today.  The
+performance of this stuff is shocking.
+
+I ran a hand coded version of your 2D diffusion program on my box for
+250 steps, 800x800 array.  1m34s, uniprocessor.
+
+Using a stencil, same box, uniprocessor.  25s.  WOW.
+
+Using -shmem -np 2 to distribute the shared array version on both of my
+processors on my box.  12s.  Truly amazing.  I think this may be a
+dramatically useful tool.
+
+The only thing that irks me a bit is that there are a fair number of
+compiler warnings, which I will append, along with the source I used, to
+this e-mail.  Is this normal?  Swimming in a sea of warnings from the
+POOMA headers, I might miss some on my own code...
+
+Take care.
+
+--
+George T. Talbot
+&lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">gtalbot at locuspharma.com</A>&gt;
+
+Here's the program:
+
+#include &lt;iostream&gt;
+using namespace std;
+
+#define STENCIL
+#define POOMA
+#define DISTRIBUTED
+
+#ifdef POOMA
+#include &quot;Pooma/Arrays.h&quot;
+#endif
+
+#ifdef STENCIL
+class NinePtDiffusion
+{
+public:
+    template &lt;class C&gt;
+    inline typename C::Element_t operator()(const C&amp; c, int I, int J)
+const
+    {
+        return (1.0/9.0) *
+                    (c.read(I+1, J+1) + c.read(I+1, J  ) + c.read(I+1,
+J-1) +
+                     c.read(I  , J+1) + c.read(I  , J  ) + c.read(I  ,
+J-1) +
+                     c.read(I-1, J+1) + c.read(I-1, J  ) + c.read(I-1,
+J-1));
+    }
+    
+    inline int lowerExtent(int) const { return 1; }
+    inline int upperExtent(int) const { return 1; }
+};
+#endif
+
+int main(int argc, char* argv[])
+{
+#ifdef POOMA
+    Pooma::initialize(argc, argv);
+#endif
+
+    long    numAveragings = 250, numSteps;
+
+    numSteps    = (numAveragings+1)/2;
+
+    long    n = 800;
+
+    long    numProcessors=2;
+
+#ifdef POOMA
+    Inform  output;
+    
+    output &lt;&lt; &quot;processors=&quot; &lt;&lt; numProcessors
+           &lt;&lt; &quot; avgs=&quot; &lt;&lt; numAveragings
+           &lt;&lt; &quot; n=&quot; &lt;&lt; n
+           &lt;&lt; endl;
+#else
+    cout &lt;&lt; &quot;processors=&quot; &lt;&lt; numProcessors
+         &lt;&lt; &quot; avgs=&quot; &lt;&lt; numAveragings
+         &lt;&lt; &quot; n=&quot; &lt;&lt; n
+         &lt;&lt; endl;
+#endif
+
+#ifdef POOMA
+    Interval&lt;1&gt; N(0, n-1);
+    Interval&lt;2&gt; problemDomain(N, N);
+
+    Interval&lt;1&gt; I(1, n-2);
+    Interval&lt;1&gt; J(1, n-2);
+    Interval&lt;2&gt; interiorDomain(I, I);
+
+#ifdef DISTRIBUTED
+    UniformGridPartition&lt;2&gt;
+partition(Loc&lt;2&gt;(numProcessors,numProcessors), GuardLayers&lt;2&gt;(1),
+GuardLayers&lt;2&gt;(0));
+    UniformGridLayout&lt;2&gt;    layout(problemDomain, partition,
+DistributedTag());
+
+    Array&lt;2, double, MultiPatch&lt;UniformTag, Remote&lt;Brick&gt; &gt; &gt;  
+a(layout);
+    Array&lt;2, double, MultiPatch&lt;UniformTag, Remote&lt;Brick&gt; &gt; &gt;  
+b(layout);
+#else
+    Array&lt;2, double, Brick&gt; a(problemDomain);
+    Array&lt;2, double, Brick&gt; b(problemDomain);
+#endif
+
+    a = b = 0.0;
+
+    Pooma::blockAndEvaluate();
+    b(n/2, n/2) = 1000.0;
+
+#ifdef STENCIL
+    Stencil&lt;NinePtDiffusion&gt;    diffusion;
+#endif
+
+#else
+    double  a[n][n], b[n][n];
+
+    for (long x=1; x&lt;n-1; x++)
+    {
+        for (long y=1; y&lt;n-1; y++)
+        {
+            a[x][y] = b[x][y] = 0.0;
+        }
+    }
+    
+    b[n/2][n/2] = 1000.0;
+#endif
+
+    const double    weight = 1.0/9.0;
+
+    for (long i=0; i&lt;numSteps; i++)
+    {
+#ifdef STENCIL
+        a(interiorDomain)   = diffusion(b, interiorDomain);
+        b(interiorDomain)   = diffusion(a, interiorDomain);
+#elif defined (POOMA)
+        a(I,J)  = weight *
+                    (b(I+1, J+1) + b(I+1, J  ) + b(I+1, J-1) +
+                     b(I  , J+1) + b(I  , J  ) + b(I  , J-1) +
+                     b(I-1, J+1) + b(I-1, J  ) + b(I-1, J-1));
+
+        b(I,J)  = weight *
+                    (a(I+1, J+1) + a(I+1, J  ) + a(I+1, J-1) +
+                     a(I  , J+1) + a(I  , J  ) + a(I  , J-1) +
+                     a(I-1, J+1) + a(I-1, J  ) + a(I-1, J-1));
+#else
+        for (long x=1; x&lt;n-1; x++)
+        {
+            for (long y=1; y&lt;n-1; y++)
+            {
+                a[x][y]  = weight *
+                            (b[x+1][y+1] + b[x+1][y]   + b[x+1][y-1] +
+                             b[x]  [y+1] + b[x]  [y]   + b[x]  [y-1] +
+                             b[x-1][y+1] + b[x-1][y]   + b[x-1][y-1]);
+            }
+        }
+
+        for (long x=1; x&lt;n-1; x++)
+        {
+            for (long y=1; y&lt;n-1; y++)
+            {
+                b[x][y]  = weight *
+                            (a[x+1][y+1] + a[x+1][y]   + a[x+1][y-1] +
+                             a[x]  [y+1] + a[x]  [y]   + a[x]  [y-1] +
+                             a[x-1][y+1] + a[x-1][y]   + a[x-1][y-1]);
+            }
+        }
+#endif
+    }
+
+#ifdef POOMA
+    Pooma::blockAndEvaluate();
+    
+    output &lt;&lt; &quot;Center position: &quot; &lt;&lt; a(n/2, n/2) &lt;&lt; endl;
+
+    Pooma::finalize();
+#else
+    cout &lt;&lt; &quot;Center position: &quot; &lt;&lt; a[n/2][n/2] &lt;&lt; endl;
+#endif
+
+    return 0;
+}
+
+
+Here's the compiler warnings, plus the compiler command line:
+
+g++ -c -pipe -Wall -W -O2 -D_REENTRANT  -DQT_NO_DEBUG
+-DQT_THREAD_SUPPORT -I/usr/local/qt/mkspecs/default -I.
+-I/usr/local/cots/cheetah/linux/src
+-I/usr/local/cots/cheetah/linux/lib/g++-ex -I/usr/local/cots/pooma/src
+-I/usr/local/cots/pooma/linux/lib/PoomaConfiguration
+-I/usr/local/qt/include -o diffusion_test.o diffusion_test.cpp
+In file included from /usr/local/cots/pooma/src/Pooma/Domains.h:42,
+                 from
+/usr/local/cots/pooma/src/Domain/DomainRemoveOverlap.h:32,                 from /usr/local/cots/pooma/src/Layout/SparseTileLayout.cpp:36,
+                 from
+/usr/local/cots/pooma/src/Layout/SparseTileLayout.h:1201,
+                 from
+/usr/local/cots/pooma/src/Engine/IsValidLocation.h:55,
+                 from /usr/local/cots/pooma/src/Array/PrintArray.h:57,
+                 from /usr/local/cots/pooma/src/Array/Array.h:58,
+                 from /usr/local/cots/pooma/src/Pooma/BrickArrays.h:42,
+                 from /usr/local/cots/pooma/src/Pooma/UMPArrays.h:40,
+                 from /usr/local/cots/pooma/src/Pooma/Arrays.h:39,
+                 from diffusion_test.cpp:9:
+/usr/local/cots/pooma/src/Domain/Grid.h: In copy constructor
+   `Grid&lt;1&gt;::Grid(const Grid&lt;1&gt;&amp;)':
+/usr/local/cots/pooma/src/Domain/Grid.h:360: warning: base class `class
+   Domain&lt;1, DomainTraits&lt;Grid&lt;1&gt; &gt; &gt;' should be explicitly initialized
+in the
+   copy constructor
+In file included from /usr/local/cots/pooma/src/Pooma/Arrays.h:46,
+                 from diffusion_test.cpp:9:
+/usr/local/cots/pooma/src/Engine/RemoteEngine.h: In copy constructor
+   `GatherContexts::GatherContextsData::GatherContextsData(const
+   GatherContexts::GatherContextsData&amp;)':
+/usr/local/cots/pooma/src/Engine/RemoteEngine.h:1697: warning: base
+class `
+   class RefCounted' should be explicitly initialized in the copy
+constructor
+diffusion_test.cpp: In function `int main(int, char**)':
+diffusion_test.cpp:100: warning: unused variable `const double weight'
+In file included from
+/usr/local/cots/pooma/src/Engine/RemoteEngine.h:1499,
+                 from /usr/local/cots/pooma/src/Array/Array.h:108,
+                 from diffusion_test.cpp:77:
+/usr/local/cots/pooma/src/Layout/UniformGridLayout.h: In copy
+constructor
+   `UniformGridLayout&lt;Dim&gt;::UniformGridLayout(const
+UniformGridLayout&lt;Dim&gt;&amp;)
+   [with int Dim = 2]':
+/usr/local/cots/pooma/src/Layout/LayoutBase.h:806:   instantiated from
+`LayoutBaseViewData&lt;Dim, Dim2, L&gt;::LayoutBaseViewData(const L&amp;, const
+Domain&lt;Dim, DT&gt;&amp;) [with DT = DomainTraits&lt;Interval&lt;2&gt; &gt;, int Dim = 2,
+int Dim2 = 2, L = UniformGridLayout&lt;2&gt;]'
+/usr/local/cots/pooma/src/Layout/LayoutBase.h:1368:   instantiated from
+`UniformGridLayoutViewData&lt;Dim, Dim2&gt;::UniformGridLayoutViewData(const
+UniformGridLayout&lt;Dim2&gt;&amp;, const Domain&lt;Dim, DT&gt;&amp;) [with DT =
+DomainTraits&lt;Interval&lt;2&gt; &gt;, int Dim
+= 2, int Dim2 = 2]'
+/usr/local/cots/pooma/src/Layout/LayoutBase.h:1109:   instantiated from
+`LayoutBaseView&lt;Dim, Dim2, lvd&gt;::LayoutBaseView(lvd*) [with int Dim = 2,
+int Dim2 = 2, lvd = UniformGridLayoutViewData&lt;2, 2&gt;]'
+/usr/local/cots/pooma/src/Engine/RemoteEngine.h:1499:   instantiated
+from `UniformGridLayoutView&lt;Dim,
+Dim2&gt;::UniformGridLayoutView(UniformGridLayoutViewData&lt;Dim,
+Dim2&gt;::Layout_t&amp;, const Domain&lt;Dim2, DT&gt;&amp;) [with DT =
+DomainTraits&lt;Interval&lt;2&gt; &gt;, int Dim = 2, int Dim2 = 2]'
+/usr/local/cots/pooma/src/Engine/RemoteEngine.h:992:   instantiated from
+`Engine&lt;Dim, T, MultiPatchView&lt;LayoutTag, PatchTag, Dim2&gt;
+&gt;::<i>Engine(const Engine&lt;Dim2,
+</I>T, MultiPatch&lt;LayoutTag, PatchTag&gt; &gt;&amp;, const Domain&lt;Dim2, DT&gt;&amp;) [with DT
+= DomainTraits&lt;Interval&lt;2&gt; &gt;, int Dim = 2, T = double, LayoutTag =
+UniformTag, PatchTag = Remote&lt;Brick&gt;, int Dim2 = 2]'
+/usr/local/cots/pooma/src/Engine/RemoteEngine.h:1457:   instantiated
+from `Array&lt;Dim, T, EngineTag&gt;::Array(const Engine&lt;Dim2, T2,
+EngineTag2&gt;&amp;, const Initializer&amp;) [with int Dim2 = 2, T2 = double,
+EngineTag2 = MultiPatch&lt;UniformTag, Remote&lt;Brick&gt; &gt;, Initializer =
+Interval&lt;2&gt;, int Dim = 2, T = double, EngineTag =
+MultiPatchView&lt;UniformTag, Remote&lt;Brick&gt;, 2&gt;]'
+/usr/local/cots/pooma/src/Engine/RemoteEngine.h:676:   instantiated from
+`static Array&lt;View0&lt;Array&lt;D1, T1, E1&gt; &gt;::newDim, T, NewEngine&lt;Array&lt;D1,
+T1, E1&gt;::Engine_t, Array&lt;D1, T1, E1&gt;::Domain_t&gt;::Type_t::Tag_t&gt;
+View0&lt;Array&lt;D1, T1, E1&gt; &gt;::make(const Array&lt;D1, T1, E1&gt;&amp;) [with int Dim
+= 2, T = double, EngineTag = MultiPatch&lt;UniformTag, Remote&lt;Brick&gt; &gt;]'
+/usr/local/cots/pooma/src/Engine/RemoteEngine.h:1910:   instantiated
+from `AltView0&lt;Array&lt;D1, T1, E1&gt; &gt;::Type_t Array&lt;Dim, T,
+EngineTag&gt;::operator()() const [with int Dim = 2, T = double, EngineTag
+= MultiPatch&lt;UniformTag, Remote&lt;Brick&gt;
+&gt;<i>]'/usr/local/cots/pooma/src/Engine/RemoteEngine.h:1909:   instantiated
+</I>from `void
+Evaluator&lt;RemoteMultiPatchEvaluatorTag&gt;::evaluate(const LHS&amp;, const Op&amp;,
+const RHS&amp;) const [with LHS = Array&lt;2, double,
+MultiPatchView&lt;UniformTag, Remote&lt;Brick&gt;, 2&gt; &gt;, RHS = Array&lt;2, double,
+ConstantFunction&gt;, Op = OpAssign]'
+/usr/local/cots/pooma/src/Array/Array.h:108:   instantiated from `void
+Evaluator&lt;MainEvaluatorTag&gt;::evaluate(const LHS&amp;, const Op&amp;, const RHS&amp;)
+const [with LHS
+= Array&lt;2, double, MultiPatch&lt;UniformTag, Remote&lt;Brick&gt; &gt; &gt;, RHS =
+Array&lt;2, double, ConstantFunction&gt;, Op = OpAssign]'
+/usr/local/cots/pooma/src/Array/Array.h:2504:   instantiated from `const
+Array&lt;D1, T1, E1&gt;&amp; assign(const Array&lt;D1, T1, E1&gt;&amp;, const T1&amp;, const
+Op&amp;) [with int Dim = 2, T = double, EngineTag = MultiPatch&lt;UniformTag,
+Remote&lt;Brick&gt; &gt;, T1 = double, Op = OpAssign]'
+/usr/local/cots/pooma/src/Array/Array.h:2117:   instantiated from `const
+Array&lt;Dim, T, EngineTag&gt;&amp; Array&lt;Dim, T, EngineTag&gt;::operator=(const T1&amp;)
+const [with T1 = double, int Dim = 2, T = double, EngineTag =
+MultiPatch&lt;UniformTag, Remote&lt;Brick&gt; &gt;]'
+/usr/local/cots/pooma/src/Array/Array.h:2105:   instantiated from
+`Array&lt;Dim, T, EngineTag&gt;&amp; Array&lt;Dim, T, EngineTag&gt;::operator=(const
+Array&lt;Dim, T, EngineTag&gt;&amp;) [with int Dim = 2, T = double, EngineTag =
+MultiPatch&lt;UniformTag, Remote&lt;Brick&gt; &gt;]'
+diffusion_test.cpp:77:   instantiated from here
+/usr/local/cots/pooma/src/Layout/UniformGridLayout.h:1831: warning: base
+class
+   `class Observer&lt;UniformGridLayoutData&lt;2&gt; &gt;' should be explicitly
+initialized
+   in the copy constructor
+In file included from
+/usr/local/cots/pooma/src/Engine/RemoteEngine.h:1519,
+                 from diffusion_test.cpp:108:
+/usr/local/cots/pooma/src/Layout/LayoutBase.h: In constructor
+   `LayoutBaseViewData&lt;Dim, Dim2, L&gt;::LayoutBaseViewData(const L&amp;, const
+LV&amp;,
+   const ViewIndexer&lt;Dim, Dim2&gt;&amp;, const Domain&lt;Dim, DT&gt;&amp;,
+GuardLayers&lt;Dim&gt;,
+   GuardLayers&lt;Dim&gt;) [with DT = DomainTraits&lt;Interval&lt;2&gt; &gt;, LV =
+   UniformGridLayoutView&lt;2, 2&gt;, int Dim = 2, int Dim2 = 2, L =
+   UniformGridLayout&lt;2&gt;]':
+/usr/local/cots/pooma/src/Layout/LayoutBase.h:1388:   instantiated from
+`UniformGridLayoutViewData&lt;Dim, Dim2&gt;::UniformGridLayoutViewData(const
+UniformGridLayoutView&lt;Dim, Dim2&gt;&amp;, const Domain&lt;Dim, DT&gt;&amp;) [with DT =
+DomainTraits&lt;Interval&lt;2&gt; &gt;, int Dim = 2, int Dim2 = 2]'
+/usr/local/cots/pooma/src/Layout/LayoutBase.h:1109:   instantiated from
+`LayoutBaseView&lt;Dim, Dim2, lvd&gt;::LayoutBaseView(lvd*) [with int Dim = 2,
+int Dim2 = 2, lvd = UniformGridLayoutViewData&lt;2, 2&gt;]'
+/usr/local/cots/pooma/src/Engine/RemoteEngine.h:1519:   instantiated
+from `UniformGridLayoutView&lt;Dim, Dim2&gt;::UniformGridLayoutView(const
+UniformGridLayoutView&lt;Dim, Dim2&gt;&amp;, const Domain&lt;Dim, DT&gt;&amp;) [with DT =
+DomainTraits&lt;Interval&lt;2&gt; &gt;, int Dim = 2, int Dim2 = 2]'
+/usr/local/cots/pooma/src/Engine/RemoteEngine.h:1012:   instantiated
+from `Engine&lt;Dim, T, MultiPatchView&lt;LayoutTag, PatchTag, Dim2&gt;
+&gt;::<i>Engine(const Engine&lt;Dim,
+</I>T, MultiPatchView&lt;LayoutTag, PatchTag, Dim2&gt; &gt;&amp;, const Domain&lt;Dim, DT&gt;&amp;)
+[with DT = DomainTraits&lt;Interval&lt;2&gt; &gt;, int Dim = 2, T = double,
+LayoutTag = UniformTag, PatchTag = Remote&lt;Brick&gt;, int Dim2 = 2]'
+/usr/local/cots/pooma/src/Engine/RemoteEngine.h:1457:   instantiated
+from `Array&lt;Dim, T, EngineTag&gt;::Array(const Engine&lt;Dim2, T2,
+EngineTag2&gt;&amp;, const Initializer&amp;) [with int Dim2 = 2, T2 = double,
+EngineTag2 = MultiPatchView&lt;UniformTag, Remote&lt;Brick&gt;, 2&gt;, Initializer =
+Interval&lt;2&gt;, int Dim = 2, T = double, EngineTag =
+MultiPatchView&lt;UniformTag, Remote&lt;Brick&gt;, 2&gt;]'
+/usr/local/cots/pooma/src/Engine/RemoteEngine.h:676:   instantiated from
+`static Array&lt;View0&lt;Array&lt;D1, T1, E1&gt; &gt;::newDim, T, NewEngine&lt;Array&lt;D1,
+T1, E1&gt;::Engine_t, Array&lt;D1, T1, E1&gt;::Domain_t&gt;::Type_t::Tag_t&gt;
+View0&lt;Array&lt;D1, T1, E1&gt; &gt;::make(const Array&lt;D1, T1, E1&gt;&amp;) [with int Dim
+= 2, T = double, EngineTag = MultiPatchView&lt;UniformTag, Remote&lt;Brick&gt;,
+2&gt;]'
+/usr/local/cots/pooma/src/Engine/RemoteEngine.h:1910:   instantiated
+from `AltView0&lt;Array&lt;D1, T1, E1&gt; &gt;::Type_t Array&lt;Dim, T,
+EngineTag&gt;::operator()() const [with int Dim = 2, T = double, EngineTag
+= MultiPatchView&lt;UniformTag, Remote&lt;Brick&gt;, 2&gt;]'
+/usr/local/cots/pooma/src/Engine/RemoteEngine.h:1909:   instantiated
+from `void
+Evaluator&lt;RemoteMultiPatchEvaluatorTag&gt;::evaluate(const LHS&amp;, const Op&amp;,
+const RHS&amp;) const [with LHS = Array&lt;2, double,
+MultiPatchView&lt;UniformTag, Remote&lt;Brick&gt;, 2&gt; &gt;, RHS = Array&lt;2, double,
+StencilEngine&lt;NinePtDiffusion, Array&lt;2, double,
+MultiPatchView&lt;UniformTag, Remote&lt;Brick&gt;, 2&gt; &gt; &gt; &gt;, Op = OpAssign]'
+diffusion_test.cpp:108:   instantiated from `void
+Evaluator&lt;MainEvaluatorTag&gt;::evaluate(const LHS&amp;, const Op&amp;, const RHS&amp;)
+const [with LHS = Array&lt;2, double, MultiPatchView&lt;UniformTag,
+Remote&lt;Brick&gt;, 2&gt; &gt;, RHS = Array&lt;2, double,
+StencilEngine&lt;NinePtDiffusion, Array&lt;2, double,
+MultiPatchView&lt;UniformTag, Remote&lt;Brick&gt;, 2&gt; &gt; &gt; &gt;, Op = OpAssign]'
+diffusion_test.cpp:2486:   instantiated from `const Array&lt;D1, T1, E1&gt;&amp;
+assign(const Array&lt;D1, T1, E1&gt;&amp;, const Array&lt;D2, T2, E2&gt;&amp;, const Op&amp;)
+[with int Dim = 2,
+T = double, EngineTag = MultiPatchView&lt;UniformTag, Remote&lt;Brick&gt;, 2&gt;,
+int OtherDim = 2, OtherT = double, OtherEngineTag =
+StencilEngine&lt;NinePtDiffusion, Array&lt;2, double,
+MultiPatchView&lt;UniformTag, Remote&lt;Brick&gt;, 2&gt; &gt; &gt;, Op = OpAssign]'
+diffusion_test.cpp:2117:   instantiated from `const Array&lt;Dim, T,
+EngineTag&gt;&amp; Array&lt;Dim, T, EngineTag&gt;::operator=(const T1&amp;) const [with
+T1 = Array&lt;2, double, StencilEngine&lt;NinePtDiffusion, Array&lt;2, double,
+MultiPatchView&lt;UniformTag, Remote&lt;Brick&gt;, 2&gt; &gt; &gt; &gt;, int Dim = 2, T =
+double, EngineTag = MultiPatchView&lt;UniformTag, Remote&lt;Brick&gt;, 2&gt;]'
+diffusion_test.cpp:105:   instantiated from here
+/usr/local/cots/pooma/src/Layout/LayoutBase.h:1027: warning: member
+   initializers for `ViewIndexer&lt;2, 2&gt; LayoutBaseViewData&lt;2, 2,
+   UniformGridLayout&lt;2&gt; &gt;::indexer_m'
+/usr/local/cots/pooma/src/Layout/LayoutBase.h:1010: warning:   and `long
+int
+   LayoutBaseViewData&lt;2, 2, UniformGridLayout&lt;2&gt; &gt;::id_m'
+/usr/local/cots/pooma/src/Layout/LayoutBase.h:871: warning:   will be
+   re-ordered to match declaration order
+/usr/local/cots/pooma/src/Layout/LayoutBase.h:1040: warning: member
+   initializers for `bool LayoutBaseViewData&lt;2, 2, UniformGridLayout&lt;2&gt;
+   &gt;::subdomainsComputed_m'
+/usr/local/cots/pooma/src/Layout/LayoutBase.h:1021: warning:   and `
+   GuardLayers&lt;2&gt; LayoutBaseViewData&lt;2, 2, UniformGridLayout&lt;2&gt;
+   &gt;::internalGuards_m'
+/usr/local/cots/pooma/src/Layout/LayoutBase.h:871: warning:   will be
+   re-ordered to match declaration order
+/usr/local/cots/pooma/src/Engine/Stencil.h: In constructor
+   `StencilIntersector&lt;Dim, Intersect&gt;::StencilIntersector(const
+   Interval&lt;Dim&gt;&amp;, const Intersect&amp;) [with int Dim = 2, Intersect =
+   Intersector&lt;2&gt;]':
+diffusion_test.cpp:863:   instantiated from `static int
+LeafFunctor&lt;Engine&lt;D, T, StencilEngine&lt;Function, Expression&gt; &gt;,
+ExpressionApply&lt;IntersectorTag&lt;Intersect&gt; &gt; &gt;::apply(const Engine&lt;D, T,
+StencilEngine&lt;Function, Expression&gt; &gt;&amp;, const
+ExpressionApply&lt;IntersectorTag&lt;Intersect&gt; &gt;&amp;) [with int D = 2, T =
+double, S = NinePtDiffusion, E = Array&lt;2, double,
+MultiPatchView&lt;UniformTag, Remote&lt;Brick&gt;, 2&gt;
+&gt;<i>, Intersect = Intersector&lt;2&gt;]'
+</I>diffusion_test.cpp:2307:   instantiated from `static int
+LeafFunctor&lt;Array&lt;D1, T1, E1&gt;, ExpressionApply&lt;Tag&gt; &gt;::apply(const
+Array&lt;D1, T1, E1&gt;&amp;, const ExpressionApply&lt;Tag&gt;&amp;) [with int Dim = 2, T =
+double, E = StencilEngine&lt;NinePtDiffusion, Array&lt;2, double,
+MultiPatchView&lt;UniformTag, Remote&lt;Brick&gt;, 2&gt; &gt; &gt;, Tag =
+IntersectorTag&lt;Intersector&lt;2&gt; &gt;]'
+diffusion_test.cpp:80:   instantiated from `static LeafFunctor&lt;LeafType,
+LeafTag&gt;::Type_t ForEach&lt;Expr, FTag, CTag&gt;::apply(const Expr&amp;, const
+FTag&amp;, const CTag&amp;) [with Expr = Array&lt;2, double,
+StencilEngine&lt;NinePtDiffusion, Array&lt;2, double,
+MultiPatchView&lt;UniformTag, Remote&lt;Brick&gt;, 2&gt; &gt; &gt; &gt;, FTag =
+ExpressionApply&lt;IntersectorTag&lt;Intersector&lt;2&gt; &gt; &gt;, CTag = NullCombine]'
+diffusion_test.cpp:88:   instantiated from `ForEach&lt;Expr, FTag,
+CTag&gt;::Type_t forEach(const Expr&amp;, const FTag&amp;, const CTag&amp;) [with Expr
+= Array&lt;2, double, StencilEngine&lt;NinePtDiffusion, Array&lt;2, double,
+MultiPatchView&lt;UniformTag, Remote&lt;Brick&gt;, 2&gt; &gt; &gt; &gt;, FTag =
+ExpressionApply&lt;IntersectorTag&lt;Intersector&lt;2&gt; &gt; &gt;, CTag =
+NullCombine]'
+diffusion_test.cpp:276:   instantiated from `void expressionApply(const
+A&amp;, const Tag&amp;) [with A = Array&lt;2, double,
+StencilEngine&lt;NinePtDiffusion, Array&lt;2, double,
+MultiPatchView&lt;UniformTag, Remote&lt;Brick&gt;, 2&gt; &gt; &gt; &gt;, Tag =
+IntersectorTag&lt;Intersector&lt;2&gt; &gt;]'
+diffusion_test.cpp:1914:   instantiated from `void
+Evaluator&lt;RemoteMultiPatchEvaluatorTag&gt;::evaluate(const LHS&amp;, const Op&amp;,
+const RHS&amp;) const [with LHS = Array&lt;2, double,
+MultiPatchView&lt;UniformTag, Remote&lt;Brick&gt;, 2&gt; &gt;, RHS = Array&lt;2, double,
+StencilEngine&lt;NinePtDiffusion, Array&lt;2, double,
+MultiPatchView&lt;UniformTag, Remote&lt;Brick&gt;, 2&gt; &gt; &gt; &gt;, Op = OpAssign]'
+diffusion_test.cpp:108:   instantiated from `void
+Evaluator&lt;MainEvaluatorTag&gt;::evaluate(const LHS&amp;, const Op&amp;, const RHS&amp;)
+const [with LHS = Array&lt;2, double, MultiPatchView&lt;UniformTag,
+Remote&lt;Brick&gt;, 2&gt; &gt;, RHS = Array&lt;2, double,
+StencilEngine&lt;NinePtDiffusion, Array&lt;2, double,
+MultiPatchView&lt;UniformTag, Remote&lt;Brick&gt;, 2&gt; &gt; &gt; &gt;, Op = OpAssign]'
+diffusion_test.cpp:2486:   instantiated from `const Array&lt;D1, T1, E1&gt;&amp;
+assign(const Array&lt;D1, T1, E1&gt;&amp;, const Array&lt;D2, T2, E2&gt;&amp;, const Op&amp;)
+[with int Dim = 2,
+T = double, EngineTag = MultiPatchView&lt;UniformTag, Remote&lt;Brick&gt;, 2&gt;,
+int OtherDim = 2, OtherT = double, OtherEngineTag =
+StencilEngine&lt;NinePtDiffusion, Array&lt;2, double,
+MultiPatchView&lt;UniformTag, Remote&lt;Brick&gt;, 2&gt; &gt; &gt;, Op = OpAssign]'
+diffusion_test.cpp:2117:   instantiated from `const Array&lt;Dim, T,
+EngineTag&gt;&amp; Array&lt;Dim, T, EngineTag&gt;::operator=(const T1&amp;) const [with
+T1 = Array&lt;2, double, StencilEngine&lt;NinePtDiffusion, Array&lt;2, double,
+MultiPatchView&lt;UniformTag, Remote&lt;Brick&gt;, 2&gt; &gt; &gt; &gt;, int Dim = 2, T =
+double, EngineTag = MultiPatchView&lt;UniformTag, Remote&lt;Brick&gt;, 2&gt;]'
+diffusion_test.cpp:105:   instantiated from here
+/usr/local/cots/pooma/src/Engine/Stencil.h:844: warning: member
+initializers
+   for `Intersector&lt;2&gt; StencilIntersector&lt;2, Intersector&lt;2&gt;
+&gt;::<i>intersector_m'
+</I>/usr/local/cots/pooma/src/Engine/Stencil.h:843: warning:   and
+`Interval&lt;2&gt;
+   StencilIntersector&lt;2, Intersector&lt;2&gt; &gt;::domain_m'
+/usr/local/cots/pooma/src/Engine/Stencil.h:788: warning:   will be
+re-ordered
+   to match declaration order
+/usr/local/cots/pooma/src/Domain/DomainTraits.Interval.h: In static
+member
+   function `static void DomainTraits&lt;Interval&lt;1&gt; &gt;::setDomain(int
+(&amp;)[2],
+   const T1&amp;, const T2&amp;) [with T1 = int, T2 = unsigned int]':
+/usr/local/cots/pooma/src/Domain/Interval.h:369:   instantiated from
+here
+/usr/local/cots/pooma/src/Domain/DomainTraits.Interval.h:264: warning:
+comparison
+   between signed and unsigned integer expressions
+/usr/local/cots/pooma/src/Domain/DomainTraits.Interval.h: In static
+member
+   function `static void DomainTraits&lt;Interval&lt;1&gt; &gt;::setDomain(int
+(&amp;)[2],
+   const T1&amp;, const T2&amp;) [with T1 = int, T2 = long unsigned int]':
+/usr/local/cots/pooma/src/Domain/Interval.h:377:   instantiated from
+here
+/usr/local/cots/pooma/src/Domain/DomainTraits.Interval.h:264: warning:
+comparison
+   between signed and unsigned integer expressions
+/usr/local/cots/pooma/src/Domain/DomainTraits.Range.h: In static member
+   function `static void DomainTraits&lt;Range&lt;1&gt; &gt;::setDomain(int (&amp;)[3],
+const
+   T1&amp;, const T2&amp;) [with T1 = int, T2 = unsigned int]':
+/usr/local/cots/pooma/src/Domain/Range.h:396:   instantiated from here
+/usr/local/cots/pooma/src/Domain/DomainTraits.Range.h:239: warning:
+comparison
+   between signed and unsigned integer expressions
+/usr/local/cots/pooma/src/Domain/DomainTraits.Range.h: In static member
+   function `static void DomainTraits&lt;Range&lt;1&gt; &gt;::setDomain(int (&amp;)[3],
+const
+   T1&amp;, const T2&amp;) [with T1 = int, T2 = long unsigned int]':
+/usr/local/cots/pooma/src/Domain/Range.h:407:   instantiated from here
+/usr/local/cots/pooma/src/Domain/DomainTraits.Range.h:239: warning:
+comparison
+   between signed and unsigned integer expressions
+/usr/local/cots/pooma/src/Domain/DomainTraits.Grid.h: In static member
+function
+   `static void DomainTraits&lt;Grid&lt;1&gt; &gt;::setDomain(IndirectionList&lt;int&gt;&amp;,
+const
+   T1&amp;, const T2&amp;) [with T1 = int, T2 = unsigned int]':
+/usr/local/cots/pooma/src/Domain/Grid.h:395:   instantiated from here
+/usr/local/cots/pooma/src/Domain/DomainTraits.Grid.h:245: warning:
+comparison
+   between signed and unsigned integer expressions
+/usr/local/cots/pooma/src/Domain/DomainTraits.Grid.h: In static member
+function
+   `static void DomainTraits&lt;Grid&lt;1&gt; &gt;::setDomain(IndirectionList&lt;int&gt;&amp;,
+const
+   T1&amp;, const T2&amp;) [with T1 = int, T2 = long unsigned int]':
+/usr/local/cots/pooma/src/Domain/Grid.h:404:   instantiated from here
+/usr/local/cots/pooma/src/Domain/DomainTraits.Grid.h:245: warning:
+comparison
+   between signed and unsigned integer expressions
+/usr/local/cots/pooma/src/Engine/MultiPatchEngine.cpp: In copy
+constructor
+   `Engine&lt;Dim, T, MultiPatch&lt;LayoutTag, PatchTag&gt; &gt;::Engine(const
+Engine&lt;Dim,
+   T, MultiPatch&lt;LayoutTag, PatchTag&gt; &gt;&amp;) [with int Dim = 2, T = double,
+   LayoutTag = UniformTag, PatchTag = Remote&lt;Brick&gt;]':
+/usr/local/cots/pooma/src/Engine/MultiPatchEngine.h:992:   instantiated
+from `Engine&lt;Dim, T, MultiPatchView&lt;LayoutTag, PatchTag, Dim2&gt;
+&gt;::<i>Engine(const Engine&lt;Dim2, T, MultiPatch&lt;LayoutTag, PatchTag&gt; &gt;&amp;,
+</I>const Domain&lt;Dim2, DT&gt;&amp;) [with DT = DomainTraits&lt;Interval&lt;2&gt; &gt;, int Dim
+= 2, T = double, LayoutTag = UniformTag, PatchTag = Remote&lt;Brick&gt;, int
+Dim2 = 2]'
+/usr/local/cots/pooma/src/Engine/RemoteEngine.h:1457:   instantiated
+from `Array&lt;Dim, T, EngineTag&gt;::Array(const Engine&lt;Dim2, T2,
+EngineTag2&gt;&amp;, const Initializer&amp;) [with int Dim2 = 2, T2 = double,
+EngineTag2 = MultiPatch&lt;UniformTag, Remote&lt;Brick&gt; &gt;, Initializer =
+Interval&lt;2&gt;, int Dim = 2, T = double, EngineTag =
+MultiPatchView&lt;UniformTag, Remote&lt;Brick&gt;, 2&gt;]'
+/usr/local/cots/pooma/src/Engine/RemoteEngine.h:676:   instantiated from
+`static Array&lt;View0&lt;Array&lt;D1, T1, E1&gt; &gt;::newDim, T, NewEngine&lt;Array&lt;D1,
+T1, E1&gt;::Engine_t, Array&lt;D1, T1, E1&gt;::Domain_t&gt;::Type_t::Tag_t&gt;
+View0&lt;Array&lt;D1, T1, E1&gt; &gt;::make(const Array&lt;D1, T1, E1&gt;&amp;) [with int Dim
+= 2, T = double, EngineTag = MultiPatch&lt;UniformTag, Remote&lt;Brick&gt; &gt;]'
+/usr/local/cots/pooma/src/Engine/RemoteEngine.h:1910:   instantiated
+from `AltView0&lt;Array&lt;D1, T1, E1&gt; &gt;::Type_t Array&lt;Dim, T,
+EngineTag&gt;::operator()() const [with int Dim = 2, T = double, EngineTag
+= MultiPatch&lt;UniformTag, Remote&lt;Brick&gt;
+&gt;<i>]'/usr/local/cots/pooma/src/Engine/RemoteEngine.h:1909:   instantiated
+</I>from `void
+Evaluator&lt;RemoteMultiPatchEvaluatorTag&gt;::evaluate(const LHS&amp;, const Op&amp;,
+const RHS&amp;) const [with LHS = Array&lt;2, double,
+MultiPatchView&lt;UniformTag, Remote&lt;Brick&gt;, 2&gt; &gt;, RHS = Array&lt;2, double,
+ConstantFunction&gt;, Op = OpAssign]'
+/usr/local/cots/pooma/src/Array/Array.h:108:   instantiated from `void
+Evaluator&lt;MainEvaluatorTag&gt;::evaluate(const LHS&amp;, const Op&amp;, const RHS&amp;)
+const [with LHS
+= Array&lt;2, double, MultiPatch&lt;UniformTag, Remote&lt;Brick&gt; &gt; &gt;, RHS =
+Array&lt;2, double, ConstantFunction&gt;, Op = OpAssign]'
+/usr/local/cots/pooma/src/Array/Array.h:2504:   instantiated from `const
+Array&lt;D1, T1, E1&gt;&amp; assign(const Array&lt;D1, T1, E1&gt;&amp;, const T1&amp;, const
+Op&amp;) [with int Dim = 2, T = double, EngineTag = MultiPatch&lt;UniformTag,
+Remote&lt;Brick&gt; &gt;, T1 = double, Op = OpAssign]'
+/usr/local/cots/pooma/src/Array/Array.h:2117:   instantiated from `const
+Array&lt;Dim, T, EngineTag&gt;&amp; Array&lt;Dim, T, EngineTag&gt;::operator=(const T1&amp;)
+const [with T1 = double, int Dim = 2, T = double, EngineTag =
+MultiPatch&lt;UniformTag, Remote&lt;Brick&gt; &gt;]'
+/usr/local/cots/pooma/src/Array/Array.h:2105:   instantiated from
+`Array&lt;Dim, T, EngineTag&gt;&amp; Array&lt;Dim, T, EngineTag&gt;::operator=(const
+Array&lt;Dim, T, EngineTag&gt;&amp;) [with int Dim = 2, T = double, EngineTag =
+MultiPatch&lt;UniformTag, Remote&lt;Brick&gt; &gt;]'
+diffusion_test.cpp:77:   instantiated from here
+/usr/local/cots/pooma/src/Engine/MultiPatchEngine.cpp:151: warning: base
+class
+   `class Observer&lt;UniformGridLayout&lt;2&gt; &gt;' should be explicitly
+initialized in
+   the copy constructor
+/usr/local/cots/pooma/src/Layout/UniformGridLayout.h: In member function
+`int
+   UniformGridLayoutData&lt;Dim&gt;::globalID(const Loc&lt;Dim&gt;&amp;) const [with int
+Dim =
+   2]':
+/usr/local/cots/pooma/src/Layout/LayoutBase.h:472:   instantiated from
+`int LayoutBase&lt;Dim, LBD&gt;::globalID(const Loc&lt;Dim&gt;&amp;) const [with int Dim
+= 2, LBD = UniformGridLayoutData&lt;2&gt;]'
+/usr/local/cots/pooma/src/Utilities/RefCountedBlockPtr.h:758:  
+instantiated from `T&amp; RefCountedBlockPtr&lt;T, BoundsChecked,
+Controller&gt;::operator[](int) const [with T = Engine&lt;2, double,
+Remote&lt;Brick&gt; &gt;, bool BoundsChecked = false, Controller =
+RefBlockController&lt;Engine&lt;2, double, Remote&lt;Brick&gt; &gt; &gt;]'
+/usr/local/cots/pooma/src/Engine/RemoteEngine.h:458:   instantiated from
+`RemoteProxy&lt;T&gt; Engine&lt;Dim, T, Remote&lt;Tag&gt; &gt;::operator()(const
+Loc&lt;Dim&gt;&amp;) const [with int Dim = 2, T = double, Tag = Brick]'
+/usr/local/cots/pooma/src/Tulip/RemoteProxy.h:1367:   instantiated from
+`Engine&lt;Dim, T, PatchTag&gt;::ElementRef_t Engine&lt;Dim, T,
+MultiPatch&lt;LayoutTag, PatchTag&gt; &gt;::operator()(const Loc&lt;Dim&gt;&amp;) const
+[with int Dim = 2, T = double, LayoutTag = UniformTag, PatchTag =
+Remote&lt;Brick&gt;]'
+/usr/local/cots/pooma/src/Tulip/RemoteProxy.h:166:   instantiated from
+`static Array&lt;D1, T1, E1&gt;::ElementRef_t View1Implementation&lt;Array&lt;D1,
+T1, E1&gt;, Domain, true&gt;::make(const Array&lt;D1, T1, E1&gt;&amp;, const S1&amp;, const
+S2&amp;, const Combine&amp;) [with
+S1 = long int, S2 = long int, Combine = CombineDomainOpt&lt;NewDomain2&lt;long
+int, long int&gt;, true&gt;, int Dim = 2, T = double, EngineTag =
+MultiPatch&lt;UniformTag, Remote&lt;Brick&gt; &gt;, Domain = Loc&lt;2&gt;]'
+/usr/local/cots/pooma/src/Tulip/RemoteProxy.h:823:   instantiated from
+`static View1Implementation&lt;Array&lt;D1, T1, E1&gt;, NewDomain2&lt;Sub1,
+Sub2&gt;::SliceType_t, View2&lt;Array&lt;D1, T1, E1&gt;, Sub1, Sub2&gt;::sv&gt;::Type_t
+View2&lt;Array&lt;D1, T1, E1&gt;, Sub1, Sub2&gt;::make(const Array&lt;D1, T1, E1&gt;&amp;,
+const Sub1&amp;, const Sub2&amp;) [with int Dim = 2, T = double, EngineTag =
+MultiPatch&lt;UniformTag, Remote&lt;Brick&gt; &gt;, Sub1 = long int,
+Sub2 = long int]'
+/usr/local/cots/pooma/src/Tulip/RemoteProxy.h:1926:   instantiated from
+`View2&lt;Array&lt;Dim, T, EngineTag&gt;, Sub1, Sub2&gt;::Type_t Array&lt;Dim, T,
+EngineTag&gt;::operator()(const Sub1&amp;, const Sub2&amp;) const [with Sub1 = long
+int, Sub2 = long int, int Dim = 2, T = double, EngineTag =
+MultiPatch&lt;UniformTag, Remote&lt;Brick&gt; &gt;]'
+/usr/local/cots/pooma/src/Tulip/RemoteProxy.h:176:   instantiated from
+`RemoteProxy&lt;T&gt;&amp; RemoteProxy&lt;T&gt;::operator=(const S&amp;) [with S = double, T
+= double]'
+diffusion_test.cpp:80:   instantiated from here
+/usr/local/cots/pooma/src/Layout/UniformGridLayout.h:2127: warning:
+comparison
+   between signed and unsigned integer expressions
+/usr/local/cots/pooma/src/Layout/UniformGridLayout.h: In member function
+`int
+   UniformGridLayoutData&lt;Dim&gt;::touches(const OtherDomain&amp;, OutIter,
+const
+   ConstructTag&amp;) const [with OtherDomain = Range&lt;2&gt;, OutIter =
+   std::back_insert_iterator&lt;std::vector&lt;Node&lt;Range&lt;2&gt;, Interval&lt;2&gt; &gt;,
+   std::allocator&lt;Node&lt;Range&lt;2&gt;, Interval&lt;2&gt; &gt; &gt; &gt; &gt;, ConstructTag =
+   TouchesConstructNodeObj, int Dim = 2]':
+/usr/local/cots/pooma/src/Layout/LayoutBase.h:641:   instantiated from
+`int LayoutBase&lt;Dim, LBD&gt;::touches(const OtherDomain&amp;, OutIter, const
+ConstructTag&amp;) const [with OtherDomain = Range&lt;2&gt;, OutIter =
+std::back_insert_iterator&lt;std::vector&lt;Node&lt;Range&lt;2&gt;, Interval&lt;2&gt; &gt;,
+std::allocator&lt;Node&lt;Range&lt;2&gt;, Interval&lt;2&gt; &gt; &gt; &gt; &gt;, ConstructTag =
+TouchesConstructNodeObj, int Dim = 2, LBD = UniformGridLayoutData&lt;2&gt;]'
+/usr/local/cots/pooma/src/Engine/Intersector.h:703:   instantiated from
+`int LayoutBase&lt;Dim, LBD&gt;::touches(const OtherDomain&amp;, OutIter) const
+[with OtherDomain
+= Range&lt;2&gt;, OutIter =
+std::back_insert_iterator&lt;std::vector&lt;Node&lt;Range&lt;2&gt;, Interval&lt;2&gt; &gt;,
+std::allocator&lt;Node&lt;Range&lt;2&gt;, Interval&lt;2&gt; &gt; &gt; &gt; &gt;, int Dim = 2, LBD =
+UniformGridLayoutData&lt;2&gt;]'
+/usr/local/cots/pooma/src/Engine/Intersector.h:942:   instantiated from
+`int LayoutBaseViewData&lt;Dim, Dim2, L&gt;::touches(const OtherDomain&amp;,
+OutIter, const ConstructTag&amp;) const [with OtherDomain = Interval&lt;2&gt;,
+OutIter = std::back_insert_iterator&lt;std::vector&lt;INode&lt;2&gt;,
+std::allocator&lt;INode&lt;2&gt; &gt; &gt; &gt;, ConstructTag = TouchesConstructINode&lt;2&gt;,
+int Dim = 2, int Dim2 = 2, L = UniformGridLayout&lt;2&gt;]'
+/usr/local/cots/pooma/src/Engine/Intersector.h:1285:   instantiated from
+`int LayoutBaseView&lt;Dim, Dim2, lvd&gt;::touches(const OtherDomain&amp;,
+OutIter, const ConstructTag&amp;) const [with OtherDomain = Interval&lt;2&gt;,
+OutIter = std::back_insert_iterator&lt;std::vector&lt;INode&lt;2&gt;,
+std::allocator&lt;INode&lt;2&gt; &gt; &gt; &gt;, ConstructTag = TouchesConstructINode&lt;2&gt;,
+int Dim = 2, int Dim2 = 2, lvd = UniformGridLayoutViewData&lt;2, 2&gt;]'
+/usr/local/cots/pooma/src/Engine/Intersector.h:333:   instantiated from
+`void IntersectorData&lt;Dim&gt;::touches(const Layout&amp;) [with Layout =
+UniformGridLayoutView&lt;2, 2&gt;, int Dim = 2]'
+/usr/local/cots/pooma/src/Engine/Intersector.h:171:   instantiated from
+`bool IntersectorData&lt;Dim&gt;::intersect(const Engine&amp;, const
+GuardLayers&lt;Dim2&gt;&amp;) [with Engine = Engine&lt;2, double,
+MultiPatchView&lt;UniformTag, Remote&lt;Brick&gt;, 2&gt; &gt;, int Dim2 = 2, int Dim =
+2]'
+/usr/local/cots/pooma/src/Engine/Intersector.h:440:   instantiated from
+`bool Intersector&lt;Dim&gt;::intersect(const Engine&amp;, const
+GuardLayers&lt;Dim2&gt;&amp;) [with Engine
+= Engine&lt;2, double, MultiPatchView&lt;UniformTag, Remote&lt;Brick&gt;, 2&gt; &gt;, int
+Dim2 = 2, int Dim = 2]'
+/usr/local/cots/pooma/src/Array/Array.h:1729:   instantiated from
+`static int LeafFunctor&lt;Engine&lt;Dim, T, MultiPatchView&lt;LayoutTag,
+PatchTag, Dim2&gt; &gt;, ExpressionApply&lt;IntersectorTag&lt;Intersect&gt; &gt;
+&gt;::<i>applyHandler(const Engine&lt;Dim, T, MultiPatchView&lt;LayoutTag, PatchTag,
+</I>Dim2&gt; &gt;&amp;, const ExpressionApply&lt;IntersectorTag&lt;Intersect&gt; &gt;&amp;, const
+WrappedInt&lt;1&gt;&amp;) [with int Dim = 2, T = double, LT = UniformTag, PatchTag
+= Remote&lt;Brick&gt;, int BD = 2, Intersect = Intersector&lt;2&gt;]'
+/usr/local/cots/pooma/src/Array/Array.h:1716:   instantiated from
+`static int LeafFunctor&lt;Engine&lt;Dim, T, MultiPatchView&lt;LayoutTag,
+PatchTag, Dim2&gt; &gt;, ExpressionApply&lt;IntersectorTag&lt;Intersect&gt; &gt;
+&gt;::<i>apply(const Engine&lt;Dim, T, MultiPatchView&lt;LayoutTag, PatchTag, Dim2&gt;
+</I>&gt;<i>&amp;, const ExpressionApply&lt;IntersectorTag&lt;Intersect&gt; &gt;&amp;) [with int Dim =
+</I>2, T = double, LT = UniformTag, PatchTag = Remote&lt;Brick&gt;, int
+BD = 2, Intersect = Intersector&lt;2&gt;]'
+/usr/local/cots/pooma/src/Array/Array.h:2307:   instantiated from
+`static int LeafFunctor&lt;Array&lt;D1, T1, E1&gt;, ExpressionApply&lt;Tag&gt;
+&gt;::<i>apply(const Array&lt;D1, T1, E1&gt;&amp;, const ExpressionApply&lt;Tag&gt;&amp;) [with
+</I>int Dim = 2, T = double, E = MultiPatchView&lt;UniformTag, Remote&lt;Brick&gt;,
+2&gt;, Tag = IntersectorTag&lt;Intersector&lt;2&gt; &gt;]'
+/usr/local/cots/pooma/src/Array/Array.h:80:   instantiated from `static
+LeafFunctor&lt;LeafType, LeafTag&gt;::Type_t ForEach&lt;Expr, FTag,
+CTag&gt;::apply(const Expr&amp;, const FTag&amp;, const CTag&amp;) [with Expr =
+Array&lt;2, double, MultiPatchView&lt;UniformTag,
+Remote&lt;Brick&gt;, 2&gt; &gt;, FTag =
+ExpressionApply&lt;IntersectorTag&lt;Intersector&lt;2&gt; &gt; &gt;, CTag = NullCombine]'
+/usr/local/cots/pooma/src/Array/Array.h:88:   instantiated from
+`ForEach&lt;Expr, FTag, CTag&gt;::Type_t forEach(const Expr&amp;, const FTag&amp;,
+const CTag&amp;) [with Expr = Array&lt;2, double, MultiPatchView&lt;UniformTag,
+Remote&lt;Brick&gt;, 2&gt; &gt;, FTag =
+ExpressionApply&lt;IntersectorTag&lt;Intersector&lt;2&gt; &gt; &gt;, CTag = NullCombine]'
+/usr/local/cots/pooma/src/Array/Array.h:276:   instantiated from `void
+expressionApply(const A&amp;, const Tag&amp;) [with A = Array&lt;2, double,
+MultiPatchView&lt;UniformTag, Remote&lt;Brick&gt;, 2&gt; &gt;, Tag =
+IntersectorTag&lt;Intersector&lt;2&gt; &gt;]'
+/usr/local/cots/pooma/src/Array/Array.h:1913:   instantiated from `void
+Evaluator&lt;RemoteMultiPatchEvaluatorTag&gt;::evaluate(const LHS&amp;, const Op&amp;,
+const RHS&amp;) const [with LHS = Array&lt;2, double,
+MultiPatchView&lt;UniformTag, Remote&lt;Brick&gt;, 2&gt; &gt;,
+RHS = Array&lt;2, double, ConstantFunction&gt;, Op = OpAssign]'
+/usr/local/cots/pooma/src/Array/Array.h:108:   instantiated from `void
+Evaluator&lt;MainEvaluatorTag&gt;::evaluate(const LHS&amp;, const Op&amp;, const RHS&amp;)
+const [with LHS
+= Array&lt;2, double, MultiPatch&lt;UniformTag, Remote&lt;Brick&gt; &gt; &gt;, RHS =
+Array&lt;2, double, ConstantFunction&gt;, Op = OpAssign]'
+/usr/local/cots/pooma/src/Array/Array.h:2504:   instantiated from `const
+Array&lt;D1, T1, E1&gt;&amp; assign(const Array&lt;D1, T1, E1&gt;&amp;, const T1&amp;, const
+Op&amp;) [with int Dim = 2, T = double, EngineTag = MultiPatch&lt;UniformTag,
+Remote&lt;Brick&gt; &gt;, T1 = double, Op = OpAssign]'
+/usr/local/cots/pooma/src/Array/Array.h:2117:   instantiated from `const
+Array&lt;Dim, T, EngineTag&gt;&amp; Array&lt;Dim, T, EngineTag&gt;::operator=(const T1&amp;)
+const [with T1 = double, int Dim = 2, T = double, EngineTag =
+MultiPatch&lt;UniformTag, Remote&lt;Brick&gt; &gt;]'
+/usr/local/cots/pooma/src/Array/Array.h:2105:   instantiated from
+`Array&lt;Dim, T, EngineTag&gt;&amp; Array&lt;Dim, T, EngineTag&gt;::operator=(const
+Array&lt;Dim, T, EngineTag&gt;&amp;) [with int Dim = 2, T = double, EngineTag =
+MultiPatch&lt;UniformTag, Remote&lt;Brick&gt; &gt;]'
+diffusion_test.cpp:77:   instantiated from here
+/usr/local/cots/pooma/src/Layout/UniformGridLayout.h:297: warning:
+comparison
+   between signed and unsigned integer expressions
+/usr/local/cots/pooma/src/Partition/DistributedMapper.h: In member
+function
+   `void DistributedMapper&lt;Dim&gt;::map(const
+std::vector&lt;Node&lt;Interval&lt;Dim&gt;,
+   Interval&lt;Dim&gt; &gt;*, std::allocator&lt;Node&lt;Interval&lt;Dim&gt;, Interval&lt;Dim&gt;
+&gt;<i>*&gt; &gt;&amp;)
+</I>   const [with int Dim = 2]':
+/usr/local/cots/pooma/src/Utilities/RefCountedBlockPtr.h:411:  
+instantiated from here
+/usr/local/cots/pooma/src/Partition/DistributedMapper.h:68: warning:
+comparison
+   between signed and unsigned integer expressions
+/usr/local/cots/pooma/src/Partition/BisectionMapper.h: In member
+function `void
+   BisectionMapper&lt;Dim&gt;::map(const std::vector&lt;Node&lt;Interval&lt;Dim&gt;,
+   Interval&lt;Dim&gt; &gt;*, std::allocator&lt;Node&lt;Interval&lt;Dim&gt;, Interval&lt;Dim&gt;
+&gt;<i>*&gt; &gt;&amp;)
+</I>   const [with int Dim = 2]':
+/usr/local/cots/pooma/src/Partition/DistributedMapper.h:86:  
+instantiated from
+`void DistributedMapper&lt;Dim&gt;::map(const std::vector&lt;Node&lt;Interval&lt;Dim&gt;,
+Interval&lt;Dim&gt; &gt;*, std::allocator&lt;Node&lt;Interval&lt;Dim&gt;, Interval&lt;Dim&gt; &gt;*&gt;
+&gt;<i>&amp;) const [with int Dim = 2]'
+</I>/usr/local/cots/pooma/src/Utilities/RefCountedBlockPtr.h:411:  
+instantiated from here
+/usr/local/cots/pooma/src/Partition/BisectionMapper.h:86: warning:
+comparison
+   between signed and unsigned integer expressions
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001245.html">[pooma-dev] [PATCH] Fix Engine&lt;.., MultiPatch&lt;..&gt; &gt;::makeOwnC  opy()
+</A></li>
+	<LI>Next message: <A HREF="001247.html">[pooma-dev] GCC 3.2 on Redhat 8.0--a fair number of compiler warnings?
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1246">[ date ]</a>
+              <a href="thread.html#1246">[ thread ]</a>
+              <a href="subject.html#1246">[ subject ]</a>
+              <a href="author.html#1246">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

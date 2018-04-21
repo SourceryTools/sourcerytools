@@ -1,0 +1,134 @@
+From mark at codesourcery.com  Mon Sep  4 00:25:03 2006
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Sun, 3 Sep 2006 17:25:03 -0700
+Subject: PATCH: Correct deletion logic for Host.UploadAndRun
+Message-ID: <200609040025.k840P3dL025804@sethra.codesourcery.com>
+
+
+Joseph Myers noticed that the UploadAndRun method did not actually
+delete files on the remote host after running them, despite the fact
+that it is documented as doing so.
+
+This patch corrects that oversight, so that files are indeed deleted.
+
+Committed.
+
+--
+Mark Mitchell
+CodeSourcery
+mark at codesourcery.com
+(650) 331-3385 x713
+
+2006-09-03  Mark Mitchell  <mark at codesourcery.com>
+
+	* qm/host.py (Host.UploadAndRun): Correct logic for deleting files.
+
+Index: qm/host.py
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/host.py,v
+retrieving revision 1.4
+diff -c -5 -p -r1.4 host.py
+*** qm/host.py	18 Aug 2006 00:42:27 -0000	1.4
+--- qm/host.py	4 Sep 2006 00:22:16 -0000
+*************** class Host(Extension):
+*** 152,167 ****
+  
+          The program is uploaded to the default directory on the remote
+          host, run, and then deleted."""
+          
+          self.UploadFile(path)
+!         result = self.Run(os.path.basename(path),
+                            arguments,
+                            environment,
+                            timeout,
+                            relative = True)
+!         self.DeleteFile(path)
+          return result
+          
+          
+      def DeleteFile(self, remote_file):
+          """Delete the 'remote_file'.
+--- 152,168 ----
+  
+          The program is uploaded to the default directory on the remote
+          host, run, and then deleted."""
+          
+          self.UploadFile(path)
+!         basename = os.path.basename(path)
+!         result = self.Run(basename,
+                            arguments,
+                            environment,
+                            timeout,
+                            relative = True)
+!         self.DeleteFile(basename)
+          return result
+          
+          
+      def DeleteFile(self, remote_file):
+          """Delete the 'remote_file'.
+
+
+From qmtest at gerell.se  Tue Sep  5 09:54:39 2006
+From: qmtest at gerell.se (Peter Gerell)
+Date: Tue, 5 Sep 2006 11:54:39 +0200
+Subject: Bug in RedirectedExecutable.Spawn on Windows (QMTest 2.3)
+Message-ID: <002f01c6d0d1$4dec6c80$7d09000a@xelerated.com>
+
+Hi,
+a comment in executable.py claims that the PATH environment variable will be
+used to find the executable if the path parameter contains no directory
+separators.
+ 
+This is not the case on Windows. The PATH is only used if the first
+parameter to win32process.CreateProcess is None. At least from what I can
+see from my experiments. This also makes sense as I assume that
+win32process.CreateProcess thin wrapper around Createprocess in the Windows
+API.
+ 
+My solution was to comment out the assignment of arg0 to the path and to
+make the normalization conditional. Then the PATH is used if I pass None as
+path and the name of the executable in arguments[0].
+ 
+
+In RedirectedExecutable.Spawn:
+
+#if not path:
+#  path = arguments[0]
+if path:
+#  Normalize the path name.
+
+/Peter Gerell
+
+
+
+From mark at codesourcery.com  Tue Sep  5 21:43:40 2006
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Tue, 05 Sep 2006 14:43:40 -0700
+Subject: [qmtest] Bug in RedirectedExecutable.Spawn on Windows (QMTest
+ 2.3)
+In-Reply-To: <002f01c6d0d1$4dec6c80$7d09000a@xelerated.com>
+References: <002f01c6d0d1$4dec6c80$7d09000a@xelerated.com>
+Message-ID: <44FDEF8C.5090904@codesourcery.com>
+
+> This is not the case on Windows. The PATH is only used if the first
+> parameter to win32process.CreateProcess is None. At least from what I can
+> see from my experiments. This also makes sense as I assume that
+> win32process.CreateProcess thin wrapper around Createprocess in the Windows
+> API.
+
+Good spotting.
+
+I checked in this implementation of your idea, after testing on Windows.
+
+Thanks,
+
+-- 
+Mark Mitchell
+CodeSourcery
+mark at codesourcery.com
+(650) 331-3385 x713
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: qmtest.patch
+URL: <http://sourcerytools.com/pipermail/qmtest/attachments/20060905/3ea2aa78/attachment.ksh>
+

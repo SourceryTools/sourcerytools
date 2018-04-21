@@ -1,0 +1,205 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [vsipl++] Matlab IO
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20Matlab%20IO&In-Reply-To=%3C44ADE11E.9020107%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000545.html">
+   <LINK REL="Next"  HREF="000546.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[vsipl++] Matlab IO</H1>
+    <B>Assem Salama</B> 
+    <A HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20Matlab%20IO&In-Reply-To=%3C44ADE11E.9020107%40codesourcery.com%3E"
+       TITLE="[vsipl++] Matlab IO">assem at codesourcery.com
+       </A><BR>
+    <I>Fri Jul  7 04:20:46 UTC 2006</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000545.html">[vsipl++] Matlab IO
+</A></li>
+        <LI>Next message: <A HREF="000546.html">Matlab IO
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#547">[ date ]</a>
+              <a href="thread.html#547">[ thread ]</a>
+              <a href="subject.html#547">[ subject ]</a>
+              <a href="author.html#547">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Jules Bergmann wrote:
+&gt;<i> Assem, I have 8 comments below.  -- Jules
+</I>&gt;<i>
+</I>&gt;<i> &gt; +  template &lt;vsip::dimension_type Dim&gt;
+</I>&gt;<i> &gt; +  struct view_header
+</I>&gt;<i> &gt; +  {
+</I>&gt;<i> &gt; +    data_element header;
+</I>&gt;<i> &gt; +    data_element array_flags_header;
+</I>&gt;<i> &gt; +    uint32_t array_flags[2];
+</I>&gt;<i> &gt; +    data_element dim_header;
+</I>&gt;<i> &gt; +    uint32_t dim[Dim + Dim%2]; //the dim has to be aligned to an 8 
+</I>&gt;<i> byte boundary
+</I>&gt;<i>
+</I>&gt;<i> [1] Can you make sure this comment fits into 80-columns?
+</I>Yes it is.
+&gt;<i>
+</I>&gt;<i> &gt; +    data_element array_name_header;
+</I>&gt;<i> &gt; +  };
+</I>&gt;<i>
+</I>&gt;<i> &gt; +  // the read function for real or complex depending of the view 
+</I>&gt;<i> that was
+</I>&gt;<i> &gt; +  // passed in
+</I>&gt;<i> &gt; +  template &lt;typename T1,
+</I>&gt;<i> &gt; +        typename ViewT&gt;
+</I>&gt;<i> &gt; +  void read(std::istream&amp; is,ViewT v,bool swap_bytes)
+</I>&gt;<i> &gt; +  {
+</I>&gt;<i> &gt; +    vsip::dimension_type const View_dim = ViewT::dim;
+</I>&gt;<i> &gt; +    vsip::Index&lt;View_dim&gt; my_index;
+</I>&gt;<i> &gt; +    vsip::impl::Length&lt;View_dim&gt; v_extent = extent(v);
+</I>&gt;<i> &gt; +    T1 data;
+</I>&gt;<i> &gt; +    typedef typename ViewT::value_type scalar_type;
+</I>&gt;<i> &gt; +
+</I>&gt;<i> &gt; +    // get num_points
+</I>&gt;<i> &gt; +    vsip::length_type num_points = v.size();
+</I>&gt;<i> &gt; +
+</I>&gt;<i> &gt; +    // read all the points
+</I>&gt;<i> &gt; +    for(vsip::index_type i=0;i&lt;num_points;i++) {
+</I>&gt;<i> &gt; +      is.read(reinterpret_cast&lt;char*&gt;(&amp;data),sizeof(data));
+</I>&gt;<i> &gt; +      swap&lt;T1&gt;(&amp;data,swap_bytes);
+</I>&gt;<i>
+</I>&gt;<i> [2] The intent of the wrapper template function 'swap' is to let the
+</I>&gt;<i> compiler infer template parameters automatically.  Since 'data' is of
+</I>&gt;<i> type 'T1', you can just say:
+</I>&gt;<i>
+</I>&gt;<i>     swap(&amp;data, swap_bytes);
+</I>&gt;<i>
+</I>&gt;<i> Unless the inferred type would be incorrect, can you remove the 
+</I>&gt;<i> explicit parameter?
+</I>&gt;<i>
+</I>&gt;<i>
+</I>&gt;<i> &gt; +
+</I>&gt;<i> &gt; +// operator to read view from matlab file
+</I>&gt;<i> &gt; +template &lt;typename T,
+</I>&gt;<i> &gt; +          typename Block0,
+</I>&gt;<i> &gt; +      template &lt;typename,typename&gt; class View&gt;
+</I>&gt;<i> &gt; +inline
+</I>&gt;<i> &gt; +std::istream&amp;
+</I>&gt;<i> &gt; +operator&gt;&gt;(
+</I>&gt;<i> &gt; +  std::istream&amp;                                       is,
+</I>&gt;<i> &gt; +  Matlab_bin_formatter&lt;View&lt;T,Block0&gt; &gt;               mbf)
+</I>&gt;<i> &gt; +{
+</I>&gt;<i> &gt; +  matlab::data_element temp_data_element;
+</I>&gt;<i> &gt; +  matlab::view_header&lt;vsip::impl::Dim_of_view&lt;View&gt;::dim&gt; m_view;
+</I>&gt;<i> &gt; +  typedef typename vsip::impl::Scalar_of&lt;T&gt;::type scalar_type;
+</I>&gt;<i> &gt; +  typedef matlab::Subview_helper&lt;View&lt;T,Block0&gt; &gt; subview;
+</I>&gt;<i> &gt; +  typedef typename subview::realview_type r_v;
+</I>&gt;<i> &gt; +  typedef typename subview::imagview_type i_v;
+</I>&gt;<i> &gt; +  vsip::dimension_type v_dim = vsip::impl::Dim_of_view&lt;View&gt;::dim;
+</I>&gt;<i> &gt; +
+</I>&gt;<i> &gt; +
+</I>&gt;<i> &gt; +  // read header
+</I>&gt;<i> &gt; +  is.read(reinterpret_cast&lt;char*&gt;(&amp;m_view),sizeof(m_view));
+</I>&gt;<i> &gt; +
+</I>&gt;<i>
+</I>&gt;<i> [3] When does mbf.header.endian get initialized?  Have you written a
+</I>&gt;<i> unit test for these routines?  (If not, please do that next).
+</I>&gt;<i>
+</I>mbf.header gets initialized in the constructor. I have a test that 
+writes and read vectors,matrices,and tensors.
+&gt;<i>
+</I>&gt;<i> &gt; +  // do we need to swap fields?
+</I>&gt;<i> &gt; +  matlab::swap_header(m_view,mbf.header.endian);
+</I>&gt;<i>
+</I>&gt;<i> [4] The second arg to swap_header is a bool indicating if bytes should
+</I>&gt;<i> be swapped.  Passing mbf.header.endian (a uint16_t) will nearly always
+</I>&gt;<i> be true (unless the matlab file is corrupted).  Can you do something
+</I>&gt;<i> like:
+</I>&gt;<i>
+</I>&gt;<i>     bool swap_bytes;
+</I>&gt;<i>
+</I>&gt;<i>     if      (mbf.header.endian == 'M' &lt;&lt; 8 | 'I') swap_bytes = false;
+</I>&gt;<i>     else if (mbf.header.endian == 'I' &lt;&lt; 8 | 'M') swap_bytes = true;
+</I>&gt;<i>     else
+</I>&gt;<i>       VSIP_IMPL_THROW(std::runtime_error(
+</I>&gt;<i>         &quot;Matlab file header has invalid endian field&quot;));
+</I>&gt;<i>
+</I>&gt;<i>     matlab::swap_header(m_view, swap_bytes);
+</I>&gt;<i>
+</I>&gt;<i>
+</I>&gt;<i> &gt; +
+</I>&gt;<i> &gt; +  // is this complex?
+</I>&gt;<i> &gt; +  if(vsip::impl::Is_complex&lt;T&gt;::value &amp;&amp; 
+</I>&gt;<i> !(m_view.array_flags[0]&amp;(1&lt;&lt;11)))
+</I>&gt;<i> &gt; +    VSIP_IMPL_THROW(std::runtime_error(
+</I>&gt;<i> &gt; +      &quot;Trying to read complex matrix into a real matrix&quot;));
+</I>&gt;<i>
+</I>&gt;<i> [5] Please change this to &quot;Trying to read a complex view into a real 
+</I>&gt;<i> view&quot;
+</I>&gt;<i>
+</I>&gt;<i> &gt; +
+</I>&gt;<i> &gt; +
+</I>&gt;<i> &gt; +  // is this the same class?
+</I>&gt;<i> &gt; +  if(!((m_view.array_flags[0] &amp; 0xff) ==
+</I>&gt;<i> &gt; +            (matlab::Matlab_header_traits&lt;sizeof(scalar_type),
+</I>&gt;<i> &gt; +                  std::numeric_limits&lt;scalar_type&gt;::is_signed,
+</I>&gt;<i> &gt; + std::numeric_limits&lt;scalar_type&gt;::is_integer&gt;::class_type)
+</I>&gt;<i> &gt; +        ))
+</I>&gt;<i> &gt; +    VSIP_IMPL_THROW(std::runtime_error(
+</I>&gt;<i> &gt; +      &quot;Trying to read a matrix of a different class&quot;));
+</I>&gt;<i>
+</I>&gt;<i> [6] Please change this to &quot;Trying to read a view with different class 
+</I>&gt;<i> of value type&quot;
+</I>&gt;<i>
+</I>&gt;<i> &gt; +
+</I>&gt;<i> &gt; +  // do dimensions agree?
+</I>&gt;<i> &gt; +  if(v_dim == 1) m_view.dim_header.size -= 4; // special case for 
+</I>&gt;<i> vectors
+</I>&gt;<i> &gt; +  if(v_dim != (m_view.dim_header.size/4))
+</I>&gt;<i> &gt; +    VSIP_IMPL_THROW(std::runtime_error(
+</I>&gt;<i> &gt; +      &quot;Trying to read a matrix of different dimensions&quot;));
+</I>&gt;<i>
+</I>&gt;<i> [7] Please change this to &quot;Trying to read a view with different 
+</I>&gt;<i> dimension&quot;
+</I>&gt;<i>
+</I>&gt;<i> &gt; +
+</I>&gt;<i> &gt; +  for(vsip::dimension_type i=0;i&lt;v_dim;i++)
+</I>&gt;<i> &gt; +    if(mbf.view.size(i) != m_view.dim[i])
+</I>&gt;<i> &gt; +      VSIP_IMPL_THROW(std::runtime_error(
+</I>&gt;<i> &gt; +        &quot;Matrix dimensions don't agree&quot;));
+</I>&gt;<i>
+</I>&gt;<i> [8] Please change this to &quot;View dimensions don't agree&quot;
+</I>&gt;<i>
+</I>&gt;<i>
+</I>
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000545.html">[vsipl++] Matlab IO
+</A></li>
+	<LI>Next message: <A HREF="000546.html">Matlab IO
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#547">[ date ]</a>
+              <a href="thread.html#547">[ thread ]</a>
+              <a href="subject.html#547">[ subject ]</a>
+              <a href="author.html#547">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">More information about the vsipl++
+mailing list</a><br>
+</body></html>

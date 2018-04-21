@@ -1,0 +1,114 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [pooma-dev] Evaluator/ReductionEvaluator.h question
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bpooma-dev%5D%20Evaluator/ReductionEvaluator.h%20question&In-Reply-To=%3CPine.LNX.4.44.0302211830170.647-100000%40goofy%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001205.html">
+   <LINK REL="Next"  HREF="001208.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[pooma-dev] Evaluator/ReductionEvaluator.h question</H1>
+    <B>Richard Guenther</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bpooma-dev%5D%20Evaluator/ReductionEvaluator.h%20question&In-Reply-To=%3CPine.LNX.4.44.0302211830170.647-100000%40goofy%3E"
+       TITLE="[pooma-dev] Evaluator/ReductionEvaluator.h question">rguenth at tat.physik.uni-tuebingen.de
+       </A><BR>
+    <I>Fri Feb 21 17:36:07 UTC 2003</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001205.html">[pooma-dev] Evaluator/ReductionEvaluator.h question
+</A></li>
+        <LI>Next message: <A HREF="001208.html">[pooma-dev] Evaluator/ReductionEvaluator.h question
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1207">[ date ]</a>
+              <a href="thread.html#1207">[ thread ]</a>
+              <a href="subject.html#1207">[ subject ]</a>
+              <a href="author.html#1207">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>On Wed, 19 Feb 2003, Richard Guenther wrote:
+
+&gt;<i> On Tue, 18 Feb 2003, Richard Guenther wrote:
+</I>&gt;<i>
+</I>&gt;<i> &gt; Why is the result of ReductionEvaluator&lt;&gt;::evaluate() initialized
+</I>&gt;<i> &gt; to Expr.read(0) and op never applied to it? This seems to be wrong,
+</I>&gt;<i> &gt; f.i. if the operation is
+</I>&gt;<i> &gt;
+</I>&gt;<i> &gt;  void op(double &amp;res, double val)
+</I>&gt;<i> &gt;  {
+</I>&gt;<i> &gt;    double tmp = std::sqrt(val);
+</I>&gt;<i> &gt;    if (tmp &gt; res)
+</I>&gt;<i> &gt;       res = tmp;
+</I>&gt;<i> &gt;  }
+</I>&gt;<i>
+</I>&gt;<i> I see now that the current implementation does make sense for all
+</I>&gt;<i> reduction operators I can think of, but looking at the evaluation
+</I>&gt;<i> loops they seem to be hard to optimize for the compiler, so may I
+</I>&gt;<i> propose the following patch?
+</I>
+I expected some critics on the patch, namely the following...
+(so I delay committing this).
+
+&gt;<i> +++ edited/src/Array/Reductions.h	Tue Feb 18 12:59:28 2003
+</I>&gt;<i> @@ -84,7 +84,7 @@
+</I>&gt;<i>  template&lt;int Dim, class T, class EngineTag&gt;
+</I>&gt;<i>  T min(const Array&lt;Dim, T, EngineTag&gt; &amp;a)
+</I>&gt;<i>  {
+</I>&gt;<i> -  T ret;
+</I>&gt;<i> +  T ret = std::numeric_limits&lt;T&gt;::max();
+</I>
+What for types that dont have a std::numeric_limits&lt;&gt; specialization? Are
+there any that we care? Tiny::Zero&lt;&gt; probably?
+
+&gt;<i> @@ -124,7 +124,7 @@
+</I>&gt;<i>  template&lt;int Dim, class T, class EngineTag&gt;
+</I>&gt;<i>  T bitOr(const Array&lt;Dim, T, EngineTag&gt; &amp;a)
+</I>&gt;<i>  {
+</I>&gt;<i> -  T ret;
+</I>&gt;<i> +  T ret = static_cast&lt;T&gt;(0ULL);
+</I>
+Does this work for all types we care? Do we need to use memset() here?
+What for FP types - can this initial value be a SNaN or other trapping
+stuff we will choke on later?
+
+I'll go on adding two testcases, one for Arrays, one for Fields and use
+memset for all bits 1 and all bits 0 initial values. I dont know what to
+do or wether to care about the numeric_limits&lt;&gt; issues.
+
+Any ideas, comments?
+
+Richard.
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001205.html">[pooma-dev] Evaluator/ReductionEvaluator.h question
+</A></li>
+	<LI>Next message: <A HREF="001208.html">[pooma-dev] Evaluator/ReductionEvaluator.h question
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1207">[ date ]</a>
+              <a href="thread.html#1207">[ thread ]</a>
+              <a href="subject.html#1207">[ subject ]</a>
+              <a href="author.html#1207">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

@@ -1,0 +1,144 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [c++-pthreads] cancellation points report failure
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:c%2B%2B-pthreads%40codesourcery.com?Subject=Re%3A%20%5Bc%2B%2B-pthreads%5D%20cancellation%20points%20report%20failure&In-Reply-To=%3Cu8yl8jyl4.fsf%40boost-consulting.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000012.html">
+   <LINK REL="Next"  HREF="000013.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[c++-pthreads] cancellation points report failure</H1>
+    <B>David Abrahams</B> 
+    <A HREF="mailto:c%2B%2B-pthreads%40codesourcery.com?Subject=Re%3A%20%5Bc%2B%2B-pthreads%5D%20cancellation%20points%20report%20failure&In-Reply-To=%3Cu8yl8jyl4.fsf%40boost-consulting.com%3E"
+       TITLE="[c++-pthreads] cancellation points report failure">dave at boost-consulting.com
+       </A><BR>
+    <I>Fri Dec 19 21:18:31 UTC 2003</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000012.html">[c++-pthreads] cancellation points report failure
+</A></li>
+        <LI>Next message: <A HREF="000013.html">[c++-pthreads] cancellation points report failure
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#14">[ date ]</a>
+              <a href="thread.html#14">[ thread ]</a>
+              <a href="subject.html#14">[ subject ]</a>
+              <a href="author.html#14">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Matt Austern &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/c++-pthreads">austern at apple.com</A>&gt; writes:
+
+&gt;<i> On Dec 19, 2003, at 12:44 PM, David Abrahams wrote:
+</I>&gt;<i>
+</I>&gt;&gt;<i> Nathan Myers &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/c++-pthreads">ncm at cantrip.org</A>&gt; writes:
+</I>&gt;&gt;<i>
+</I>&gt;&gt;&gt;<i> On Fri, Dec 19, 2003 at 10:28:46AM -0800, Matt Austern wrote:
+</I>&gt;&gt;&gt;&gt;<i>
+</I>&gt;&gt;&gt;&gt;<i> One possible solution (perhaps overly drastic): in C++, eliminate
+</I>&gt;&gt;&gt;&gt;<i> all cancelation points except for pthread_testcancel.
+</I>&gt;&gt;&gt;<i>
+</I>&gt;&gt;&gt;<i> Another would be for those functions identified as cancellation
+</I>&gt;&gt;&gt;<i> points to report failure.  In particular, a read() call should return
+</I>&gt;&gt;&gt;<i> immediately.  Existing (good) code has to handle normal failures
+</I>&gt;&gt;&gt;<i> already.  Well-designed library code will propagate the failure up
+</I>&gt;&gt;&gt;<i> to the point where a check for cancellation, and throw, may occur.
+</I>&gt;&gt;<i>
+</I>&gt;&gt;<i> Ingenious!  I'm not sure about all the implications, but I think we
+</I>&gt;&gt;<i> should explore this idea further.  In hindsight, it's almost obvious:
+</I>&gt;&gt;<i> a function should only report failure in one way.  Requiring
+</I>&gt;&gt;<i> programmers to deal with exceptions *and* failure status makes the
+</I>&gt;&gt;<i> whole thing unwieldy and error-prone.
+</I>&gt;<i>
+</I>&gt;<i> I'm not sure it really solves the problem, though.  Yes, it's good for
+</I>&gt;<i> read() to report failure if the thread is cancelled.  But we should also
+</I>&gt;<i> make sure that the thread really does get cancelled!
+</I>
+There really is absolutely no way to *make sure* of that other than by
+using async cancellation, though.  Even if you throw an exception, the
+thread can catch it and resume normal work inside the catch handler if
+it wants to -- in that case, the compiler has no way to detect that
+we're not responding to it.  I admit that's a somewhat perverse case,
+but my point is that the best we can hope to do is come up with a
+model which works out most of the time and is likely to be compatible
+with existing coding patterns.
+
+&gt;<i> *If* we are using a special exception type to represent thread
+</I>&gt;<i> cancellation, then we had better make sure that we get a cancellation
+</I>&gt;<i> exception somewhere within the thread---if not from read, then at
+</I>&gt;<i> least later.  We can defer the exception to a later point where the
+</I>&gt;<i> program knows how to deal with it, but we shouldn't eliminate it.
+</I>
+Of course pthread_testcancel would still throw (once?) if a
+cancellation request had been issued but the thread was still running.
+
+&gt;<i> (Maybe we should take a step back and ask why we're thinking of
+</I>&gt;<i> representing thread cancellation as an exception.  Rationale: we
+</I>&gt;<i> want to make sure that the cancellation isn't ignored
+</I>
+I've never bought the idea that exceptions &quot;make sure errors aren't
+ignored&quot;.  There's plenty of code that ignores the possibility of
+exceptions; it's just as broken as code that ignores error return
+codes.
+
+If you really mean &quot;make sure the cancellation really unwinds the
+whole thread&quot;, well, we can't do that either because the exception may
+not be able to traverse language boundaries safely.
+
+&gt;<i> but we also want to give the thread a chance to do some cleanup
+</I>&gt;<i> before it dies.  In C we might have cleanup callbacks.  In C++
+</I>&gt;<i> exceptions seem like the natural choice.  I think everyone who has
+</I>&gt;<i> done a C++ binding for POSIX has made that choice, but it would be
+</I>&gt;<i> interesting to hear of counterexamples.)
+</I>
+I'm not sure if this is relevant:
+
+In a recent conversation I had with David Butenhof about &quot;2-phase
+exception handling&quot; we discussed the possibility that there's a
+special subset of all the cleanups &quot;on the stack&quot; which needs to be
+run even when termination is forced (e.g. for things like assertion
+failures, and possibly thread cancellations(?)) in order to release
+global resources like file locks.  2-phase EH provides a language
+mechanism for addressing that need, though IIRC there are some cases
+it doesn't actually handle.  In any case, I don't think mandating
+2-phase EH in the C++ standard would be appropriate.  You can,
+however, build a fairly elegant library solution using
+set_terminate_handler() which handles all the cases.
+
+-- 
+Dave Abrahams
+Boost Consulting
+www.boost-consulting.com
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000012.html">[c++-pthreads] cancellation points report failure
+</A></li>
+	<LI>Next message: <A HREF="000013.html">[c++-pthreads] cancellation points report failure
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#14">[ date ]</a>
+              <a href="thread.html#14">[ thread ]</a>
+              <a href="subject.html#14">[ subject ]</a>
+              <a href="author.html#14">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/c++-pthreads">More information about the c++-pthreads
+mailing list</a><br>
+</body></html>

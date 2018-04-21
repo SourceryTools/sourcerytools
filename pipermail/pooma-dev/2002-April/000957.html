@@ -1,0 +1,231 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [pooma-dev] Re: Ref counting
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bpooma-dev%5D%20Re%3A%20Ref%20counting&In-Reply-To=%3C3CC00B56.590C0D3A%40cns.mpg.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000953.html">
+   <LINK REL="Next"  HREF="000958.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[pooma-dev] Re: Ref counting</H1>
+    <B>Nils H. Busch</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bpooma-dev%5D%20Re%3A%20Ref%20counting&In-Reply-To=%3C3CC00B56.590C0D3A%40cns.mpg.de%3E"
+       TITLE="[pooma-dev] Re: Ref counting">nilsb at cns.mpg.de
+       </A><BR>
+    <I>Fri Apr 19 12:19:35 UTC 2002</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000953.html">[pooma-dev] Re: Ref counting
+</A></li>
+        <LI>Next message: <A HREF="000958.html">[pooma-dev] Re: Ref counting
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#957">[ date ]</a>
+              <a href="thread.html#957">[ thread ]</a>
+              <a href="subject.html#957">[ subject ]</a>
+              <a href="author.html#957">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Hi,
+
+below is the small program that causes the assertion failure
+
+### POOMA Assertion Failure ###
+### initialized()
+### File
+/home/elster1/busch/local/pooma/sgi64/src/Geometry/RectilinearGeometryBase.h;
+Line 218.
+Pooma::pAbort called.
+In default abort handler.
+Abort (core dumped) .
+
+As I found out the problem lies not with returning a field/array, but
+with creating a C array of pooma arrays or fields. It doesn't make any
+difference whether it's allocated on the stack or on the heap. The
+assertion comes from the Field::operator=() call and the underlying
+assign.
+
+I might be doing something stupid,  but it looks like vaild C++ code to
+me.
+
+The program:
+
+#include &lt;iostream&gt;
+//#include &quot;Pooma/Arrays.h&quot;
+#include &quot;Pooma/Fields.h&quot;
+
+const int Dim = 1;
+
+// typedefs
+typedef UniformRectilinearMesh&lt;Dim, Cartesian&lt;Dim&gt;, double&gt; Mesh_t;
+typedef DiscreteGeometry&lt;Vert, Mesh_t&gt; Geometry_t;
+typedef MultiPatch&lt;UniformTag, Brick&gt; Engine_t;
+typedef Field&lt;Geometry_t, double, Engine_t&gt; Field_t;
+
+
+// main
+int main(int argc, char *argv[])
+{
+    Pooma::initialize(argc,argv);
+
+    Interval&lt;Dim&gt; dom(10);
+    Mesh_t::PointType_t origin(0.0);
+    Mesh_t::PointType_t spacings(1.0);
+    Mesh_t mesh(dom, origin, spacings);
+
+    Geometry_t geom(mesh);
+
+    UniformGridLayout&lt;Dim&gt; layout(geom.totalDomain(), ReplicatedTag());
+
+    Field_t a[2];
+    a[0] = Field_t(geom, layout);
+    a[1] = Field_t(geom, layout);
+
+    a[0] = 3;
+    a[1] = a[0];
+
+    std::cout &lt;&lt; a[0] &lt;&lt; std::endl &lt;&lt; a[1] &lt;&lt; std::endl;
+
+    Pooma::finalize();
+
+    return 0;
+
+}
+
+The dbx output:
+
+&gt;<i>  0 _kill(0xf861, 0x6, 0x0, 0x0, 0x1, 0x2, 0xffffffa770, 0x0)
+</I>[&quot;/xlv51/6.5.5f/work/irix/lib/libc/libc_64_M4/signal/kill.s&quot;:15,
+0xda5cc98]
+   1 _raise(0xf861, 0x6, 0x0, 0x0, 0x1, 0x2, 0xffffffa770, 0x0)
+[&quot;/xlv51/6.5.5f/work/irix/lib/libc/libc_64_M4/signal/raise.c&quot;:27,
+0xda5d664]
+   2 abort(0xf861, 0x6, 0x0, 0x0, 0x1, 0x2, 0xffffffa770, 0x0)
+[&quot;/xlv51/6.5.5f/work/irix/lib/libc/libc_64_M4/gen/abort.c&quot;:52,
+0xd9cd0e0]
+   3 Pooma::toss_cookies(const char*,const char*,int ...)(0xf861, 0x1,
+0xda00000000, 0x0, 0x8, 0xffffffad40, 0x10044f50, 0xffffffad40)
+[&quot;/scr/origin3/nilsb/apps/pooma-2.3.0/src/IO/Serializers.cmpl.cpp&quot;:498,
+0xdffbcb6c]
+   4 ::RectilinearGeometryBase&lt;Vert,UniformRectilinearMesh&lt;(const
+int)1,Cartesian&lt;(const int)1&gt;,double&gt; &gt;::physicalDomain(void) const(this
+= 0xffffffac98, &lt;no name&gt; = 0xffffffa9f0)
+[&quot;/home/elster1/busch/local/pooma/sgi64/src/Geometry/RectilinearGeometryBase.h&quot;:218,
+0x10028664]
+   5 ::ConstField&lt;DiscreteGeometry&lt;Vert,UniformRectilinearMesh&lt;(const
+int)1,Cartesian&lt;(const int)1&gt;,double&gt;
+&gt;<i>,double,MultiPatch&lt;UniformTag,Brick&gt; &gt;::physicalDomain(void) const(this
+</I>= 0xffffffac38, &lt;no name&gt; = 0xffffffa9f0)
+[&quot;/home/elster1/busch/local/pooma/sgi64/src/Field/ConstField.h&quot;:944,
+0x100331d4]
+   6 ::Field&lt;DiscreteGeometry&lt;Vert,UniformRectilinearMesh&lt;(const
+int)1,Cartesian&lt;(const int)1&gt;,double&gt;
+&gt;<i>,double,MultiPatch&lt;UniformTag,Brick&gt; &gt;::operator()(void) const(this =
+</I>0xffffffac38, &lt;no name&gt; = 0xffffffaa10)
+[&quot;/home/elster1/busch/local/pooma/sgi64/src/Field/Field.h&quot;:1041,
+0x100335b0]
+   7 ::assign(const
+Field&lt;DiscreteGeometry&lt;Vert,UniformRectilinearMesh&lt;(const
+int)1,Cartesian&lt;(const int)1&gt;,double&gt;
+&gt;<i>,double,MultiPatch&lt;UniformTag,Brick&gt; &gt;&amp;,const
+</I>Field&lt;DiscreteGeometry&lt;Vert,UniformRectilinearMesh&lt;(const
+int)1,Cartesian&lt;(const int)1&gt;,double&gt;
+&gt;<i>,double,MultiPatch&lt;UniformTag,Brick&gt; &gt;&amp;,const OpAssign&amp;)(lhs =
+</I>0xffffffac38, rhs = 0xffffffad28, op = 0xffffffab80)
+[&quot;/home/elster1/busch/local/pooma/sgi64/src/Field/Field.cpp&quot;:236,
+0x1001a214]
+   8 ::Field&lt;DiscreteGeometry&lt;Vert,UniformRectilinearMesh&lt;(const
+int)1,Cartesian&lt;(const int)1&gt;,double&gt;
+&gt;<i>,double,MultiPatch&lt;UniformTag,Brick&gt; &gt;::operator=(const
+</I>Field&lt;DiscreteGeometry&lt;Vert,UniformRectilinearMesh&lt;(const
+int)1,Cartesian&lt;(const int)1&gt;,double&gt;
+&gt;<i>,double,MultiPatch&lt;UniformTag,Brick&gt; &gt;&amp;)(this = 0xffffffac38, rhs =
+</I>0xffffffad28)
+[&quot;/home/elster1/busch/local/pooma/sgi64/src/Field/Field.h&quot;:1138,
+0x10033610]
+   9 ::main(argc = 1, argv = 0xffffffae68)
+[&quot;/home/elster1/busch/prg/pooma/test/fieldtest.cpp&quot;:51, 0x1001a034]
+   10 __start()
+[&quot;/xlv55/kudzu-apr12/work/irix/lib/libc/libc_64_M4/csu/crt1text.s&quot;:177,
+0x10019888]
+
+(dbx) up 4
+::<i>RectilinearGeometryBase&lt;Vert,UniformRectilinearMesh&lt;: 218
+</I>PAssert(initialized());
+(dbx) dump
+::<i>RectilinearGeometryBase&lt;Vert,UniformRectilinearMesh&lt;(const
+</I>int)1,Cartesian&lt;(const int)1&gt;,double&gt; &gt;::physicalDomain(void) const(this
+= 0xffffffac98, &lt;no name&gt; = 0xffffffa9f0)
+[&quot;/home/elster1/busch/local/pooma/sgi64/src/Geometry/RectilinearGeometryBase.h&quot;:218,
+0x10028664]
+
+(dbx) up 3
+:<i>assign: 236  ViewedLHS_t vlhs = lhs();
+</I>(dbx) dump
+::<i>assign(const Field&lt;DiscreteGeometry&lt;Vert,UniformRectilinearMesh&lt;(const
+</I>int)1,Cartesian&lt;(const int)1&gt;,double&gt;
+&gt;<i>,double,MultiPatch&lt;UniformTag,Brick&gt; &gt;&amp;,const
+</I>Field&lt;DiscreteGeometry&lt;Vert,UniformRectilinearMesh&lt;(const
+int)1,Cartesian&lt;(const int)1&gt;,double&gt;
+&gt;<i>,double,MultiPatch&lt;UniformTag,Brick&gt; &gt;&amp;,const OpAssign&amp;)(lhs =
+</I>0xffffffac38, rhs = 0xffffffad28, op = 0xffffffab80)
+[&quot;/home/elster1/busch/local/pooma/sgi64/src/Field/Field.cpp&quot;:236,
+0x1001a214]
+vlhs = class &lt;DiscreteGeometry,double,MultiPatchView&gt; {
+}
+vrhs = class &lt;DiscreteGeometry,double,MultiPatchView&gt; {
+}
+rhsExpr = struct &lt;ConstField&gt; {
+    reference_m = 0xa
+}
+
+(dbx) up 2
+::<i>main:  51  a[0] = Field_t(geom, layout);
+</I>
+It seems to me that only a combination of default constructors and then
+Field::initialize works and I don't understand why.
+
+Thanks.
+
+
+--
+    Nils H. Busch
+    Max-Planck-Institute of Cognitive Neuroscience
+    phone:  ++49 (341) 9940-335 fax:  ++49 (341) 9940-204
+    e-mail: <A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">nilsb at cns.mpg.de</A>
+
+
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000953.html">[pooma-dev] Re: Ref counting
+</A></li>
+	<LI>Next message: <A HREF="000958.html">[pooma-dev] Re: Ref counting
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#957">[ date ]</a>
+              <a href="thread.html#957">[ thread ]</a>
+              <a href="subject.html#957">[ subject ]</a>
+              <a href="author.html#957">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

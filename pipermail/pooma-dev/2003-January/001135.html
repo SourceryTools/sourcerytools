@@ -1,0 +1,701 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [RFC] PatchFunction cleanup/extension
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5BRFC%5D%20PatchFunction%20cleanup/extension&In-Reply-To=%3CPine.LNX.4.33.0301081442400.19303-100000%40bellatrix.tat.physik.uni-tuebingen.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001140.html">
+   <LINK REL="Next"  HREF="001136.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[RFC] PatchFunction cleanup/extension</H1>
+    <B>Richard Guenther</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5BRFC%5D%20PatchFunction%20cleanup/extension&In-Reply-To=%3CPine.LNX.4.33.0301081442400.19303-100000%40bellatrix.tat.physik.uni-tuebingen.de%3E"
+       TITLE="[RFC] PatchFunction cleanup/extension">rguenth at tat.physik.uni-tuebingen.de
+       </A><BR>
+    <I>Wed Jan  8 13:49:08 UTC 2003</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001140.html">[pooma-dev] [PATCH] Use autoconf for basic configuration stuff
+</A></li>
+        <LI>Next message: <A HREF="001136.html">[pooma-dev] [RFC] PatchFunction cleanup/extension
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1135">[ date ]</a>
+              <a href="thread.html#1135">[ thread ]</a>
+              <a href="subject.html#1135">[ subject ]</a>
+              <a href="author.html#1135">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Hi!
+
+I'm in the beginning of cleaning up PatchFunction and make it do what
+I need. I stumbled over the DataObjectRequest&lt;&gt; object and wonder, if
+the order of requesting read and write locks matter? I.e. is
+
+   DataObjectRequest&lt;WriteRequest&gt; writeReq(*this);
+   engineFunctor(engine1,writeReq);
+   DataObjectRequest&lt;ReadRequest&gt; readReq(writeReq);
+   engineFunctor(engine2,readReq);
+
+the same as
+
+   DataObjectRequest&lt;WriteRequest&gt; writeReq(*this);
+   DataObjectRequest&lt;ReadRequest&gt; readReq(writeReq);
+   engineFunctor(engine2,readReq);
+   engineFunctor(engine1,writeReq);
+
+?
+
+A little cleanup of PatchFunction/PatchKernel sofar brought control
+over read/write attributes of PatchTag type operations, like the
+ParticleTags and reduces the number of sourcelines by using overloads
+rather than partial specializations for the PatchEvaluator&lt;&gt; class.
+
+Is this sound? Other Comments?
+
+Richard.
+
+Oh - in the near future I need about 5-7 arrays I can operate on with
+PatchFunction&lt;&gt; and support for Remote MultiPatch engines, too. If we
+only had a &quot;real&quot; preprocessor...
+
+
+===== PatchFunction.h 1.2 vs edited =====
+--- 1.2/r2/src/Evaluator/PatchFunction.h	Thu Dec 19 10:37:26 2002
++++ edited/PatchFunction.h	Wed Jan  8 14:40:02 2003
+@@ -36,32 +36,11 @@
+
+ //////////////////////////////////////////////////////////////////////
+
+-//-----------------------------------------------------------------------------
+-// Overview:
+-//
+-// PatchFunction is mix-in class that encapsulates evaluation of patch-based
+-// functors in parallel.
+-//-----------------------------------------------------------------------------
+-
+-//-----------------------------------------------------------------------------
+-// Typedefs:
+-//-----------------------------------------------------------------------------
+-
+-//-----------------------------------------------------------------------------
+-// Includes:
+-//-----------------------------------------------------------------------------
+-
+-#include &quot;PETE/PETE.h&quot;
+-#include &quot;Pooma/PETE/AssertEquals.h&quot;
+-#include &quot;Evaluator/EvaluatorTags.h&quot;
+-#include &quot;Evaluator/Evaluator.h&quot;
+-#include &quot;Evaluator/PatchKernel.h&quot;
+-#include &quot;Engine/EnginePatch.h&quot;
+-#include &quot;Threads/PoomaCSem.h&quot;
+-
+-//-----------------------------------------------------------------------------
+-//
+-// Full Description:
++/** @file
++ * @ingroup Evaluator
++ * @brief
++ * PatchFunction is mix-in class that encapsulates evaluation of patch-based
++ * functors in parallel.
+ //
+ // PatchFunctions are tools that allow you to apply a functor to the patches
+ // in an array in parallel.  For example, you could write a functor:
+@@ -89,20 +68,55 @@
+ // Constructor arguments are passed to the constructor of a functor object
+ // of type Functor.  Tag is a policy tag specifying the type of action
+ // performed.  Currently the following tags are supported:
+-//
++*/
++
++//-----------------------------------------------------------------------------
++// Typedefs:
++//-----------------------------------------------------------------------------
++
++//-----------------------------------------------------------------------------
++// Includes:
+ //-----------------------------------------------------------------------------
+
++#include &quot;PETE/PETE.h&quot;
++#include &quot;Pooma/PETE/AssertEquals.h&quot;
++#include &quot;Evaluator/EvaluatorTags.h&quot;
++#include &quot;Evaluator/Evaluator.h&quot;
++#include &quot;Evaluator/PatchKernel.h&quot;
++#include &quot;Engine/EnginePatch.h&quot;
++#include &quot;Threads/PoomaCSem.h&quot;
++
++
+ //-----------------------------------------------------------------------------
+ // Policy tags for patch functions.
+-//
+-// PatchParticleN - recommended for operations on particles, bypasses the
+-//                  intersection process and just loops through the patches.
+ //-----------------------------------------------------------------------------
+
+-struct PatchTag1 { };
+-struct PatchReadTag1 { };
+-struct PatchTag2 { };
+-struct PatchTag3 { };
++// Patch tags that include intersection process.
++
++template &lt;bool Write1&gt;
++struct PatchRWTag1 {
++  enum { write1 = Write1,
++	 any = Write1 };
++};
++template &lt;bool Write1, bool Write2&gt;
++struct PatchRWTag2 {
++  enum { write1 = Write1, write2 = Write2,
++	 any = Write1 || Write2 };
++};
++template &lt;bool Write1, bool Write2, bool Write3&gt;
++struct PatchRWTag3 {
++  enum { write1 = Write1, write2 = Write2, write3 = Write3,
++	 any = Write1 || Write2 || Write3 };
++};
++
++// Backward compatibility typedefs.
++typedef PatchRWTag1&lt;true&gt; PatchTag1;
++typedef PatchRWTag1&lt;false&gt; PatchReadTag1;
++typedef PatchRWTag2&lt;true, false&gt; PatchTag2;
++typedef PatchRWTag3&lt;true, false, false&gt; PatchTag3;
++
++// PatchParticleN - recommended for operations on particles, bypasses the
++//                  intersection process and just loops through the patches.
+
+ template&lt;bool Write1&gt;
+ struct PatchParticle1 { };
+@@ -134,31 +148,16 @@
+
+   ~PatchEvaluator() {}
+
+-  template&lt;class A1, class Function&gt;
++  template&lt;class ReadWriteTag, class A1, class Function&gt;
+   void evaluate(const A1&amp; a1, const Function&amp; function) const
+   {
+-    typedef typename EvaluatorTag1&lt;A1&gt;::Evaluator_t Evaluator_t;
+-    PatchEvaluator&lt;Evaluator_t&gt; evaluator;
+-    Pooma::Scheduler_t &amp;scheduler = Pooma::scheduler();
+-    scheduler.beginGeneration();
+-    evaluator.evaluate(a1(), function);
+-    notifyEngineWrite(a1.engine());
+-    scheduler.endGeneration();
+-
+-    if (Pooma::blockingExpressions())
+-    {
+-      Pooma::blockAndEvaluate();
+-    }
+-  }
+-
+-  template&lt;class A1, class Function&gt;
+-  void evaluateRead(const A1&amp; a1, const Function&amp; function) const
+-  {
+-    typedef typename EvaluatorTag1&lt;A1&gt;::Evaluator_t Evaluator_t;
+-    PatchEvaluator&lt;Evaluator_t&gt; evaluator;
++    typedef typename EvaluatorTag1&lt;A1&gt;::Evaluator_t Eval_t;
++    PatchEvaluator&lt;Eval_t&gt; evaluator;
+     Pooma::Scheduler_t &amp;scheduler = Pooma::scheduler();
+     scheduler.beginGeneration();
+-    evaluator.evaluateRead(a1(), function);
++    evaluator.evaluate&lt;ReadWriteTag&gt;(a1(), function);
++    if (ReadWriteTag::write1)
++      notifyEngineWrite(a1.engine());
+     scheduler.endGeneration();
+
+     if (Pooma::blockingExpressions())
+@@ -167,16 +166,19 @@
+     }
+   }
+
+-  template&lt;class A1,class A2,class Function&gt;
+-  void evaluate2(const A1&amp; a1, const A2&amp; a2,
++  template&lt;class ReadWriteTag, class A1,class A2,class Function&gt;
++  void evaluate(const A1&amp; a1, const A2&amp; a2,
+ 		const Function&amp; function) const
+   {
+     typedef typename EvaluatorTag&lt;A1,A2&gt;::Evaluator_t Eval_t;
+     PatchEvaluator&lt;Eval_t&gt; evaluator;
+     Pooma::Scheduler_t &amp;scheduler = Pooma::scheduler();
+     scheduler.beginGeneration();
+-    evaluator.evaluate2(a1(), a2(), function);
+-    notifyEngineWrite(a1.engine());
++    evaluator.evaluate&lt;ReadWriteTag&gt;(a1(), a2(), function);
++    if (ReadWriteTag::write1)
++      notifyEngineWrite(a1.engine());
++    if (ReadWriteTag::write2)
++      notifyEngineWrite(a2.engine());
+     scheduler.endGeneration();
+
+     if (Pooma::blockingExpressions())
+@@ -185,8 +187,8 @@
+     }
+   }
+
+-  template&lt;class A1, class A2, class A3, class Function&gt;
+-  void evaluate3(const A1&amp; a1, const A2&amp; a2, const A3 &amp;a3,
++  template&lt;class ReadWriteTag, class A1, class A2, class A3, class Function&gt;
++  void evaluate(const A1&amp; a1, const A2&amp; a2, const A3 &amp;a3,
+ 		const Function&amp; function) const
+   {
+     typedef typename EvaluatorTag1&lt;A2&gt;::Evaluator_t Eval2_t;
+@@ -198,8 +200,13 @@
+     PatchEvaluator&lt;Eval_t&gt; evaluator;
+     Pooma::Scheduler_t &amp;scheduler = Pooma::scheduler();
+     scheduler.beginGeneration();
+-    evaluator.evaluate3(a1(), a2(), a3(), function);
+-    notifyEngineWrite(a1.engine());
++    evaluator.evaluate&lt;ReadWriteTag&gt;(a1(), a2(), a3(), function);
++    if (ReadWriteTag::write1)
++      notifyEngineWrite(a1.engine());
++    if (ReadWriteTag::write2)
++      notifyEngineWrite(a2.engine());
++    if (ReadWriteTag::write3)
++      notifyEngineWrite(a3.engine());
+     scheduler.endGeneration();
+
+     if (Pooma::blockingExpressions())
+@@ -231,37 +238,29 @@
+   //
+   ~PatchEvaluator() {}
+
+-  template&lt;class A1, class Function&gt;
++  template&lt;class ReadWriteTag, class A1, class Function&gt;
+   void evaluate(const A1&amp; a1, const Function&amp; function) const
+   {
+-    Pooma::Iterate_t *iterate = new PatchKernel&lt;A1,Function&gt;(a1,function);
+-    Pooma::scheduler().handOff(iterate);
+-  }
+-
+-  template&lt;class A1, class Function&gt;
+-  void evaluateRead(const A1&amp; a1, const Function&amp; function) const
+-  {
+-    Pooma::Iterate_t *iterate = new PatchKernel&lt;A1,Function&gt;(a1,function);
++    Pooma::Iterate_t *iterate =
++      new PatchKernel&lt;ReadWriteTag,A1,Function&gt;(a1,function);
+     Pooma::scheduler().handOff(iterate);
+   }
+
+-  template&lt;class A1,class A2,class Function&gt;
+-  void evaluate2(const A1 &amp;a1, const A2 &amp;a2,
++  template&lt;class ReadWriteTag, class A1,class A2,class Function&gt;
++  void evaluate(const A1 &amp;a1, const A2 &amp;a2,
+ 		const Function &amp;function) const
+   {
+     Pooma::Iterate_t *iterate =
+-      new PatchKernel2&lt;A1,A2,Function&gt;(a1,a2,function);
+-
++      new PatchKernel2&lt;ReadWriteTag,A1,A2,Function&gt;(a1,a2,function);
+     Pooma::scheduler().handOff(iterate);
+   }
+
+-  template&lt;class A1, class A2, class A3, class Function&gt;
+-  void evaluate3(const A1 &amp;a1, const A2 &amp;a2, const A3 &amp;a3,
++  template&lt;class ReadWriteTag, class A1, class A2, class A3, class Function&gt;
++  void evaluate(const A1 &amp;a1, const A2 &amp;a2, const A3 &amp;a3,
+ 		const Function &amp;function) const
+   {
+     Pooma::Iterate_t *iterate =
+-      new PatchKernel3&lt;A1,A2,A3,Function&gt;(a1,a2,a3,function);
+-
++      new PatchKernel3&lt;ReadWriteTag,A1,A2,A3,Function&gt;(a1,a2,a3,function);
+     Pooma::scheduler().handOff(iterate);
+   }
+
+@@ -290,7 +289,7 @@
+   //
+   ~PatchEvaluator() {}
+
+-  template&lt;class A1,class Function&gt;
++  template&lt;class ReadWriteTag, class A1,class Function&gt;
+   void evaluate(const A1&amp; a1,const Function&amp; function) const
+   {
+     typedef Intersector&lt;A1::dimensions&gt; Inter_t;
+@@ -301,20 +300,14 @@
+     typename Inter_t::const_iterator i = inter.begin();
+     while (i != inter.end())
+     {
+-      PatchEvaluator&lt;SinglePatchEvaluatorTag&gt;().evaluate(a1(*i),function);
++      PatchEvaluator&lt;SinglePatchEvaluatorTag&gt;().
++	evaluate&lt;ReadWriteTag&gt;(a1(*i),function);
+       ++i;
+     }
+   }
+
+-  template&lt;class A1,class Function&gt;
+-  inline
+-  void evaluateRead(const A1&amp; a1,const Function&amp; function) const
+-  {
+-    evaluate(a1,function);
+-  }
+-
+-  template&lt;class A1,class A2,class Function&gt;
+-  void evaluate2(const A1&amp; a1, const A2&amp; a2,
++  template&lt;class ReadWriteTag, class A1,class A2,class Function&gt;
++  void evaluate(const A1&amp; a1, const A2&amp; a2,
+ 		const Function&amp; function) const
+   {
+     typedef Intersector&lt;A1::dimensions&gt; Inter_t;
+@@ -326,16 +319,15 @@
+     typename Inter_t::const_iterator i = inter.begin();
+     while (i != inter.end())
+     {
+-      PatchEvaluator&lt;SinglePatchEvaluatorTag&gt;().evaluate2(a1(*i), a2(*i),
+-							  function
+-							  );
++      PatchEvaluator&lt;SinglePatchEvaluatorTag&gt;().
++	evaluate&lt;ReadWriteTag&gt;(a1(*i), a2(*i), function);
+       ++i;
+     }
+   }
+
+-  template&lt;class A1, class A2, class A3, class Function&gt;
+-  void evaluate3(const A1 &amp;a1, const A2 &amp;a2, const A3 &amp;a3,
+-		 const Function&amp; function) const
++  template&lt;class ReadWriteTag, class A1, class A2, class A3, class Function&gt;
++  void evaluate(const A1 &amp;a1, const A2 &amp;a2, const A3 &amp;a3,
++		const Function&amp; function) const
+   {
+     typedef Intersector&lt;A1::dimensions&gt; Inter_t;
+     Inter_t inter;
+@@ -348,7 +340,7 @@
+     while (i != inter.end())
+     {
+       PatchEvaluator&lt;SinglePatchEvaluatorTag&gt;().
+-        evaluate3(a1(*i), a2(*i), a3(*i), function);
++        evaluate&lt;ReadWriteTag&gt;(a1(*i), a2(*i), a3(*i), function);
+       ++i;
+     }
+   }
+@@ -651,38 +643,9 @@
+ { }
+
+
+-template&lt;class Function, class Patch&gt;
++template&lt;class Function, class ReadWriteTag&gt;
+ class PatchFunction
+ {
+-};
+-
+-template&lt;class Function&gt;
+-class PatchFunction&lt;Function,PatchTag1&gt;
+-{
+-public:
+-
+-  PatchFunction() { }
+-  PatchFunction(const Function &amp;function) : function_m(function) { }
+-
+-  POOMA_PATCHFUNCTION_ARGUMENT_CONSTRUCTORS(PatchFunction,function_m)
+-
+-  template&lt;class Array&gt;
+-  inline void
+-  operator()(const Array&amp; a) const
+-  {
+-    PatchEvaluator&lt;MainEvaluatorTag&gt;().evaluate(a,function());
+-  }
+-
+-  inline const Function &amp;function() const { return function_m; }
+-
+-private:
+-
+-  Function function_m;
+-};
+-
+-template&lt;class Function&gt;
+-class PatchFunction&lt;Function,PatchReadTag1&gt;
+-{
+ public:
+
+   PatchFunction() { }
+@@ -690,57 +653,25 @@
+
+   POOMA_PATCHFUNCTION_ARGUMENT_CONSTRUCTORS(PatchFunction,function_m)
+
+-  template&lt;class Array&gt;
++  template&lt;class Array1&gt;
+   inline void
+-  operator()(const Array&amp; a) const
++  operator()(const Array1&amp; a) const
+   {
+-    PatchEvaluator&lt;MainEvaluatorTag&gt;().evaluateRead(a,function());
++    PatchEvaluator&lt;MainEvaluatorTag&gt;().evaluate&lt;ReadWriteTag&gt;(a,function());
+   }
+
+-  inline const Function &amp;function() const { return function_m; }
+-
+-private:
+-
+-  Function function_m;
+-};
+-
+-template&lt;class Function&gt;
+-class PatchFunction&lt;Function,PatchTag2&gt;
+-{
+-public:
+-  PatchFunction() { }
+-  PatchFunction(const Function &amp;function) : function_m(function) { }
+-
+-  POOMA_PATCHFUNCTION_ARGUMENT_CONSTRUCTORS(PatchFunction,function_m)
+-
+   template&lt;class Array1, class Array2&gt;
+   inline void
+   operator()(const Array1 &amp;a1, const Array2 &amp;a2) const
+   {
+-    PatchEvaluator&lt;MainEvaluatorTag&gt;().evaluate2(a1,a2,function());
++    PatchEvaluator&lt;MainEvaluatorTag&gt;().evaluate&lt;ReadWriteTag&gt;(a1,a2,function());
+   }
+
+-  inline const Function &amp;function() const { return function_m; }
+-
+-private:
+-
+-  Function function_m;
+-};
+-
+-template&lt;class Function&gt;
+-class PatchFunction&lt;Function,PatchTag3&gt;
+-{
+-public:
+-  PatchFunction() { }
+-  PatchFunction(const Function &amp;function) : function_m(function) { }
+-
+-  POOMA_PATCHFUNCTION_ARGUMENT_CONSTRUCTORS(PatchFunction,function_m)
+-
+   template&lt;class Array1, class Array2, class Array3&gt;
+   inline void
+   operator()(const Array1 &amp;a1, const Array2 &amp;a2, const Array3 &amp;a3) const
+   {
+-    PatchEvaluator&lt;MainEvaluatorTag&gt;().evaluate3(a1,a2,a3,function());
++    PatchEvaluator&lt;MainEvaluatorTag&gt;().evaluate&lt;ReadWriteTag&gt;(a1,a2,a3,function());
+   }
+
+   inline const Function &amp;function() const { return function_m; }
+===== PatchKernel.h 1.2 vs edited =====
+--- 1.2/r2/src/Evaluator/PatchKernel.h	Thu Dec 19 10:37:26 2002
++++ edited/PatchKernel.h	Wed Jan  8 14:40:02 2003
+@@ -36,11 +36,12 @@
+
+ //////////////////////////////////////////////////////////////////////
+
+-//-----------------------------------------------------------------------------
+-// Overview:
+-// A PatchKernel encapsulates performing operations on a patch of an
+-// expression.
+-//-----------------------------------------------------------------------------
++/** @file
++ * @ingroup Evaluator
++ * @brief
++ * A PatchKernel encapsulates performing operations on a patch of an
++ * expression.
++ */
+
+ //-----------------------------------------------------------------------------
+ // Typedefs:
+@@ -63,30 +64,28 @@
+ // Forward Declarations:
+ //-----------------------------------------------------------------------------
+
+-template&lt;class A1,class Function&gt;
++template&lt;class ReadWriteTag, class A1,class Function&gt;
+ class PatchKernel
+   : public Pooma::Iterate_t
+ {
+ public:
+-  PatchKernel(const A1&amp; a1, const Function&amp; function, bool write = true)
++  PatchKernel(const A1&amp; a1, const Function&amp; function)
+     : Pooma::Iterate_t(Pooma::scheduler()),
+-      write_m(write), a1_m(a1), function_m(function)
++      a1_m(a1), function_m(function)
+   {
+     DataObjectRequest&lt;BlockAffinity&gt; getAffinity;
+     hintAffinity(engineFunctor(a1_m.engine(),getAffinity));
+
+     // Request locks
+-    // currently we ignore write_m, because I'm not sure if iterates
++    // currently we ignore ReadWriteTag::write1, because I'm not sure if iterates
+     // will run if they don't have a write lock requested.
+
+     DataObjectRequest&lt;WriteRequest&gt; writeReq(*this);
+     engineFunctor(a1_m.engine(),writeReq);
+-
+   }
+
+   virtual ~PatchKernel()
+   {
+-
+     DataObjectRequest&lt;WriteRelease&gt; writeReq;
+     engineFunctor(a1_m.engine(),writeReq);
+   }
+@@ -97,13 +96,11 @@
+   }
+
+ private:
+-
+-  bool write_m;
+   A1 a1_m;
+   Function function_m;
+ };
+
+-template&lt;class A1, class A2, class Function&gt;
++template&lt;class ReadWriteTag, class A1, class A2, class Function&gt;
+ class PatchKernel2
+   : public Pooma::Iterate_t
+ {
+@@ -124,7 +121,10 @@
+     // on the right.
+
+     DataObjectRequest&lt;WriteRequest&gt; writeReq(*this);
+-    engineFunctor(a1_m.engine(),writeReq);
++    if (ReadWriteTag::write1 || !ReadWriteTag::any)
++      engineFunctor(a1_m.engine(),writeReq);
++    if (ReadWriteTag::write2)
++      engineFunctor(a2_m.engine(),writeReq);
+
+     // Now make the read request.
+     // Use the remembered write request block to check and see
+@@ -132,24 +132,32 @@
+     // iterated instead of a request of the data object.
+
+     DataObjectRequest&lt;ReadRequest&gt; readReq(writeReq);
+-    engineFunctor(a2_m.engine(),readReq);
+-  }
++    if (!ReadWriteTag::write1 &amp;&amp; ReadWriteTag::any)
++      engineFunctor(a1_m.engine(),readReq);
++    if (!ReadWriteTag::write2)
++      engineFunctor(a2_m.engine(),readReq);
++  }
+
+   virtual ~PatchKernel2()
+   {
+-
+     // The write request remembers the data block it sees on the left
+     // so that it can check and see if it finds it on the right.
+
+     DataObjectRequest&lt;WriteRelease&gt; writeReq;
+-    engineFunctor(a1_m.engine(),writeReq);
++    if (ReadWriteTag::write1 || !ReadWriteTag::any)
++      engineFunctor(a1_m.engine(),writeReq);
++    if (ReadWriteTag::write2)
++      engineFunctor(a2_m.engine(),writeReq);
+
+     // The read request checks to see if the data object for the left
+     // appears on the right.  If it does, it doesn't do a release for it
+     // since a request wasn't generated above.
+
+     DataObjectRequest&lt;ReadRelease&gt; readReq(writeReq);
+-    engineFunctor(a2_m.engine(),readReq);
++    if (!ReadWriteTag::write1 &amp;&amp; ReadWriteTag::any)
++      engineFunctor(a1_m.engine(),readReq);
++    if (!ReadWriteTag::write2)
++      engineFunctor(a2_m.engine(),readReq);
+   }
+
+   virtual void run()
+@@ -158,14 +166,14 @@
+   }
+
+ private:
+-
+   A1 a1_m;
+   A2 a2_m;
+   Function function_m;
+ };
+
+-template&lt;class A1, class A2, class A3, class Function&gt;
+-class PatchKernel3 : public Pooma::Iterate_t
++template&lt;class ReadWriteTag, class A1, class A2, class A3, class Function&gt;
++class PatchKernel3
++  : public Pooma::Iterate_t
+ {
+ public:
+   PatchKernel3(const A1 &amp;a1, const A2 &amp;a2, const A3 &amp;a3,
+@@ -184,7 +192,12 @@
+     // on the right.
+
+     DataObjectRequest&lt;WriteRequest&gt; writeReq(*this);
+-    engineFunctor(a1_m.engine(),writeReq);
++    if (ReadWriteTag::write1 || !ReadWriteTag::any)
++      engineFunctor(a1_m.engine(),writeReq);
++    if (ReadWriteTag::write2)
++      engineFunctor(a2_m.engine(),writeReq);
++    if (ReadWriteTag::write3)
++      engineFunctor(a3_m.engine(),writeReq);
+
+     // Now make the read request.
+     // Use the remembered write request block to check and see
+@@ -192,8 +205,12 @@
+     // iterated instead of a request of the data object.
+
+     DataObjectRequest&lt;ReadRequest&gt; readReq(writeReq);
+-    engineFunctor(a2_m.engine(),readReq);
+-    engineFunctor(a3_m.engine(),readReq);
++    if (!ReadWriteTag::write1 &amp;&amp; ReadWriteTag::any)
++      engineFunctor(a1_m.engine(),readReq);
++    if (!ReadWriteTag::write2)
++      engineFunctor(a2_m.engine(),readReq);
++    if (!ReadWriteTag::write2)
++      engineFunctor(a3_m.engine(),readReq);
+   }
+
+   virtual ~PatchKernel3()
+@@ -202,15 +219,24 @@
+     // so that it can check and see if it finds it on the right.
+
+     DataObjectRequest&lt;WriteRelease&gt; writeReq;
+-    engineFunctor(a1_m.engine(),writeReq);
++    if (ReadWriteTag::write1 || !ReadWriteTag::any)
++      engineFunctor(a1_m.engine(),writeReq);
++    if (ReadWriteTag::write2)
++      engineFunctor(a2_m.engine(),writeReq);
++    if (ReadWriteTag::write3)
++      engineFunctor(a3_m.engine(),writeReq);
+
+     // The read request checks to see if the data object for the left
+     // appears on the right.  If it does, it doesn't do a release for it
+     // since a request wasn't generated above.
+
+     DataObjectRequest&lt;ReadRelease&gt; readReq(writeReq);
+-    engineFunctor(a2_m.engine(),readReq);
+-    engineFunctor(a3_m.engine(),readReq);
++    if (!ReadWriteTag::write1 &amp;&amp; ReadWriteTag::any)
++      engineFunctor(a1_m.engine(),readReq);
++    if (!ReadWriteTag::write2)
++      engineFunctor(a2_m.engine(),readReq);
++    if (!ReadWriteTag::write3)
++      engineFunctor(a3_m.engine(),readReq);
+   }
+
+   virtual void run()
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001140.html">[pooma-dev] [PATCH] Use autoconf for basic configuration stuff
+</A></li>
+	<LI>Next message: <A HREF="001136.html">[pooma-dev] [RFC] PatchFunction cleanup/extension
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1135">[ date ]</a>
+              <a href="thread.html#1135">[ thread ]</a>
+              <a href="subject.html#1135">[ subject ]</a>
+              <a href="author.html#1135">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

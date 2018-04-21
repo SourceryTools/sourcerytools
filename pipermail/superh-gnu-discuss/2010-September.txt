@@ -1,0 +1,288 @@
+From matt at console-pimps.org  Sun Sep 26 11:08:37 2010
+From: matt at console-pimps.org (Matt Fleming)
+Date: Sun, 26 Sep 2010 12:08:37 +0100
+Subject: [PATCH] sh: Work around GCC bug in set_bl_bit()
+Message-ID: <ed5637cc82664f68c1609e0f511808c412d4cf68.1285498785.git.matt@console-pimps.org>
+
+It seems that some versions of GCC do not handle negative constants in
+inline assembly very well, specifically any negative constant less that
+-129. Here is a reduced example of the problematic code,
+
+static inline void set_bl_bit(void)
+{
+	unsigned long __dummy0;
+
+	__asm__ __volatile__ (
+		"and	%1, %0\n\t"
+		: "=r" (__dummy0)
+		: "r" (0xffffff0f)
+		: "memory"
+	);
+}
+
+Now, what GCC should do is place 0xffffff0f in a constant pool and load
+it into a register with a mov.l instruction. What actually happens is
+that GCC truncates 0xffffff0f to 16-bits (0xff0f), places it in a
+constant pool and loads it with mov.w. Since the BL bit of the status
+register is at bit-position 28, it doesn't even get set.
+
+To work around this issue simply replace 0xffffff0f with 0xffffffff. It
+is safe to include the IMASK field of the sr register in the 'and' mask
+because we're blocking interrupts anyway by setting the BL bit, so
+there's no need to disable them. The original mask was buggy anyway as
+if any bits were set in IMASK we'd drop them on the floor and they'd
+never be restored.
+
+This bug was discovered after applying commit
+73a38b839b9295216e8d44dabf54de88270e77b8 ("sh: Only use bl bit toggling
+for sleeping idle."), which made my sh7785lcr board reset after calling
+local_irq_enable() in default_idle().
+
+Signed-off-by: Matt Fleming <matt at console-pimps.org>
+---
+
+Paul, it may be worth letting this one bake for another -rc period in
+the hope that if there are any problems, people will hit them. I am
+unsure when this bug was introduced and am pretty confused about why no
+one else is seeing it. It's completely reproducible for me. I've tried
+both Sourcery G++ Lite 4.3-143 for SuperH GNU/Linux and Sourcery G++
+Lite 4.4-200 for SuperH GNU/Linux releases.
+
+ arch/sh/include/asm/system_32.h |    2 +-
+ 1 files changed, 1 insertions(+), 1 deletions(-)
+
+diff --git a/arch/sh/include/asm/system_32.h b/arch/sh/include/asm/system_32.h
+index 9bd2684..d933748 100644
+--- a/arch/sh/include/asm/system_32.h
++++ b/arch/sh/include/asm/system_32.h
+@@ -250,7 +250,7 @@ static inline void set_bl_bit(void)
+ 		"and	%3, %0\n\t"
+ 		"ldc	%0, sr\n\t"
+ 		: "=&r" (__dummy0), "=r" (__dummy1)
+-		: "r" (0x10000000), "r" (0xffffff0f)
++		: "r" (0x10000000), "r" (0xffffffff)
+ 		: "memory"
+ 	);
+ }
+-- 
+1.7.1
+
+
+
+From mark at codesourcery.com  Sun Sep 26 19:48:02 2010
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Sun, 26 Sep 2010 12:48:02 -0700
+Subject: [superh-gnu-discuss] [PATCH] sh: Work around GCC bug in set_bl_bit()
+In-Reply-To: <ed5637cc82664f68c1609e0f511808c412d4cf68.1285498785.git.matt@console-pimps.org>
+References: <ed5637cc82664f68c1609e0f511808c412d4cf68.1285498785.git.matt@console-pimps.org>
+Message-ID: <4C9FA372.6030502@codesourcery.com>
+
+On 9/26/2010 4:08 AM, Matt Fleming wrote:
+
+> It seems that some versions of GCC do not handle negative constants in
+> inline assembly very well, specifically any negative constant less that
+> -129. Here is a reduced example of the problematic code,
+
+Matt, I've filed a report about this issue in our internal tracking
+system.  Our team will review the GCC behavior.
+
+Thank you,
+
+-- 
+Mark Mitchell
+CodeSourcery
+mark at codesourcery.com
+(650) 331-3385 x713
+
+
+From matt at console-pimps.org  Sun Sep 26 19:51:50 2010
+From: matt at console-pimps.org (Matt Fleming)
+Date: Sun, 26 Sep 2010 20:51:50 +0100
+Subject: [superh-gnu-discuss] [PATCH] sh: Work around GCC bug in
+ set_bl_bit()
+In-Reply-To: <4C9FA372.6030502@codesourcery.com>
+References: <ed5637cc82664f68c1609e0f511808c412d4cf68.1285498785.git.matt@console-pimps.org>
+ <4C9FA372.6030502@codesourcery.com>
+Message-ID: <20100926195150.GE28588@console-pimps.org>
+
+On Sun, Sep 26, 2010 at 12:48:02PM -0700, Mark Mitchell wrote:
+> On 9/26/2010 4:08 AM, Matt Fleming wrote:
+> 
+> > It seems that some versions of GCC do not handle negative constants in
+> > inline assembly very well, specifically any negative constant less that
+> > -129. Here is a reduced example of the problematic code,
+> 
+> Matt, I've filed a report about this issue in our internal tracking
+> system.  Our team will review the GCC behavior.
+
+Hi Mark,
+
+I was just about to send a follow-up mail....
+
+Someone pointed out to me that my diagnosis is incorrect as the mov.w
+instruction sign-extends the value it loads from memory before storing
+it in a register. So I'm now pretty certain that there's no GCC
+bug. There's still a problem in the kernel, but that's clearly not
+Codesourcery's department ;-) So, sorry for the noise.
+
+Thanks for the quick reply!
+
+
+From mark at codesourcery.com  Sun Sep 26 19:55:35 2010
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Sun, 26 Sep 2010 12:55:35 -0700
+Subject: [superh-gnu-discuss] [PATCH] sh: Work around GCC bug in set_bl_bit()
+In-Reply-To: <20100926195150.GE28588@console-pimps.org>
+References: <ed5637cc82664f68c1609e0f511808c412d4cf68.1285498785.git.matt@console-pimps.org> <4C9FA372.6030502@codesourcery.com> <20100926195150.GE28588@console-pimps.org>
+Message-ID: <4C9FA537.80606@codesourcery.com>
+
+On 9/26/2010 12:51 PM, Matt Fleming wrote:
+
+> Someone pointed out to me that my diagnosis is incorrect as the mov.w
+> instruction sign-extends the value it loads from memory before storing
+> it in a register. So I'm now pretty certain that there's no GCC
+> bug. 
+
+Thank you for following up; I'll close out the internal issue then.
+
+-- 
+Mark Mitchell
+CodeSourcery
+mark at codesourcery.com
+(650) 331-3385 x713
+
+
+From Phil.Edworthy at renesas.com  Thu Sep 30 15:35:55 2010
+From: Phil.Edworthy at renesas.com (Phil Edworthy)
+Date: Thu, 30 Sep 2010 16:35:55 +0100
+Subject: Problems with gdbserver
+Message-ID: <AB12B32E73474741A2C5361C433A44DE0229DFBB@rte-ben-exch.RTE.ADWIN.RENESAS.COM>
+
+Hi,
+
+I am using the CodeSourcery SH 4.4-200 Lite toolchain with Buildroot (glibc)
+for an SH4 device (SH7724). I want to use remote gdb so I followed the
+instructions in your doc. 
+
+
+The app in this example is a simple Hello World and runs fine on its own. It
+was built with:
+$ sh-linux-gnu-gcc -o menu -g main.c
+$ sudo cp menu /tftpboot/rootfs/root/
+
+
+Copy over the sysroot:
+$ sudo cp -rf /usr/share/renesas-4.4/sh-linux-gnu/libc/sbin /tftpboot/rootfs
+$ sudo cp -rf /usr/share/renesas-4.4/sh-linux-gnu/libc/lib /tftpboot/rootfs
+$ sudo cp -rf /usr/share/renesas-4.4/sh-linux-gnu/libc/usr /tftpboot/rootfs
+$ sudo cp -rf /usr/share/renesas-4.4/sh-linux-gnu/libc/etc /tftpboot/rootfs
+
+
+Start gdbserver on the target:
+$ gdbserver :2345 ./menu
+
+
+Run gdb on the host:
+$ sh-linux-gnu-gdb /tftpboot/rootfs/root/menu
+GNU gdb (Sourcery G++ Lite 4.4-200) 7.0.50.20100218-cvs
+<snip>
+Reading symbols from /tftpboot/rootfs/root/menu...done.
+(gdb) set sysroot /tftpboot/rootfs/
+(gdb) target remote 192.168.10.31:2345
+Remote debugging using 192.168.10.31:2345
+Reading symbols from /tftpboot/rootfs/lib/ld-linux.so.2...(no debugging
+symbols found)...done.
+Loaded symbols for /tftpboot/rootfs/lib/ld-linux.so.2
+Got object file from memory but can't read symbols: File format not
+recognized.
+0x295568c0 in _start () from /tftpboot/rootfs/lib/ld-linux.so.2
+(gdb) b main
+Breakpoint 1 at 0x4004b4: file main.cpp, line 7.
+(gdb) c
+Continuing.
+Remote connection closed
+(gdb)
+
+
+The host connects to the target fine and sets the breakpoint. However, when
+Continuing, gdbserver segfaults:
+Process ./menu created; pid = 610
+Listening on port 2345
+Remote debugging from host 192.168.10.30
+Unable to handle kernel NULL pointer dereference at virtual address 00000084
+pc = 88004260
+*pde = 8f197000
+Oops: 0001 [#18]
+last sysfs file: /sys/class/vc/vcs3/dev
+Modules linked in:
+
+Pid : 607, Comm:                gdbserver
+CPU : 0                 Tainted: G      D      (2.6.35 #1)
+
+PC  : 88004260 SP  : 8f1e1f88 SR  : 40008100 TEA : 296608c0
+R0  : 00000000 R1  : 00000000 R2  : 00000000 R3  : fffffffc
+R4  : 8f0676c0 R5  : 00000006 R6  : 00000084 R7  : 00000000
+R8  : 8f0676c0 R9  : 00000006 R10 : 00000000 R11 : 000000e0
+R12 : 00000000 R13 : 00000004 R14 : 7bf21a40
+MACH: 00000004 MACL: 5c405562 GBR : 296f5470 PR  : 8801dabc
+
+Call trace:
+ [<8801dabc>] 0x8801dabc
+ [<8800725a>] 0x8800725a
+ [<8801da20>] 0x8801da20
+
+Process: gdbserver (pid: 607, stack limit = 8f1e0001)
+Stack: (0x8f1e1f88 to 0x8f1e2000)
+1f80:                   8801dabc 8800725a 296f17cc 00000000 00000071
+00000100
+1fa0: 8801da20 7bf21a90 00000006 00000002 0000001a 00000006 00000262
+000000e0
+1fc0: 00000000 00000000 0042a2cc 296f5480 00000017 296f17cc 00000004
+7bf21a40
+1fe0: 7bf21a40 2966c778 00413944 00008101 296f5470 00000004 00000000
+00000050
+---[ end trace b2f2a75ed511a0bb ]---
+Segmentation fault
+
+
+Any ideas what could be wrong?
+
+Thanks
+Phil
+
+
+From lethal at linux-sh.org  Thu Sep 30 16:46:15 2010
+From: lethal at linux-sh.org (Paul Mundt)
+Date: Fri, 1 Oct 2010 01:46:15 +0900
+Subject: [superh-gnu-discuss] Problems with gdbserver
+In-Reply-To: <AB12B32E73474741A2C5361C433A44DE0229DFBB@rte-ben-exch.RTE.ADWIN.RENESAS.COM>
+References: <AB12B32E73474741A2C5361C433A44DE0229DFBB@rte-ben-exch.RTE.ADWIN.RENESAS.COM>
+Message-ID: <20100930164614.GA32427@linux-sh.org>
+
+On Thu, Sep 30, 2010 at 04:35:55PM +0100, Phil Edworthy wrote:
+> Unable to handle kernel NULL pointer dereference at virtual address 00000084
+> pc = 88004260
+> *pde = 8f197000
+> Oops: 0001 [#18]
+> last sysfs file: /sys/class/vc/vcs3/dev
+> Modules linked in:
+> 
+> Pid : 607, Comm:                gdbserver
+> CPU : 0                 Tainted: G      D      (2.6.35 #1)
+> 
+> PC  : 88004260 SP  : 8f1e1f88 SR  : 40008100 TEA : 296608c0
+> R0  : 00000000 R1  : 00000000 R2  : 00000000 R3  : fffffffc
+> R4  : 8f0676c0 R5  : 00000006 R6  : 00000084 R7  : 00000000
+> R8  : 8f0676c0 R9  : 00000006 R10 : 00000000 R11 : 000000e0
+> R12 : 00000000 R13 : 00000004 R14 : 7bf21a40
+> MACH: 00000004 MACL: 5c405562 GBR : 296f5470 PR  : 8801dabc
+> 
+> Call trace:
+>  [<8801dabc>] 0x8801dabc
+>  [<8800725a>] 0x8800725a
+>  [<8801da20>] 0x8801da20
+> 
+Can you attach your System.map for this kernel? What does addr2line
+report for the PC?
+
+

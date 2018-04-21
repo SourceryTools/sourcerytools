@@ -1,0 +1,139 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [mips-tls] Revised versions of MIPS TLS ABI specification
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:mips-tls%40codesourcery.com?Subject=Re%3A%20%5Bmips-tls%5D%20Revised%20versions%20of%20MIPS%20TLS%20ABI%20specification&In-Reply-To=%3C20041104170233.GB10079%40nevyn.them.org%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   
+   <LINK REL="Next"  HREF="000005.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[mips-tls] Revised versions of MIPS TLS ABI specification</H1>
+    <B>Daniel Jacobowitz</B> 
+    <A HREF="mailto:mips-tls%40codesourcery.com?Subject=Re%3A%20%5Bmips-tls%5D%20Revised%20versions%20of%20MIPS%20TLS%20ABI%20specification&In-Reply-To=%3C20041104170233.GB10079%40nevyn.them.org%3E"
+       TITLE="[mips-tls] Revised versions of MIPS TLS ABI specification">dan at codesourcery.com
+       </A><BR>
+    <I>Thu Nov  4 17:02:34 UTC 2004</I>
+    <P><UL>
+        
+        <LI>Next message: <A HREF="000005.html">[mips-tls] Revised versions of MIPS TLS ABI specification
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#3">[ date ]</a>
+              <a href="thread.html#3">[ thread ]</a>
+              <a href="subject.html#3">[ subject ]</a>
+              <a href="author.html#3">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>On Thu, Oct 28, 2004 at 12:47:52PM -0700, Mark Mitchell wrote:
+&gt;<i> I've attached a revised version of the specification.
+</I>&gt;<i> 
+</I>&gt;<i> As you will see from the revision history at the top, the only changes 
+</I>&gt;<i> I've made are the incorrect uses of &quot;$(3)&quot; found by Nigel.
+</I>&gt;<i> 
+</I>&gt;<i> I've also added an Open Issues section, where I've attempted to record 
+</I>&gt;<i> the issues raised thus far.  My priority (well, MontaVista's priority) 
+</I>&gt;<i> is to get the basics nailed down so that we can start implementing them 
+</I>&gt;<i> ASAP.  That means that I would prefer to get consensus about the basics 
+</I>&gt;<i> of the specification, even if there are some bits that we want to add in 
+</I>&gt;<i> the future.
+</I>&gt;<i> 
+</I>&gt;<i> I would like to get the GD/LD bits specified first, so we can start 
+</I>&gt;<i> implementing; then we can come back and LE/IE.  Thus, I think the 
+</I>&gt;<i> following issues are all things that we can decide later, given that at 
+</I>&gt;<i> the moment we're talking only about General Dynamic and Local Dynamic. 
+</I>&gt;<i> 
+</I>&gt;<i> 1. Add |-mxgot| support.
+</I>&gt;<i> 
+</I>&gt;<i> We want to do this, for sure, but it does not affect General Dynamic, 
+</I>&gt;<i> and it is clear that this can be added to Local Dynamic without 
+</I>&gt;<i> impacting the currently specified functionality.
+</I>
+Yes, it does affect GD.  This instruction:
+
+    0x08 addiu $4, $28, %tlsgd(x)               R_MIPS_TLS_GD   x  
+
+assumes that the GD entry in the GOT is within 64k of $28; this
+assumption prohibits the use of xgot.  However, like the rest of xgot,
+this can wait a little longer.
+
+&gt;<i> 3. Should we use Model I or Model II from Drepper's paper?
+</I>&gt;<i> 
+</I>&gt;<i> This issue does not arise for Global/Local Dynamic.
+</I>
+Well, not for the binutils and GCC portions of the implementation,
+anyway.
+
+&gt;<i> 4. Does __tls_get_addr need a special calling convention?
+</I>&gt;<i> 
+</I>&gt;<i> This issue does not matter until we start doing linker optimizations.  
+</I>&gt;<i> Until that time, the compiler can be conservative, and assume this is an 
+</I>&gt;<i> ordinary call.
+</I>&gt;<i> 
+</I>&gt;<i> The following issue does need resolution:
+</I>&gt;<i> 
+</I>&gt;<i> 1. Should we extend the 32K Local Dynamic Model to 64K by using a biased 
+</I>&gt;<i> offset?
+</I>&gt;<i> 
+</I>&gt;<i> Daniel and I thought this would be more trouble than it's worth; Thiemo 
+</I>&gt;<i> thinks otherwise.  Are there any other opinions?
+</I>
+I have since learned that PowerPC already does this:
+
+|<i> The PowerPC32 TLS ABI is similar to the PowerPC64 model.  The
+</I>|<i> thread-local storage data structures follow variant I.  The TCB is 8
+</I>|<i> bytes, with the first 4 bytes containing the pointer to the dynamic
+</I>|<i> thread vector. tlsoffset calculations and definition of __tls_get_addr
+</I>|<i> are identical to PowerPC64.  r2 is the thread pointer, and points
+</I>|<i> 0x7000 past the end of the thread control block.  Dynamic thread vector
+</I>|<i> pointers point 0x8000 past the start of each TLS block.  (*) This
+</I>|<i> allows the first 64K of each block to be addressed from a dtv pointer
+</I>|<i> using fewer machine instructions.  The tp offset allows for efficient
+</I>|<i> addressing of the TCB and up to 4K-8 of other thread library
+</I>|<i> information.
+</I>|<i> 
+</I>|<i> (*) For implementation reasons the actual value stored in dtv may point
+</I>|<i> to the start of a block, however values returned by accessor functions
+</I>|<i> will be offset by 0x8000.
+</I>
+So for local dynamic, offsets would be biased by 0x8000 instead of 0;
+for initial exec, offsets would be biased by -0x7000 instead of +8. 
+This leaves room for the pthread descriptor to be accessed in a single
+instruction as long as it is no more than 4k-8 bytes.
+
+Shall we use this model?
+
+-- 
+Daniel Jacobowitz
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	
+	<LI>Next message: <A HREF="000005.html">[mips-tls] Revised versions of MIPS TLS ABI specification
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#3">[ date ]</a>
+              <a href="thread.html#3">[ thread ]</a>
+              <a href="subject.html#3">[ subject ]</a>
+              <a href="author.html#3">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/mips-tls">More information about the mips-tls
+mailing list</a><br>
+</body></html>

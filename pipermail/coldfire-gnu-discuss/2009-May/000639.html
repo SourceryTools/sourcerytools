@@ -1,0 +1,245 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> MCF547X/8X cache vs TAS instruction.
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:coldfire-gnu-discuss%40codesourcery.com?Subject=Re%3A%20MCF547X/8X%20cache%20vs%20TAS%20instruction.&In-Reply-To=%3CF87D23B7E1F84E4AB52E4FA4A55F85DCB1430E%40tpamail.elutions.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000638.html">
+   <LINK REL="Next"  HREF="000640.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>MCF547X/8X cache vs TAS instruction.</H1>
+    <B>Mike Hench</B> 
+    <A HREF="mailto:coldfire-gnu-discuss%40codesourcery.com?Subject=Re%3A%20MCF547X/8X%20cache%20vs%20TAS%20instruction.&In-Reply-To=%3CF87D23B7E1F84E4AB52E4FA4A55F85DCB1430E%40tpamail.elutions.com%3E"
+       TITLE="MCF547X/8X cache vs TAS instruction.">mhench at elutions.com
+       </A><BR>
+    <I>Thu May 28 14:17:01 UTC 2009</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000638.html">[coldfire-gnu-discuss] 4.3-43 toolchain for mcf547x warnings
+</A></li>
+        <LI>Next message: <A HREF="000640.html">MCF547X/8X cache vs TAS instruction.
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#639">[ date ]</a>
+              <a href="thread.html#639">[ thread ]</a>
+              <a href="subject.html#639">[ subject ]</a>
+              <a href="author.html#639">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>The 'TAS' (test and set) instruction on the MCF548X cpu's bypasses the
+cache
+
+See section 5.5.1 of the reference manual.
+
+ 
+
+It is used in a few places for atomic locks.
+
+It doesn't play nice with the cache enabled.
+
+(for some horrible reason, the cache isn't enabled by default in
+freescale kernels, but that can be fixed)
+
+ 
+
+Locks are generally cleared with a simple write
+
+Which won't get to TAS readable (main) memory wirhout a flush.
+
+So
+
+ 
+
+TAS memory location --&gt; to get a lock, main  mem now has the bit set
+which may conflict with cached mem.
+
+Write 0 to clear lock (this is now only in cache, main  mem still has
+lock bit set)
+
+TAS again to get a new lock and it see's the old bit in main mem since
+the cache has not been flushed to write the clear.
+
+The cache cannot be flushed/invalidated from user space because it uses
+privileged instructions.
+
+ 
+
+So the symptom is a hang waiting for a spinlock.
+
+ 
+
+'bset' does a very similar thing however it is not SMP safe
+
+I don't see how that matters, who builds SMP boxes out of
+microcontrollers anyway?
+
+Bset is used for atomic locking in many places in the m68k code.
+
+ 
+
+ 
+
+Anyway this fixes the problem: (at least the ones I have seen)
+
+ 
+
+diff -aur
+glibc-linuxthreads-2.5.orig/linuxthreads/sysdeps/m68k/pspinlock.c
+glibc-linuxthreads-2.5/linuxthreads/sysdeps/m68k/pspinlock.c
+
+--- glibc-linuxthreads-2.5.orig/linuxthreads/sysdeps/m68k/pspinlock.c
+2008-09-24 08:41:10.000000000 -0500
+
++++ glibc-linuxthreads-2.5/linuxthreads/sysdeps/m68k/pspinlock.c
+2009-05-26 16:37:17.000000000 -0500
+
+@@ -28,7 +28,7 @@
+
+   unsigned int val;
+
+ 
+
+   do
+
+-    asm volatile (&quot;tas %1; sne %0&quot;
+
++    asm volatile (&quot;bset.b #7, %1; sne %0&quot;
+
+              : &quot;=dm&quot; (val), &quot;=m&quot; (*lock)
+
+              : &quot;m&quot; (*lock)
+
+              : &quot;cc&quot;);
+
+@@ -44,7 +44,7 @@
+
+ {
+
+   unsigned int val;
+
+ 
+
+-  asm volatile (&quot;tas %1; sne %0&quot;
+
++  asm volatile (&quot;bset.b #7, %1; sne %0&quot;
+
+            : &quot;=dm&quot; (val), &quot;=m&quot; (*lock)
+
+            : &quot;m&quot; (*lock)
+
+            : &quot;cc&quot;);
+
+diff -aur
+glibc-linuxthreads-2.5.orig/linuxthreads/sysdeps/m68k/pt-machine.h
+glibc-linuxthreads-2.5/linuxthreads/sysdeps/m68k/pt-machine.h
+
+--- glibc-linuxthreads-2.5.orig/linuxthreads/sysdeps/m68k/pt-machine.h
+2008-09-24 08:41:10.000000000 -0500
+
++++ glibc-linuxthreads-2.5/linuxthreads/sysdeps/m68k/pt-machine.h
+2009-05-26 16:36:25.000000000 -0500
+
+@@ -37,7 +37,7 @@
+
+ {
+
+   char ret;
+
+ 
+
+-  __asm__ __volatile__(&quot;tas %1; sne %0&quot;
+
++  __asm__ __volatile__(&quot;bset.b #7, %1; sne %0&quot;
+
+        : &quot;=dm&quot;(ret), &quot;=m&quot;(*spinlock)
+
+        : &quot;m&quot;(*spinlock)
+
+        : &quot;cc&quot;);
+
+ 
+
+ 
+
+diff -aur gcc-4.3.orig/libstdc++-v3/config/cpu/m68k/atomicity.h
+gcc-4.3/libstdc++-v3/config/cpu/m68k/atomicity.h
+
+--- gcc-4.3.orig/libstdc++-v3/config/cpu/m68k/atomicity.h   2008-09-24
+08:22:07.000000000 -0500
+
++++ gcc-4.3/libstdc++-v3/config/cpu/m68k/atomicity.h  2009-05-27
+10:18:28.000000000 -0500
+
+@@ -89,14 +89,14 @@
+
+     _Atomic_word __result;
+
+     
+
+     // bset with no immediate addressing (not SMP-safe)
+
+-#if defined(__mcfisaa__) || defined(__mcfisaaplus__)
+
++#if defined(__mcfisaa__) || defined(__mcfisaaplus__) ||
+defined(__mcfisab__)
+
+     __asm__ __volatile__(&quot;1: bset.b #7,%0@\n\tjbne 1b&quot;
+
+                   : /* no outputs */
+
+                   : &quot;a&quot;(&amp;_Atomicity_lock&lt;0&gt;::_S_atomicity_lock)
+
+                   : &quot;cc&quot;, &quot;memory&quot;);
+
+     
+
+     // CPU32 and CF ISAs B &amp; C support test-and-set (SMP-safe).
+
+-#elif defined(__mcpu32__) || defined(__mcfisab__) || defined
+(__mcfisac__)
+
++#elif defined(__mcpu32__) || defined (__mcfisac__)
+
+     __asm__ __volatile__(&quot;1: tas %0\n\tjbne 1b&quot;
+
+                   : &quot;+m&quot;(_Atomicity_lock&lt;0&gt;::_S_atomicity_lock)
+
+                   : /* none */
+
+ 
+
+-------------- next part --------------
+An HTML attachment was scrubbed...
+URL: &lt;<A HREF="http://sourcerytools.com/pipermail/coldfire-gnu-discuss/attachments/20090528/9c55c259/attachment.html">http://sourcerytools.com/pipermail/coldfire-gnu-discuss/attachments/20090528/9c55c259/attachment.html</A>&gt;
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000638.html">[coldfire-gnu-discuss] 4.3-43 toolchain for mcf547x warnings
+</A></li>
+	<LI>Next message: <A HREF="000640.html">MCF547X/8X cache vs TAS instruction.
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#639">[ date ]</a>
+              <a href="thread.html#639">[ thread ]</a>
+              <a href="subject.html#639">[ subject ]</a>
+              <a href="author.html#639">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/coldfire-gnu-discuss">More information about the coldfire-gnu-discuss
+mailing list</a><br>
+</body></html>

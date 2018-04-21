@@ -1,0 +1,577 @@
+Index: qm/fields.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/fields.py,v
+retrieving revision 1.73
+diff -c -5 -p -r1.73 fields.py
+*** qm/fields.py	3 Jul 2003 16:52:40 -0000	1.73
+--- qm/fields.py	22 Jul 2003 17:19:07 -0000
+*************** class Field(object):
+*** 261,271 ****
+          read-only), or "new" or "edit" or "hidden".
+  
+          'name' -- The name to use for the primary HTML form element
+          containing the value of this field, if 'style' specifies the
+          generation of form elements.  If 'name' is 'None', the value
+!         returned by '_GetHtmlFormFieldName()' should be used.
+  
+          returns -- A string containing the HTML representation of
+          'value'."""
+  
+          raise NotImplementedError
+--- 261,271 ----
+          read-only), or "new" or "edit" or "hidden".
+  
+          'name' -- The name to use for the primary HTML form element
+          containing the value of this field, if 'style' specifies the
+          generation of form elements.  If 'name' is 'None', the value
+!         returned by 'GetHtmlFormFieldName()' should be used.
+  
+          returns -- A string containing the HTML representation of
+          'value'."""
+  
+          raise NotImplementedError
+*************** class Field(object):
+*** 354,364 ****
+  
+          raise NotImplementedError
+  
+      # Other methods.
+      
+!     def _GetHtmlFormFieldName(self):
+          """Return the form field name corresponding this field.
+  
+          returns -- A string giving the name that should be used for this
+          field when used in an HTML form."""
+  
+--- 354,364 ----
+  
+          raise NotImplementedError
+  
+      # Other methods.
+      
+!     def GetHtmlFormFieldName(self):
+          """Return the form field name corresponding this field.
+  
+          returns -- A string giving the name that should be used for this
+          field when used in an HTML form."""
+  
+*************** class IntegerField(Field):
+*** 407,417 ****
+          # Use default value if requested.
+          if value is None:
+              value = self.GetDefaultValue()
+          # Use the default field form field name if requested.
+          if name is None:
+!             name = self._GetHtmlFormFieldName()
+  
+          if style == "new" or style == "edit":
+              return '<input type="text" size="8" name="%s" value="%d"/>' \
+                     % (name, value)
+          elif style == "full" or style == "brief":
+--- 407,417 ----
+          # Use default value if requested.
+          if value is None:
+              value = self.GetDefaultValue()
+          # Use the default field form field name if requested.
+          if name is None:
+!             name = self.GetHtmlFormFieldName()
+  
+          if style == "new" or style == "edit":
+              return '<input type="text" size="8" name="%s" value="%d"/>' \
+                     % (name, value)
+          elif style == "full" or style == "brief":
+*************** class TextField(Field):
+*** 543,553 ****
+              value = ""
+          else:
+              value = str(value)
+          # Use the default field form field name if requested.
+          if name is None:
+!             name = self._GetHtmlFormFieldName()
+  
+          if style == "new" or style == "edit":
+              if self.__multiline:
+                  result = '<textarea cols="64" rows="8" name="%s">' \
+                           '%s</textarea>' \
+--- 543,553 ----
+              value = ""
+          else:
+              value = str(value)
+          # Use the default field form field name if requested.
+          if name is None:
+!             name = self.GetHtmlFormFieldName()
+  
+          if style == "new" or style == "edit":
+              if self.__multiline:
+                  result = '<textarea cols="64" rows="8" name="%s">' \
+                           '%s</textarea>' \
+*************** class TupleField(Field):
+*** 722,746 ****
+  
+      ### Output methods.
+  
+      def FormatValueAsHtml(self, server, value, style, name = None):
+  
+          # Format the field as a multi-column table.
+          html = '<table border="0" cellpadding="0"><tr>'
+          for f, v in map(None, self.__fields, value):
+!             if name is not None:
+!                 element_name = name + "_" + f.GetName()
+!             else:
+!                 element_name = None
+              html += "<td><b>" + f.GetTitle() + "</b>:</td>"
+              html += ("<td>" 
+                       + f.FormatValueAsHtml(server, v, style, element_name)
+                       + "</td>")
+          html += "</tr></table>"
+!         # Add a dummy field with the desired 'name'.
+!         if name is not None:
+!             html += '<input type="hidden" name="%s" />' % name
+          return html
+  
+  
+      def MakeDomNodeForValue(self, value, document):
+  
+--- 722,745 ----
+  
+      ### Output methods.
+  
+      def FormatValueAsHtml(self, server, value, style, name = None):
+  
++         # Use the default name if none is specified.
++         if name is None:
++             name = self.GetHtmlFormFieldName()
++             
+          # Format the field as a multi-column table.
+          html = '<table border="0" cellpadding="0"><tr>'
+          for f, v in map(None, self.__fields, value):
+!             element_name = name + "_" + f.GetName()
+              html += "<td><b>" + f.GetTitle() + "</b>:</td>"
+              html += ("<td>" 
+                       + f.FormatValueAsHtml(server, v, style, element_name)
+                       + "</td>")
+          html += "</tr></table>"
+! 
+          return html
+  
+  
+      def MakeDomNodeForValue(self, value, document):
+  
+*************** class TupleField(Field):
+*** 753,764 ****
+      ### Input methods.
+      
+      def Validate(self, value):
+  
+          assert len(value) == len(self.__fields)
+!         map(lambda f, v: f.Validate(v),
+!             self.__fields, value)
+  
+  
+      def ParseFormValue(self, request, name, attachment_store):
+  
+          value = []
+--- 752,763 ----
+      ### Input methods.
+      
+      def Validate(self, value):
+  
+          assert len(value) == len(self.__fields)
+!         return map(lambda f, v: f.Validate(v),
+!                    self.__fields, value)
+  
+  
+      def ParseFormValue(self, request, name, attachment_store):
+  
+          value = []
+*************** class SetField(Field):
+*** 880,890 ****
+          # Use default value if requested.
+          if value is None:
+              value = []
+          # Use the default field form field name if requested.
+          if name is None:
+!             name = self._GetHtmlFormFieldName()
+  
+          contained_field = self.GetContainedField()
+  
+          if style == "brief" or style == "full":
+              if len(value) == 0:
+--- 879,889 ----
+          # Use default value if requested.
+          if value is None:
+              value = []
+          # Use the default field form field name if requested.
+          if name is None:
+!             name = self.GetHtmlFormFieldName()
+  
+          contained_field = self.GetContainedField()
+  
+          if style == "brief" or style == "full":
+              if len(value) == 0:
+*************** class SetField(Field):
+*** 1002,1030 ****
+                  values.append(v)
+                  if r:
+                      redisplay = 1
+              element += 1
+  
+          # If the user requested another element, add to the set.
+          if action == "add":
+              redisplay = 1
+              values.append(contained_field.GetDefaultValue())
+          elif action == "remove":
+              redisplay = 1
+          else:
+              redisplay = 0
+  
+!         # Remove entries from the request that might cause confusion
+!         # when the page is redisplayed.
+!         names = []
+!         for n, v in request.items():
+!             if n[:len(name)] == name:
+!                 names.append(n)
+!         for n in names:
+!             del request[n]
+!             
+!         return (self.Validate(values), redisplay)
+  
+  
+      def GetValueFromDomNode(self, node, attachment_store):
+          # Make sure 'node' is a '<set>' element.
+          if node.nodeType != xml.dom.Node.ELEMENT_NODE \
+--- 1001,1038 ----
+                  values.append(v)
+                  if r:
+                      redisplay = 1
+              element += 1
+  
++         # Remove entries from the request that might cause confusion
++         # when the page is redisplayed.
++         names = []
++         for n, v in request.items():
++             if n[:len(name)] == name:
++                 names.append(n)
++         for n in names:
++             del request[n]
++ 
++         # Validate the values.
++         values = self.Validate(values)
++         
+          # If the user requested another element, add to the set.
+          if action == "add":
+              redisplay = 1
++             # There's no need to validate this new value and it may in
++             # fact be dangerous to do so.  For example, the default
++             # value for a ChoiceField might be the "nothing selected"
++             # value, which is not a valid selection.  If the user does
++             # not actually select something, the problem will be
++             # reported when the form is submitted.
+              values.append(contained_field.GetDefaultValue())
+          elif action == "remove":
+              redisplay = 1
+          else:
+              redisplay = 0
+  
+!         return (values, redisplay)
+  
+  
+      def GetValueFromDomNode(self, node, attachment_store):
+          # Make sure 'node' is a '<set>' element.
+          if node.nodeType != xml.dom.Node.ELEMENT_NODE \
+*************** class AttachmentField(Field):
+*** 1183,1193 ****
+          else:
+              raise ValueError, "'value' must be 'None' or an 'Attachment'"
+  
+          # Use the default field form field name if requested.
+          if name is None:
+!             name = self._GetHtmlFormFieldName()
+  
+          if style == "full" or style == "brief":
+              if value is None:
+                  return "None"
+              # Link the attachment description to the data itself.
+--- 1191,1201 ----
+          else:
+              raise ValueError, "'value' must be 'None' or an 'Attachment'"
+  
+          # Use the default field form field name if requested.
+          if name is None:
+!             name = self.GetHtmlFormFieldName()
+  
+          if style == "full" or style == "brief":
+              if value is None:
+                  return "None"
+              # Link the attachment description to the data itself.
+*************** class EnumerationField(TextField):
+*** 1440,1450 ****
+          # Use default value if requested.
+          if value is None:
+              value = self.GetDefaultValue()
+          # Use the default field form field name if requested.
+          if name is None:
+!             name = self._GetHtmlFormFieldName()
+  
+          if style == "new" or style == "edit":
+              enumerals = self.GetEnumerals()
+              if len(enumerals) == 0:
+                  # No available enumerals.  Don't let the user change
+--- 1448,1458 ----
+          # Use default value if requested.
+          if value is None:
+              value = self.GetDefaultValue()
+          # Use the default field form field name if requested.
+          if name is None:
+!             name = self.GetHtmlFormFieldName()
+  
+          if style == "new" or style == "edit":
+              enumerals = self.GetEnumerals()
+              if len(enumerals) == 0:
+                  # No available enumerals.  Don't let the user change
+*************** class ChoiceField(TextField):
+*** 1529,1542 ****
+--- 1537,1556 ----
+                                                           value,
+                                                           style, name)
+  
+          # For an editable field, give the user a choice of available
+          # resources.
++         items = self.GetItems()
+          result = "<select"
+          if name:
+              result += ' name="%s"' % name
+          result += ">"
++         # HTML does not permit a "select" tag with no contained "option"
++         # tags.  Therefore, we ensure that there is always one option to
++         # choose from.
++         result += '<option value="">--Select--</option>'
++         # Add the choices for the ordinary options.
+          for r in self.GetItems():
+              result += '<option value="%s"' % r
+              if r == value:
+                  result += ' selected="1"'
+              result += '>%s</option>' % r
+*************** class ChoiceField(TextField):
+*** 1550,1559 ****
+--- 1564,1583 ----
+  
+          returns -- A sequence of strings, each of which will be
+          presented as a choice for the user."""
+  
+          raise NotImplementedError
++ 
++ 
++     def Validate(self, value):
++ 
++         value = super(ChoiceField, self).Validate(value)
++         if value == "":
++             raise ValueError, "No choice specified for %s." % self.GetTitle()
++         return value
++ 
++         
+          
+  ########################################################################
+  
+  class TimeField(IntegerField):
+      """A field containing a date and time.
+Index: qm/test/test.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/test.py,v
+retrieving revision 1.16
+diff -c -5 -p -r1.16 test.py
+*** qm/test/test.py	16 Jun 2003 23:45:51 -0000	1.16
+--- qm/test/test.py	22 Jul 2003 17:19:07 -0000
+*************** class Test(qm.test.runnable.Runnable):
+*** 137,147 ****
+                  "prerequisites",
+                  (TestField(
+                      name = "test_id",
+                      title = "Test",
+                      description = """The name of the prerequisite test.""",
+!                     not_empty_text = "true",
+                      ),
+                   OutcomeField(
+                      name = "outcome",
+                      title = "Outcome",
+                      description \
+--- 137,147 ----
+                  "prerequisites",
+                  (TestField(
+                      name = "test_id",
+                      title = "Test",
+                      description = """The name of the prerequisite test.""",
+!                     default_value = "",
+                      ),
+                   OutcomeField(
+                      name = "outcome",
+                      title = "Outcome",
+                      description \
+Index: qm/test/share/dtml/show.dtml
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/share/dtml/show.dtml,v
+retrieving revision 1.4
+diff -c -5 -p -r1.4 show.dtml
+*** qm/test/share/dtml/show.dtml	18 Jun 2003 17:14:01 -0000	1.4
+--- qm/test/share/dtml/show.dtml	22 Jul 2003 17:19:07 -0000
+***************
+*** 135,145 ****
+          <dtml-if expr="edit">
+           <dtml-var expr="web.format_structured_text(field.
+                                                      GetBriefDescription())">
+          </dtml-if>
+         </td>
+!        <td width="25%">
+          <table border="0" cellpadding="0" cellspacing="4" width="100%">
+           <tr valign="top"><td width="100%">
+            <dtml-var expr="FormatFieldValue(field)">
+            <dtml-if expr="field_errors.has_key(field_name)">
+             <br />
+--- 135,145 ----
+          <dtml-if expr="edit">
+           <dtml-var expr="web.format_structured_text(field.
+                                                      GetBriefDescription())">
+          </dtml-if>
+         </td>
+!        <td width>
+          <table border="0" cellpadding="0" cellspacing="4" width="100%">
+           <tr valign="top"><td width="100%">
+            <dtml-var expr="FormatFieldValue(field)">
+            <dtml-if expr="field_errors.has_key(field_name)">
+             <br />
+Index: qm/test/web/web.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/web/web.py,v
+retrieving revision 1.73
+diff -c -5 -p -r1.73 web.py
+*** qm/test/web/web.py	15 Jul 2003 18:06:52 -0000	1.73
+--- qm/test/web/web.py	22 Jul 2003 17:19:08 -0000
+*************** class QMTestServer(qm.web.WebServer):
+*** 2262,2281 ****
+          redisplay = 0
+          
+          # Loop over fields of the class, looking for arguments in the
+          # submitted request.
+          arguments = {}
+-         field_prefix = qm.fields.Field.form_field_prefix
+          for field in fields:
+              # Construct the name we expect for the corresponding argument.
+              field_name = field.GetName()
+!             form_field_name = field_prefix + field_name
+!             if not request.has_key(form_field_name):
+!                 # The value for this field is missing.
+!                 message = qm.error("missing argument",
+!                                    title=field.GetTitle())
+!                 return qm.web.generate_error_page(request, message)
+              # Parse the value for this field.
+              try:
+                  value, r = field.ParseFormValue(request, form_field_name,
+                                                  self.__temporary_store)
+                  if r:
+--- 2262,2275 ----
+          redisplay = 0
+          
+          # Loop over fields of the class, looking for arguments in the
+          # submitted request.
+          arguments = {}
+          for field in fields:
+              # Construct the name we expect for the corresponding argument.
+              field_name = field.GetName()
+!             form_field_name = field.GetHtmlFormFieldName()
+              # Parse the value for this field.
+              try:
+                  value, r = field.ParseFormValue(request, form_field_name,
+                                                  self.__temporary_store)
+                  if r:
+Index: tests/regress/tuple1/results.qmr
+===================================================================
+RCS file: tests/regress/tuple1/results.qmr
+diff -N tests/regress/tuple1/results.qmr
+Binary files /dev/null and results.qmr differ
+Index: tests/regress/tuple1/tuple1.qmt
+===================================================================
+RCS file: tests/regress/tuple1/tuple1.qmt
+diff -N tests/regress/tuple1/tuple1.qmt
+*** /dev/null	1 Jan 1970 00:00:00 -0000
+--- tests/regress/tuple1/tuple1.qmt	22 Jul 2003 17:19:08 -0000
+***************
+*** 0 ****
+--- 1,2 ----
++ <?xml version="1.0" ?>
++ <extension class="tuple_test.TupleTest" kind="test"><argument name="prerequisites"><set/></argument><argument name="target_group"><text>.*</text></argument><argument name="resources"><set/></argument><argument name="tuple"><tuple><integer>3</integer></tuple></argument></extension>
+Index: tests/regress/tuple1/QMTest/classes.qmc
+===================================================================
+RCS file: tests/regress/tuple1/QMTest/classes.qmc
+diff -N tests/regress/tuple1/QMTest/classes.qmc
+*** /dev/null	1 Jan 1970 00:00:00 -0000
+--- tests/regress/tuple1/QMTest/classes.qmc	22 Jul 2003 17:19:08 -0000
+***************
+*** 0 ****
+--- 1,2 ----
++ <?xml version="1.0" ?>
++ <class-directory><class kind="test">tuple_test.TupleTest</class></class-directory>
+\ No newline at end of file
+Index: tests/regress/tuple1/QMTest/configuration
+===================================================================
+RCS file: tests/regress/tuple1/QMTest/configuration
+diff -N tests/regress/tuple1/QMTest/configuration
+*** /dev/null	1 Jan 1970 00:00:00 -0000
+--- tests/regress/tuple1/QMTest/configuration	22 Jul 2003 17:19:08 -0000
+***************
+*** 0 ****
+--- 1,2 ----
++ <?xml version="1.0" ?>
++ <extension class="xml_database.XMLDatabase" kind="database"/>
+\ No newline at end of file
+Index: tests/regress/tuple1/QMTest/tuple_test.py
+===================================================================
+RCS file: tests/regress/tuple1/QMTest/tuple_test.py
+diff -N tests/regress/tuple1/QMTest/tuple_test.py
+*** /dev/null	1 Jan 1970 00:00:00 -0000
+--- tests/regress/tuple1/QMTest/tuple_test.py	22 Jul 2003 17:19:08 -0000
+***************
+*** 0 ****
+--- 1,43 ----
++ ########################################################################
++ #
++ # File:   tuple_test.py
++ # Author: Mark Mitchell
++ # Date:   2003-07-21
++ #
++ # Contents:
++ #   Test classes for tests written in Python.
++ #
++ # Copyright (c) 2003 by CodeSourcery, LLC.  All rights reserved. 
++ #
++ # For license terms see the file COPYING.
++ #
++ ########################################################################
++ 
++ ########################################################################
++ # Imports
++ ########################################################################
++ 
++ import qm.fields
++ from   qm.test.test import Test
++ 
++ ########################################################################
++ # Classes
++ ########################################################################
++ 
++ class TupleTest(Test):
++     """A 'TupleTest' has a single tuple field.
++ 
++     This test class is used to validate QMTest's tuple processing."""
++     
++     arguments = [
++         qm.fields.TupleField(
++             "tuple",
++             (qm.fields.IntegerField(name = "integer"),))
++         ]
++ 
++ 
++     def Run(self, context, result):
++ 
++         if self.tuple != [3,]:
++             result.Fail("Incorrect tuple contents.",
++                         { "TupleTest.value" : str(self.tuple) })

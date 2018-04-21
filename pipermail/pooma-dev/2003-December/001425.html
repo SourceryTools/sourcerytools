@@ -1,0 +1,1068 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [PATCH] Introduce POOMA_MESSAGING
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20Introduce%20POOMA_MESSAGING&In-Reply-To=%3C3FE223E1.6080102%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001423.html">
+   <LINK REL="Next"  HREF="001426.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[PATCH] Introduce POOMA_MESSAGING</H1>
+    <B>Jeffrey D. Oldham</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20Introduce%20POOMA_MESSAGING&In-Reply-To=%3C3FE223E1.6080102%40codesourcery.com%3E"
+       TITLE="[PATCH] Introduce POOMA_MESSAGING">oldham at codesourcery.com
+       </A><BR>
+    <I>Thu Dec 18 22:02:09 UTC 2003</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001423.html">[PATCH] Introduce POOMA_MESSAGING
+</A></li>
+        <LI>Next message: <A HREF="001426.html">[PATCH] Introduce POOMA_MESSAGING
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1425">[ date ]</a>
+              <a href="thread.html#1425">[ thread ]</a>
+              <a href="subject.html#1425">[ subject ]</a>
+              <a href="author.html#1425">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Richard Guenther wrote:
+&gt;<i> Hi!
+</I>&gt;<i> 
+</I>&gt;<i> This patch introduces POOMA_MESSAGING which is set for both Cheetah and in
+</I>&gt;<i> future native MPI.  It also mechanically changes POOMA_CHEETAH to
+</I>&gt;<i> POOMA_MESSAGING tests, where appropriate.  Also including of
+</I>&gt;<i> Cheetah/Cheetah.h is exchanged for including Tulip/Messaging.h (which in
+</I>&gt;<i> turn includes Cheetah/Cheetah.h and will include mpi.h for native MPI).
+</I>&gt;<i> 
+</I>&gt;<i> Ok?
+</I>
+Yes, but I have some questions ...
+
+&gt;<i> Richard.
+</I>&gt;<i> 
+</I>&gt;<i> 
+</I>&gt;<i> 2003Dec18  Richard Guenther &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">richard.guenther at uni-tuebingen.de</A>&gt;
+</I>&gt;<i> 
+</I>&gt;<i> 	* configure: add POOMA_MESSAGING define, if Cheetah is configured.
+</I>&gt;<i> 	src/Domain/Grid.h: change #if POOMA_CHEETAH to #if POOMA_MESSAGING
+</I>&gt;<i> 	where appropriate, #include Tulip/Messaging.h rather than
+</I>&gt;<i> 	Cheetah/Cheetah.h.
+</I>&gt;<i> 	src/Tulip/Messaging.h: likewise.
+</I>
+There seems to be Cheetah code surrounded by POOMA_MESSAGING.  Is this 
+correct?
+
+&gt;<i> 	src/Tulip/PatchSizeSyncer.cmpl.cpp: likewise.
+</I>
+This may need changing if the next file is changed.
+
+&gt;<i> 	src/Tulip/PatchSizeSyncer.h: likewise, remove unused declarations.
+</I>
+Same question as for src/Tulip/Messaging.h.
+
+&gt;<i> 
+</I>&gt;<i> Index: configure
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: /home/pooma/Repository/r2/configure,v
+</I>&gt;<i> retrieving revision 1.111
+</I>&gt;<i> diff -u -u -r1.111 configure
+</I>&gt;<i> --- configure	5 Aug 2003 17:45:16 -0000	1.111
+</I>&gt;<i> +++ configure	18 Dec 2003 19:30:43 -0000
+</I>&gt;<i> @@ -403,7 +403,9 @@
+</I>&gt;<i>  $fftw_able = 0;
+</I>&gt;<i>  $fftw_default_dir = &quot;&quot;;
+</I>&gt;<i> 
+</I>&gt;<i> -### include cheetah usage?
+</I>&gt;<i> +### include messaging via cheetah/mpi?
+</I>&gt;<i> +$messaging = 0;
+</I>&gt;<i> +$mpi = 0;
+</I>&gt;<i>  $cheetah = 0;
+</I>&gt;<i>  $cheetah_able = 0;
+</I>&gt;<i>  $cheetah_arch = &quot;&quot;;
+</I>&gt;<i> @@ -1266,7 +1268,7 @@
+</I>&gt;<i>  }
+</I>&gt;<i> 
+</I>&gt;<i> 
+</I>&gt;<i> -### figure out if we should include the CHEETAH package or not
+</I>&gt;<i> +### figure out if we should include the CHEETAH package or MPI or nothing
+</I>&gt;<i>  sub setcheetah
+</I>&gt;<i>  {
+</I>&gt;<i>    # set $cheetah variable properly
+</I>&gt;<i> @@ -1275,9 +1277,11 @@
+</I>&gt;<i>        $cheetah = 1;
+</I>&gt;<i>      }
+</I>&gt;<i>    print &quot;Set cheetah = $cheetah\n&quot; if $dbgprnt;
+</I>&gt;<i> +  $messaging = $cheetah + $mpi;
+</I>&gt;<i> 
+</I>&gt;<i> -  # add a define indicating whether CHEETAH is available, and configure
+</I>&gt;<i> +  # add a define indicating whether CHEETAH/MPI is available, and configure
+</I>&gt;<i>    # extra options to include and define lists
+</I>&gt;<i> +  my $defmessaging = $messaging;
+</I>&gt;<i>    my $defcheetah = 0;
+</I>&gt;<i>    if ($cheetah)
+</I>&gt;<i>      {
+</I>&gt;<i> @@ -1311,6 +1315,7 @@
+</I>&gt;<i>  	  $link = $cheetah_link;
+</I>&gt;<i>          }
+</I>&gt;<i>      }
+</I>&gt;<i> +  add_yesno_define(&quot;POOMA_MESSAGING&quot;, $defmessaging);
+</I>&gt;<i>    add_yesno_define(&quot;POOMA_CHEETAH&quot;, $defcheetah);
+</I>&gt;<i>  }
+</I>&gt;<i> 
+</I>&gt;<i> Index: src/Domain/Grid.h
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: /home/pooma/Repository/r2/src/Domain/Grid.h,v
+</I>&gt;<i> retrieving revision 1.17
+</I>&gt;<i> diff -u -u -r1.17 Grid.h
+</I>&gt;<i> --- src/Domain/Grid.h	12 Oct 2003 11:14:38 -0000	1.17
+</I>&gt;<i> +++ src/Domain/Grid.h	18 Dec 2003 19:30:51 -0000
+</I>&gt;<i> @@ -501,9 +501,9 @@
+</I>&gt;<i>  //
+</I>&gt;<i>  //////////////////////////////////////////////////////////////////////
+</I>&gt;<i> 
+</I>&gt;<i> -#if POOMA_CHEETAH
+</I>&gt;<i> +#if POOMA_MESSAGING
+</I>&gt;<i> 
+</I>&gt;<i> -#include &quot;Cheetah/Cheetah.h&quot;
+</I>&gt;<i> +#include &quot;Tulip/Messaging.h&quot;
+</I>&gt;<i> 
+</I>&gt;<i>  namespace Cheetah {
+</I>&gt;<i> 
+</I>&gt;<i> @@ -559,7 +559,7 @@
+</I>&gt;<i> 
+</I>&gt;<i>  } // namespace Cheetah
+</I>&gt;<i> 
+</I>&gt;<i> -#endif     // POOMA_CHEETAH
+</I>&gt;<i> +#endif     // POOMA_MESSAGING
+</I>&gt;<i> 
+</I>&gt;<i>  #endif     // POOMA_DOMAIN_GRID_H
+</I>&gt;<i> 
+</I>&gt;<i> Index: src/Engine/RemoteDynamicEngine.h
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: /home/pooma/Repository/r2/src/Engine/RemoteDynamicEngine.h,v
+</I>&gt;<i> retrieving revision 1.21
+</I>&gt;<i> diff -u -u -r1.21 RemoteDynamicEngine.h
+</I>&gt;<i> --- src/Engine/RemoteDynamicEngine.h	22 Oct 2003 19:38:07 -0000	1.21
+</I>&gt;<i> +++ src/Engine/RemoteDynamicEngine.h	18 Dec 2003 19:30:55 -0000
+</I>&gt;<i> @@ -337,8 +337,7 @@
+</I>&gt;<i>      domain_m = d;
+</I>&gt;<i>    }
+</I>&gt;<i> 
+</I>&gt;<i> -  //
+</I>&gt;<i> -#if POOMA_CHEETAH
+</I>&gt;<i> +#if POOMA_MESSAGING
+</I>&gt;<i> 
+</I>&gt;<i>    template &lt;class Dom&gt;
+</I>&gt;<i>    int packSize(const Dom &amp;packList) const
+</I>&gt;<i> @@ -758,9 +757,9 @@
+</I>&gt;<i>    }
+</I>&gt;<i>  };
+</I>&gt;<i> 
+</I>&gt;<i> -#if POOMA_CHEETAH
+</I>&gt;<i> +#if POOMA_MESSAGING
+</I>&gt;<i> 
+</I>&gt;<i> -#include &quot;MatchingHandler/Serialize.h&quot;
+</I>&gt;<i> +#include &quot;Tulip/Messaging.h&quot;
+</I>&gt;<i> 
+</I>&gt;<i>  namespace Cheetah {
+</I>&gt;<i> 
+</I>&gt;<i> @@ -835,7 +834,7 @@
+</I>&gt;<i> 
+</I>&gt;<i>  } // namespace Cheetah
+</I>&gt;<i> 
+</I>&gt;<i> -#endif // POOMA_CHEETAH
+</I>&gt;<i> +#endif // POOMA_MESSAGING
+</I>&gt;<i> 
+</I>&gt;<i>  /// checkDynamicID(obj, ID) is a specializable function that is used
+</I>&gt;<i>  /// by some classes to check the dynamic ID value stored in the first
+</I>&gt;<i> Index: src/Engine/RemoteEngine.h
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: /home/pooma/Repository/r2/src/Engine/RemoteEngine.h,v
+</I>&gt;<i> retrieving revision 1.38
+</I>&gt;<i> diff -u -u -r1.38 RemoteEngine.h
+</I>&gt;<i> --- src/Engine/RemoteEngine.h	21 Nov 2003 21:30:38 -0000	1.38
+</I>&gt;<i> +++ src/Engine/RemoteEngine.h	18 Dec 2003 19:30:59 -0000
+</I>&gt;<i> @@ -1200,9 +1200,9 @@
+</I>&gt;<i> 
+</I>&gt;<i>  };
+</I>&gt;<i> 
+</I>&gt;<i> -#if POOMA_CHEETAH
+</I>&gt;<i> +#if POOMA_MESSAGING
+</I>&gt;<i> 
+</I>&gt;<i> -#include &quot;MatchingHandler/Serialize.h&quot;
+</I>&gt;<i> +#include &quot;Tulip/Messaging.h&quot;
+</I>&gt;<i> 
+</I>&gt;<i>  struct EngineElemSerialize
+</I>&gt;<i>  {
+</I>&gt;<i> @@ -1593,7 +1593,7 @@
+</I>&gt;<i> 
+</I>&gt;<i>  } // namespace Cheetah
+</I>&gt;<i> 
+</I>&gt;<i> -#endif // POOMA_CHEETAH
+</I>&gt;<i> +#endif // POOMA_MESSAGING
+</I>&gt;<i> 
+</I>&gt;<i> 
+</I>&gt;<i>  //-----------------------------------------------------------------------------
+</I>&gt;<i> Index: src/Engine/tests/dynamiclayout_test1.cpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: /home/pooma/Repository/r2/src/Engine/tests/dynamiclayout_test1.cpp,v
+</I>&gt;<i> retrieving revision 1.5
+</I>&gt;<i> diff -u -u -r1.5 dynamiclayout_test1.cpp
+</I>&gt;<i> --- src/Engine/tests/dynamiclayout_test1.cpp	6 Jun 2000 20:46:53 -0000	1.5
+</I>&gt;<i> +++ src/Engine/tests/dynamiclayout_test1.cpp	18 Dec 2003 19:30:59 -0000
+</I>&gt;<i> @@ -45,7 +45,7 @@
+</I>&gt;<i>  #include &lt;vector&gt;
+</I>&gt;<i>  using namespace std;
+</I>&gt;<i> 
+</I>&gt;<i> -#ifdef POOMA_CHEETAH
+</I>&gt;<i> +#ifdef POOMA_MESSAGING
+</I>&gt;<i>  typedef MultiPatch&lt;DynamicTag,Remote&lt;Dynamic&gt; &gt; DynamicMultiPatch_t;
+</I>&gt;<i>  #else
+</I>&gt;<i>  typedef MultiPatch&lt;DynamicTag,Dynamic&gt; DynamicMultiPatch_t;
+</I>&gt;<i> Index: src/Engine/tests/makeOwnCopy.cpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: /home/pooma/Repository/r2/src/Engine/tests/makeOwnCopy.cpp,v
+</I>&gt;<i> retrieving revision 1.2
+</I>&gt;<i> diff -u -u -r1.2 makeOwnCopy.cpp
+</I>&gt;<i> --- src/Engine/tests/makeOwnCopy.cpp	13 May 2003 17:43:12 -0000	1.2
+</I>&gt;<i> +++ src/Engine/tests/makeOwnCopy.cpp	18 Dec 2003 19:31:00 -0000
+</I>&gt;<i> @@ -85,7 +85,7 @@
+</I>&gt;<i> 
+</I>&gt;<i>    tester.out() &lt;&lt; ad &lt;&lt; bd &lt;&lt; std::endl;
+</I>&gt;<i> 
+</I>&gt;<i> -#if POOMA_CHEETAH
+</I>&gt;<i> +#if POOMA_MESSAGING
+</I>&gt;<i> 
+</I>&gt;<i>    // Create the layouts.
+</I>&gt;<i> 
+</I>&gt;<i> @@ -121,7 +121,7 @@
+</I>&gt;<i> 
+</I>&gt;<i>    tester.out() &lt;&lt; ard &lt;&lt; brd &lt;&lt; std::endl;
+</I>&gt;<i> 
+</I>&gt;<i> -#endif // POOMA_CHEETAH
+</I>&gt;<i> +#endif // POOMA_MESSAGING
+</I>&gt;<i> 
+</I>&gt;<i>    int ret = tester.results(&quot;makeOwnCopy&quot;);
+</I>&gt;<i>    Pooma::finalize();
+</I>&gt;<i> Index: src/Engine/tests/remoteDynamicTest1.cpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: /home/pooma/Repository/r2/src/Engine/tests/remoteDynamicTest1.cpp,v
+</I>&gt;<i> retrieving revision 1.8
+</I>&gt;<i> diff -u -u -r1.8 remoteDynamicTest1.cpp
+</I>&gt;<i> --- src/Engine/tests/remoteDynamicTest1.cpp	16 May 2001 21:21:07 -0000	1.8
+</I>&gt;<i> +++ src/Engine/tests/remoteDynamicTest1.cpp	18 Dec 2003 19:31:00 -0000
+</I>&gt;<i> @@ -41,7 +41,7 @@
+</I>&gt;<i>  #include &lt;iostream&gt;
+</I>&gt;<i>  #include &lt;vector&gt;
+</I>&gt;<i> 
+</I>&gt;<i> -#if POOMA_CHEETAH
+</I>&gt;<i> +#if POOMA_MESSAGING
+</I>&gt;<i> 
+</I>&gt;<i>  struct PackObject
+</I>&gt;<i>  {
+</I>&gt;<i> Index: src/Field/tests/ExpressionTest.cpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: /home/pooma/Repository/r2/src/Field/tests/ExpressionTest.cpp,v
+</I>&gt;<i> retrieving revision 1.1
+</I>&gt;<i> diff -u -u -r1.1 ExpressionTest.cpp
+</I>&gt;<i> --- src/Field/tests/ExpressionTest.cpp	30 Aug 2001 01:15:18 -0000	1.1
+</I>&gt;<i> +++ src/Field/tests/ExpressionTest.cpp	18 Dec 2003 19:31:02 -0000
+</I>&gt;<i> @@ -57,7 +57,7 @@
+</I>&gt;<i>  #include &lt;iostream&gt;
+</I>&gt;<i>  #include &lt;math.h&gt;
+</I>&gt;<i> 
+</I>&gt;<i> -#if POOMA_CHEETAH
+</I>&gt;<i> +#if POOMA_MESSAGING
+</I>&gt;<i>    typedef DistributedTag LayoutTag_t;
+</I>&gt;<i>    typedef Remote&lt;Brick&gt; BrickTag_t;
+</I>&gt;<i>    typedef Remote&lt;CompressibleBrick&gt; CompBrickTag_t;
+</I>&gt;<i> Index: src/Field/tests/FieldTour1.cpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: /home/pooma/Repository/r2/src/Field/tests/FieldTour1.cpp,v
+</I>&gt;<i> retrieving revision 1.1
+</I>&gt;<i> diff -u -u -r1.1 FieldTour1.cpp
+</I>&gt;<i> --- src/Field/tests/FieldTour1.cpp	30 Aug 2001 01:15:18 -0000	1.1
+</I>&gt;<i> +++ src/Field/tests/FieldTour1.cpp	18 Dec 2003 19:31:03 -0000
+</I>&gt;<i> @@ -31,7 +31,7 @@
+</I>&gt;<i> 
+</I>&gt;<i>  #include &quot;Pooma/Fields.h&quot;
+</I>&gt;<i> 
+</I>&gt;<i> -#if POOMA_CHEETAH
+</I>&gt;<i> +#if POOMA_MESSAGING
+</I>&gt;<i>    typedef DistributedTag LayoutTag_t;
+</I>&gt;<i>    typedef Remote&lt;Brick&gt; BrickTag_t;
+</I>&gt;<i>  #else
+</I>&gt;<i> Index: src/Field/tests/Gradient.cpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: /home/pooma/Repository/r2/src/Field/tests/Gradient.cpp,v
+</I>&gt;<i> retrieving revision 1.2
+</I>&gt;<i> diff -u -u -r1.2 Gradient.cpp
+</I>&gt;<i> --- src/Field/tests/Gradient.cpp	10 Feb 2003 22:13:15 -0000	1.2
+</I>&gt;<i> +++ src/Field/tests/Gradient.cpp	18 Dec 2003 19:31:03 -0000
+</I>&gt;<i> @@ -48,7 +48,7 @@
+</I>&gt;<i>  #include &lt;iostream&gt;
+</I>&gt;<i>  #include &lt;cmath&gt;
+</I>&gt;<i> 
+</I>&gt;<i> -#if POOMA_CHEETAH
+</I>&gt;<i> +#if POOMA_MESSAGING
+</I>&gt;<i>    typedef DistributedTag LayoutTag_t;
+</I>&gt;<i>    typedef Remote&lt;Brick&gt; BrickTag_t;
+</I>&gt;<i>  #else
+</I>&gt;<i> Index: src/Field/tests/LocalPatch.cpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: /home/pooma/Repository/r2/src/Field/tests/LocalPatch.cpp,v
+</I>&gt;<i> retrieving revision 1.3
+</I>&gt;<i> diff -u -u -r1.3 LocalPatch.cpp
+</I>&gt;<i> --- src/Field/tests/LocalPatch.cpp	10 Feb 2003 22:13:15 -0000	1.3
+</I>&gt;<i> +++ src/Field/tests/LocalPatch.cpp	18 Dec 2003 19:31:04 -0000
+</I>&gt;<i> @@ -32,7 +32,7 @@
+</I>&gt;<i> 
+</I>&gt;<i>  #include &quot;Pooma/Fields.h&quot;
+</I>&gt;<i> 
+</I>&gt;<i> -#if POOMA_CHEETAH
+</I>&gt;<i> +#if POOMA_MESSAGING
+</I>&gt;<i>    typedef DistributedTag LayoutTag_t;
+</I>&gt;<i>    typedef Remote&lt;Brick&gt; BrickTag_t;
+</I>&gt;<i>    typedef Remote&lt;CompressibleBrick&gt; CompressibleBrickTag_t;
+</I>&gt;<i> Index: src/Field/tests/OffsetReduction.cpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: /home/pooma/Repository/r2/src/Field/tests/OffsetReduction.cpp,v
+</I>&gt;<i> retrieving revision 1.1
+</I>&gt;<i> diff -u -u -r1.1 OffsetReduction.cpp
+</I>&gt;<i> --- src/Field/tests/OffsetReduction.cpp	30 Aug 2001 01:15:18 -0000	1.1
+</I>&gt;<i> +++ src/Field/tests/OffsetReduction.cpp	18 Dec 2003 19:31:04 -0000
+</I>&gt;<i> @@ -50,7 +50,7 @@
+</I>&gt;<i>  #include &lt;iostream&gt;
+</I>&gt;<i>  #include &lt;cmath&gt;
+</I>&gt;<i> 
+</I>&gt;<i> -#if POOMA_CHEETAH
+</I>&gt;<i> +#if POOMA_MESSAGING
+</I>&gt;<i>    typedef DistributedTag LayoutTag_t;
+</I>&gt;<i>    typedef Remote&lt;Brick&gt; BrickTag_t;
+</I>&gt;<i>  #else
+</I>&gt;<i> Index: src/Field/tests/ScalarCode.cpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: /home/pooma/Repository/r2/src/Field/tests/ScalarCode.cpp,v
+</I>&gt;<i> retrieving revision 1.2
+</I>&gt;<i> diff -u -u -r1.2 ScalarCode.cpp
+</I>&gt;<i> --- src/Field/tests/ScalarCode.cpp	14 Oct 2003 16:14:53 -0000	1.2
+</I>&gt;<i> +++ src/Field/tests/ScalarCode.cpp	18 Dec 2003 19:31:05 -0000
+</I>&gt;<i> @@ -42,7 +42,7 @@
+</I>&gt;<i>  #include &lt;math.h&gt;
+</I>&gt;<i>  #include &lt;vector&gt;
+</I>&gt;<i> 
+</I>&gt;<i> -#if POOMA_CHEETAH
+</I>&gt;<i> +#if POOMA_MESSAGING
+</I>&gt;<i>    typedef DistributedTag LayoutTag_t;
+</I>&gt;<i>    typedef Remote&lt;Brick&gt; BrickTag_t;
+</I>&gt;<i>  #else
+</I>&gt;<i> Index: src/Field/tests/StencilTests.cpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: /home/pooma/Repository/r2/src/Field/tests/StencilTests.cpp,v
+</I>&gt;<i> retrieving revision 1.1
+</I>&gt;<i> diff -u -u -r1.1 StencilTests.cpp
+</I>&gt;<i> --- src/Field/tests/StencilTests.cpp	30 Aug 2001 01:15:18 -0000	1.1
+</I>&gt;<i> +++ src/Field/tests/StencilTests.cpp	18 Dec 2003 19:31:05 -0000
+</I>&gt;<i> @@ -54,7 +54,7 @@
+</I>&gt;<i>  #include &lt;iostream&gt;
+</I>&gt;<i>  #include &lt;math.h&gt;
+</I>&gt;<i> 
+</I>&gt;<i> -#if POOMA_CHEETAH
+</I>&gt;<i> +#if POOMA_MESSAGING
+</I>&gt;<i>    typedef DistributedTag LayoutTag_t;
+</I>&gt;<i>    typedef Remote&lt;Brick&gt; BrickTag_t;
+</I>&gt;<i>  #else
+</I>&gt;<i> Index: src/Field/tests/VectorTest.cpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: /home/pooma/Repository/r2/src/Field/tests/VectorTest.cpp,v
+</I>&gt;<i> retrieving revision 1.1
+</I>&gt;<i> diff -u -u -r1.1 VectorTest.cpp
+</I>&gt;<i> --- src/Field/tests/VectorTest.cpp	30 Aug 2001 01:15:18 -0000	1.1
+</I>&gt;<i> +++ src/Field/tests/VectorTest.cpp	18 Dec 2003 19:31:05 -0000
+</I>&gt;<i> @@ -57,7 +57,7 @@
+</I>&gt;<i>  #include &lt;iostream&gt;
+</I>&gt;<i>  #include &lt;math.h&gt;
+</I>&gt;<i> 
+</I>&gt;<i> -#if POOMA_CHEETAH
+</I>&gt;<i> +#if POOMA_MESSAGING
+</I>&gt;<i>    typedef DistributedTag LayoutTag_t;
+</I>&gt;<i>    typedef Remote&lt;Brick&gt; BrickTag_t;
+</I>&gt;<i>  #else
+</I>&gt;<i> Index: src/Field/tests/WhereTest.cpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: /home/pooma/Repository/r2/src/Field/tests/WhereTest.cpp,v
+</I>&gt;<i> retrieving revision 1.3
+</I>&gt;<i> diff -u -u -r1.3 WhereTest.cpp
+</I>&gt;<i> --- src/Field/tests/WhereTest.cpp	21 Nov 2003 21:31:05 -0000	1.3
+</I>&gt;<i> +++ src/Field/tests/WhereTest.cpp	18 Dec 2003 19:31:06 -0000
+</I>&gt;<i> @@ -57,7 +57,7 @@
+</I>&gt;<i>  #include &lt;iostream&gt;
+</I>&gt;<i>  #include &lt;math.h&gt;
+</I>&gt;<i> 
+</I>&gt;<i> -#if POOMA_CHEETAH
+</I>&gt;<i> +#if POOMA_MESSAGING
+</I>&gt;<i>    typedef DistributedTag LayoutTag_t;
+</I>&gt;<i>    typedef Remote&lt;Brick&gt; BrickTag_t;
+</I>&gt;<i>  #else
+</I>&gt;<i> Index: src/IO/tests/FileSetWriterTest1.cpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: /home/pooma/Repository/r2/src/IO/tests/FileSetWriterTest1.cpp,v
+</I>&gt;<i> retrieving revision 1.1
+</I>&gt;<i> diff -u -u -r1.1 FileSetWriterTest1.cpp
+</I>&gt;<i> --- src/IO/tests/FileSetWriterTest1.cpp	3 Oct 2001 03:25:08 -0000	1.1
+</I>&gt;<i> +++ src/IO/tests/FileSetWriterTest1.cpp	18 Dec 2003 19:31:07 -0000
+</I>&gt;<i> @@ -45,7 +45,7 @@
+</I>&gt;<i> 
+</I>&gt;<i>  const int dim = 3;
+</I>&gt;<i> 
+</I>&gt;<i> -#if POOMA_CHEETAH
+</I>&gt;<i> +#if POOMA_MESSAGING
+</I>&gt;<i>    typedef DistributedTag LayoutTag_t;
+</I>&gt;<i>    typedef Remote&lt;Brick&gt; BrickTag_t;
+</I>&gt;<i>  #else
+</I>&gt;<i> Index: src/IO/tests/FileSetWriterTest2.cpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: /home/pooma/Repository/r2/src/IO/tests/FileSetWriterTest2.cpp,v
+</I>&gt;<i> retrieving revision 1.1
+</I>&gt;<i> diff -u -u -r1.1 FileSetWriterTest2.cpp
+</I>&gt;<i> --- src/IO/tests/FileSetWriterTest2.cpp	3 Oct 2001 03:53:32 -0000	1.1
+</I>&gt;<i> +++ src/IO/tests/FileSetWriterTest2.cpp	18 Dec 2003 19:31:07 -0000
+</I>&gt;<i> @@ -46,7 +46,7 @@
+</I>&gt;<i> 
+</I>&gt;<i>  const int dim = 3;
+</I>&gt;<i> 
+</I>&gt;<i> -#if POOMA_CHEETAH
+</I>&gt;<i> +#if POOMA_MESSAGING
+</I>&gt;<i>    typedef DistributedTag LayoutTag_t;
+</I>&gt;<i>    typedef Remote&lt;Brick&gt; BrickTag_t;
+</I>&gt;<i>  #else
+</I>&gt;<i> Index: src/Particles/Attribute.h
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: /home/pooma/Repository/r2/src/Particles/Attribute.h,v
+</I>&gt;<i> retrieving revision 1.12
+</I>&gt;<i> diff -u -u -r1.12 Attribute.h
+</I>&gt;<i> --- src/Particles/Attribute.h	26 Oct 2003 12:27:36 -0000	1.12
+</I>&gt;<i> +++ src/Particles/Attribute.h	18 Dec 2003 19:31:07 -0000
+</I>&gt;<i> @@ -127,7 +127,7 @@
+</I>&gt;<i> 
+</I>&gt;<i>    */
+</I>&gt;<i> 
+</I>&gt;<i> -#if POOMA_CHEETAH
+</I>&gt;<i> +#if POOMA_MESSAGING
+</I>&gt;<i> 
+</I>&gt;<i>    /// packSize, pack and unpack function interface for particle swapping
+</I>&gt;<i> 
+</I>&gt;<i> @@ -135,7 +135,7 @@
+</I>&gt;<i>    virtual int pack(int, const IndirectionList&lt;int&gt; &amp;, char *) const = 0;
+</I>&gt;<i>    virtual int unpack(int, const Interval&lt;1&gt; &amp;, char *) = 0;
+</I>&gt;<i> 
+</I>&gt;<i> -#endif // POOMA_CHEETAH
+</I>&gt;<i> +#endif // POOMA_MESSAGING
+</I>&gt;<i> 
+</I>&gt;<i>  };
+</I>&gt;<i> 
+</I>&gt;<i> Index: src/Particles/AttributeWrapper.h
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: /home/pooma/Repository/r2/src/Particles/AttributeWrapper.h,v
+</I>&gt;<i> retrieving revision 1.13
+</I>&gt;<i> diff -u -u -r1.13 AttributeWrapper.h
+</I>&gt;<i> --- src/Particles/AttributeWrapper.h	26 Oct 2003 12:27:36 -0000	1.13
+</I>&gt;<i> +++ src/Particles/AttributeWrapper.h	18 Dec 2003 19:31:08 -0000
+</I>&gt;<i> @@ -53,8 +53,8 @@
+</I>&gt;<i>  #include &quot;Utilities/Inform.h&quot;
+</I>&gt;<i>  #include &quot;Utilities/PAssert.h&quot;
+</I>&gt;<i> 
+</I>&gt;<i> -#if POOMA_CHEETAH
+</I>&gt;<i> -#include &quot;MatchingHandler/Serialize.h&quot;
+</I>&gt;<i> +#if POOMA_MESSAGING
+</I>&gt;<i> +#include &quot;Tulip/Messaging.h&quot;
+</I>&gt;<i>  #endif
+</I>&gt;<i> 
+</I>&gt;<i>  #include &lt;iostream&gt;
+</I>&gt;<i> @@ -171,7 +171,7 @@
+</I>&gt;<i> 
+</I>&gt;<i>    */
+</I>&gt;<i> 
+</I>&gt;<i> -#if POOMA_CHEETAH
+</I>&gt;<i> +#if POOMA_MESSAGING
+</I>&gt;<i> 
+</I>&gt;<i>    // packSize, pack and unpack functions for particle swapping
+</I>&gt;<i> 
+</I>&gt;<i> @@ -193,7 +193,7 @@
+</I>&gt;<i>      return array().engine().localPatch(pid).unpack(dom,buffer);
+</I>&gt;<i>    }
+</I>&gt;<i> 
+</I>&gt;<i> -#endif // POOMA_CHEETAH
+</I>&gt;<i> +#endif // POOMA_MESSAGING
+</I>&gt;<i> 
+</I>&gt;<i>  private:
+</I>&gt;<i>    // The object that we're wrapping
+</I>&gt;<i> Index: src/Particles/PatchSwapLayout.h
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: /home/pooma/Repository/r2/src/Particles/PatchSwapLayout.h,v
+</I>&gt;<i> retrieving revision 1.19
+</I>&gt;<i> diff -u -u -r1.19 PatchSwapLayout.h
+</I>&gt;<i> --- src/Particles/PatchSwapLayout.h	26 Oct 2003 12:27:36 -0000	1.19
+</I>&gt;<i> +++ src/Particles/PatchSwapLayout.h	18 Dec 2003 19:31:10 -0000
+</I>&gt;<i> @@ -719,9 +719,9 @@
+</I>&gt;<i>  };
+</I>&gt;<i> 
+</I>&gt;<i> 
+</I>&gt;<i> -#if POOMA_CHEETAH
+</I>&gt;<i> +#if POOMA_MESSAGING
+</I>&gt;<i> 
+</I>&gt;<i> -#include &quot;MatchingHandler/Serialize.h&quot;
+</I>&gt;<i> +#include &quot;Tulip/Messaging.h&quot;
+</I>&gt;<i> 
+</I>&gt;<i>  //-----------------------------------------------------------------------------
+</I>&gt;<i>  //
+</I>&gt;<i> @@ -901,7 +901,7 @@
+</I>&gt;<i>      patchInfo(pack-&gt;patchID_m).msgReceived() += 1;
+</I>&gt;<i>  }
+</I>&gt;<i> 
+</I>&gt;<i> -#endif // POOMA_CHEETAH
+</I>&gt;<i> +#endif // POOMA_MESSAGING
+</I>&gt;<i> 
+</I>&gt;<i>  // Include out-of-line definitions
+</I>&gt;<i> 
+</I>&gt;<i> Index: src/Particles/tests/attributelist.cpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: /home/pooma/Repository/r2/src/Particles/tests/attributelist.cpp,v
+</I>&gt;<i> retrieving revision 1.10
+</I>&gt;<i> diff -u -u -r1.10 attributelist.cpp
+</I>&gt;<i> --- src/Particles/tests/attributelist.cpp	9 Jun 2000 00:41:53 -0000	1.10
+</I>&gt;<i> +++ src/Particles/tests/attributelist.cpp	18 Dec 2003 19:31:10 -0000
+</I>&gt;<i> @@ -61,7 +61,7 @@
+</I>&gt;<i>    int blocks = 4;
+</I>&gt;<i>    DynamicLayout layout(D,blocks);
+</I>&gt;<i>    tester.out() &lt;&lt; &quot;DynamicLayout object:\n&quot; &lt;&lt; layout &lt;&lt; std::endl;
+</I>&gt;<i> -#if POOMA_CHEETAH
+</I>&gt;<i> +#if POOMA_MESSAGING
+</I>&gt;<i>    typedef MultiPatch&lt; DynamicTag, Remote&lt;Dynamic&gt; &gt; EngineTag_t;
+</I>&gt;<i>  #else
+</I>&gt;<i>    typedef MultiPatch&lt;DynamicTag,Dynamic&gt; EngineTag_t;
+</I>&gt;<i> Index: src/Particles/tests/bclist.cpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: /home/pooma/Repository/r2/src/Particles/tests/bclist.cpp,v
+</I>&gt;<i> retrieving revision 1.5
+</I>&gt;<i> diff -u -u -r1.5 bclist.cpp
+</I>&gt;<i> --- src/Particles/tests/bclist.cpp	9 Jun 2000 00:41:53 -0000	1.5
+</I>&gt;<i> +++ src/Particles/tests/bclist.cpp	18 Dec 2003 19:31:11 -0000
+</I>&gt;<i> @@ -65,7 +65,7 @@
+</I>&gt;<i>    Interval&lt;1&gt; D(10);
+</I>&gt;<i>    int blocks = 4;
+</I>&gt;<i>    DynamicLayout layout(D,blocks);
+</I>&gt;<i> -#if POOMA_CHEETAH
+</I>&gt;<i> +#if POOMA_MESSAGING
+</I>&gt;<i>    typedef MultiPatch&lt; DynamicTag, Remote&lt;Dynamic&gt; &gt; EngineTag_t;
+</I>&gt;<i>  #else
+</I>&gt;<i>    typedef MultiPatch&lt;DynamicTag,Dynamic&gt; EngineTag_t;
+</I>&gt;<i> Index: src/Particles/tests/bctest1.cpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: /home/pooma/Repository/r2/src/Particles/tests/bctest1.cpp,v
+</I>&gt;<i> retrieving revision 1.7
+</I>&gt;<i> diff -u -u -r1.7 bctest1.cpp
+</I>&gt;<i> --- src/Particles/tests/bctest1.cpp	11 Sep 2001 00:27:29 -0000	1.7
+</I>&gt;<i> +++ src/Particles/tests/bctest1.cpp	18 Dec 2003 19:31:11 -0000
+</I>&gt;<i> @@ -52,7 +52,7 @@
+</I>&gt;<i>  #include &lt;cfloat&gt;
+</I>&gt;<i> 
+</I>&gt;<i> 
+</I>&gt;<i> -#if POOMA_CHEETAH
+</I>&gt;<i> +#if POOMA_MESSAGING
+</I>&gt;<i>    typedef MultiPatch&lt; DynamicTag, Remote&lt;Dynamic&gt; &gt; EngineTag_t;
+</I>&gt;<i>  #else
+</I>&gt;<i>    typedef MultiPatch&lt;DynamicTag,Dynamic&gt; EngineTag_t;
+</I>&gt;<i> Index: src/Particles/tests/bctest2.cpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: /home/pooma/Repository/r2/src/Particles/tests/bctest2.cpp,v
+</I>&gt;<i> retrieving revision 1.8
+</I>&gt;<i> diff -u -u -r1.8 bctest2.cpp
+</I>&gt;<i> --- src/Particles/tests/bctest2.cpp	11 Sep 2001 00:27:29 -0000	1.8
+</I>&gt;<i> +++ src/Particles/tests/bctest2.cpp	18 Dec 2003 19:31:11 -0000
+</I>&gt;<i> @@ -52,7 +52,7 @@
+</I>&gt;<i>  #include &lt;iostream&gt;
+</I>&gt;<i> 
+</I>&gt;<i> 
+</I>&gt;<i> -#if POOMA_CHEETAH
+</I>&gt;<i> +#if POOMA_MESSAGING
+</I>&gt;<i>    typedef MultiPatch&lt; DynamicTag, Remote&lt;Dynamic&gt; &gt; EngineTag_t;
+</I>&gt;<i>  #else
+</I>&gt;<i>    typedef MultiPatch&lt;DynamicTag,Dynamic&gt; EngineTag_t;
+</I>&gt;<i> Index: src/Particles/tests/bctest3.cpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: /home/pooma/Repository/r2/src/Particles/tests/bctest3.cpp,v
+</I>&gt;<i> retrieving revision 1.14
+</I>&gt;<i> diff -u -u -r1.14 bctest3.cpp
+</I>&gt;<i> --- src/Particles/tests/bctest3.cpp	23 Jan 2003 21:29:49 -0000	1.14
+</I>&gt;<i> +++ src/Particles/tests/bctest3.cpp	18 Dec 2003 19:31:12 -0000
+</I>&gt;<i> @@ -92,7 +92,7 @@
+</I>&gt;<i>    tester.out() &lt;&lt; &quot;Creating Particles object with DynamicArray attributes ...&quot;
+</I>&gt;<i>                 &lt;&lt; std::endl;
+</I>&gt;<i>    UniformLayout pl(Pooma::contexts());
+</I>&gt;<i> -#if POOMA_CHEETAH
+</I>&gt;<i> +#if POOMA_MESSAGING
+</I>&gt;<i>    MyParticles&lt;MPRemoteDynamicUniform&gt; P(pl);
+</I>&gt;<i>  #else
+</I>&gt;<i>    MyParticles&lt;MPDynamicUniform&gt; P(pl);
+</I>&gt;<i> @@ -151,7 +151,7 @@
+</I>&gt;<i>    // Let's also try a KillBC on a free-standing DynamicArray.
+</I>&gt;<i> 
+</I>&gt;<i>    tester.out() &lt;&lt; &quot;Creating a free-standing DynamicArray ...&quot; &lt;&lt; std::endl;
+</I>&gt;<i> -#if POOMA_CHEETAH
+</I>&gt;<i> +#if POOMA_MESSAGING
+</I>&gt;<i>    DynamicArray&lt; Vector&lt;2,int&gt;, MultiPatch&lt; DynamicTag, Remote&lt;Dynamic&gt; &gt; &gt; a3;
+</I>&gt;<i>  #else
+</I>&gt;<i>    DynamicArray&lt; Vector&lt;2,int&gt;, MultiPatch&lt;DynamicTag,Dynamic&gt; &gt; a3;
+</I>&gt;<i> Index: src/Particles/tests/destroy.cpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: /home/pooma/Repository/r2/src/Particles/tests/destroy.cpp,v
+</I>&gt;<i> retrieving revision 1.20
+</I>&gt;<i> diff -u -u -r1.20 destroy.cpp
+</I>&gt;<i> --- src/Particles/tests/destroy.cpp	23 Jan 2003 21:29:49 -0000	1.20
+</I>&gt;<i> +++ src/Particles/tests/destroy.cpp	18 Dec 2003 19:31:13 -0000
+</I>&gt;<i> @@ -114,7 +114,7 @@
+</I>&gt;<i> 
+</I>&gt;<i>  // Engine tag type for attributes
+</I>&gt;<i> 
+</I>&gt;<i> -#if POOMA_CHEETAH
+</I>&gt;<i> +#if POOMA_MESSAGING
+</I>&gt;<i>  typedef MultiPatch&lt; DynamicTag, Remote&lt;Dynamic&gt; &gt; AttrEngineTag_t;
+</I>&gt;<i>  #else
+</I>&gt;<i>  typedef MultiPatch&lt;DynamicTag,Dynamic&gt; AttrEngineTag_t;
+</I>&gt;<i> @@ -126,7 +126,7 @@
+</I>&gt;<i> 
+</I>&gt;<i>  // Field type
+</I>&gt;<i> 
+</I>&gt;<i> -#if POOMA_CHEETAH
+</I>&gt;<i> +#if POOMA_MESSAGING
+</I>&gt;<i>  typedef Field&lt; Mesh_t, double, MultiPatch&lt; UniformTag, Remote&lt;Brick&gt; &gt; &gt;
+</I>&gt;<i>    Field_t;
+</I>&gt;<i>  #else
+</I>&gt;<i> Index: src/Particles/tests/interpolate.cpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: /home/pooma/Repository/r2/src/Particles/tests/interpolate.cpp,v
+</I>&gt;<i> retrieving revision 1.20
+</I>&gt;<i> diff -u -u -r1.20 interpolate.cpp
+</I>&gt;<i> --- src/Particles/tests/interpolate.cpp	13 Jun 2000 00:38:21 -0000	1.20
+</I>&gt;<i> +++ src/Particles/tests/interpolate.cpp	18 Dec 2003 19:31:14 -0000
+</I>&gt;<i> @@ -119,7 +119,7 @@
+</I>&gt;<i> 
+</I>&gt;<i>  // Engine tag type for attributes
+</I>&gt;<i> 
+</I>&gt;<i> -#if POOMA_CHEETAH
+</I>&gt;<i> +#if POOMA_MESSAGING
+</I>&gt;<i>  typedef MultiPatch&lt; DynamicTag, Remote&lt;Dynamic&gt; &gt; AttrEngineTag_t;
+</I>&gt;<i>  #else
+</I>&gt;<i>  typedef MultiPatch&lt;DynamicTag,Dynamic&gt; AttrEngineTag_t;
+</I>&gt;<i> @@ -140,7 +140,7 @@
+</I>&gt;<i> 
+</I>&gt;<i>  // Field type
+</I>&gt;<i> 
+</I>&gt;<i> -#if POOMA_CHEETAH
+</I>&gt;<i> +#if POOMA_MESSAGING
+</I>&gt;<i>  typedef Field&lt; Geometry_t, double, MultiPatch&lt; UniformTag, Remote&lt;Brick&gt; &gt; &gt;
+</I>&gt;<i>    DField_t;
+</I>&gt;<i>  typedef Field&lt; Geometry_t, Vector&lt;PDim,double&gt;,
+</I>&gt;<i> Index: src/Particles/tests/particle_bench1.cpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: /home/pooma/Repository/r2/src/Particles/tests/particle_bench1.cpp,v
+</I>&gt;<i> retrieving revision 1.8
+</I>&gt;<i> diff -u -u -r1.8 particle_bench1.cpp
+</I>&gt;<i> --- src/Particles/tests/particle_bench1.cpp	14 Jul 2000 22:55:19 -0000	1.8
+</I>&gt;<i> +++ src/Particles/tests/particle_bench1.cpp	18 Dec 2003 19:31:14 -0000
+</I>&gt;<i> @@ -45,7 +45,7 @@
+</I>&gt;<i> 
+</I>&gt;<i>    // Typedefs for what we are simulating here.
+</I>&gt;<i> 
+</I>&gt;<i> -#if POOMA_CHEETAH
+</I>&gt;<i> +#if POOMA_MESSAGING
+</I>&gt;<i>    typedef MultiPatch&lt; DynamicTag, Remote&lt;Dynamic&gt; &gt;    AttrEngineTag_t;
+</I>&gt;<i>    typedef MultiPatch&lt; UniformTag, Remote&lt;Brick&gt; &gt;      FieldEngineTag_t;
+</I>&gt;<i>  #else
+</I>&gt;<i> @@ -88,7 +88,7 @@
+</I>&gt;<i>    // this example, though, just the layout.
+</I>&gt;<i> 
+</I>&gt;<i>    Loc&lt;2&gt; blocks(3, 4);
+</I>&gt;<i> -#if POOMA_CHEETAH
+</I>&gt;<i> +#if POOMA_MESSAGING
+</I>&gt;<i>    FieldLayout_t flayout(geometry.physicalDomain(), blocks, DistributedTag());
+</I>&gt;<i>  #else
+</I>&gt;<i>    FieldLayout_t flayout(geometry.physicalDomain(), blocks, ReplicatedTag());
+</I>&gt;<i> Index: src/Particles/tests/particle_bench2.cpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: /home/pooma/Repository/r2/src/Particles/tests/particle_bench2.cpp,v
+</I>&gt;<i> retrieving revision 1.6
+</I>&gt;<i> diff -u -u -r1.6 particle_bench2.cpp
+</I>&gt;<i> --- src/Particles/tests/particle_bench2.cpp	14 Jul 2000 22:55:19 -0000	1.6
+</I>&gt;<i> +++ src/Particles/tests/particle_bench2.cpp	18 Dec 2003 19:31:15 -0000
+</I>&gt;<i> @@ -45,7 +45,7 @@
+</I>&gt;<i> 
+</I>&gt;<i>    // Typedefs for what we are simulating here.
+</I>&gt;<i> 
+</I>&gt;<i> -#if POOMA_CHEETAH
+</I>&gt;<i> +#if POOMA_MESSAGING
+</I>&gt;<i>    typedef MultiPatch&lt; DynamicTag, Remote&lt;Dynamic&gt; &gt;    AttrEngineTag_t;
+</I>&gt;<i>    typedef MultiPatch&lt; UniformTag, Remote&lt;Brick&gt; &gt;      FieldEngineTag_t;
+</I>&gt;<i>  #else
+</I>&gt;<i> @@ -88,7 +88,7 @@
+</I>&gt;<i>    // this example, though, just the layout.
+</I>&gt;<i> 
+</I>&gt;<i>    Loc&lt;2&gt; blocks(3, 4);
+</I>&gt;<i> -#if POOMA_CHEETAH
+</I>&gt;<i> +#if POOMA_MESSAGING
+</I>&gt;<i>    FieldLayout_t flayout(geometry.physicalDomain(), blocks, DistributedTag());
+</I>&gt;<i>  #else
+</I>&gt;<i>    FieldLayout_t flayout(geometry.physicalDomain(), blocks, ReplicatedTag());
+</I>&gt;<i> Index: src/Particles/tests/particle_bench3.cpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: /home/pooma/Repository/r2/src/Particles/tests/particle_bench3.cpp,v
+</I>&gt;<i> retrieving revision 1.5
+</I>&gt;<i> diff -u -u -r1.5 particle_bench3.cpp
+</I>&gt;<i> --- src/Particles/tests/particle_bench3.cpp	14 Jul 2000 22:55:19 -0000	1.5
+</I>&gt;<i> +++ src/Particles/tests/particle_bench3.cpp	18 Dec 2003 19:31:15 -0000
+</I>&gt;<i> @@ -45,7 +45,7 @@
+</I>&gt;<i> 
+</I>&gt;<i>    // Typedefs for what we are simulating here.
+</I>&gt;<i> 
+</I>&gt;<i> -#if POOMA_CHEETAH
+</I>&gt;<i> +#if POOMA_MESSAGING
+</I>&gt;<i>    typedef MultiPatch&lt; DynamicTag, Remote&lt;Dynamic&gt; &gt;    AttrEngineTag_t;
+</I>&gt;<i>    typedef MultiPatch&lt; GridTag,    Remote&lt;Brick&gt; &gt;      FieldEngineTag_t;
+</I>&gt;<i>  #else
+</I>&gt;<i> @@ -88,7 +88,7 @@
+</I>&gt;<i>    // this example, though, just the layout.
+</I>&gt;<i> 
+</I>&gt;<i>    Loc&lt;2&gt; blocks(3, 4);
+</I>&gt;<i> -#if POOMA_CHEETAH
+</I>&gt;<i> +#if POOMA_MESSAGING
+</I>&gt;<i>    FieldLayout_t flayout(geometry.physicalDomain(), blocks, DistributedTag());
+</I>&gt;<i>  #else
+</I>&gt;<i>    FieldLayout_t flayout(geometry.physicalDomain(), blocks, ReplicatedTag());
+</I>&gt;<i> Index: src/Particles/tests/particle_bench4.cpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: /home/pooma/Repository/r2/src/Particles/tests/particle_bench4.cpp,v
+</I>&gt;<i> retrieving revision 1.6
+</I>&gt;<i> diff -u -u -r1.6 particle_bench4.cpp
+</I>&gt;<i> --- src/Particles/tests/particle_bench4.cpp	14 Jul 2000 22:55:19 -0000	1.6
+</I>&gt;<i> +++ src/Particles/tests/particle_bench4.cpp	18 Dec 2003 19:31:15 -0000
+</I>&gt;<i> @@ -45,7 +45,7 @@
+</I>&gt;<i> 
+</I>&gt;<i>    // Typedefs for what we are simulating here.
+</I>&gt;<i> 
+</I>&gt;<i> -#if POOMA_CHEETAH
+</I>&gt;<i> +#if POOMA_MESSAGING
+</I>&gt;<i>    typedef MultiPatch&lt; DynamicTag, Remote&lt;Dynamic&gt; &gt;    AttrEngineTag_t;
+</I>&gt;<i>    typedef MultiPatch&lt; GridTag,    Remote&lt;Brick&gt; &gt;      FieldEngineTag_t;
+</I>&gt;<i>  #else
+</I>&gt;<i> @@ -88,7 +88,7 @@
+</I>&gt;<i>    // this example, though, just the layout.
+</I>&gt;<i> 
+</I>&gt;<i>    Loc&lt;2&gt; blocks(3, 4);
+</I>&gt;<i> -#if POOMA_CHEETAH
+</I>&gt;<i> +#if POOMA_MESSAGING
+</I>&gt;<i>    FieldLayout_t flayout(geometry.physicalDomain(), blocks, DistributedTag());
+</I>&gt;<i>  #else
+</I>&gt;<i>    FieldLayout_t flayout(geometry.physicalDomain(), blocks, ReplicatedTag());
+</I>&gt;<i> Index: src/Particles/tests/spatial.cpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: /home/pooma/Repository/r2/src/Particles/tests/spatial.cpp,v
+</I>&gt;<i> retrieving revision 1.23
+</I>&gt;<i> diff -u -u -r1.23 spatial.cpp
+</I>&gt;<i> --- src/Particles/tests/spatial.cpp	23 Jan 2003 21:29:49 -0000	1.23
+</I>&gt;<i> +++ src/Particles/tests/spatial.cpp	18 Dec 2003 19:31:16 -0000
+</I>&gt;<i> @@ -119,7 +119,7 @@
+</I>&gt;<i> 
+</I>&gt;<i>  // Engine tag type for attributes
+</I>&gt;<i> 
+</I>&gt;<i> -#if POOMA_CHEETAH
+</I>&gt;<i> +#if POOMA_MESSAGING
+</I>&gt;<i>  typedef MultiPatch&lt; DynamicTag, Remote&lt;Dynamic&gt; &gt; AttrEngineTag_t;
+</I>&gt;<i>  #else
+</I>&gt;<i>  typedef MultiPatch&lt;DynamicTag, Dynamic&gt; AttrEngineTag_t;
+</I>&gt;<i> @@ -131,7 +131,7 @@
+</I>&gt;<i> 
+</I>&gt;<i>  // Field type
+</I>&gt;<i> 
+</I>&gt;<i> -#if POOMA_CHEETAH
+</I>&gt;<i> +#if POOMA_MESSAGING
+</I>&gt;<i>  typedef Field&lt; Mesh_t, int, MultiPatch&lt; UniformTag, Remote&lt;Brick&gt; &gt; &gt; Field_t;
+</I>&gt;<i>  #else
+</I>&gt;<i>  typedef Field&lt; Mesh_t, int, MultiPatch&lt;UniformTag,Brick&gt; &gt; Field_t;
+</I>&gt;<i> Index: src/Particles/tests/uniform.cpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: /home/pooma/Repository/r2/src/Particles/tests/uniform.cpp,v
+</I>&gt;<i> retrieving revision 1.7
+</I>&gt;<i> diff -u -u -r1.7 uniform.cpp
+</I>&gt;<i> --- src/Particles/tests/uniform.cpp	23 Jan 2003 21:29:49 -0000	1.7
+</I>&gt;<i> +++ src/Particles/tests/uniform.cpp	18 Dec 2003 19:31:16 -0000
+</I>&gt;<i> @@ -103,7 +103,7 @@
+</I>&gt;<i> 
+</I>&gt;<i>  // Engine tag type for attributes
+</I>&gt;<i> 
+</I>&gt;<i> -#if POOMA_CHEETAH
+</I>&gt;<i> +#if POOMA_MESSAGING
+</I>&gt;<i>  typedef MultiPatch&lt; DynamicTag, Remote&lt;Dynamic&gt; &gt; AttrEngineTag_t;
+</I>&gt;<i>  #else
+</I>&gt;<i>  typedef MultiPatch&lt;DynamicTag, Dynamic&gt; AttrEngineTag_t;
+</I>&gt;<i> Index: src/Pooma/Pooma.cmpl.cpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: /home/pooma/Repository/r2/src/Pooma/Pooma.cmpl.cpp,v
+</I>&gt;<i> retrieving revision 1.38
+</I>&gt;<i> diff -u -u -r1.38 Pooma.cmpl.cpp
+</I>&gt;<i> --- src/Pooma/Pooma.cmpl.cpp	11 Dec 2001 20:43:30 -0000	1.38
+</I>&gt;<i> +++ src/Pooma/Pooma.cmpl.cpp	18 Dec 2003 19:31:18 -0000
+</I>&gt;<i> @@ -45,8 +45,8 @@
+</I>&gt;<i>  #include &lt;fstream&gt;
+</I>&gt;<i>  #include &lt;stdlib.h&gt;
+</I>&gt;<i> 
+</I>&gt;<i> -#if POOMA_CHEETAH
+</I>&gt;<i> -# include &quot;Cheetah/Cheetah.h&quot;
+</I>&gt;<i> +#if POOMA_MESSAGING
+</I>&gt;<i> +# include &quot;Tulip/Messaging.h&quot;
+</I>&gt;<i>  #endif
+</I>&gt;<i> 
+</I>&gt;<i>  //-----------------------------------------------------------------------------
+</I>&gt;<i> Index: src/Pooma/Pooma.h
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: /home/pooma/Repository/r2/src/Pooma/Pooma.h,v
+</I>&gt;<i> retrieving revision 1.33
+</I>&gt;<i> diff -u -u -r1.33 Pooma.h
+</I>&gt;<i> --- src/Pooma/Pooma.h	21 Oct 2003 20:57:27 -0000	1.33
+</I>&gt;<i> +++ src/Pooma/Pooma.h	18 Dec 2003 19:31:19 -0000
+</I>&gt;<i> @@ -105,9 +105,10 @@
+</I>&gt;<i>  #include &quot;Utilities/Inform.h&quot;
+</I>&gt;<i>  #include &quot;Utilities/Options.h&quot;
+</I>&gt;<i> 
+</I>&gt;<i> -#if POOMA_CHEETAH
+</I>&gt;<i> -# include &quot;Cheetah/Cheetah.h&quot;
+</I>&gt;<i> +#if POOMA_MESSAGING
+</I>&gt;<i> +#include &quot;Tulip/Messaging.h&quot;
+</I>&gt;<i>  #endif
+</I>&gt;<i> +
+</I>&gt;<i> 
+</I>&gt;<i>  //-----------------------------------------------------------------------------
+</I>&gt;<i>  // Macro definitions
+</I>&gt;<i> Index: src/Tulip/Messaging.h
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: /home/pooma/Repository/r2/src/Tulip/Messaging.h,v
+</I>&gt;<i> retrieving revision 1.7
+</I>&gt;<i> diff -u -u -r1.7 Messaging.h
+</I>&gt;<i> --- src/Tulip/Messaging.h	21 Oct 2003 18:47:59 -0000	1.7
+</I>&gt;<i> +++ src/Tulip/Messaging.h	18 Dec 2003 19:31:20 -0000
+</I>&gt;<i> @@ -31,8 +31,8 @@
+</I>&gt;<i>  // TagGenerator
+</I>&gt;<i>  //-----------------------------------------------------------------------------
+</I>&gt;<i> 
+</I>&gt;<i> -#ifndef POOMA_CHEETAH_MESSAGING_H
+</I>&gt;<i> -#define POOMA_CHEETAH_MESSAGING_H
+</I>&gt;<i> +#ifndef POOMA_TULIP_MESSAGING_H
+</I>&gt;<i> +#define POOMA_TULIP_MESSAGING_H
+</I>&gt;<i> 
+</I>&gt;<i>  /** @file
+</I>&gt;<i>   * @ingroup Tulip
+</I>&gt;<i> @@ -118,7 +118,7 @@
+</I>&gt;<i>  };
+</I>&gt;<i> 
+</I>&gt;<i> 
+</I>&gt;<i> -#if POOMA_CHEETAH
+</I>&gt;<i> +#if POOMA_MESSAGING
+</I>&gt;<i> 
+</I>&gt;<i>  namespace Cheetah {
+</I>&gt;<i> 
+</I>&gt;<i> @@ -183,7 +183,7 @@
+</I>&gt;<i> 
+</I>&gt;<i>  } // namespace Cheetah
+</I>&gt;<i> 
+</I>&gt;<i> -#endif // #if POOMA_CHEETAH
+</I>&gt;<i> +#endif // #if POOMA_MESSAGING
+</I>&gt;<i> 
+</I>&gt;<i>  namespace Pooma {
+</I>&gt;<i> 
+</I>&gt;<i> @@ -222,7 +222,8 @@
+</I>&gt;<i>  {
+</I>&gt;<i>    return particleSwapHandler_g;
+</I>&gt;<i>  }
+</I>&gt;<i> -#endif
+</I>&gt;<i> +
+</I>&gt;<i> +#endif // #if POOMA_CHEETAH
+</I>&gt;<i> 
+</I>&gt;<i>  void initializeCheetahHelpers(int contexts);
+</I>&gt;<i>  void finalizeCheetahHelpers();
+</I>&gt;<i> @@ -248,7 +249,7 @@
+</I>&gt;<i> 
+</I>&gt;<i>  }
+</I>&gt;<i> 
+</I>&gt;<i> -#endif     // POOMA_CHEETAH_MESSAGING_H
+</I>&gt;<i> +#endif     // POOMA_TULIP_MESSAGING_H
+</I>&gt;<i> 
+</I>&gt;<i>  // ACL:rcsinfo
+</I>&gt;<i>  // ----------------------------------------------------------------------
+</I>&gt;<i> Index: src/Tulip/PatchSizeSyncer.cmpl.cpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: /home/pooma/Repository/r2/src/Tulip/PatchSizeSyncer.cmpl.cpp,v
+</I>&gt;<i> retrieving revision 1.6
+</I>&gt;<i> diff -u -u -r1.6 PatchSizeSyncer.cmpl.cpp
+</I>&gt;<i> --- src/Tulip/PatchSizeSyncer.cmpl.cpp	9 Dec 2003 19:30:07 -0000	1.6
+</I>&gt;<i> +++ src/Tulip/PatchSizeSyncer.cmpl.cpp	18 Dec 2003 19:31:20 -0000
+</I>&gt;<i> @@ -90,7 +90,7 @@
+</I>&gt;<i> 
+</I>&gt;<i>  void PatchSizeSyncer::calcGlobalGrid(Grid_t &amp;globalGrid)
+</I>&gt;<i>  {
+</I>&gt;<i> -#if POOMA_CHEETAH
+</I>&gt;<i> +#if POOMA_MESSAGING
+</I>&gt;<i> 
+</I>&gt;<i>    Grid&lt;1&gt; result;
+</I>&gt;<i> 
+</I>&gt;<i> @@ -142,11 +142,11 @@
+</I>&gt;<i>    RemoteProxy&lt;Grid&lt;1&gt; &gt; broadcast(result,0);
+</I>&gt;<i>    globalGrid = Grid&lt;1&gt;(broadcast.value());
+</I>&gt;<i> 
+</I>&gt;<i> -#else  // POOMA_CHEETAH
+</I>&gt;<i> +#else  // !POOMA_MESSAGING
+</I>&gt;<i> 
+</I>&gt;<i>    globalGrid = localGrid_m;
+</I>&gt;<i> 
+</I>&gt;<i> -#endif // POOMA_CHEETAH
+</I>&gt;<i> +#endif // POOMA_MESSAGING
+</I>&gt;<i>  }
+</I>&gt;<i> 
+</I>&gt;<i> 
+</I>&gt;<i> Index: src/Tulip/PatchSizeSyncer.h
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: /home/pooma/Repository/r2/src/Tulip/PatchSizeSyncer.h,v
+</I>&gt;<i> retrieving revision 1.5
+</I>&gt;<i> diff -u -u -r1.5 PatchSizeSyncer.h
+</I>&gt;<i> --- src/Tulip/PatchSizeSyncer.h	21 Oct 2003 18:47:59 -0000	1.5
+</I>&gt;<i> +++ src/Tulip/PatchSizeSyncer.h	18 Dec 2003 19:31:21 -0000
+</I>&gt;<i> @@ -96,11 +96,6 @@
+</I>&gt;<i> 
+</I>&gt;<i>   void calcGlobalGrid(Grid_t &amp;globalGrid);
+</I>&gt;<i> 
+</I>&gt;<i> -  // This is passed to Cheetah and is called when incoming messages
+</I>&gt;<i> -  // are received.
+</I>&gt;<i> -
+</I>&gt;<i> -  void receiveGrid(std::pair&lt;int,Grid_t&gt; &amp;incoming);
+</I>&gt;<i> -
+</I>&gt;<i>  private:
+</I>&gt;<i> 
+</I>&gt;<i>    //============================================================
+</I>&gt;<i> @@ -129,25 +124,12 @@
+</I>&gt;<i> 
+</I>&gt;<i>    static int tag_s;
+</I>&gt;<i> 
+</I>&gt;<i> -  // This is the Cheetah stuff. If we don't have Cheetah, this class should
+</I>&gt;<i> -  // work in serial (it's a no-op) without sending any messages. All
+</I>&gt;<i> -  // Cheetah stuff should compile away.
+</I>&gt;<i> -
+</I>&gt;<i> -#if POOMA_CHEETAH
+</I>&gt;<i> -
+</I>&gt;<i> -  friend void Pooma::initializeCheetahHelpers(int contexts);
+</I>&gt;<i> -  friend void Pooma::finalizeCheetahHelpers();
+</I>&gt;<i> -
+</I>&gt;<i> -  static Cheetah::MatchingHandler *handler_s;
+</I>&gt;<i> -
+</I>&gt;<i> -#endif // POOMA_CHEETAH
+</I>&gt;<i> -
+</I>&gt;<i>  };
+</I>&gt;<i> 
+</I>&gt;<i>  } // namespace Pooma
+</I>&gt;<i> 
+</I>&gt;<i> 
+</I>&gt;<i> -#if POOMA_CHEETAH
+</I>&gt;<i> +#if POOMA_MESSAGING
+</I>&gt;<i> 
+</I>&gt;<i>  namespace Cheetah {
+</I>&gt;<i> 
+</I>&gt;<i> @@ -205,7 +187,7 @@
+</I>&gt;<i> 
+</I>&gt;<i>  } // namespace Cheetah
+</I>&gt;<i> 
+</I>&gt;<i> -#endif // POOMA_CHEETAH
+</I>&gt;<i> +#endif // POOMA_MESSAGING
+</I>&gt;<i> 
+</I>&gt;<i>  #endif // POOMA_CHEETAH_PATCHSIZESYNCER_H
+</I>&gt;<i> 
+</I>&gt;<i> Index: src/Tulip/tests/CollectFromContextsTest.cpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: /home/pooma/Repository/r2/src/Tulip/tests/CollectFromContextsTest.cpp,v
+</I>&gt;<i> retrieving revision 1.1
+</I>&gt;<i> diff -u -u -r1.1 CollectFromContextsTest.cpp
+</I>&gt;<i> --- src/Tulip/tests/CollectFromContextsTest.cpp	9 Dec 2003 19:27:38 -0000	1.1
+</I>&gt;<i> +++ src/Tulip/tests/CollectFromContextsTest.cpp	18 Dec 2003 19:31:21 -0000
+</I>&gt;<i> @@ -60,6 +60,9 @@
+</I>&gt;<i>      tester.check(&quot;Collecting ranks&quot;, check);
+</I>&gt;<i>    }
+</I>&gt;<i> 
+</I>&gt;<i> +  // We can't do the following test on !MESSAGING, as invalid data on
+</I>&gt;<i> +  // context 0 is not supported in this case.
+</I>&gt;<i> +#if POOMA_MESSAGING
+</I>&gt;<i>    CollectFromContexts&lt;int&gt; ranks2(Pooma::context()+1, 0,
+</I>&gt;<i>  			          Pooma::context() &gt; 0
+</I>&gt;<i>  				  &amp;&amp; Pooma::context() &lt; Pooma::contexts()-1);
+</I>&gt;<i> @@ -73,6 +76,7 @@
+</I>&gt;<i>        }
+</I>&gt;<i>      tester.check(&quot;Collecting ranks, but not first and last&quot;, check);
+</I>&gt;<i>    }
+</I>&gt;<i> +#endif
+</I>&gt;<i> 
+</I>&gt;<i>    int ret = tester.results(&quot;CollectFromContextsTest&quot;);
+</I>&gt;<i>    Pooma::finalize();
+</I>&gt;<i> Index: src/Tulip/tests/GridMessageTest.cpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: /home/pooma/Repository/r2/src/Tulip/tests/GridMessageTest.cpp,v
+</I>&gt;<i> retrieving revision 1.6
+</I>&gt;<i> diff -u -u -r1.6 GridMessageTest.cpp
+</I>&gt;<i> --- src/Tulip/tests/GridMessageTest.cpp	21 Sep 2001 19:02:18 -0000	1.6
+</I>&gt;<i> +++ src/Tulip/tests/GridMessageTest.cpp	18 Dec 2003 19:31:21 -0000
+</I>&gt;<i> @@ -38,8 +38,8 @@
+</I>&gt;<i>  #include &quot;Domain/Grid.h&quot;
+</I>&gt;<i>  #include &quot;Domain/Range.h&quot;
+</I>&gt;<i> 
+</I>&gt;<i> -#if POOMA_CHEETAH
+</I>&gt;<i> -#include &quot;Cheetah/Cheetah.h&quot;
+</I>&gt;<i> +#if POOMA_MESSAGING
+</I>&gt;<i> +#include &quot;Tulip/Messaging.h&quot;
+</I>&gt;<i>  #endif
+</I>&gt;<i> 
+</I>&gt;<i>  #define BARRIER
+</I>
+
+-- 
+Jeffrey D. Oldham
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">oldham at codesourcery.com</A>
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001423.html">[PATCH] Introduce POOMA_MESSAGING
+</A></li>
+	<LI>Next message: <A HREF="001426.html">[PATCH] Introduce POOMA_MESSAGING
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1425">[ date ]</a>
+              <a href="thread.html#1425">[ thread ]</a>
+              <a href="subject.html#1425">[ subject ]</a>
+              <a href="author.html#1425">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

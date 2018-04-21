@@ -1,0 +1,561 @@
+From wd at denx.de  Thu May 11 10:06:51 2006
+From: wd at denx.de (Wolfgang Denk)
+Date: Thu, 11 May 2006 12:06:51 +0200
+Subject: Issues with ColdFire toolchain
+Message-ID: <20060511100651.91302353BE7@atlas.denx.de>
+
+Hello,
+
+we try to use the GCC-4.1 based toolchain for ColdFire to  build  the
+U-Boot boot loader, the Linux kernel and some applications.
+
+We ran into some problems:
+
+(1) It seems that this configuration lacks  -fPIC  support  which  is
+    crucial  for  U-Boot  building. [I am aware that -fpic support is
+    present, but this is unfortunately not sufficient, too small  GOT
+    size available.]
+
+    Are there plans to support -fPIC ?
+
+(2) We can build applications, but they don't run. For example,  when
+    building OpenVPN we get:
+
+	# ./openvpn
+	Allocation of length 1136352 from process 46 failed
+	DMA per-cpu: empty
+	Normal per-cpu:
+	cpu 0 hot: low 2, high 6, batch 1
+	cpu 0 cold: low 0, high 2, batch 1
+	HighMem per-cpu: empty
+
+	Free pages:        5728kB (0kB HighMem)
+	Active:571 inactive:1147 dirty:0 writeback:0 unstable:0 free:1432 slab:541 mapped:0
+	pagetables:0
+	DMA free:0kB min:0kB low:0kB high:0kB active:0kB inactive:0kB present:0kB 
+	pages_scanned:0
+	all_unreclaimable? no
+	lowmem_reserve[]: 0 16 16
+	Normal free:5728kB min:512kB low:640kB high:768kB active:2284kB inactive:4588kB
+	present:16384kB pages_scanned:0 all_unreclaimable? no
+	lowmem_reserve[]: 0 0 0
+	HighMem free:0kB min:128kB low:160kB high:192kB active:0kB inactive:0kB present:0kB
+	pages_scanned:0 all_unreclaimable? no
+	lowmem_reserve[]: 0 0 0
+	DMA: empty
+	Normal: 4*4kB 4*8kB 5*16kB 1*32kB 1*64kB 1*128kB 1*256kB 2*512kB 2*1024kB 1*2048kB
+	0*4096kB = 5728kB
+	HighMem: empty
+	Unable to allocate RAM for process text/data, errno 12
+	pid 46: failed 4
+
+    Using the old uCLinux GCC-2.95 toolchain  this  works  fine.  For
+    this working image, "file" reports
+
+	openvpn: BFLT executable - version 4 gotpic
+
+    Your GC-4.1 toolchain gives:
+
+	openvpn: BFLT executable - version 4 ram
+
+    Is this a problem? Any other idea what might be wrong?
+
+Best regards,
+
+Wolfgang Denk
+
+-- 
+Software Engineering:  Embedded and Realtime Systems,  Embedded Linux
+Phone: (+49)-8142-66989-10 Fax: (+49)-8142-66989-80 Email: wd at denx.de
+Imagination is more important than knowledge.      -- Albert Einstein
+
+
+From nathan at codesourcery.com  Thu May 11 10:19:17 2006
+From: nathan at codesourcery.com (Nathan Sidwell)
+Date: Thu, 11 May 2006 11:19:17 +0100
+Subject: [coldfire-gnu-discuss] Issues with ColdFire toolchain
+In-Reply-To: <20060511100651.91302353BE7@atlas.denx.de>
+References: <20060511100651.91302353BE7@atlas.denx.de>
+Message-ID: <44630FA5.6060007@codesourcery.com>
+
+Wolfgang Denk wrote:
+> Hello,
+> 
+> we try to use the GCC-4.1 based toolchain for ColdFire to  build  the
+> U-Boot boot loader, the Linux kernel and some applications.
+> 
+> We ran into some problems:
+> 
+> (1) It seems that this configuration lacks  -fPIC  support  which  is
+> 
+>     Are there plans to support -fPIC ?
+
+We don't have an immediate plan to support -fPIC.  We're discussing future 
+features with FreeScale.
+
+> (2) We can build applications, but they don't run. For example,  when
+>     building OpenVPN we get:
+> 
+> 	# ./openvpn
+> 	Allocation of length 1136352 from process 46 failed
+
+>     Using the old uCLinux GCC-2.95 toolchain  this  works  fine.  For
+>     this working image, "file" reports
+> 
+> 	openvpn: BFLT executable - version 4 gotpic
+> 
+>     Your GC-4.1 toolchain gives:
+> 
+> 	openvpn: BFLT executable - version 4 ram
+> 
+>     Is this a problem? Any other idea what might be wrong?
+
+There are many possible causes.  I doubt the static link is the culprit.  It 
+seems that the memory map of openvpn is suspect.
+
+nathan
+
+-- 
+Nathan Sidwell    ::   http://www.codesourcery.com   ::         CodeSourcery
+nathan at codesourcery.com    ::     http://www.planetfall.pwp.blueyonder.co.uk
+
+
+
+From dan at codesourcery.com  Thu May 11 12:35:00 2006
+From: dan at codesourcery.com (Daniel Jacobowitz)
+Date: Thu, 11 May 2006 08:35:00 -0400
+Subject: [coldfire-gnu-discuss] Issues with ColdFire toolchain
+In-Reply-To: <44630FA5.6060007@codesourcery.com>
+References: <20060511100651.91302353BE7@atlas.denx.de> <44630FA5.6060007@codesourcery.com>
+Message-ID: <20060511123459.GG7874@caradoc.them.org>
+
+On Thu, May 11, 2006 at 11:19:17AM +0100, Nathan Sidwell wrote:
+> >(2) We can build applications, but they don't run. For example,  when
+> >    building OpenVPN we get:
+> >
+> >	# ./openvpn
+> >	Allocation of length 1136352 from process 46 failed
+> 
+> >    Using the old uCLinux GCC-2.95 toolchain  this  works  fine.  For
+> >    this working image, "file" reports
+> >
+> >	openvpn: BFLT executable - version 4 gotpic
+> >
+> >    Your GC-4.1 toolchain gives:
+> >
+> >	openvpn: BFLT executable - version 4 ram
+> >
+> >    Is this a problem? Any other idea what might be wrong?
+> 
+> There are many possible causes.  I doubt the static link is the culprit.  
+> It seems that the memory map of openvpn is suspect.
+
+Is the entire filesystem built with the same toolchain?  I'm not sure,
+but I think a number of ABI changes have been made.
+
+-- 
+Daniel Jacobowitz
+CodeSourcery
+
+
+From wd at denx.de  Thu May 11 15:21:40 2006
+From: wd at denx.de (Wolfgang Denk)
+Date: Thu, 11 May 2006 17:21:40 +0200
+Subject: [coldfire-gnu-discuss] Issues with ColdFire toolchain 
+In-Reply-To: Your message of "Thu, 11 May 2006 08:35:00 EDT."
+             <20060511123459.GG7874@caradoc.them.org> 
+Message-ID: <20060511152140.D7771352B0C@atlas.denx.de>
+
+In message <20060511123459.GG7874 at caradoc.them.org> you wrote:
+>
+> > >	# ./openvpn
+> > >	Allocation of length 1136352 from process 46 failed
+                             ^^^^^^^
+Please note size here.
+
+> > There are many possible causes.  I doubt the static link is the culprit.  
+> > It seems that the memory map of openvpn is suspect.
+> 
+> Is the entire filesystem built with the same toolchain?  I'm not sure,
+> but I think a number of ABI changes have been made.
+
+As it turns out, the size of the image  seems  to  be  important.  By
+disabling  features we created configuration that resulted in smaller
+images, and these work fine. The critical size seems to be 1 MB -  if
+the images are smaller, they work; if they are bigger, they cannot be
+loaded.
+
+Best regards,
+
+Wolfgang Denk
+
+-- 
+Software Engineering:  Embedded and Realtime Systems,  Embedded Linux
+Phone: (+49)-8142-66989-10 Fax: (+49)-8142-66989-80 Email: wd at denx.de
+"There is no distinctly American criminal class except Congress."
+- Mark Twain
+
+
+From nathan at codesourcery.com  Thu May 11 15:28:36 2006
+From: nathan at codesourcery.com (Nathan Sidwell)
+Date: Thu, 11 May 2006 16:28:36 +0100
+Subject: [coldfire-gnu-discuss] Issues with ColdFire toolchain
+In-Reply-To: <20060511152140.D7771352B0C@atlas.denx.de>
+References: <20060511152140.D7771352B0C@atlas.denx.de>
+Message-ID: <44635824.60907@codesourcery.com>
+
+Wolfgang Denk wrote:
+
+> As it turns out, the size of the image  seems  to  be  important.  By
+> disabling  features we created configuration that resulted in smaller
+> images, and these work fine. The critical size seems to be 1 MB -  if
+> the images are smaller, they work; if they are bigger, they cannot be
+> loaded.
+
+Ah, that makes sense.  I'm not sure why you did not get a link error, as the 
+linker script constrains the memory size to 1MB.  We'll investigate.
+
+nathan
+
+-- 
+Nathan Sidwell    ::   http://www.codesourcery.com   ::         CodeSourcery
+nathan at codesourcery.com    ::     http://www.planetfall.pwp.blueyonder.co.uk
+
+
+
+From nathan at codesourcery.com  Thu May 11 15:38:03 2006
+From: nathan at codesourcery.com (Nathan Sidwell)
+Date: Thu, 11 May 2006 16:38:03 +0100
+Subject: [coldfire-gnu-discuss] Issues with ColdFire toolchain
+In-Reply-To: <44635824.60907@codesourcery.com>
+References: <20060511152140.D7771352B0C@atlas.denx.de> <44635824.60907@codesourcery.com>
+Message-ID: <44635A5B.6000205@codesourcery.com>
+
+Nathan Sidwell wrote:
+> Wolfgang Denk wrote:
+> 
+>> As it turns out, the size of the image  seems  to  be  important.  By
+>> disabling  features we created configuration that resulted in smaller
+>> images, and these work fine. The critical size seems to be 1 MB -  if
+>> the images are smaller, they work; if they are bigger, they cannot be
+>> loaded.
+> 
+> 
+> Ah, that makes sense.  I'm not sure why you did not get a link error, as 
+> the linker script constrains the memory size to 1MB.  We'll investigate.
+
+ah ha. I was wrong, the linker script allows 16MB images.  But also uses the top 
+8 bits for the library-id.  That is inconsistent.
+
+nathan
+-- 
+Nathan Sidwell    ::   http://www.codesourcery.com   ::         CodeSourcery
+nathan at codesourcery.com    ::     http://www.planetfall.pwp.blueyonder.co.uk
+
+
+
+From michel.marti at objectxp.com  Sun May 21 09:51:14 2006
+From: michel.marti at objectxp.com (Michel Marti)
+Date: Sun, 21 May 2006 11:51:14 +0200
+Subject: system() function broken
+Message-ID: <44703812.4080705@objectxp.com>
+
+Hello,
+
+The following code doesn't work as expected when compiled with the codesourcery 
+toolchain:
+
+#include <stdlib.h>
+
+int main(int argc, char **argv)
+{
+   system("/bin/busybox");
+   exit(0);
+}
+
+command-line used for compiling:
+
+$ m68k-uclinux-gcc -m5200 -Wl,-elf2flt test.c -o test
+
+When executing this program on the target (M5271EVB), the following happens:
+
+# ./test
+?: applet not found
+
+However, If I use the GCC-2.95.3-based Toolchain from uclinux.org, the program 
+works as expected.
+
+Is this a bug in the version of uclibc included in the codesourcery toolchain?
+
+Regards,
+
+Michel
+
+
+
+
+From nathan at codesourcery.com  Sun May 21 13:32:09 2006
+From: nathan at codesourcery.com (Nathan Sidwell)
+Date: Sun, 21 May 2006 14:32:09 +0100
+Subject: [coldfire-gnu-discuss] system() function broken
+In-Reply-To: <44703812.4080705@objectxp.com>
+References: <44703812.4080705@objectxp.com>
+Message-ID: <44706BD9.90903@codesourcery.com>
+
+Michel Marti wrote:
+> Hello,
+> 
+> The following code doesn't work as expected when compiled with the 
+> codesourcery toolchain:
+> 
+> #include <stdlib.h>
+> 
+> int main(int argc, char **argv)
+> {
+>   system("/bin/busybox");
+>   exit(0);
+> }
+> 
+> command-line used for compiling:
+> 
+> $ m68k-uclinux-gcc -m5200 -Wl,-elf2flt test.c -o test
+> 
+> When executing this program on the target (M5271EVB), the following 
+> happens:
+> 
+> # ./test
+> ?: applet not found
+
+I've tried your test case and it works ok for the m5208evb board that we have 
+for testing.  This is running a linux-2.6.12-uc0 kernel.
+
+Can you determine what is emitting the 'applet not found' message?
+
+nathan
+
+-- 
+Nathan Sidwell    ::   http://www.codesourcery.com   ::         CodeSourcery
+nathan at codesourcery.com    ::     http://www.planetfall.pwp.blueyonder.co.uk
+
+
+
+From michel.marti at objectxp.com  Sun May 21 14:52:39 2006
+From: michel.marti at objectxp.com (Michel Marti)
+Date: Sun, 21 May 2006 16:52:39 +0200
+Subject: [coldfire-gnu-discuss] system() function broken
+In-Reply-To: <44706BD9.90903@codesourcery.com>
+References: <44703812.4080705@objectxp.com> <44706BD9.90903@codesourcery.com>
+Message-ID: <44707EB7.6030503@objectxp.com>
+
+Nathan Sidwell wrote:
+> Can you determine what is emitting the 'applet not found' message?
+
+That's a message from busybox itself. E.g. if you invoke "busybox blabla" you 
+will get "blabla: applet not found". According to the system() manpage, it will 
+call "/bin/sh -c <command>", so it looks like the command passed to system() 
+somehow gets lost/garbled.
+
+The board we're using runs linux-2.6.17-rc4 and busybox 1.1.3.
+
+
+Michel
+
+
+
+
+From nathan at codesourcery.com  Sun May 21 15:10:27 2006
+From: nathan at codesourcery.com (Nathan Sidwell)
+Date: Sun, 21 May 2006 16:10:27 +0100
+Subject: [coldfire-gnu-discuss] system() function broken
+In-Reply-To: <44707EB7.6030503@objectxp.com>
+References: <44703812.4080705@objectxp.com> <44706BD9.90903@codesourcery.com> <44707EB7.6030503@objectxp.com>
+Message-ID: <447082E3.8080409@codesourcery.com>
+
+Michel Marti wrote:
+> Nathan Sidwell wrote:
+> 
+>> Can you determine what is emitting the 'applet not found' message?
+> 
+> 
+> That's a message from busybox itself. E.g. if you invoke "busybox 
+> blabla" you will get "blabla: applet not found". According to the 
+> system() manpage, it will call "/bin/sh -c <command>", so it looks like 
+> the command passed to system() somehow gets lost/garbled.
+
+ah, so IIUC, it appears the "/bin/busybox" string is being transformed into 
+"/bin/busybox ?", so busybox is trying to find the '?' applet.
+
+> The board we're using runs linux-2.6.17-rc4 and busybox 1.1.3.
+
+thanks for this information.  At the moment we're unable to reproduce the 
+problem.  Have you tried a shell builtin, such as
+	system ("echo hello");
+?
+
+nathan
+
+-- 
+Nathan Sidwell    ::   http://www.codesourcery.com   ::         CodeSourcery
+nathan at codesourcery.com    ::     http://www.planetfall.pwp.blueyonder.co.uk
+
+
+
+From michel.marti at objectxp.com  Sun May 21 16:25:11 2006
+From: michel.marti at objectxp.com (Michel Marti)
+Date: Sun, 21 May 2006 18:25:11 +0200
+Subject: [coldfire-gnu-discuss] system() function broken
+In-Reply-To: <447082E3.8080409@codesourcery.com>
+References: <44703812.4080705@objectxp.com> <44706BD9.90903@codesourcery.com> <44707EB7.6030503@objectxp.com> <447082E3.8080409@codesourcery.com>
+Message-ID: <44709467.9000200@objectxp.com>
+
+Nathan Sidwell wrote:
+> ah, so IIUC, it appears the "/bin/busybox" string is being transformed 
+> into "/bin/busybox ?", so busybox is trying to find the '?' applet.
+
+"/bin/busybox -c ?" that is...
+
+
+> thanks for this information.  At the moment we're unable to reproduce 
+> the problem.  Have you tried a shell builtin, such as
+>     system ("echo hello");
+
+Here's what happens when calling  system("echo hello"):
+
+# ./test
+?<... '?' repeats about 8000 times...>?: applet not found
+
+Actually, the shell shows '?', but the real value of these chars is 0xff (as 
+seen when redirecting stderr and piping it through 'hd').
+
+And here's the output of system("/sbin/ifconfig eth0"):
+
+I?z?(?xp;;??????a??9?RNC??o%???g?!??"?q93S?R?QaGaG?JJ?$U|?t?U?^%u?}??la?5?F?4a???(V??w??E???????!???????;?????????gJnyp??j??>?w?Yd??%c?????o?%??W?2?v?B-????,WR???i"?r,??????pu?:l???p??'????W???u??>??Q?^??S?~?RqOuN2?9>???x?v?f%K_?????uOo?-s????P?I???n?r??(???f+I?1<)?{zB-YR?]??VyF??: 
+applet not found
+
+
+
+From nathan at codesourcery.com  Mon May 22 08:01:46 2006
+From: nathan at codesourcery.com (Nathan Sidwell)
+Date: Mon, 22 May 2006 09:01:46 +0100
+Subject: [coldfire-gnu-discuss] system() function broken
+In-Reply-To: <44709467.9000200@objectxp.com>
+References: <44703812.4080705@objectxp.com> <44706BD9.90903@codesourcery.com> <44707EB7.6030503@objectxp.com> <447082E3.8080409@codesourcery.com> <44709467.9000200@objectxp.com>
+Message-ID: <44716FEA.10603@codesourcery.com>
+
+Michel Marti wrote:
+
+> 
+> Here's what happens when calling  system("echo hello"):
+> 
+> # ./test
+> ?<... '?' repeats about 8000 times...>?: applet not found
+
+aha, I'm sorry, I forgot that you would be using the 4.1-3 public release.  I've 
+been reminded that we fixed this bug, but have yet to make a new public release.
+
+The bug is that gcc fails to maintain 4 byte stack alignment.  For m68k targets, 
+this is fine, but the coldfire targets are much more picky.  uclibc contains an 
+alloca call in the 'system' function that misaligns the stack.
+
+We will be making a new public release shortly, it is undergoing final testing.
+
+nathan
+
+-- 
+Nathan Sidwell    ::   http://www.codesourcery.com   ::         CodeSourcery
+nathan at codesourcery.com    ::     http://www.planetfall.pwp.blueyonder.co.uk
+
+
+
+From smead at amplepower.com  Tue May 23 22:42:46 2006
+From: smead at amplepower.com (David Smead)
+Date: Tue, 23 May 2006 15:42:46 -0700 (PDT)
+Subject: BDM
+Message-ID: <Pine.LNX.4.64.0605231538170.19897@planck.amplepower.com>
+
+Greetings,
+
+This is off the GNU topic, but I'm looking for information on using 
+BDM/Jtag.
+
+I downloaded the toolchain and it appears to work on a Linux box.  I have 
+a BDM/parallel interface that came with an earlier 5272 coldfire project 
+that I need to make work on the M5223X chips.
+
+Can anyone point me to the program I need to download programs, or is that 
+all incorporated into gdb?  Thanks.
+\/
+Sincerely,
+
+David Smead
+http://www.amplepower.com
+
+
+From mark at codesourcery.com  Wed May 24 02:35:19 2006
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Tue, 23 May 2006 19:35:19 -0700
+Subject: [coldfire-gnu-discuss] BDM
+In-Reply-To: <Pine.LNX.4.64.0605231538170.19897@planck.amplepower.com>
+References: <Pine.LNX.4.64.0605231538170.19897@planck.amplepower.com>
+Message-ID: <4473C667.9020409@codesourcery.com>
+
+David Smead wrote:
+> Greetings,
+> 
+> This is off the GNU topic, but I'm looking for information on using
+> BDM/Jtag.
+> 
+> I downloaded the toolchain and it appears to work on a Linux box.  I
+> have a BDM/parallel interface that came with an earlier 5272 coldfire
+> project that I need to make work on the M5223X chips.
+> 
+> Can anyone point me to the program I need to download programs, or is
+> that all incorporated into gdb?  Thanks.
+
+GDB should be able to load the program into RAM.  Use the "load" command
+to load the program on the target.  At present, GDB does not know how to
+burn the program into flash.  That's something we're working on, and
+will be a part of our toolchains at some point in the future.
+
+-- 
+Mark Mitchell
+CodeSourcery
+mark at codesourcery.com
+(650) 331-3385 x713
+
+
+From michel.marti at objectxp.com  Wed May 31 12:47:53 2006
+From: michel.marti at objectxp.com (Michel Marti)
+Date: Wed, 31 May 2006 14:47:53 +0200
+Subject: Problem while linking pound
+Message-ID: <447D9079.5060908@objectxp.com>
+
+Hello,
+
+I'm trying to build pound (http://www.apsis.ch/pound/) using the CodeSourcery 4.1-11
+Coldfire toolchain with no success. On linking, I get the following errors:
+
+$ m68k-uclinux-gcc -m5200 -Wl,-elf2flt -L../staging/lib -o pound pound.o http.o \
+  config.o svc.o -lssl -lcrypto -lpthread
+
+.../m68k-uclinux/libc/usr/lib/libc.a(clone.o): In function `clone':
+libc/sysdeps/linux/m68k/clone.S:(.text+0xc): relocation truncated to fit: R_68K_PC16
+against symbol `__syscall_error' defined in .text section in
+.../m68k-uclinux/libc/usr/lib/libc.a(__syscall_error.o)
+libc/sysdeps/linux/m68k/clone.S:(.text+0x18): relocation truncated to fit: R_68K_PC16
+against symbol `__syscall_error' defined in .text section in
+.../m68k-uclinux/libc/usr/lib/libc.a(__syscall_error.o)
+libc/sysdeps/linux/m68k/clone.S:(.text+0x36): relocation truncated to fit: R_68K_PC16
+against symbol `__syscall_error' defined in .text section in
+.../m68k-uclinux/libc/usr/lib/libc.a(__syscall_error.o)
+collect2: ld returned 1 exit status
+
+I'm using OpenSSL 0.9.7j configured with the following options:
+
+ no-shared zlib no-krb5 threads no-bf no-idea no-md2 no-ripemd no-cast linux-m68k
+
+Any hints?
+
+Michel
+
+

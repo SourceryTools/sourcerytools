@@ -1,0 +1,1959 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [newfield_revision] Nearest Neighbors, Reduction Functions
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bnewfield_revision%5D%20Nearest%20Neighbors%2C%20Reduction%20Functions&In-Reply-To=%3C20010802155139.A22291%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   
+   <LINK REL="Next"  HREF="000604.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[newfield_revision] Nearest Neighbors, Reduction Functions</H1>
+    <B>Jeffrey Oldham</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bnewfield_revision%5D%20Nearest%20Neighbors%2C%20Reduction%20Functions&In-Reply-To=%3C20010802155139.A22291%40codesourcery.com%3E"
+       TITLE="[newfield_revision] Nearest Neighbors, Reduction Functions">oldham at codesourcery.com
+       </A><BR>
+    <I>Thu Aug  2 22:51:39 UTC 2001</I>
+    <P><UL>
+        
+        <LI>Next message: <A HREF="000604.html">centerings patch
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#603">[ date ]</a>
+              <a href="thread.html#603">[ thread ]</a>
+              <a href="subject.html#603">[ subject ]</a>
+              <a href="author.html#603">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>The attached patch revises FieldOffset, eliminating the Type template
+parameter and adding miscellaneous functionality such as operator&lt;&lt;
+and operator==.  The eliminated Type parameter indicated whether the
+underlying field had one subfield or multiple subfields, which are
+accessed differently.  Stephen, Scott, and I all repeatedly tripped
+over the template parameter, which propagated itself through much of
+the code changes.  Instead, of a compile-time parameter, we use a
+run-time computation to decide how to access a field.  The associated
+test program is also revised.
+
+More importantly, this patch also adds FieldOffsetList,
+nearestNeighbors(), NearestNeighbors, associated reduction functions,
+and associated test programs FieldReductions and NearestNeighbors.  A
+FieldOffsetList is a list of FieldOffsets.  Given input and output
+centerings, nearestNeighbors() returns a std::vector of
+FieldOffsetLists.  Each FieldOffsetList specifies the locations of the
+input field values closest (using the Manhattan norm) to the
+corresponding output field value.  Many of the Caramana hydrodynamics
+and Chevron kernel operations use nearest neighbors since physics
+operates locally.  FieldReductions, taking an input field, a
+FieldOffsetList, and an output cell location, apply a reduction to the
+specified input cells.
+
+All these changes were added to the newfield_revision branch, which is
+being developed by Scott Haney, Jeffrey D. Oldham, and Stephen Smith.
+The branch code is not guaranteed to compile, be correct, or stable.
+
+2001-08-02  Jeffrey D. Oldham  &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">oldham at codesourcery.com</A>&gt;
+
+        * FieldCentering.cmpl.cpp
+        (CanonicalCentering::CanonicalCentering): Fix continuity label for
+        canonical discontinuous vertex centering.
+        * Field.h: Include NearestNeighbors.h
+        (View2&lt;..., FieldOffset&lt;...&gt; &gt;): New class merging previous
+        FieldOffset&lt;...,[01]&gt; code.
+        (View2&lt;..., FieldOffset&lt;...,1&gt; &gt;): Removed.
+        (View2&lt;..., FieldOffset&lt;...,0&gt; &gt;): Removed.
+        * FieldOffset.h: (FieldOffset&lt;...&gt;): New class merging previous
+        FieldOffset&lt;...,[01]&gt; code.
+        (FieldOffset&lt;...,1&gt;): Removed.
+        (FieldOffset&lt;...,0&gt;): Removed.
+        (FieldOffset::FieldOffset()): New function.
+        (FieldOffset::setSubFieldNumber): Likewise.
+        (FieldOffset::modifyCellOffset): Likewise.
+        (operator&lt;&lt;(...,FieldOffset)): Likewise.
+        (operator==(FieldOffset,...)): Likewise.
+        (operator!=(FieldOffset,...)): Likewise.
+        (FieldOffsetList): New class.
+        (operator&lt;&lt;(...,FieldOffsetList)): New function.
+        (accumulate): Likewise.
+        (sum): Likewise.
+        (average): Likewise.
+        (minimum): Likewise.
+        (maximum): Likewise.
+        * NearestNeighbors.h (NearestNeighborClass): New class.
+        (nearestNeighbors): New function.
+        * objfile.mk ($(UNIQUE)_OBJS): Add FieldOffset.cmpl.o.
+        * tests/FieldOffset.cpp: Removed second template parameter from
+        all uses.
+        * tests/FieldReductions.cpp: New testing file.
+        * tests/NearestNeighbors.cpp: Likewise.
+        * tests/makefile: Add support for FieldReductions and
+        NearestNeighbors.  Remove support for ScalarAdvection and
+        ScalarAdvectionXB.
+
+Tested on       sequential Linux using gcc3.0 by building Pooma library and NewField executables
+		also tested using KCC by Stephen Smith
+Applied to      newfield_revision development branch
+Approved by     Stephen Smith
+
+Thanks,
+Jeffrey D. Oldham
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">oldham at codesourcery.com</A>
+-------------- next part --------------
+Index: Field.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/NewField/Field.h,v
+retrieving revision 1.15.2.3
+diff -c -p -r1.15.2.3 Field.h
+*** Field.h	2001/07/24 19:50:44	1.15.2.3
+--- Field.h	2001/08/02 19:48:50
+***************
+*** 68,73 ****
+--- 68,74 ----
+  #include &quot;NewField/FieldCreateLeaf.h&quot;
+  #include &quot;NewField/FieldCentering.h&quot;
+  #include &quot;NewField/FieldOffset.h&quot;
++ #include &quot;NewField/NearestNeighbors.h&quot;
+  
+  #include &quot;NewField/PrintField.h&quot;
+  
+*************** struct View1&lt;Field&lt;GeometryTag, T, Engin
+*** 577,584 ****
+  };
+  
+  
+! // FIXME: Add specializations for FieldOffset&lt;dimensions, 1&gt; and
+! // FIXME: FieldOffset&lt;dimensions, 0&gt;.
+  
+  //-----------------------------------------------------------------------------
+  // AltView1 avoids an instantiation problem that arises when two
+--- 578,584 ----
+  };
+  
+  
+! // FIXME: Add specializations for FieldOffset&lt;dimensions&gt;.
+  
+  //-----------------------------------------------------------------------------
+  // AltView1 avoids an instantiation problem that arises when two
+*************** struct View2&lt;Field&lt;GeometryTag, T, Engin
+*** 740,752 ****
+  
+  
+  //-----------------------------------------------------------------------------
+! // View2&lt;Field, FieldOffset&lt;Dim,1&gt;, Loc&lt;Dim&gt; &gt; specialization for
+  // indexing a field with a FieldOffset and a Loc.
+  //-----------------------------------------------------------------------------
+  
+  template&lt;class GeometryTag, class T, class EngineTag, int Dim&gt;
+  struct View2&lt;Field&lt;GeometryTag, T, EngineTag&gt;,
+!              FieldOffset&lt;Dim, 1&gt;,
+               Loc&lt;Dim&gt; &gt;
+  {
+    // Convenience typedef for the thing we're taking a view of.
+--- 740,752 ----
+  
+  
+  //-----------------------------------------------------------------------------
+! // View2&lt;Field, FieldOffset&lt;Dim&gt;, Loc&lt;Dim&gt; &gt; specialization for
+  // indexing a field with a FieldOffset and a Loc.
+  //-----------------------------------------------------------------------------
+  
+  template&lt;class GeometryTag, class T, class EngineTag, int Dim&gt;
+  struct View2&lt;Field&lt;GeometryTag, T, EngineTag&gt;,
+!              FieldOffset&lt;Dim&gt;,
+               Loc&lt;Dim&gt; &gt;
+  {
+    // Convenience typedef for the thing we're taking a view of.
+*************** struct View2&lt;Field&lt;GeometryTag, T, Engin
+*** 766,849 ****
+  
+    inline static
+    Type_t make(const Subject_t &amp;f,
+! 	      const FieldOffset&lt;dimensions, 1&gt; &amp;fo,
+  	      const Loc&lt;dimensions&gt; &amp;loc)
+      {
+        CTAssert(dimensions == Dim);
+-       PAssert(f.numSubFields() &gt; 0);
+        
+  #if POOMA_BOUNDS_CHECK
+!       PInsist(contains(f.totalDomain(), loc + fo.cellOffset()),
+! 	      &quot;Field view bounds error.&quot;);
+! #endif
+!       return f[fo.subFieldNumber()].engine()(loc + fo.cellOffset());
+!     }
+! 
+!   inline static
+!   ReadType_t makeRead(const Subject_t &amp;f,
+! 		      const FieldOffset&lt;dimensions, 1&gt; &amp;fo,
+! 		      const Loc&lt;dimensions&gt; &amp;loc)
+!     {
+!       PAssert(f.numSubFields() &gt; 0);
+!       
+! #if POOMA_BOUNDS_CHECK
+!       PInsist(contains(f.totalDomain(), loc + fo.cellOffset()),
+! 	      &quot;Field view bounds error.&quot;);
+  #endif
+!       return f[fo.subFieldNumber()].engine().read(loc + fo.cellOffset());
+!     }
+! };
+! 
+! 
+! //-----------------------------------------------------------------------------
+! // View2&lt;Field, FieldOffset&lt;Dim,0&gt;, Loc&lt;Dim&gt; &gt; specialization for
+! // indexing a field with a FieldOffset and a Loc.
+! //-----------------------------------------------------------------------------
+! 
+! template&lt;class GeometryTag, class T, class EngineTag, int Dim&gt;
+! struct View2&lt;Field&lt;GeometryTag, T, EngineTag&gt;,
+!              FieldOffset&lt;Dim, 0&gt;,
+!              Loc&lt;Dim&gt; &gt;
+! {
+!   // Convenience typedef for the thing we're taking a view of.
+!   
+!   typedef Field&lt;GeometryTag, T, EngineTag&gt; Subject_t;
+! 
+!   // The field's dimension (i.e., the number of indices required to select a point).
+!   
+!   enum { dimensions = Subject_t::dimensions };
+! 
+!   // The return types.
+!   
+!   typedef typename Subject_t::Element_t ReadType_t;
+!   typedef typename Subject_t::ElementRef_t Type_t;
+! 
+!   // The functions that do the indexing.
+! 
+!   inline static
+!   Type_t make(const Subject_t &amp;f,
+! 	      const FieldOffset&lt;dimensions, 0&gt; &amp;fo,
+! 	      const Loc&lt;dimensions&gt; &amp;loc)
+!     {
+!       CTAssert(dimensions == Dim);
+!       
+  #if POOMA_BOUNDS_CHECK
+!       PInsist(contains(f.totalDomain(), loc + fo.cellOffset()),
+! 	      &quot;Field view bounds error.&quot;);
+  #endif
+!       return f.engine()(loc + fo.cellOffset());
+      }
+  
+    inline static
+    ReadType_t makeRead(const Subject_t &amp;f,
+! 		      const FieldOffset&lt;dimensions, 0&gt; &amp;fo,
+  		      const Loc&lt;dimensions&gt; &amp;loc)
+      {
+  #if POOMA_BOUNDS_CHECK
+!       PInsist(contains(f.totalDomain(), loc + fo.cellOffset()),
+! 	      &quot;Field view bounds error.&quot;);
+  #endif
+!       return f.engine().read(loc + fo.cellOffset());
+      }
+  };
+  
+--- 766,813 ----
+  
+    inline static
+    Type_t make(const Subject_t &amp;f,
+! 	      const FieldOffset&lt;dimensions&gt; &amp;fo,
+  	      const Loc&lt;dimensions&gt; &amp;loc)
+      {
+        CTAssert(dimensions == Dim);
+        
++       if (f.numSubFields() &gt; 0) {
+  #if POOMA_BOUNDS_CHECK
+! 	PInsist(contains(f[fo.subFieldNumber()].totalDomain(),
+! 			 loc + fo.cellOffset()),
+! 		&quot;Field view bounds error.&quot;);
+  #endif
+! 	return f[fo.subFieldNumber()].engine()(loc + fo.cellOffset());
+!       }
+!       else {
+  #if POOMA_BOUNDS_CHECK
+! 	PInsist(contains(f.totalDomain(), loc + fo.cellOffset()),
+! 		&quot;Field view bounds error.&quot;);
+! 	return f.engine()(loc + fo.cellOffset());
+  #endif
+!       }
+      }
+  
+    inline static
+    ReadType_t makeRead(const Subject_t &amp;f,
+! 		      const FieldOffset&lt;dimensions&gt; &amp;fo,
+  		      const Loc&lt;dimensions&gt; &amp;loc)
+      {
++       if (f.numSubFields() &gt; 0) {
+  #if POOMA_BOUNDS_CHECK
+! 	PInsist(contains(f[fo.subFieldNumber()].totalDomain(),
+! 			 loc + fo.cellOffset()),
+! 		&quot;Field view bounds error.&quot;);
+! #endif
+! 	return f[fo.subFieldNumber()].engine().read(loc + fo.cellOffset());
+!       }
+!       else {
+! #if POOMA_BOUNDS_CHECK
+! 	PInsist(contains(f.totalDomain(), loc + fo.cellOffset()),
+! 		&quot;Field view bounds error.&quot;);
+  #endif
+! 	return f.engine().read(loc + fo.cellOffset());
+!       }
+      }
+  };
+  
+Index: FieldCentering.cmpl.cpp
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/NewField/Attic/FieldCentering.cmpl.cpp,v
+retrieving revision 1.1.2.4
+diff -c -p -r1.1.2.4 FieldCentering.cmpl.cpp
+*** FieldCentering.cmpl.cpp	2001/07/17 23:16:10	1.1.2.4
+--- FieldCentering.cmpl.cpp	2001/08/02 19:48:50
+*************** CanonicalCentering&lt;Dim&gt;::CanonicalCenter
+*** 285,290 ****
+--- 285,295 ----
+    centering.addValue(orientation, position);
+    centering_table_m[VertexType][Continuous][AllDim%(1&lt;&lt;Dim)] =
+      centering;
++ 
++   centering = Centering&lt;Dim&gt;(VertexType, Discontinuous);
++   orientation = 0;
++   position = 0.0;
++   centering.addValue(orientation, position);
+    position(0) = 1.0; centering.addValue(orientation, position);
+    if (Dim &gt; 1) {
+      position(1) = 1.0; centering.addValue(orientation, position);
+Index: FieldOffset.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/NewField/Attic/FieldOffset.h,v
+retrieving revision 1.1.2.1
+diff -c -p -r1.1.2.1 FieldOffset.h
+*** FieldOffset.h	2001/07/24 19:50:44	1.1.2.1
+--- FieldOffset.h	2001/08/02 19:48:51
+***************
+*** 29,34 ****
+--- 29,41 ----
+  //-----------------------------------------------------------------------------
+  // Classes: 
+  //   FieldOffset
++ //   FieldOffsetList
++ // Functions:
++ //   accumulate
++ //   sum
++ //   average
++ //   minimum
++ //   maximum
+  //-----------------------------------------------------------------------------
+  
+  #ifndef POOMA_NEWFIELD_OFFSET_H
+***************
+*** 39,44 ****
+--- 46,55 ----
+  // 
+  // FieldOffset
+  //   - specifies a relative cell offset and subfield number
++ // FieldOffsetList
++ //   - is a sequence of FieldOffset's
++ // FieldOffsetList reductions
++ //   - computations using the entries in a FieldOffsetList
+  //-----------------------------------------------------------------------------
+  
+  //-----------------------------------------------------------------------------
+***************
+*** 46,73 ****
+  //-----------------------------------------------------------------------------
+  
+  #include &quot;Domain/Loc.h&quot;
+  
+  //-----------------------------------------------------------------------------
+  // Forward declarations:
+  //-----------------------------------------------------------------------------
+  
+! template &lt;int Dim, int Type=1&gt;
+  class FieldOffset;
+  
+  //-----------------------------------------------------------------------------
+! // Full Description of FieldOffset:
+  //
+  // Given a field f, a Loc loc, and a field offset (offset,num), a
+  // field value can be obtained.  Since each value specified by the
+  // field's centering is stored in a separate subfield, the notation
+! // f[num](loc + offset) yields the value.
+  //
+! // Accessing values for fields with exactly one value per cell differs
+! // from accessing fields with multiple subfields.  If a field has
+! // exactly one value per cell, use FieldOffset&lt;Dim, 0&gt;, which does not
+! // store a subfield number.  If a field has multiple subfields, use
+! // FieldOffset&lt;Dim, 1&gt;, which stores a subfield number.
+  //
+  //-----------------------------------------------------------------------------
+  
+  
+--- 57,134 ----
+  //-----------------------------------------------------------------------------
+  
+  #include &quot;Domain/Loc.h&quot;
++ #include &lt;iostream&gt;
++ #include &lt;vector&gt;
++ #include &lt;functional&gt;
++ #include &lt;algorithm&gt;
++ #include &lt;iterator&gt;
+  
++ 
+  //-----------------------------------------------------------------------------
+  // Forward declarations:
+  //-----------------------------------------------------------------------------
+  
+! template &lt;int Dim&gt;
+  class FieldOffset;
+  
++ template &lt;int Dim&gt;
++ class FieldOffsetList;
++ 
+  //-----------------------------------------------------------------------------
+! // Full Description of FieldOffset&lt;Dim&gt;:
+  //
+  // Given a field f, a Loc loc, and a field offset (offset,num), a
+  // field value can be obtained.  Since each value specified by the
+  // field's centering is stored in a separate subfield, the notation
+! //
+! //-----------------------------------------------------------------------------
+! 
+! 
+! //-----------------------------------------------------------------------------
+! // Full Description of FieldOffsetList&lt;Dim&gt;:
+! //
+! // A set of FieldOffset's can be stored in a FieldOffsetList.  The
+! // list has a fixed size.  The following member operations are
+! // supported:
+! //   size_type size() const - return the number of FieldOffset's.
+! //   const_reference operator[](size_type n) - return the nth
+! //     FieldOffset.
+! //
+! //-----------------------------------------------------------------------------
+! 
+! 
+! //-----------------------------------------------------------------------------
+! // Full Description of FieldOffsetList&lt;Dim&gt; Reductions:
+! //
+! // FIXME: What do we do for data-parallel statements?
+! //
+! // Many computations using `FieldOffsetList's perform similar
+! // computations.  The provided reduction functions support these
+! // computations.  All take a field, a FieldOffsetList, and a Loc.  The
+! // Loc specifies a cell within the given field.  Together with a
+! // FieldOffsetList and a field, a field value is specified.  The
+! // reduction function combines all the specified field values
+! // corresponding to `FieldOffset's in the list.  The list must not be
+! // empty.
+! //
+! // accumulate:	Sequentially applies the given binary function to all
+! //		field offsets in the list.
+! // sum:		Adds the values indicated by the field offset list.
+! // average:	Averages the values indicated by the field offset
+! //		list.  Note the division is computed using the element
+! //		type, e.g., integral or floating point division.
+! // minimum:	Returns the smallest of the indicated values.
+! // maximum:	Returns the largest of the indicated values.
+  //
+! //-----------------------------------------------------------------------------
+! 
+! //-----------------------------------------------------------------------------
+! // Full Description of findFieldOffsetList():
+  //
++ // Given an input centering and an output centering,
++ // findFieldOffsetList() returns a std::vector&lt;FieldOffsetList&lt;Dim&gt; &gt;.
++ // Each vector entry corresponds to one output value in the output centering.
++ //
+  //-----------------------------------------------------------------------------
+  
+  
+*************** class FieldOffset;
+*** 76,89 ****
+  //-----------------------------------------------------------------------------
+  
+  template &lt;int Dim&gt;
+! class FieldOffset&lt;Dim, 1&gt; {
+  public:
+  
+    //---------------------------------------------------------------------------
+    // User-callable constructors. These ctors are meant to be called by users.
+  
+    FieldOffset(const Loc&lt;Dim&gt; &amp;loc, const int subFieldNumber = 0)
+!     : cell_offset_m(loc), subfield_number_m (subFieldNumber)
+    {
+  #if POOMA_BOUNDS_CHECK
+      PInsist(subfield_number_m &gt;= 0, &quot;Erroneous FieldOffset subfield number.&quot;);
+--- 137,150 ----
+  //-----------------------------------------------------------------------------
+  
+  template &lt;int Dim&gt;
+! class FieldOffset {
+  public:
+  
+    //---------------------------------------------------------------------------
+    // User-callable constructors. These ctors are meant to be called by users.
+  
+    FieldOffset(const Loc&lt;Dim&gt; &amp;loc, const int subFieldNumber = 0)
+!     : cell_offset_m(loc), subfield_number_m(subFieldNumber)
+    {
+  #if POOMA_BOUNDS_CHECK
+      PInsist(subfield_number_m &gt;= 0, &quot;Erroneous FieldOffset subfield number.&quot;);
+*************** public:
+*** 92,97 ****
+--- 153,177 ----
+    }
+  
+    //---------------------------------------------------------------------------
++   // Internal POOMA constructor.  These operations are used internally
++   // by POOMA.  They are not really meant to be called by users.
++ 
++   FieldOffset()
++     : cell_offset_m(Loc&lt;Dim&gt;()), subfield_number_m(0)
++   {}
++ 
++   inline void setSubFieldNumber(int subFieldNumber)
++     {
++       subfield_number_m = subFieldNumber;
++       return;
++     }
++ 
++   inline Loc&lt;Dim&gt; &amp;modifyCellOffset()
++     {
++       return cell_offset_m;
++     }
++ 
++   //---------------------------------------------------------------------------
+    // Accessors.
+  
+    inline const Loc&lt;Dim&gt; &amp;cellOffset() const
+*************** private:
+*** 114,153 ****
+  };
+  
+  
+  template &lt;int Dim&gt;
+! class FieldOffset&lt;Dim, 0&gt; {
+  public:
+  
+!   //---------------------------------------------------------------------------
+!   // User-callable constructors. These ctors are meant to be called by users.
+  
+!   FieldOffset(const Loc&lt;Dim&gt; &amp;loc, const int subFieldNumber = 0)
+!     : cell_offset_m(loc), subfield_number_m (-1)
+!   { }
+  
+    //---------------------------------------------------------------------------
+!   // Accessors.
+  
+!   inline const Loc&lt;Dim&gt; &amp;cellOffset() const
+!     {
+!       return cell_offset_m;
+!     }
+  
+  private:
+  
+!   // The cell offset.
+!   Loc&lt;Dim&gt; cell_offset_m;
+  
+!   // The subfield number, if appropriate.
+!   int subfield_number_m;
+  };
+  
+  
+  #endif // POOMA_NEWFIELD_OFFSET_H
+  
+  // ACL:rcsinfo
+  // ----------------------------------------------------------------------
+! // $RCSfile: FieldOffset.h,v $   $Author: oldham $
+! // $Revision: 1.1.2.1 $   $Date: 2001/07/24 19:50:44 $
+  // ----------------------------------------------------------------------
+  // ACL:rcsinfo
+--- 194,438 ----
+  };
+  
+  
++ //-----------------------------------------------------------------------------
++ // Overload the &lt;&lt; operator to print a FieldOffset to a stream.
++ //-----------------------------------------------------------------------------
++ 
++ template &lt;int Dim&gt;
++ std::ostream &amp;operator&lt;&lt;(std::ostream &amp;o,
++ 			 const FieldOffset&lt;Dim&gt; &amp;fieldOffset)
++ {
++   return o &lt;&lt; &quot;FieldOffset: (&quot; &lt;&lt; fieldOffset.cellOffset()
++ 	   &lt;&lt; &quot;, &quot; &lt;&lt; fieldOffset.subFieldNumber() &lt;&lt; &quot;)&quot;;
++ }
++ 
++ //-----------------------------------------------------------------------------
++ // Define equality and inequality operators for FieldOffsets/
++ //-----------------------------------------------------------------------------
++ 
++ template &lt;int Dim&gt;
++ inline bool
++ operator==(const FieldOffset&lt;Dim&gt; &amp;fieldOffset1,
++ 	   const FieldOffset&lt;Dim&gt; &amp;fieldOffset2)
++ {
++   return
++     fieldOffset1.cellOffset() == fieldOffset2.cellOffset() &amp;&amp;
++     fieldOffset1.subFieldNumber() == fieldOffset2.subFieldNumber();
++ }
++ 
++ template &lt;int Dim&gt;
++ inline bool
++ operator!=(const FieldOffset&lt;Dim&gt; &amp;fieldOffset1,
++ 	   const FieldOffset&lt;Dim&gt; &amp;fieldOffset2)
++ {
++   return !(fieldOffset1 == fieldOffset2);
++ }
++ 
++ 
++ //-----------------------------------------------------------------------------
++ // FieldOffsetList.
++ //-----------------------------------------------------------------------------
++ 
+  template &lt;int Dim&gt;
+! class FieldOffsetList
+! {
+  public:
+  
+!   // Exported typedefs.
+!   
+!   typedef size_t size_type;
+!   typedef FieldOffset&lt;Dim&gt;&amp; reference;
+!   typedef const FieldOffset&lt;Dim&gt;&amp; const_reference;
+  
+!   // Return the number of FieldOffset's.
+! 
+!   size_type size() const
+!   {
+!     return v_m.size();
+!   }
+! 
+!   // Return a FieldOffset.
+! 
+!   const_reference operator[](const size_type n) const
+!   {
+! #if POOMA_BOUNDS_CHECK
+!     PInsist(n &lt; size(), &quot;Erroneous FieldOffsetList index.&quot;);
+! #endif
+!     return v_m[n];
+!   }
+  
+    //---------------------------------------------------------------------------
+!   // Internal POOMA operators.  These operations are used internally
+!   // by POOMA.  They are not really meant to be called by users.
+  
+!   // Create an empty list.  This is used for arrays or std::vectors.
+! 
+!   FieldOffsetList() {}
+! 
+!   // Create a list that can hold the specified number of entries.
+! 
+!   FieldOffsetList(const size_type sz)
+!   {
+! #if POOMA_BOUNDS_CHECK
+!     PInsist(sz &gt; 0, &quot;Erroneous FieldOffsetList size.&quot;);
+! #endif
+!     v_m.reserve(sz);
+!   }
+  
++   // Copy a vector's entries to this FieldOffsetList.
++ 
++   FieldOffsetList &amp;operator=(const std::vector&lt;FieldOffset&lt;Dim&gt; &gt; &amp;v)
++   {
++     v_m.resize(v.size());
++     std::copy(v.begin(), v.end(), v_m.begin());
++     return *this;
++   }
++ 
++   // Permit adding the specified entry.
++ 
++   reference operator[](const size_type n)
++   {
++ #if POOMA_BOUNDS_CHECK
++     PInsist(n &lt; size(), &quot;Erroneous FieldOffsetList index.&quot;);
++ #endif
++     return v_m[n];
++   }
++ 
+  private:
+  
+!   std::vector&lt;FieldOffset&lt;Dim&gt; &gt; v_m;
+! };
+  
+! //-----------------------------------------------------------------------------
+! // Overload the &lt;&lt; operator to print a FieldOffsetList to a stream.
+! //-----------------------------------------------------------------------------
+! 
+! template &lt;int Dim&gt;
+! std::ostream &amp;operator&lt;&lt;(std::ostream &amp;o,
+! 			 const FieldOffsetList&lt;Dim&gt; &amp;fieldOffsetList)
+! {
+!   o &lt;&lt; &quot;FieldOffsetList:\n&quot;;
+!   for (int index = 0; index &lt; fieldOffsetList.size(); ++index)
+!     o &lt;&lt; fieldOffsetList[index] &lt;&lt; std::endl;
+!   return o;
+! }
+! 
+! 
+! //-----------------------------------------------------------------------------
+! // FieldOffsetList Reductions.
+! //-----------------------------------------------------------------------------
+! 
+! // Accumulate all the specified field locations using the supplied STL
+! // binary function.  Then, for each FieldOffset fo in the list, result
+! // = binary_op(result, fv), where fv is the corresponding field value.
+! 
+! // FIXME: Add data-parallel code.
+! 
+! template&lt;class GeometryTag, class T, class Expr, int Dim,
+!          class BinaryFunction&gt;
+! inline
+! typename Field&lt;GeometryTag, T, Expr&gt;::T_t
+! accumulate(BinaryFunction binary_op,
+! 	   const Field&lt;GeometryTag, T, Expr&gt;&amp; field, 
+! 	   const FieldOffsetList&lt;Dim&gt; &amp;lst, 
+! 	   const Loc&lt;Dim&gt; &amp;loc)
+! {
+!   typedef typename Field&lt;GeometryTag, T, Expr&gt;::T_t T_t;
+!   typedef typename FieldOffsetList&lt;Dim&gt;::size_type size_type;
+!   CTAssert((Field&lt;GeometryTag, T, Expr&gt;::dimensions == Dim));
+! 
+!   const size_type lstLength = lst.size();
+!   PInsist(lstLength &gt; 0, &quot;accumulate must be given a nonempty list.&quot;);
+!   T_t init = field(lst[0], loc);
+!   for (size_type i = 1; i &lt; lstLength ; ++i)
+!     init = binary_op(init, field(lst[i], loc));
+!   return init;
+! }
+! 
+! 
+! // Sum all the values at the field locations.
+! 
+! template&lt;class GeometryTag, class T, class Expr, int Dim&gt;
+! inline
+! typename Field&lt;GeometryTag, T, Expr&gt;::T_t
+! sum(const Field&lt;GeometryTag, T, Expr&gt;&amp; field, 
+!     const FieldOffsetList&lt;Dim&gt; &amp;lst, 
+!     const Loc&lt;Dim&gt; &amp;loc)
+! {
+!   typedef typename Field&lt;GeometryTag, T, Expr&gt;::T_t T_t;
+!   CTAssert((Field&lt;GeometryTag, T, Expr&gt;::dimensions == Dim));
+!   return accumulate(std::plus&lt;T_t&gt;(), field, lst, loc);
+! }
+! 
+! 
+! // Average all the values at the field locations.  Note the return
+! // value has the same type as the field types so integer division may
+! // be used.
+! 
+! template&lt;class GeometryTag, class T, class Expr, int Dim&gt;
+! inline
+! typename Field&lt;GeometryTag, T, Expr&gt;::T_t
+! average(const Field&lt;GeometryTag, T, Expr&gt;&amp; field, 
+! 	const FieldOffsetList&lt;Dim&gt; &amp;lst, 
+! 	const Loc&lt;Dim&gt; &amp;loc)
+! {
+!   typedef typename Field&lt;GeometryTag, T, Expr&gt;::T_t T_t;
+!   CTAssert((Field&lt;GeometryTag, T, Expr&gt;::dimensions == Dim));
+!   return sum(field, lst, loc) / lst.size();
+! }
+! 
+! 
+! // Return the minimum value of the field locations.
+! 
+! template &lt;class T&gt;
+! struct fomin : public std::binary_function&lt;T, T, T&gt;
+! {
+!   T operator()(const T &amp;op1, const T &amp;op2) const {
+!     return std::min(op1, op2);
+!   }
+! };
+! 
+! template&lt;class GeometryTag, class T, class Expr, int Dim&gt;
+! inline
+! typename Field&lt;GeometryTag, T, Expr&gt;::T_t
+! minimum(const Field&lt;GeometryTag, T, Expr&gt;&amp; field, 
+! 	const FieldOffsetList&lt;Dim&gt; &amp;lst, 
+! 	const Loc&lt;Dim&gt; &amp;loc)
+! {
+!   typedef typename Field&lt;GeometryTag, T, Expr&gt;::T_t T_t;
+!   CTAssert((Field&lt;GeometryTag, T, Expr&gt;::dimensions == Dim));
+!   return accumulate(fomin&lt;T_t&gt;(), field, lst, loc);
+! }
+! 
+! 
+! // Return the maximum value of the field locations.
+! 
+! template &lt;class T&gt;
+! struct fomax : public std::binary_function&lt;T, T, T&gt;
+! {
+!   T operator()(const T &amp;op1, const T &amp;op2) const {
+!     return std::max(op1, op2);
+!   }
+  };
+  
++ template&lt;class GeometryTag, class T, class Expr, int Dim&gt;
++ inline
++ typename Field&lt;GeometryTag, T, Expr&gt;::T_t
++ maximum(const Field&lt;GeometryTag, T, Expr&gt;&amp; field, 
++ 	const FieldOffsetList&lt;Dim&gt; &amp;lst, 
++ 	const Loc&lt;Dim&gt; &amp;loc)
++ {
++   typedef typename Field&lt;GeometryTag, T, Expr&gt;::T_t T_t;
++   CTAssert((Field&lt;GeometryTag, T, Expr&gt;::dimensions == Dim));
++   return accumulate(fomax&lt;T_t&gt;(), field, lst, loc);
++ }
++ 
+  
+  #endif // POOMA_NEWFIELD_OFFSET_H
+  
+  // ACL:rcsinfo
+  // ----------------------------------------------------------------------
+! // $RCSfile: FieldCentering.h,v $   $Author: oldham $
+! // $Revision: 1.1.2.1 $   $Date: 2001/07/16 20:44:59 $
+  // ----------------------------------------------------------------------
+  // ACL:rcsinfo
+Index: NearestNeighbors.h
+===================================================================
+RCS file: NearestNeighbors.h
+diff -N NearestNeighbors.h
+*** /dev/null	Tue May  5 14:32:27 1998
+--- NearestNeighbors.h	Thu Aug  2 13:48:51 2001
+***************
+*** 0 ****
+--- 1,401 ----
++ // -*- C++ -*-
++ // ACL:license
++ // ----------------------------------------------------------------------
++ // This software and ancillary information (herein called &quot;SOFTWARE&quot;)
++ // called POOMA (Parallel Object-Oriented Methods and Applications) is
++ // made available under the terms described here.  The SOFTWARE has been
++ // approved for release with associated LA-CC Number LA-CC-98-65.
++ // 
++ // Unless otherwise indicated, this SOFTWARE has been authored by an
++ // employee or employees of the University of California, operator of the
++ // Los Alamos National Laboratory under Contract No. W-7405-ENG-36 with
++ // the U.S. Department of Energy.  The U.S. Government has rights to use,
++ // reproduce, and distribute this SOFTWARE. The public may copy, distribute,
++ // prepare derivative works and publicly display this SOFTWARE without 
++ // charge, provided that this Notice and any statement of authorship are 
++ // reproduced on all copies.  Neither the Government nor the University 
++ // makes any warranty, express or implied, or assumes any liability or 
++ // responsibility for the use of this SOFTWARE.
++ // 
++ // If SOFTWARE is modified to produce derivative works, such modified
++ // SOFTWARE should be clearly marked, so as not to confuse it with the
++ // version available from LANL.
++ // 
++ // For more information about POOMA, send e-mail to <A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">pooma at acl.lanl.gov</A>,
++ // or visit the POOMA web page at <A HREF="http://www.acl.lanl.gov/pooma/.">http://www.acl.lanl.gov/pooma/.</A>
++ // ----------------------------------------------------------------------
++ // ACL:license
++ 
++ //-----------------------------------------------------------------------------
++ // Function:
++ //   nearestNeighbors
++ // Class:
++ //   NearestNeighborClass
++ //-----------------------------------------------------------------------------
++ 
++ #ifndef POOMA_NEWFIELD_NEAREST_NEIGHBORS_H
++ #define POOMA_NEWFIELD_NEAREST_NEIGHBORS_H
++ 
++ //-----------------------------------------------------------------------------
++ // Overview: 
++ // 
++ // nearestNeighbors
++ //   - yields FieldOffsetLists corresponding to the specified centerings
++ // NearestNeighborClass
++ //   - the class performing the work
++ //-----------------------------------------------------------------------------
++ 
++ //-----------------------------------------------------------------------------
++ // Includes:
++ //-----------------------------------------------------------------------------
++ 
++ #include &quot;Domain/Loc.h&quot;
++ #include &quot;NewField/FieldCentering.h&quot;
++ #include &lt;vector&gt;
++ #include &lt;numeric&gt;
++ #include &lt;utility&gt;
++ #include &lt;functional&gt;
++ #include &lt;algorithm&gt;
++ 
++ 
++ //-----------------------------------------------------------------------------
++ // Forward declarations:
++ //-----------------------------------------------------------------------------
++ 
++ //-----------------------------------------------------------------------------
++ // Full Description of nearestNeighbors():
++ //
++ // Given input and output centerings, this function computes the
++ // &quot;first shell&quot; of nearest neighbors for each output value.  That is,
++ // for each output value, it computes the FieldOffsetList containing
++ // the input values that are closest, with respect to the Manhattan
++ // norm (l_1 norm).  The FieldOffsetLists are stored in a std::vector
++ // in the same order as the output values occur in the output
++ // centering.
++ //
++ // If only values within the corresponding input cell are desired,
++ // specify a third parameter.
++ //
++ //
++ // Full Description of NearestNeighborClass:
++ //
++ // This class implements the work of nearestNeighbors().
++ //
++ //-----------------------------------------------------------------------------
++ 
++ //----------------------------------------------------------------------
++ // NearestNeighborClass.
++ //----------------------------------------------------------------------
++ 
++ template &lt;int Dim, bool IntraCellOnly = false&gt;
++ class NearestNeighborClass {
++ public:
++ 
++   typedef FieldOffset&lt;Dim&gt; FieldOffset_t;
++   typedef FieldOffsetList&lt;Dim&gt; FieldOffsetList_t;
++   typedef std::vector&lt;FieldOffset_t&gt; FieldOffset_vt;
++   typedef std::vector&lt;FieldOffsetList_t&gt; Answer_t;
++   typedef Centering&lt;Dim&gt; Center;
++   typedef Center::Positions Positions;
++   typedef Center::Position Position;
++ 
++   // To compute the set of input values, we maintain a set of input
++   // values and their differences from the output value.  In fact, we
++   // maintain the input value index and its difference.
++ 
++   typedef std::pair&lt;int, Position&gt; MinimumPair;
++   typedef std::vector&lt;MinimumPair&gt; MinimumSet;
++ 
++ 
++   NearestNeighborClass(const Center &amp;inputCentering,
++ 		       const Center &amp;outputCentering)
++     : inputCentering_m(inputCentering),
++       outputCentering_m(outputCentering)
++   {
++     PInsist(inputCentering_m.positions().size() &gt; 0,
++ 	    &quot;The input centering must be non-empty.&quot;);
++   }
++ 
++   inline
++   Answer_t operator()()
++   {
++     Answer_t answer;
++     answer.resize(outputCentering_m.size());
++     Positions inputPositions = inputCentering_m.positions();
++     Positions outputPositions = outputCentering_m.positions();
++     Position positionDifference;
++     double minimumDistance;
++ 
++     // Determine nearest neighbors for each output value.
++ 
++     for (Answer_t::size_type outputIndex = 0;
++ 	 outputIndex &lt; outputCentering_m.size();
++ 	 ++outputIndex)
++       {
++ 	// Compute all input values in the first shell.
++ 
++ 	MinimumSet minimumSet;	// all input values in first shell
++ 	const Position outputValue = outputPositions[outputIndex];
++ 	typename Positions::size_type inputIndex = 0;
++ 
++ 	// Use the first input value to start computing the minimum.
++ 
++ 	positionDifference = inputPositions[inputIndex] - outputValue;
++ 	minimumDistance = 
++ 	  (IntraCellOnly ?
++ 	   manhattanDistance&lt;Manhattan&gt;(positionDifference) :
++ 	   manhattanDistance&lt;ManhattanGrid&gt;(positionDifference));
++  	minimumSet.push_back(std::make_pair(inputIndex, positionDifference));
++ 
++ 	// Compute the minimum over the rest of the input values.
++ 
++ 	for (++inputIndex;
++ 	     inputIndex &lt; inputPositions.size();
++ 	     ++inputIndex) {
++ 	  positionDifference = inputPositions[inputIndex] - outputValue;
++ 	  const double distance = 
++ 	    (IntraCellOnly ?
++ 	     manhattanDistance&lt;Manhattan&gt;(positionDifference) :
++ 	     manhattanDistance&lt;ManhattanGrid&gt;(positionDifference));
++ 	  if (distance &lt; minimumDistance + epsilon) {
++ 	    if (distance &lt; minimumDistance) {
++ 	      minimumSet.clear();
++ 	      minimumDistance = distance;
++ 	    }
++ 	    minimumSet.push_back(std::make_pair(inputIndex,
++ 						positionDifference));
++ 	  }
++ 	}
++ 
++ 
++ 	// Convert the minimum set to a set of FieldOffsets.
++ 	// minimumSet has all the minimum distance locations.
++ 
++ 	FieldOffset_vt answerHolder;
++ 	if (IntraCellOnly) {
++ 	  for (MinimumSet::size_type minIndex = 0;
++ 	       minIndex &lt; minimumSet.size();
++ 	       ++minIndex)
++ 	    answerHolder.push_back(FieldOffset_t(Loc&lt;Dim&gt;(0),
++ 						 minimumSet[minIndex].first));
++ 	}
++ 	else {
++ 	  FieldOffset_vt partialAnswer;
++ 	  for (MinimumSet::size_type minIndex = 0;
++ 	       minIndex &lt; minimumSet.size();
++ 	       ++minIndex)
++ 	    {
++ 	      // Compute the cell offsets, appending to the set of answers.
++ 
++ 	      partialAnswer = computeCellOffsets(minimumSet[minIndex].first,
++ 						 minimumSet[minIndex].second);
++ 	      answerHolder.insert(answerHolder.end(),
++ 				  partialAnswer.begin(), partialAnswer.end());
++ 	    }
++ 
++ 	  // Remove all duplicates from the answer set.
++ 
++ 	  std::sort(answerHolder.begin(), answerHolder.end(),
++ 		    CompareFieldOffset());
++ 	  answerHolder.erase(std::unique(answerHolder.begin(),
++ 					 answerHolder.end(),
++ 					 EqualFieldOffset()),
++ 			     answerHolder.end());
++ 	}
++ 
++ 	// Store the answer.
++ 
++ 	answer[outputIndex] = answerHolder;
++       }
++     
++     return answer;
++   }
++ 
++ private:
++ 
++   // Given a difference between two positions in logical coordinate
++   // space, return the Manhattan norm distance taking into account
++   // that input values are repeated in every grid cell.
++ 
++   struct ManhattanGrid : public std::binary_function&lt;double, double, double&gt;
++   {
++     double operator()(const double totalSoFar, double coordinate) const {
++       const double absCoordinate = std::abs(coordinate);
++       return totalSoFar + std::min(absCoordinate, 1-absCoordinate);
++     }
++   };
++ 
++   // Given a difference between two positions in logical coordinate
++   // space, return the Manhattan norm distance not taking into account
++   // that input values are repeated in every grid cell.
++ 
++   struct Manhattan : public std::binary_function&lt;double, double, double&gt;
++   {
++     double operator()(const double totalSoFar, double coordinate) const {
++       return totalSoFar + std::abs(coordinate);
++     }
++   };
++ 
++   template &lt;typename Distance&gt;
++   inline static
++   double manhattanDistance(const Position &amp;difference)
++   {
++     double answer;
++     for (int coordinate = Dim-1; coordinate &gt;= 0; --coordinate)
++       answer = Distance()(answer, difference(coordinate));
++     return answer;
++   }
++ 
++   // Given an input value in the first shell and its position
++   // difference from the given output value, return a vector of
++   // FieldOffsets of input values in the first shell, taking into
++   // account the repetition of input values throughout the grid.  This
++   // is non-trivial because
++   // 1) input values are replicated and multiple values may
++   //    be the same distance away
++   // 2) the closest input location may be in a different cell
++ 
++   inline static const FieldOffset_vt
++   computeCellOffsets(const int inputValueIndex, const Position &amp;difference)
++   {
++     // Start with one empty tuple.
++ 
++     FieldOffset_vt answer(1);
++     int numTuples = 1;
++ 
++     // Store the cell offsets for input values.
++ 
++     int cellOffsetCoordinates[2];	// For our problem, there can
++ 					// be at most two cell offsets for
++ 					// each dimension.
++     int numOffsets;			// number of cell offsets in
++ 					// cellOffsetCoordinates
++ 
++     for (int dimension = 0; dimension &lt; Dim; ++dimension) {
++       numOffsets =
++ 	convertDifferenceToCellOffsets(difference(dimension),
++ 				       cellOffsetCoordinates);
++       PInsist(numOffsets &gt;= 1 &amp;&amp; numOffsets &lt;= 2,
++ 	      &quot;Incorrect number of cell offsets&quot;);
++ 
++       if (numOffsets == 2)
++ 	// Duplicate the tuples.
++ 	answer.insert(answer.end(), answer.begin(), answer.end());
++ 
++       for (int coc = 0; coc &lt; numOffsets; ++coc)
++ 	for (int tuple = 0; tuple &lt; numTuples; ++tuple)
++ 	  answer[numTuples * coc + tuple].modifyCellOffset()[dimension] =
++ 	    cellOffsetCoordinates[coc];
++ 
++       numTuples *= numOffsets;
++     }
++ 
++     // Set the subField numbers.
++ 
++     for (int i = numTuples-1; i &gt;= 0; --i)
++       answer[i].setSubFieldNumber(inputValueIndex);
++ 
++     return answer;
++   }
++ 
++   // Given one coordinate of a difference between two coordinates,
++   // return the corresponding cell offset(s), either one or two.
++ 
++   inline static
++   int convertDifferenceToCellOffsets(const double difference,
++ 				     int cellOffsetCoordinate[])
++   {
++     if (difference &lt; -0.5 - epsilon) {
++       cellOffsetCoordinate[0] = +1;
++       return 1;
++     }
++     else if (std::abs(difference + 0.5) &lt; epsilon) {
++       cellOffsetCoordinate[0] = +1;
++       cellOffsetCoordinate[1] = 0;
++       return 2;
++     }
++     else if (difference &lt;= 0.5 - epsilon) {
++       cellOffsetCoordinate[0] = 0;
++       return 1;
++     }
++     else if (std::abs(difference - 0.5) &lt; epsilon) {
++       cellOffsetCoordinate[0] = 0;
++       cellOffsetCoordinate[1] = -1;
++       return 2;
++     }
++     else if (difference &lt; 1.0 + epsilon) {
++       cellOffsetCoordinate[0] = -1;
++       return 1;
++     }
++     else
++       PInsist(0, &quot;Out of range difference&quot;);
++   }
++ 
++   // Specify a partial order for FieldOffsets to use when removing
++   // duplicates.
++ 
++   struct CompareFieldOffset :
++     public std::binary_function&lt;FieldOffset_t, FieldOffset_t, bool&gt; {
++     bool operator()(const FieldOffset_t &amp;op1, const FieldOffset_t &amp;op2) {
++       return (op1.cellOffset() &lt; op2.cellOffset()) ||
++ 	(op1.cellOffset() == op2.cellOffset() &amp;&amp;
++ 	 op1.subFieldNumber() &lt; op2.subFieldNumber());
++     }
++   };
++   
++   // Specify an equality operator for FieldOffsets to use when removing
++   // duplicates.
++ 
++   struct EqualFieldOffset :
++     public std::binary_function&lt;FieldOffset_t, FieldOffset_t, bool&gt; {
++     bool operator()(const FieldOffset_t &amp;op1, const FieldOffset_t &amp;op2) {
++       return op1.cellOffset() == op2.cellOffset() &amp;&amp;
++ 	op1.subFieldNumber() == op2.subFieldNumber();
++     }
++   };
++   
++   const Center &amp;inputCentering_m;
++   const Center &amp;outputCentering_m;
++ 
++   // Use epsilon when comparing floating-point numbers, which cannot
++   // be represented precisely.
++ 
++   static const double epsilon;
++ 
++ };
++ 
++ 
++ template &lt;int Dim, bool IntraCellOnly&gt;
++ const double
++ NearestNeighborClass&lt;Dim, IntraCellOnly&gt;::epsilon = 1.0e-08;
++ 
++ 
++ //-----------------------------------------------------------------------------
++ // nearestNeighbors.
++ //-----------------------------------------------------------------------------
++ 
++ template &lt;int Dim&gt;
++ std::vector&lt;FieldOffsetList&lt;Dim&gt; &gt;
++ nearestNeighbors(const Centering&lt;Dim&gt; &amp;inputCentering,
++ 		 const Centering&lt;Dim&gt; &amp;outputCentering)
++ {
++   return NearestNeighborClass&lt;Dim&gt;(inputCentering, outputCentering)();
++ }
++ 
++ template &lt;int Dim&gt;
++ std::vector&lt;FieldOffsetList&lt;Dim&gt; &gt;
++ nearestNeighbors(const Centering&lt;Dim&gt; &amp;inputCentering,
++ 		 const Centering&lt;Dim&gt; &amp;outputCentering,
++ 		 const bool)
++ {
++   return NearestNeighborClass&lt;Dim, true&gt;(inputCentering, outputCentering)();
++ }
++ 
++ #endif // POOMA_NEWFIELD_NEAREST_NEIGHBORS_H
++ 
++ // ACL:rcsinfo
++ // ----------------------------------------------------------------------
++ // $RCSfile: NearestNeighbors.h,v $   $Author: oldham $
++ // $Revision: 1.1.2.1 $   $Date: 2001/07/16 20:44:59 $
++ // ----------------------------------------------------------------------
++ // ACL:rcsinfo
+Index: tests/FieldOffset.cpp
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/NewField/tests/Attic/FieldOffset.cpp,v
+retrieving revision 1.1.2.1
+diff -c -p -r1.1.2.1 FieldOffset.cpp
+*** tests/FieldOffset.cpp	2001/07/24 19:50:45	1.1.2.1
+--- tests/FieldOffset.cpp	2001/08/02 19:48:51
+*************** int main(int argc, char *argv[])
+*** 56,115 ****
+    // Test a field with subfields.
+  
+    tester.check(&quot;f[0](0,0)&quot;,
+! 	       f(FieldOffset&lt;Dim,1&gt;(Loc&lt;Dim&gt;(0), 0), Loc&lt;Dim&gt;(0)),
+  	       -1.0, 1.0e-8);
+    tester.check(&quot;f[0](0,0)&quot;,
+! 	       f(FieldOffset&lt;Dim,1&gt;(Loc&lt;Dim&gt;(2,1), 0), Loc&lt;Dim&gt;(-2,-1)),
+  	       -1.0, 1.0e-8);
+    tester.check(&quot;f[0](2,1)&quot;,
+! 	       f(FieldOffset&lt;Dim,1&gt;(Loc&lt;Dim&gt;(2,1), 0), Loc&lt;Dim&gt;(0)),
+  	       -1.0, 1.0e-8);
+    tester.check(&quot;f[1](0,0)&quot;,
+! 	       f(FieldOffset&lt;Dim,1&gt;(Loc&lt;Dim&gt;(0), 1), Loc&lt;Dim&gt;(0)),
+  	       -2.0, 1.0e-8);
+    tester.check(&quot;f[1](1,2)&quot;,
+! 	       f(FieldOffset&lt;Dim,1&gt;(Loc&lt;Dim&gt;(1,2), 1), Loc&lt;Dim&gt;(0)),
+  	       -2.0, 1.0e-8);
+!   f(FieldOffset&lt;Dim,1&gt;(Loc&lt;Dim&gt;(3,2), 0), Loc&lt;Dim&gt;(-1,-1)) = 1.3;
+!   f(FieldOffset&lt;Dim,1&gt;(Loc&lt;Dim&gt;(3,2), 1), Loc&lt;Dim&gt;(-1,-1)) = 10.3;
+    tester.check(&quot;f[0](2,1)&quot;,
+! 	       f(FieldOffset&lt;Dim,1&gt;(Loc&lt;Dim&gt;(2,1), 0), Loc&lt;Dim&gt;(0)),
+  	       1.3, 1.0e-08);
+    tester.check(&quot;f[1](2,1)&quot;,
+! 	       f(FieldOffset&lt;Dim,1&gt;(Loc&lt;Dim&gt;(2,1), 1), Loc&lt;Dim&gt;(0)),
+  	       10.3, 1.0e-08);
+    tester.check(&quot;f[0].read(2,1)&quot;,
+! 	       f.read(FieldOffset&lt;Dim,1&gt;(Loc&lt;Dim&gt;(2,1), 0), Loc&lt;Dim&gt;(0)),
+  	       1.3, 1.0e-08);
+    tester.check(&quot;f[1].read(2,1)&quot;,
+! 	       f.read(FieldOffset&lt;Dim,1&gt;(Loc&lt;Dim&gt;(2,1), 1), Loc&lt;Dim&gt;(0)),
+  	       10.3, 1.0e-08);
+  
+    // Test a field with no subfields.
+  
+    Field_t h(canonicalCentering&lt;Dim&gt;(CellType, Continuous, AllDim),
+  	    layout, Vector&lt;Dim&gt;(0.0), Vector&lt;Dim&gt;(1.0, 2.0));
+!   h(FieldOffset&lt;Dim,0&gt;(Loc&lt;Dim&gt;(0,0)), Loc&lt;Dim&gt;(0,0)) = 1.3;
+!   h(FieldOffset&lt;Dim,0&gt;(Loc&lt;Dim&gt;(0,0)), Loc&lt;Dim&gt;(0,1)) = 2.3;
+!   h(FieldOffset&lt;Dim,0&gt;(Loc&lt;Dim&gt;(0,0)), Loc&lt;Dim&gt;(1,0)) = 2.8;
+!   h(FieldOffset&lt;Dim,0&gt;(Loc&lt;Dim&gt;(1,0)), Loc&lt;Dim&gt;(0,1)) = 3.3;
+    tester.check(&quot;h(0,0)&quot;,
+! 	       h(FieldOffset&lt;Dim,0&gt;(Loc&lt;Dim&gt;(-1,-1)), Loc&lt;Dim&gt;(1,1)),
+  	       1.3, 1.0e-08);
+    tester.check(&quot;h(0,1)&quot;,
+! 	       h(FieldOffset&lt;Dim,0&gt;(Loc&lt;Dim&gt;(0,1)), Loc&lt;Dim&gt;(0,0)),
+  	       2.3, 1.0e-08);
+    tester.check(&quot;h(1,0)&quot;,
+! 	       h(FieldOffset&lt;Dim,0&gt;(Loc&lt;Dim&gt;(0,1)), Loc&lt;Dim&gt;(1,-1)),
+  	       2.8, 1.0e-08);
+    tester.check(&quot;h(1,1)&quot;,
+! 	       h(FieldOffset&lt;Dim,0&gt;(Loc&lt;Dim&gt;(0,0)), Loc&lt;Dim&gt;(1,1)),
+  	       3.3, 1.0e-08);
+    tester.check(&quot;h.read(1,0)&quot;,
+! 	       h.read(FieldOffset&lt;Dim,0&gt;(Loc&lt;Dim&gt;(0,1)), Loc&lt;Dim&gt;(1,-1)),
+  	       2.8, 1.0e-08);
+    tester.check(&quot;h.read(1,1)&quot;,
+! 	       h.read(FieldOffset&lt;Dim,0&gt;(Loc&lt;Dim&gt;(0,0)), Loc&lt;Dim&gt;(1,1)),
+  	       3.3, 1.0e-08);
+  
+    int ret = tester.results(&quot;FieldOffset&quot;);
+--- 56,115 ----
+    // Test a field with subfields.
+  
+    tester.check(&quot;f[0](0,0)&quot;,
+! 	       f(FieldOffset&lt;Dim&gt;(Loc&lt;Dim&gt;(0), 0), Loc&lt;Dim&gt;(0)),
+  	       -1.0, 1.0e-8);
+    tester.check(&quot;f[0](0,0)&quot;,
+! 	       f(FieldOffset&lt;Dim&gt;(Loc&lt;Dim&gt;(2,1), 0), Loc&lt;Dim&gt;(-2,-1)),
+  	       -1.0, 1.0e-8);
+    tester.check(&quot;f[0](2,1)&quot;,
+! 	       f(FieldOffset&lt;Dim&gt;(Loc&lt;Dim&gt;(2,1), 0), Loc&lt;Dim&gt;(0)),
+  	       -1.0, 1.0e-8);
+    tester.check(&quot;f[1](0,0)&quot;,
+! 	       f(FieldOffset&lt;Dim&gt;(Loc&lt;Dim&gt;(0), 1), Loc&lt;Dim&gt;(0)),
+  	       -2.0, 1.0e-8);
+    tester.check(&quot;f[1](1,2)&quot;,
+! 	       f(FieldOffset&lt;Dim&gt;(Loc&lt;Dim&gt;(1,2), 1), Loc&lt;Dim&gt;(0)),
+  	       -2.0, 1.0e-8);
+!   f(FieldOffset&lt;Dim&gt;(Loc&lt;Dim&gt;(3,2), 0), Loc&lt;Dim&gt;(-1,-1)) = 1.3;
+!   f(FieldOffset&lt;Dim&gt;(Loc&lt;Dim&gt;(3,2), 1), Loc&lt;Dim&gt;(-1,-1)) = 10.3;
+    tester.check(&quot;f[0](2,1)&quot;,
+! 	       f(FieldOffset&lt;Dim&gt;(Loc&lt;Dim&gt;(2,1), 0), Loc&lt;Dim&gt;(0)),
+  	       1.3, 1.0e-08);
+    tester.check(&quot;f[1](2,1)&quot;,
+! 	       f(FieldOffset&lt;Dim&gt;(Loc&lt;Dim&gt;(2,1), 1), Loc&lt;Dim&gt;(0)),
+  	       10.3, 1.0e-08);
+    tester.check(&quot;f[0].read(2,1)&quot;,
+! 	       f.read(FieldOffset&lt;Dim&gt;(Loc&lt;Dim&gt;(2,1), 0), Loc&lt;Dim&gt;(0)),
+  	       1.3, 1.0e-08);
+    tester.check(&quot;f[1].read(2,1)&quot;,
+! 	       f.read(FieldOffset&lt;Dim&gt;(Loc&lt;Dim&gt;(2,1), 1), Loc&lt;Dim&gt;(0)),
+  	       10.3, 1.0e-08);
+  
+    // Test a field with no subfields.
+  
+    Field_t h(canonicalCentering&lt;Dim&gt;(CellType, Continuous, AllDim),
+  	    layout, Vector&lt;Dim&gt;(0.0), Vector&lt;Dim&gt;(1.0, 2.0));
+!   h(FieldOffset&lt;Dim&gt;(Loc&lt;Dim&gt;(0,0)), Loc&lt;Dim&gt;(0,0)) = 1.3;
+!   h(FieldOffset&lt;Dim&gt;(Loc&lt;Dim&gt;(0,0)), Loc&lt;Dim&gt;(0,1)) = 2.3;
+!   h(FieldOffset&lt;Dim&gt;(Loc&lt;Dim&gt;(0,0)), Loc&lt;Dim&gt;(1,0)) = 2.8;
+!   h(FieldOffset&lt;Dim&gt;(Loc&lt;Dim&gt;(1,0)), Loc&lt;Dim&gt;(0,1)) = 3.3;
+    tester.check(&quot;h(0,0)&quot;,
+! 	       h(FieldOffset&lt;Dim&gt;(Loc&lt;Dim&gt;(-1,-1)), Loc&lt;Dim&gt;(1,1)),
+  	       1.3, 1.0e-08);
+    tester.check(&quot;h(0,1)&quot;,
+! 	       h(FieldOffset&lt;Dim&gt;(Loc&lt;Dim&gt;(0,1)), Loc&lt;Dim&gt;(0,0)),
+  	       2.3, 1.0e-08);
+    tester.check(&quot;h(1,0)&quot;,
+! 	       h(FieldOffset&lt;Dim&gt;(Loc&lt;Dim&gt;(0,1)), Loc&lt;Dim&gt;(1,-1)),
+  	       2.8, 1.0e-08);
+    tester.check(&quot;h(1,1)&quot;,
+! 	       h(FieldOffset&lt;Dim&gt;(Loc&lt;Dim&gt;(0,0)), Loc&lt;Dim&gt;(1,1)),
+  	       3.3, 1.0e-08);
+    tester.check(&quot;h.read(1,0)&quot;,
+! 	       h.read(FieldOffset&lt;Dim&gt;(Loc&lt;Dim&gt;(0,1)), Loc&lt;Dim&gt;(1,-1)),
+  	       2.8, 1.0e-08);
+    tester.check(&quot;h.read(1,1)&quot;,
+! 	       h.read(FieldOffset&lt;Dim&gt;(Loc&lt;Dim&gt;(0,0)), Loc&lt;Dim&gt;(1,1)),
+  	       3.3, 1.0e-08);
+  
+    int ret = tester.results(&quot;FieldOffset&quot;);
+Index: tests/FieldReductions.cpp
+===================================================================
+RCS file: FieldReductions.cpp
+diff -N FieldReductions.cpp
+*** /dev/null	Tue May  5 14:32:27 1998
+--- FieldReductions.cpp	Thu Aug  2 13:48:51 2001
+***************
+*** 0 ****
+--- 1,151 ----
++ // -*- C++ -*-
++ // ACL:license
++ // ----------------------------------------------------------------------
++ // This software and ancillary information (herein called &quot;SOFTWARE&quot;)
++ // called POOMA (Parallel Object-Oriented Methods and Applications) is
++ // made available under the terms described here.  The SOFTWARE has been
++ // approved for release with associated LA-CC Number LA-CC-98-65.
++ // 
++ // Unless otherwise indicated, this SOFTWARE has been authored by an
++ // employee or employees of the University of California, operator of the
++ // Los Alamos National Laboratory under Contract No. W-7405-ENG-36 with
++ // the U.S. Department of Energy.  The U.S. Government has rights to use,
++ // reproduce, and distribute this SOFTWARE. The public may copy, distribute,
++ // prepare derivative works and publicly display this SOFTWARE without 
++ // charge, provided that this Notice and any statement of authorship are 
++ // reproduced on all copies.  Neither the Government nor the University 
++ // makes any warranty, express or implied, or assumes any liability or 
++ // responsibility for the use of this SOFTWARE.
++ // 
++ // If SOFTWARE is modified to produce derivative works, such modified
++ // SOFTWARE should be clearly marked, so as not to confuse it with the
++ // version available from LANL.
++ // 
++ // For more information about POOMA, send e-mail to <A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">pooma at acl.lanl.gov</A>,
++ // or visit the POOMA web page at <A HREF="http://www.acl.lanl.gov/pooma/.">http://www.acl.lanl.gov/pooma/.</A>
++ // ----------------------------------------------------------------------
++ // ACL:license
++ //-----------------------------------------------------------------------------
++ // Test field reductions.
++ //-----------------------------------------------------------------------------
++ 
++ 
++ #include &quot;Pooma/NewFields.h&quot;
++ #include &quot;Utilities/Tester.h&quot;
++ #include &lt;iostream&gt;
++ 
++ 
++ // Check the sum, average, minimum, and maximum functions for a
++ // specified position.
++ 
++ template &lt;class Geometry, class T, class Engine, int Dim&gt;
++ inline bool
++ checkFieldPosition(const Field&lt;Geometry, T, Engine&gt; &amp;f,
++ 		   const FieldOffsetList&lt;Dim&gt; &amp;fol,
++ 		   const Loc&lt;Dim&gt; &amp;loc,
++ 		   const T sumAnswer, const T avAnswer,
++ 		   const T minAnswer, const T maxAnswer,
++ 		   const double tolerance)
++ {
++   return 
++     std::abs(sum(f, fol, loc) - sumAnswer) &lt; tolerance &amp;&amp;
++     std::abs(average(f, fol, loc) - avAnswer) &lt; tolerance &amp;&amp;
++     std::abs(minimum(f, fol, loc) - minAnswer) &lt; tolerance &amp;&amp;
++     std::abs(maximum(f, fol, loc) - maxAnswer) &lt; tolerance;
++ }
++ 
++ 
++ int main(int argc, char *argv[])
++ {
++   Pooma::initialize(argc, argv);
++   Pooma::Tester tester(argc, argv);
++ 
++   const double eps = 1.0e-08;	// checking tolerance
++   const int Dim = 2;
++   std::vector&lt;FieldOffsetList&lt;Dim&gt; &gt; nn;
++   std::vector&lt;FieldOffsetList&lt;3&gt; &gt; nn3;
++ 
++   Centering&lt;2&gt; inputCenteringTwo, outputCenteringTwo;
++   Centering&lt;3&gt; inputCenteringThree, outputCenteringThree;
++ 
++   Interval&lt;Dim&gt; physicalVertexDomain(4, 4);
++   DomainLayout&lt;Dim&gt; layout(physicalVertexDomain, GuardLayers&lt;Dim&gt;(1));
++   typedef Field&lt;UniformRectilinear&lt;Dim&gt;, double, Brick&gt; Field_t;
++ 
++ 
++   // Test 2D Discontinuous Vertex -&gt; Continuous Vertex.
++ 
++   inputCenteringTwo = canonicalCentering&lt;2&gt;(VertexType, Discontinuous, AllDim);
++   outputCenteringTwo = canonicalCentering&lt;2&gt;(VertexType, Continuous, AllDim);
++   nn = nearestNeighbors(inputCenteringTwo, outputCenteringTwo);
++   Field_t g(inputCenteringTwo, layout,
++ 	    Vector&lt;Dim&gt;(0.0), Vector&lt;Dim&gt;(1.0, 2.0));
++ 
++   g.all() = 2.0;
++   g = -1.0;
++   g(FieldOffset&lt;Dim&gt;(Loc&lt;Dim&gt;(1,1), 0), Loc&lt;Dim&gt;(0,0)) = 17.0;
++   tester.check(&quot;discontinuous vertex-&gt;continuous vertex&quot;,
++ 	       checkFieldPosition(g, nn[0], Loc&lt;Dim&gt;(1),
++ 				  14.0, 3.5, -1.0, 17.0, eps));
++ 
++ 
++   // Test 2D Continuous Cell -&gt; Continuous Cell.
++ 
++   inputCenteringTwo = canonicalCentering&lt;2&gt;(CellType, Continuous, AllDim);
++   outputCenteringTwo = canonicalCentering&lt;2&gt;(CellType, Continuous, AllDim);
++   nn = nearestNeighbors(inputCenteringTwo, outputCenteringTwo);
++   Field_t f(inputCenteringTwo, layout,
++ 	    Vector&lt;Dim&gt;(0.0), Vector&lt;Dim&gt;(1.0, 2.0));
++ 
++   f.all() = 2.0;
++   f = -1.0;
++   f(FieldOffset&lt;Dim&gt;(Loc&lt;Dim&gt;(1,1), 0), Loc&lt;Dim&gt;(0,0)) = 17.0;
++   tester.check(&quot;cell-&gt;cell&quot;,
++ 	       checkFieldPosition(f, nn[0], Loc&lt;Dim&gt;(1,1),
++ 				  17.0, 17.0, 17.0, 17.0, eps));
++ 
++ 
++   // Test 2D Discontinuous Face -&gt; Continuous Edge.
++ 
++   inputCenteringTwo = canonicalCentering&lt;2&gt;(FaceType, Discontinuous, AllDim);
++   outputCenteringTwo = canonicalCentering&lt;2&gt;(EdgeType, Continuous, AllDim);
++   nn = nearestNeighbors(inputCenteringTwo, outputCenteringTwo);
++   Field_t h(inputCenteringTwo, layout,
++ 	    Vector&lt;Dim&gt;(0.0), Vector&lt;Dim&gt;(1.0, 2.0));
++ 
++   h.all() = 2.0;
++   h = -1.0;
++   h(FieldOffset&lt;Dim&gt;(Loc&lt;Dim&gt;(1), 0), Loc&lt;Dim&gt;(0)) = 17.0;
++   tester.check(&quot;discontinuous face-&gt;edge&quot;,
++ 	       checkFieldPosition(h, nn[0], Loc&lt;Dim&gt;(1),
++ 				  -2.0, -1.0, -1.0, -1.0, eps));
++ 
++   // Test 3D Discontinuous Vertex -&gt; Continuous Cell.
++ 
++   inputCenteringThree = canonicalCentering&lt;3&gt;(VertexType, Discontinuous, AllDim);
++   outputCenteringThree = canonicalCentering&lt;3&gt;(CellType, Continuous, AllDim);
++   nn3 = nearestNeighbors(inputCenteringThree, outputCenteringThree);
++ 
++   Interval&lt;3&gt; physicalVertexDomain3(4, 4, 4);
++   DomainLayout&lt;3&gt; layout3(physicalVertexDomain3, GuardLayers&lt;3&gt;(1));
++   Field&lt;UniformRectilinear&lt;3&gt;, double, Brick&gt;
++     G(inputCenteringThree, layout3, Vector&lt;3&gt;(0.0), Vector&lt;3&gt;(1.0, 2.0, 0.0));
++ 
++   G.all() = 2.0;
++   G = -1.0;
++   G(FieldOffset&lt;3&gt;(Loc&lt;3&gt;(1), 0), Loc&lt;3&gt;(0)) = 17.0;
++   tester.check(&quot;discontinuous vertex-&gt;cell&quot;,
++ 	       checkFieldPosition(G, nn3[0], Loc&lt;3&gt;(1),
++ 				  -46.0, -46.0/64.0, -1.0, 17.0, eps));
++ 
++   int ret = tester.results(&quot;FieldReductions&quot;);
++   Pooma::finalize();
++   return ret; 
++ }
++ 
++ // ACL:rcsinfo
++ // ----------------------------------------------------------------------
++ // $RCSfile: FieldOffset.cpp,v $   $Author: oldham $
++ // $Revision: 1.1.2.1 $   $Date: 2001/07/24 19:50:45 $
++ // ----------------------------------------------------------------------
++ // ACL:rcsinfo
+Index: tests/NearestNeighbors.cpp
+===================================================================
+RCS file: NearestNeighbors.cpp
+diff -N NearestNeighbors.cpp
+*** /dev/null	Tue May  5 14:32:27 1998
+--- NearestNeighbors.cpp	Thu Aug  2 13:48:52 2001
+***************
+*** 0 ****
+--- 1,325 ----
++ // -*- C++ -*-
++ // ACL:license
++ // ----------------------------------------------------------------------
++ // This software and ancillary information (herein called &quot;SOFTWARE&quot;)
++ // called POOMA (Parallel Object-Oriented Methods and Applications) is
++ // made available under the terms described here.  The SOFTWARE has been
++ // approved for release with associated LA-CC Number LA-CC-98-65.
++ // 
++ // Unless otherwise indicated, this SOFTWARE has been authored by an
++ // employee or employees of the University of California, operator of the
++ // Los Alamos National Laboratory under Contract No. W-7405-ENG-36 with
++ // the U.S. Department of Energy.  The U.S. Government has rights to use,
++ // reproduce, and distribute this SOFTWARE. The public may copy, distribute,
++ // prepare derivative works and publicly display this SOFTWARE without 
++ // charge, provided that this Notice and any statement of authorship are 
++ // reproduced on all copies.  Neither the Government nor the University 
++ // makes any warranty, express or implied, or assumes any liability or 
++ // responsibility for the use of this SOFTWARE.
++ // 
++ // If SOFTWARE is modified to produce derivative works, such modified
++ // SOFTWARE should be clearly marked, so as not to confuse it with the
++ // version available from LANL.
++ // 
++ // For more information about POOMA, send e-mail to <A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">pooma at acl.lanl.gov</A>,
++ // or visit the POOMA web page at <A HREF="http://www.acl.lanl.gov/pooma/.">http://www.acl.lanl.gov/pooma/.</A>
++ // ----------------------------------------------------------------------
++ // ACL:license
++ //-----------------------------------------------------------------------------
++ // Test computing the set of nearest neighbors.
++ //-----------------------------------------------------------------------------
++ 
++ #include &quot;Pooma/NewFields.h&quot;
++ #include &quot;Utilities/Tester.h&quot;
++ #include &lt;vector&gt;
++ #include &lt;algorithm&gt;
++ 
++ 
++ // Instead of checking all the nearest neighbor's FieldOffset values,
++ // we check &quot;random&quot; values.
++ 
++ // Check if a FieldOffset is in the FieldOffsetList.
++ template &lt;int Dim&gt;
++ inline bool
++ checkForFieldOffset(const FieldOffsetList&lt;Dim&gt; &amp;lst,
++ 		    const FieldOffset&lt;Dim&gt; &amp;offset)
++ {
++   for (FieldOffsetList&lt;Dim&gt;::size_type index = 0;
++        index &lt; lst.size();
++        ++index)
++     if (lst[index] == offset)
++       return true;
++   return false;
++ }
++ 
++ 
++ // Check for a particular FieldOffset within a vector of FieldOffsetLists.
++ // The arguments should be:
++ //   a tester object,
++ //   a C-string describing the test(s),
++ //   a vector of FieldOffsetLists,
++ //   the vector's correct size,
++ //   the index of the particular FieldOffsetList to check,
++ //   the FieldOffsetList correct size,
++ //   a FieldOffset that should be (or not be) present in the list,
++ //   whether the FieldOffset should be present.
++ 
++ template &lt;int Dim&gt;
++ inline bool
++ checkFieldOffset(Pooma::Tester &amp;tester,
++ 		 const char *testExplanation,
++ 		 const std::vector&lt;FieldOffsetList&lt;Dim&gt; &gt; &amp;nn,
++ 		 const std::vector&lt;FieldOffsetList&lt;Dim&gt; &gt;::size_type nnSize,
++ 		 const std::vector&lt;FieldOffsetList&lt;Dim&gt; &gt;::size_type listNum,
++ 		 const FieldOffsetList&lt;Dim&gt;::size_type listSize,
++ 		 const FieldOffset&lt;Dim&gt; &amp;offset,
++ 		 const bool offsetPresent = true)
++ {
++   PInsist(listNum &gt;= 0 &amp;&amp; listNum &lt; nnSize,
++ 	  &quot;Incorrect std::vector&lt;FieldOffsetList&gt; index.&quot;);
++ 
++   return 
++     tester.check(testExplanation, nn.size() == nnSize) &amp;&amp;
++     tester.check(testExplanation, nn[listNum].size() == listSize) &amp;&amp;
++     tester.check(testExplanation,
++ 		 checkForFieldOffset(nn[listNum], offset) == offsetPresent);
++ }
++ 
++ 
++ // Check that the distances are the same for all input values.
++ 
++ // Compute the Manhattan distance of a difference between positions.
++ 
++ template &lt;int Dim&gt;
++ inline double
++ manhattanDistance(const Vector&lt;Dim&gt; &amp;difference)
++ {
++   double answer;
++   for (int coordinate = Dim-1; coordinate &gt;= 0; --coordinate)
++     answer += std::abs(difference(coordinate));
++   return answer;
++ }
++ 
++ // Compute the Manhattan distance between an input centering's value
++ // shifted by an FieldOffset and an output centering's value.
++ 
++ template &lt;int Dim&gt;
++ inline double
++ manhattanDistance(const Centering&lt;Dim&gt; &amp;inputCentering,
++ 		  const FieldOffset&lt;Dim&gt; &amp;offset,
++ 		  const Centering&lt;Dim&gt; &amp;outputCentering,
++ 		  const int outputIndex)
++ {
++   // Compute the actual input position.
++   Loc&lt;Dim&gt; cellOffset = offset.cellOffset();
++   Vector&lt;Dim&gt; input = 
++     inputCentering.positions()[offset.subFieldNumber()];
++   for (int index = Dim-1; index &gt;= 0; --index)
++     input(index) += cellOffset[index].first();
++ 
++   return manhattanDistance(outputCentering.positions()[outputIndex] - input);
++ }
++ 
++ // Check that the distance between the input and output values are the
++ // same for all the input values.
++ 
++ template &lt;int Dim&gt;
++ inline bool
++ sameDistances(const std::vector&lt;FieldOffsetList&lt;Dim&gt; &gt; &amp;nn,
++ 	      const Centering&lt;Dim&gt; &amp;inputCentering,
++ 	      const Centering&lt;Dim&gt; &amp;outputCentering)
++ {
++   typedef std::vector&lt;FieldOffsetList&lt;Dim&gt; &gt;::size_type nn_size_type;
++   typedef FieldOffsetList&lt;Dim&gt;::size_type fol_size_type;
++   PInsist(nn.size() == outputCentering.size(),
++ 	  &quot;Nearest neighbors and output centering must have the same length.&quot;);
++ 
++   for (nn_size_type outputIndex = 0; outputIndex &lt; nn.size(); ++outputIndex)
++     {
++       const double distance =
++ 	manhattanDistance(inputCentering, nn[outputIndex][0],
++ 			  outputCentering, outputIndex);
++       for (fol_size_type inputIndex = 1;
++ 	   inputIndex &lt; nn[outputIndex].size();
++ 	   ++inputIndex)
++ 	if (std::abs(distance -
++ 		     manhattanDistance(inputCentering,
++ 				       nn[outputIndex][inputIndex],
++ 				       outputCentering, outputIndex))
++ 	    &gt; 1.0e-08)
++ 	  return false;
++     }
++ 
++   return true;
++ }
++ 
++ 
++ int main(int argc, char *argv[])
++ {
++   Pooma::initialize(argc, argv);
++   Pooma::Tester tester(argc, argv);
++ 
++   Centering&lt;2&gt; inputCenteringTwo, outputCenteringTwo;
++   Centering&lt;3&gt; inputCenteringThree, outputCenteringThree;
++ 
++   // Test 2D Continuous Cell -&gt; Continuous Cell.
++ 
++   inputCenteringTwo = canonicalCentering&lt;2&gt;(CellType, Continuous, AllDim);
++   outputCenteringTwo = canonicalCentering&lt;2&gt;(CellType, Continuous, AllDim);
++   checkFieldOffset(tester, &quot;cell-&gt;cell intracell&quot;, 
++ 		   nearestNeighbors(inputCenteringTwo, outputCenteringTwo,
++ 				    true),
++ 		   /* vector: */ 1, 0, 
++ 		   /* FieldOffsetList: */ 1,
++ 		   FieldOffset&lt;2&gt;(Loc&lt;2&gt;(0)));
++ 
++   checkFieldOffset(tester, &quot;cell-&gt;cell intercell&quot;, 
++ 		   nearestNeighbors(inputCenteringTwo,
++ 				    outputCenteringTwo),
++ 		   /* vector: */ 1, 0, 
++ 		   /* FieldOffsetList: */ 1,
++ 		   FieldOffset&lt;2&gt;(Loc&lt;2&gt;(0)));
++ 
++   // Test 2D Continuous Vertex -&gt; Continuous Cell.
++   
++   inputCenteringTwo = canonicalCentering&lt;2&gt;(VertexType, Continuous, AllDim);
++   outputCenteringTwo = canonicalCentering&lt;2&gt;(CellType, Continuous, AllDim);
++   checkFieldOffset(tester, &quot;vertex-&gt;cell intracell&quot;, 
++ 		   nearestNeighbors(inputCenteringTwo, outputCenteringTwo,
++ 				    true),
++ 		   /* vector: */ 1, 0, 
++ 		   /* FieldOffsetList: */ 1,
++ 		   FieldOffset&lt;2&gt;(Loc&lt;2&gt;(0)));
++   tester.check(&quot;vertex-&gt;cell intracell distances&quot;,
++ 	       sameDistances(nearestNeighbors(inputCenteringTwo,
++ 					      outputCenteringTwo,
++ 					      true),
++ 			     inputCenteringTwo,
++ 			     outputCenteringTwo));
++ 
++   checkFieldOffset(tester, &quot;vertex-&gt;cell intercell&quot;, 
++ 		   nearestNeighbors(inputCenteringTwo,
++ 				    outputCenteringTwo),
++ 		   /* vector: */ 1, 0, 
++ 		   /* FieldOffsetList: */ 4,
++ 		   FieldOffset&lt;2&gt;(Loc&lt;2&gt;(0)));
++   checkFieldOffset(tester, &quot;vertex-&gt;cell intercell&quot;, 
++ 		   nearestNeighbors(inputCenteringTwo,
++ 				    outputCenteringTwo),
++ 		   /* vector: */ 1, 0, 
++ 		   /* FieldOffsetList: */ 4,
++ 		   FieldOffset&lt;2&gt;(Loc&lt;2&gt;(1,1)));
++   tester.check(&quot;vertex-&gt;cell intercell distances&quot;,
++ 	       sameDistances(nearestNeighbors(inputCenteringTwo,
++ 					      outputCenteringTwo),
++ 			     inputCenteringTwo,
++ 			     outputCenteringTwo));
++ 
++ 
++   // Test 2D Discontinuous Vertex -&gt; Continuous Cell.
++   
++   inputCenteringTwo = canonicalCentering&lt;2&gt;(VertexType, Discontinuous, AllDim);
++   outputCenteringTwo = canonicalCentering&lt;2&gt;(CellType, Continuous, AllDim);
++   checkFieldOffset(tester, &quot;discontinuous vertex-&gt;cell intracell&quot;, 
++ 		   nearestNeighbors(inputCenteringTwo, outputCenteringTwo,
++ 				    true),
++ 		   /* vector: */ 1, 0, 
++ 		   /* FieldOffsetList: */ 4,
++ 		   FieldOffset&lt;2&gt;(Loc&lt;2&gt;(0), 0));
++   checkFieldOffset(tester, &quot;discontinuous vertex-&gt;cell intracell&quot;, 
++ 		   nearestNeighbors(inputCenteringTwo, outputCenteringTwo,
++ 				    true),
++ 		   /* vector: */ 1, 0, 
++ 		   /* FieldOffsetList: */ 4,
++ 		   FieldOffset&lt;2&gt;(Loc&lt;2&gt;(0), 3));
++   tester.check(&quot;discontinuous vertex-&gt;cell intracell distances&quot;,
++ 	       sameDistances(nearestNeighbors(inputCenteringTwo,
++ 					      outputCenteringTwo,
++ 					      true),
++ 			     inputCenteringTwo,
++ 			     outputCenteringTwo));
++ 
++   checkFieldOffset(tester, &quot;discontinuous vertex-&gt;cell intercell&quot;, 
++ 		   nearestNeighbors(inputCenteringTwo,
++ 				    outputCenteringTwo),
++ 		   /* vector: */ 1, 0, 
++ 		   /* FieldOffsetList: */ 16,
++ 		   FieldOffset&lt;2&gt;(Loc&lt;2&gt;(0), 0));
++   checkFieldOffset(tester, &quot;discontinuous vertex-&gt;cell intercell&quot;, 
++ 		   nearestNeighbors(inputCenteringTwo,
++ 				    outputCenteringTwo),
++ 		   /* vector: */ 1, 0, 
++ 		   /* FieldOffsetList: */ 16,
++ 		   FieldOffset&lt;2&gt;(Loc&lt;2&gt;(0), 3));
++   checkFieldOffset(tester, &quot;discontinuous vertex-&gt;cell intercell&quot;, 
++ 		   nearestNeighbors(inputCenteringTwo,
++ 				    outputCenteringTwo),
++ 		   /* vector: */ 1, 0, 
++ 		   /* FieldOffsetList: */ 16,
++ 		   FieldOffset&lt;2&gt;(Loc&lt;2&gt;(0), 3));
++   checkFieldOffset(tester, &quot;discontinuous vertex-&gt;cell intercell&quot;, 
++ 		   nearestNeighbors(inputCenteringTwo,
++ 				    outputCenteringTwo),
++ 		   /* vector: */ 1, 0, 
++ 		   /* FieldOffsetList: */ 16,
++ 		   FieldOffset&lt;2&gt;(Loc&lt;2&gt;(-1,0), 3), false);
++   tester.check(&quot;discontinuous vertex-&gt;cell intercell distances&quot;,
++ 	       sameDistances(nearestNeighbors(inputCenteringTwo,
++ 					      outputCenteringTwo),
++ 			     inputCenteringTwo,
++ 			     outputCenteringTwo));
++ 
++ 
++   // Test 3D Continuous Face -&gt; Continuous Edge.
++   
++   inputCenteringThree = canonicalCentering&lt;3&gt;(FaceType, Continuous, AllDim);
++   outputCenteringThree = canonicalCentering&lt;3&gt;(EdgeType, Continuous, AllDim);
++   checkFieldOffset(tester, &quot;face-&gt;edge intracell&quot;, 
++ 		   nearestNeighbors(inputCenteringThree,
++ 				    outputCenteringThree,
++ 				    true),
++ 		   /* vector: */ 3, 1,
++ 		   /* FieldOffsetList: */ 2,
++ 		   FieldOffset&lt;3&gt;(Loc&lt;3&gt;(0), 2));
++   tester.check(&quot;face-&gt;edge intracell distances&quot;,
++ 	       sameDistances(nearestNeighbors(inputCenteringThree,
++ 					      outputCenteringThree,
++ 					      true),
++ 			     inputCenteringThree,
++ 			     outputCenteringThree));
++ 
++   checkFieldOffset(tester, &quot;face-&gt;edge intercell&quot;, 
++ 		   nearestNeighbors(inputCenteringThree,
++ 				    outputCenteringThree),
++ 		   /* vector: */ 3, 1,
++ 		   /* FieldOffsetList: */ 4,
++ 		   FieldOffset&lt;3&gt;(Loc&lt;3&gt;(-1,0,0), 2));
++   checkFieldOffset(tester, &quot;face-&gt;edge intercell&quot;, 
++ 		   nearestNeighbors(inputCenteringThree,
++ 				    outputCenteringThree),
++ 		   /* vector: */ 3, 2,
++ 		   /* FieldOffsetList: */ 4,
++ 		   FieldOffset&lt;3&gt;(Loc&lt;3&gt;(-1,0,0), 1));
++   checkFieldOffset(tester, &quot;face-&gt;edge intercell&quot;, 
++ 		   nearestNeighbors(inputCenteringThree,
++ 				    outputCenteringThree),
++ 		   /* vector: */ 3, 2,
++ 		   /* FieldOffsetList: */ 4,
++ 		   FieldOffset&lt;3&gt;(Loc&lt;3&gt;(-1,-1,-1), 1), false);
++   tester.check(&quot;face-&gt;edge intercell distances&quot;,
++ 	       sameDistances(nearestNeighbors(inputCenteringThree,
++ 					      outputCenteringThree),
++ 			     inputCenteringThree,
++ 			     outputCenteringThree));
++ 
++   int ret = tester.results(&quot;NearestNeighbors&quot;);
++   Pooma::finalize();
++   return ret; 
++ }
++ 
++ // ACL:rcsinfo
++ // ----------------------------------------------------------------------
++ // $RCSfile: FieldOffset.cpp,v $   $Author: oldham $
++ // $Revision: 1.1.2.1 $   $Date: 2001/07/24 19:50:45 $
++ // ----------------------------------------------------------------------
++ // ACL:rcsinfo
+Index: tests/makefile
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/NewField/tests/makefile,v
+retrieving revision 1.11.2.3
+diff -c -p -r1.11.2.3 makefile
+*** tests/makefile	2001/07/24 19:50:45	1.11.2.3
+--- tests/makefile	2001/08/02 19:48:52
+*************** field_tests:: $(ODIR)/BasicTest1 $(ODIR)
+*** 61,69 ****
+  	$(ODIR)/WhereTest $(ODIR)/VectorTest \
+  	$(ODIR)/ScalarCode $(ODIR)/StencilTests \
+          $(ODIR)/ExpressionTest $(ODIR)/Centerings \
+! 	$(ODIR)/FieldOffset
+  
+- 
+  ###########################
+  
+  .PHONY: BasicTest1
+--- 61,69 ----
+  	$(ODIR)/WhereTest $(ODIR)/VectorTest \
+  	$(ODIR)/ScalarCode $(ODIR)/StencilTests \
+          $(ODIR)/ExpressionTest $(ODIR)/Centerings \
+! 	$(ODIR)/FieldOffset $(ODIR)/FieldReductions \
+! 	$(ODIR)/NearestNeighbors
+  
+  ###########################
+  
+  .PHONY: BasicTest1
+*************** FieldOffset: $(ODIR)/FieldOffset
+*** 160,184 ****
+  $(ODIR)/FieldOffset: $(ODIR)/FieldOffset.o
+  	$(LinkToSuite)
+  
+! .PHONY: FieldTour3
+  
+! FieldTour3: $(ODIR)/FieldTour3
+  
+! $(ODIR)/FieldTour3: $(ODIR)/FieldTour3.o
+  	$(LinkToSuite)
+  
+! .PHONY: ScalarAdvection
+  
+! ScalarAdvection: $(ODIR)/ScalarAdvection
+  
+! $(ODIR)/ScalarAdvection: $(ODIR)/ScalarAdvection.o
+  	$(LinkToSuite)
+  
+! .PHONY: ScalarAdvectionXB
+  
+! ScalarAdvectionXB: $(ODIR)/ScalarAdvectionXB
+  
+! $(ODIR)/ScalarAdvectionXB: $(ODIR)/ScalarAdvectionXB.o
+  	$(LinkToSuite)
+  
+  
+--- 160,184 ----
+  $(ODIR)/FieldOffset: $(ODIR)/FieldOffset.o
+  	$(LinkToSuite)
+  
+! .PHONY: FieldReductions
+  
+! FieldReductions: $(ODIR)/FieldReductions
+  
+! $(ODIR)/FieldReductions: $(ODIR)/FieldReductions.o
+  	$(LinkToSuite)
+  
+! .PHONY: FieldTour3
+  
+! FieldTour3: $(ODIR)/FieldTour3
+  
+! $(ODIR)/FieldTour3: $(ODIR)/FieldTour3.o
+  	$(LinkToSuite)
+  
+! .PHONY: NearestNeighbors
+  
+! NearestNeighbors: $(ODIR)/NearestNeighbors
+  
+! $(ODIR)/NearestNeighbors: $(ODIR)/NearestNeighbors.o
+  	$(LinkToSuite)
+  
+  
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	
+	<LI>Next message: <A HREF="000604.html">centerings patch
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#603">[ date ]</a>
+              <a href="thread.html#603">[ thread ]</a>
+              <a href="subject.html#603">[ subject ]</a>
+              <a href="author.html#603">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

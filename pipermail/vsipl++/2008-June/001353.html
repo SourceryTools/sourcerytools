@@ -1,0 +1,141 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [vsipl++] [patch] CML bindings for matrix transpose operations
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20%5Bpatch%5D%20CML%20bindings%20for%20matrix%20transpose%20operations&In-Reply-To=%3C4847F2D5.1090307%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001352.html">
+   <LINK REL="Next"  HREF="001354.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[vsipl++] [patch] CML bindings for matrix transpose operations</H1>
+    <B>Jules Bergmann</B> 
+    <A HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20%5Bpatch%5D%20CML%20bindings%20for%20matrix%20transpose%20operations&In-Reply-To=%3C4847F2D5.1090307%40codesourcery.com%3E"
+       TITLE="[vsipl++] [patch] CML bindings for matrix transpose operations">jules at codesourcery.com
+       </A><BR>
+    <I>Thu Jun  5 14:06:13 UTC 2008</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001352.html">[vsipl++] [patch] CML bindings for matrix transpose operations
+</A></li>
+        <LI>Next message: <A HREF="001354.html">[patch] Fix lapack MV and VM prod stride bug
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1353">[ date ]</a>
+              <a href="thread.html#1353">[ thread ]</a>
+              <a href="subject.html#1353">[ subject ]</a>
+              <a href="author.html#1353">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Don McCoy wrote:
+&gt;<i> This is patterned after the existing serial evaluator for transpose
+</I>&gt;<i> operations using SIMD instructions, except that it dispatches operations
+</I>&gt;<i> to CML.  One important difference is that it handles split complex as
+</I>&gt;<i> well as interleaved.  Matrix copies are also performed (when the block
+</I>&gt;<i> layouts match), but only if the strides are unit in the smallest
+</I>&gt;<i> dimension, so as to have the potential to use the SPU's.
+</I>
+Don,
+
+This looks good.  I have a couple of minor comments below, but please
+check it in.
+
+				-- Jules
+
+
+
+&gt;<i> +#define VSIP_IMPL_CML_COPY_UNIT(T, FCN, CML_FCN)   \
+</I>&gt;<i> +  inline void                                      \
+</I>&gt;<i> +  FCN(                                             \
+</I>&gt;<i> +    T* a, ptrdiff_t rsa,                           \
+</I>&gt;<i> +    T* z, ptrdiff_t rsz,                           \
+</I>&gt;<i> +    size_t n)                                      \
+</I>&gt;<i> +  {                                                \
+</I>&gt;<i> +    typedef Scalar_of&lt;T&gt;::type CML_T;              \
+</I>&gt;<i> +    CML_FCN(                                       \
+</I>&gt;<i> +      reinterpret_cast&lt;CML_T*&gt;(a), rsa,            \
+</I>&gt;<i> +      reinterpret_cast&lt;CML_T*&gt;(z), rsz,            \
+</I>&gt;<i> +      n * (Is_complex&lt;T&gt;::value ? 2 : 1));         \
+</I>&gt;<i> +  }
+</I>&gt;<i> +
+</I>&gt;<i> +VSIP_IMPL_CML_COPY_UNIT(float,          copy_unit, cml_vcopy_f)
+</I>&gt;<i> +VSIP_IMPL_CML_COPY_UNIT(complex&lt;float&gt;, copy_unit, cml_vcopy_f)
+</I>
+What does the '_unit' suffix indicate?  'copy_unit' appears to take a
+vector with a stride.  It could easily handle a non-unit stride
+vector.
+
+For naming, you might call this function 'vcopy' to indicate that it
+copies a vector (as opposed to a matrix).
+
+
+
+&gt;<i> +    if      (s == 'r' &amp;&amp; d == 'r')    return &quot;Expr_Trans (rr copy)&quot;;
+</I>&gt;<i> +    else if (s == 'r' &amp;&amp; d == 'c')    return &quot;Expr_Trans (rc trans)&quot;;
+</I>&gt;<i> +    else if (s == 'c' &amp;&amp; d == 'r')    return &quot;Expr_Trans (cr trans)&quot;;
+</I>&gt;<i> +    else /* (s == 'c' &amp;&amp; d == 'c') */ return &quot;Expr_Trans (cc copy)&quot;;
+</I>
+You could rename these                           ^^^^^^^^^^
+to something CML specific &quot;Cml_tag matrix (rr copy)&quot; etc.
+
+
+
+&gt;<i> +  static bool rt_valid(DstBlock&amp; dst, SrcBlock const&amp; src)
+</I>&gt;<i> +  { 
+</I>...
+&gt;<i> +      dimension_type const s_dim1 = src_order_type::impl_dim1;
+</I>&gt;<i> +      dimension_type const d_dim1 = src_order_type::impl_dim1;
+</I>
+As Stefan points out, this looks suspicious.  Did you really mean
+*dst*_order_type for the second?
+
+Also, because the copy sub-evaluators require the block to be dense
+('assert(dst_ext.stride(0) == dst.size(2, 1))' etc), shouldn't
+rt_valid enfore this restriction too?
+
+&gt;<i> +
+</I>&gt;<i> +      if (dst_ext.stride(d_dim1) != 1 || src_ext.stride(s_dim1) != 1)
+</I>&gt;<i> +        rt = false;
+</I>&gt;<i> +    }
+</I>&gt;<i> +
+</I>&gt;<i> +    return rt; 
+</I>&gt;<i> +  }
+</I>
+
+-- 
+Jules Bergmann
+CodeSourcery
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">jules at codesourcery.com</A>
+(650) 331-3385 x705
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001352.html">[vsipl++] [patch] CML bindings for matrix transpose operations
+</A></li>
+	<LI>Next message: <A HREF="001354.html">[patch] Fix lapack MV and VM prod stride bug
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1353">[ date ]</a>
+              <a href="thread.html#1353">[ thread ]</a>
+              <a href="subject.html#1353">[ subject ]</a>
+              <a href="author.html#1353">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">More information about the vsipl++
+mailing list</a><br>
+</body></html>

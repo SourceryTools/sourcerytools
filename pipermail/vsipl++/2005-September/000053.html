@@ -1,0 +1,198 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [vsipl++] [patch] matvec: outer, gem, cumsum
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20%5Bpatch%5D%20matvec%3A%20outer%2C%20gem%2C%20cumsum&In-Reply-To=%3C4339CE30.9070608%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000049.html">
+   <LINK REL="Next"  HREF="000066.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[vsipl++] [patch] matvec: outer, gem, cumsum</H1>
+    <B>Jules Bergmann</B> 
+    <A HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20%5Bpatch%5D%20matvec%3A%20outer%2C%20gem%2C%20cumsum&In-Reply-To=%3C4339CE30.9070608%40codesourcery.com%3E"
+       TITLE="[vsipl++] [patch] matvec: outer, gem, cumsum">jules at codesourcery.com
+       </A><BR>
+    <I>Tue Sep 27 22:56:48 UTC 2005</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000049.html">[patch] matvec: outer, gem, cumsum
+</A></li>
+        <LI>Next message: <A HREF="000066.html">[vsipl++] [patch] matvec: outer, gem, cumsum
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#53">[ date ]</a>
+              <a href="thread.html#53">[ thread ]</a>
+              <a href="subject.html#53">[ subject ]</a>
+              <a href="author.html#53">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>
+
+Don McCoy wrote:
+&gt;<i> The attached patch rounds out the functionality of [math.matvec] with 
+</I>&gt;<i> the exception of a few of the matrix-vector product functions.  Since 
+</I>&gt;<i> those are implemented in a separate file, this patch stands by itself 
+</I>&gt;<i> pretty well.
+</I>
+Don,
+
+gemp and gems need to support the mat_conj and mat_herm mat_op_types as 
+well.  (The spec is a bit confusing.  [math.matvec.gem]/3 defines the 4 
+mat_op_types: mat_ntrans, mat_trans, mat_herm, and mat_conj.  gemp's 
+requirements than say that OpA and OpB must be mat_ntrans or mat_trans 
+unless T is complex.  The implication is that if T is complex, OpA and 
+OpB can be mat_herm and mat_conj as well).
+
+The approach you've taken for gemp is fine, it is definitely possible to 
+plug those additional cases in.  However, since the number of cases is 
+multiplicative (size(OpA) x size(OpB)), you might want to separate the 
+handling of OpA and OpB to simplify things.
+
+One way to do this is to define a class that applies a mat_op to a 
+single matrix:
+
+template &lt;mat_op_type OpT,
+           typename    T,
+           typename    Block&gt;
+struct Apply_mat_op;
+
+template &lt;typename T,
+           typename Block&gt;
+struct Apply_mat_op&lt;mat_ntrans, T, Block&gt;
+{
+   typedef typename const_Matrix&lt;T, Block&gt; result_type;
+
+   static result_type
+   exec(const_Matrix&lt;T, Block&gt; m) VSIP_NOTHROW
+   {
+     return m;
+   }
+};
+
+template &lt;typename T,
+           typename Block&gt;
+struct Apply_mat_op&lt;mat_trans, T, Block&gt;
+{
+   typedef typename const_Matrix&lt;T, Block&gt;::transpose_type result_type;
+
+   static result_type
+   exec(const_Matrix&lt;T, Block&gt; m) VSIP_NOTHROW
+   {
+     return m.transpose();
+   }
+};
+
+template &lt;typename T,
+           typename Block&gt;
+struct Apply_mat_op&lt;mat_herm, complex&lt;T&gt;, Block&gt;
+// this definition only makes mat_herm only valid for complex&lt;T&gt;
+{
+...
+};
+
+
+You could optionaly provide a convenience function to use Apply_mat_op:
+
+template &lt;mat_op_type OpT,
+           typename    T,
+           typename    Block&gt;
+typename Apply_mat_op&lt;OpT, T, Block&gt;::result_type
+apply_mat_op(...)
+{
+   return Apply_mat_op&lt;OpT, T, Block&gt;::exec(m);
+}
+
+Now, you could implement the top-level gemp as:
+
+void
+gemp(
+   T0 alpha,
+   const_Matrix&lt;T1, Block1&gt; A,
+   const_Matrix&lt;T2, Block2&gt; B,
+   T3 beta,
+   Matrix&lt;T4, Block4&gt; C)
+      VSIP_NOTHROW
+{
+   // equivalent to C = alpha * OpA(A) * OpB(B) + beta * C
+   impl::gemp(alpha, apply_mat_op&lt;OpA&gt;(A), apply_mat_op&lt;OpB&gt;(B),
+               beta, C);
+}
+
+
+
+&gt;<i> 
+</I>&gt;<i> 
+</I>&gt;<i> ------------------------------------------------------------------------
+</I>
+&gt;<i> + 
+</I>&gt;<i> + 
+</I>&gt;<i> + template &lt;dimension_type d,
+</I>&gt;<i> +           typename T0,
+</I>&gt;<i> +           typename T1,
+</I>&gt;<i> +           typename Block0,
+</I>&gt;<i> +           typename Block1&gt;
+</I>&gt;<i> + void
+</I>&gt;<i> + cumsum(
+</I>&gt;<i> +   const_Vector&lt;T0, Block0&gt; v,
+</I>&gt;<i> +   Vector&lt;T1, Block1&gt; w) 
+</I>&gt;<i> +     VSIP_NOTHROW
+</I>&gt;<i> + {
+</I>&gt;<i> +   //  Effects: w has values equaling the cumulative sum of values in v. 
+</I>&gt;<i> +   //
+</I>&gt;<i> +   //  If View is Vector, d is ignored and, for 
+</I>&gt;<i> +   //    0 &lt;= i &lt; v.size(), 
+</I>&gt;<i> +   //      w.get(i) equals the sum over 0 &lt;= j &lt;= i of v.get(j)
+</I>&gt;<i> +   assert( v.size() == w.size() );
+</I>&gt;<i> + 
+</I>&gt;<i> +   for ( index_type i = 0; i &lt; v.size(); ++i )
+</I>&gt;<i> +   {
+</I>&gt;<i> +     T1 sum = T0();
+</I>&gt;<i> +     for ( index_type j = 0; j &lt;= i; ++j )
+</I>&gt;<i> +       sum += v.get(j);
+</I>&gt;<i> +     w.put(i, sum);
+</I>&gt;<i> +   }
+</I>
+You could avoid recomputing the sum each time by keeping a running total:
+
+	T1 sum = T0();
+	for (index_type i=0; ...)
+	{
+	  sum += v.get(i);
+	  w.put(i, sum);
+	}
+
+You should be able to something similar for matrix cumsum.
+	
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000049.html">[patch] matvec: outer, gem, cumsum
+</A></li>
+	<LI>Next message: <A HREF="000066.html">[vsipl++] [patch] matvec: outer, gem, cumsum
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#53">[ date ]</a>
+              <a href="thread.html#53">[ thread ]</a>
+              <a href="subject.html#53">[ subject ]</a>
+              <a href="author.html#53">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">More information about the vsipl++
+mailing list</a><br>
+</body></html>

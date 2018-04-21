@@ -1,0 +1,133 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [pooma-dev] Profiling POOMA: How to? (1/3)
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bpooma-dev%5D%20Profiling%20POOMA%3A%20How%20to%3F%20%281/3%29&In-Reply-To=%3CF871BB04B0EA224A821A5274C31DF3152C8F%40proxim-sf001.santafe.proximation.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000646.html">
+   <LINK REL="Next"  HREF="000651.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[pooma-dev] Profiling POOMA: How to? (1/3)</H1>
+    <B>James Crotinger</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bpooma-dev%5D%20Profiling%20POOMA%3A%20How%20to%3F%20%281/3%29&In-Reply-To=%3CF871BB04B0EA224A821A5274C31DF3152C8F%40proxim-sf001.santafe.proximation.com%3E"
+       TITLE="[pooma-dev] Profiling POOMA: How to? (1/3)">JimC at proximation.com
+       </A><BR>
+    <I>Fri Aug 24 23:15:40 UTC 2001</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000646.html">patch: added mesh to new fields.
+</A></li>
+        <LI>Next message: <A HREF="000651.html">Tips for Using Irix and KCC
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#650">[ date ]</a>
+              <a href="thread.html#650">[ thread ]</a>
+              <a href="subject.html#650">[ subject ]</a>
+              <a href="author.html#650">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Gaby, Microsoft Outlook has no idea what your attachments were. Here is a
+snippet of what I received:
+
+----------------------------------------------------------------------
+Hmm, I'm embarrased because I don't (yet) have any idea of why you're
+seeing that behaviour.  Which parameters did you run the ABC
+test with?  I tried the following to see whether I'll get a core dump
+
+	./ABC --run-impls 2 --sim-params 1 3 100
+
+and the test completed fine, but I strongly suspect I must be testing
+with the wrong parameters (the &quot;nan&quot; part is a bit intriguing).  The
+output is in ABC.out and the profiling information (flat profile and
+call graph) is in ABC.prof, all attached.
+
+I'm using GNU gprof-2.10.91 on a linux box.
+
+Thanks,
+
+-- Gaby
+
+
+--Multipart_Fri_Aug_24_02:46:57_2001-1
+Content-Type: application/octet-stream
+Content-Disposition: attachment; filename=&quot;ABC.out&quot;
+Content-Transfer-Encoding: base64
+
+Ci4vQUJDIEJlbmNobWFyawotLS0tLS0tLS0tLS0tLS0KUnVubmluZyBzYW1wbGUgIzEgZm9y
+IFBvb21hSUkgQnJpY2sgSW1wbGVtZW50YXRpb246CiAgTiA9IDEuLi4KICAgIENvcnJlY3Ru
+ZXNzIHRlc3QgdmFsdWUgZm9yIE4gPSAxIGlzIG5hbi4KICBOID0gMS4uLgogICAgQ29ycmVj
+-------------------------------------------------------------------------
+
+Regarding your questions, it wasn't ABC that crashed, it was gprof when I
+ran it on ABC's gmon.out file (or whatever it is called). 
+
+The nan's you're seeing for the above args are probably related to the input
+parameters indirectly - the &quot;correctness value&quot; that is printed out for this
+test is the value at the point &quot;N/2,N/2&quot;. For reasons that escape me, the
+domain for the arrays in this test is [1..N]x[1..N]. So if N == 1, N/2 give
+0 and this results in the correctness calculation trying to read a(0,0),
+which is out-of-bounds. (This would be caught with bounds checking on, if we
+still have such a thing 8-). The upshot is that N == 1 is a bad value. Also,
+anything less than N == 10 will not work with the default number of patches
+for the UMP tests since they try to decompose into npatch x npatch patches,
+which will fail if N &lt; npatch. 
+
+Anyway, I just ran
+
+  % ABC --run-impls 2 --sim-params 100 0 1
+  % gprof ABC &gt;&amp;gprof.out
+
+and gprof has now used up 4 minutes of CPU time and its image size is 1.5
+GB. I suspect it will crash soon. 8-) I'm using GNU gprof 2.10.91 as well. I
+did compile with KCC and full optimization - does gprof now work in that
+situation? 
+
+Oh, yes, gprof finally died after 10+ minutes of CPU time - &quot;Cannot allocate
+3087007742 bytes...&quot;.
+
+  Jim
+
+
+&gt;<i> -----Original Message-----
+</I>&gt;<i> From: Gabriel Dos Reis [mailto:<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">gdr at codesourcery.com</A>]
+</I>&gt;<i> Sent: Thursday, August 23, 2001 6:47 PM
+</I>&gt;<i> To: <A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">pooma-dev at pooma.codesourcery.com</A>
+</I>&gt;<i> Subject: Re: [pooma-dev] Profiling POOMA: How to? (1/3)
+</I>&gt;<i> 
+</I>&gt;<i> 
+</I>&gt;<i> 
+</I>-------------- next part --------------
+An HTML attachment was scrubbed...
+URL: &lt;<A HREF="http://sourcerytools.com/pipermail/pooma-dev/attachments/20010824/7b1d2b73/attachment.html">http://sourcerytools.com/pipermail/pooma-dev/attachments/20010824/7b1d2b73/attachment.html</A>&gt;
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000646.html">patch: added mesh to new fields.
+</A></li>
+	<LI>Next message: <A HREF="000651.html">Tips for Using Irix and KCC
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#650">[ date ]</a>
+              <a href="thread.html#650">[ thread ]</a>
+              <a href="subject.html#650">[ subject ]</a>
+              <a href="author.html#650">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

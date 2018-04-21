@@ -1,0 +1,77 @@
+Index: ChangeLog
+===================================================================
+RCS file: /home/cvs/Repository/vpp/ChangeLog,v
+retrieving revision 1.377
+diff -u -r1.377 ChangeLog
+--- ChangeLog	19 Jan 2006 00:49:01 -0000	1.377
++++ ChangeLog	19 Jan 2006 03:30:38 -0000
+@@ -1,5 +1,13 @@
+ 2006-01-18 Jules Bergmann  <jules@codesourcery.com>
+ 
++	* configure.ac (LAPACK_NOOPT): New substitution to pass -m32/-m64
++	  to LAPACK for building without optimization.
++	* vendor/lapack/make.inc.in (NOOPT): use LAPACK_NOOPT.
++	* lib/GNUmakefile.inc.in: Check for .a files before trying to
++	  instal them.
++
++2006-01-18 Jules Bergmann  <jules@codesourcery.com>
++
+ 	* GNUmakefile.in (subdirs): Move tests near the end of the list so
+ 	  that it sees the fully initialized $(libs).
+ 	* configure: Pass compilers and flags to ATLAS and FFTW configure
+Index: configure.ac
+===================================================================
+RCS file: /home/cvs/Repository/vpp/configure.ac,v
+retrieving revision 1.75
+diff -u -r1.75 configure.ac
+--- configure.ac	19 Jan 2006 00:49:01 -0000	1.75
++++ configure.ac	19 Jan 2006 03:30:38 -0000
+@@ -1226,6 +1226,17 @@
+         lapack_use_ilaenv=0
+         cblas_style="1"	# use cblas.h
+ 
++	# Determine flags for LAPACK_NOOPT, used for compiling with no
++	# optimization
++        if expr "$FFLAGS" : ".*-m32" > /dev/null; then
++	  LAPACK_NOOPT="-m32"
++        elif expr "$FFLAGS" : ".*-m64" > /dev/null; then
++	  LAPACK_NOOPT="-m64"
++	else
++	  LAPACK_NOOPT=""
++	fi
++	AC_SUBST(LAPACK_NOOPT)
++
+         lapack_found="builtin"
+         break
+       else
+Index: vendor/lapack/make.inc.in
+===================================================================
+RCS file: /home/cvs/Repository/lapack/make.inc.in,v
+retrieving revision 1.2
+diff -u -r1.2 make.inc.in
+--- vendor/lapack/make.inc.in	1 Dec 2005 16:39:27 -0000	1.2
++++ vendor/lapack/make.inc.in	19 Jan 2006 03:30:38 -0000
+@@ -21,7 +21,7 @@
+ FORTRAN  = @F77@ 
+ OPTS     = @FFLAGS@ -funroll-all-loops -O3
+ DRVOPTS  = $(OPTS)
+-NOOPT    =
++NOOPT    = @LAPACK_NOOPT@
+ LOADER   = $(FORTRAN)
+ LOADOPTS =
+ #
+Index: lib/GNUmakefile.inc.in
+===================================================================
+RCS file: /home/cvs/Repository/vpp/lib/GNUmakefile.inc.in,v
+retrieving revision 1.1
+diff -u -r1.1 GNUmakefile.inc.in
+--- lib/GNUmakefile.inc.in	10 Jan 2006 21:35:53 -0000	1.1
++++ lib/GNUmakefile.inc.in	19 Jan 2006 03:30:38 -0000
+@@ -18,4 +18,6 @@
+ 
+ install::
+ 	$(INSTALL) -d $(DESTDIR)$(libdir)
+-	$(INSTALL_DATA) lib/*.a $(DESTDIR)$(libdir)
++	for file in $(wildcard lib/*.a); do		\
++	  $(INSTALL_DATA) $$file $(DESTDIR)$(libdir);	\
++	done

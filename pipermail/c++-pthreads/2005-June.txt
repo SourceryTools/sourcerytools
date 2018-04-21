@@ -1,0 +1,196 @@
+From artendulkar at yahoo.com  Fri Jun 10 09:45:21 2005
+From: artendulkar at yahoo.com (Abhijit Tendulkar)
+Date: Fri, 10 Jun 2005 02:45:21 -0700 (PDT)
+Subject: Problem in type conversion in pthread_create
+Message-ID: <20050610094521.29158.qmail@web53308.mail.yahoo.com>
+
+Hello,
+
+I'm new to this list, this is my first post.
+
+I'm getting the type conversion error in my program.
+I tried it in following way.
+
+This is the function in which threads are to be
+created:
+
+void MonteCarlo :: generateEnrmap(vector<string> vstr,
+int ns, float svdw, float er)
+{
+        arg ar, *arptr;
+        //void *arptr;
+        void *ptr;
+        pthread_t id;
+        int mid = _pgrmap.size() / 2;
+        ar.vstr = vstr;
+        ar.ns = ns;
+        ar.svdw = svdw;
+        ar.er = er;
+        ar.mid = mid;
+        //arptr = &ar;
+        ptr = &ar; //arptr;
+        if( 0 == pthread_create(&id, NULL,
+generateEnrmap1, ptr) ) //Line No. 416
+                cout<<"First thread created.\n";
+        if( 0 == pthread_create(&id, NULL,
+generateEnrmap2, ptr) ) //Line No. 418
+                cout<<"Second thread created.\n";
+        pthread_exit(NULL);
+}
+
+These are prototypes of two functions used in threads.
+void * MonteCarlo :: generateEnrmap1(void *ptr)
+void * MonteCarlo :: generateEnrmap2(void *ptr)
+
+The only error I'm getting is as follows.
+
+-bash-2.05b$ make
+g++  -c -lpthread source/MonteCarlo.cc -Iheader
+source/MonteCarlo.cc: In member function `void
+   MonteCarlo::generateEnrmap(std::vector<std::string,
+   std::allocator<std::string> >, int, float, float)':
+source/MonteCarlo.cc:416: error: argument of type
+`void*(MonteCarlo::)(void*)'
+   does not match `void*(*)(void*)'
+source/MonteCarlo.cc:418: error: argument of type
+`void*(MonteCarlo::)(void*)'
+   does not match `void*(*)(void*)'
+make: *** [MonteCarlo.o] Error 1
+-bash-2.05b$
+
+Can anybody please help me in removing this error?
+why this error message is showing one more * in
+bracket?
+
+Waiting for reply.
+
+Thanks & regards.
+
+Abhijit
+
+
+		
+__________________________________ 
+Discover Yahoo! 
+Stay in touch with email, IM, photo sharing and more. Check it out! 
+http://discover.yahoo.com/stayintouch.html
+
+
+From TEREKHOV at de.ibm.com  Fri Jun 10 13:42:14 2005
+From: TEREKHOV at de.ibm.com (Alexander Terekhov)
+Date: Fri, 10 Jun 2005 15:42:14 +0200
+Subject: [c++-pthreads] Problem in type conversion in pthread_create
+In-Reply-To: <20050610094521.29158.qmail@web53308.mail.yahoo.com>
+Message-ID: <OF88BE4021.9D205B02-ONC125701C.0049B94B-C125701C.004B1746@de.ibm.com>
+
+
+> I'm new to this list
+
+This list is dead (http://tinyurl.com/dz23x is sorta new
+incarnation), and judging from your question, you'll be
+better served at comp.programming.threads. Search the
+archives first.
+
+regards,
+alexander.
+
+
+
+From Stephen.Clamage at Sun.COM  Fri Jun 10 15:32:29 2005
+From: Stephen.Clamage at Sun.COM (Steve Clamage)
+Date: Fri, 10 Jun 2005 08:32:29 -0700
+Subject: [c++-pthreads] Problem in type conversion in pthread_create
+In-Reply-To: <20050610094521.29158.qmail@web53308.mail.yahoo.com>
+References: <20050610094521.29158.qmail@web53308.mail.yahoo.com>
+Message-ID: <42A9B28D.4020803@sun.com>
+
+Function pthread_create is a C function, and needs to be passed the
+address of an ordinary function with C linkage.
+
+You are attempting to pass it the address of what appears to be a class
+member function. The address of a class member function is not an
+ordinary pointer-to-function, and is incompatible with
+pointer-to-function.  In any event, the function you are passing has C++
+linkage.
+
+You need to create global functions with C linkage for passing to
+pthread_create. Those function can be written in C++, and can use C++
+features.
+
+---
+Steve Clamage, stephen.clamage at sun.com
+
+Abhijit Tendulkar wrote:
+> Hello,
+> 
+> I'm new to this list, this is my first post.
+> 
+> I'm getting the type conversion error in my program.
+> I tried it in following way.
+> 
+> This is the function in which threads are to be
+> created:
+> 
+> void MonteCarlo :: generateEnrmap(vector<string> vstr,
+> int ns, float svdw, float er)
+> {
+>         arg ar, *arptr;
+>         //void *arptr;
+>         void *ptr;
+>         pthread_t id;
+>         int mid = _pgrmap.size() / 2;
+>         ar.vstr = vstr;
+>         ar.ns = ns;
+>         ar.svdw = svdw;
+>         ar.er = er;
+>         ar.mid = mid;
+>         //arptr = &ar;
+>         ptr = &ar; //arptr;
+>         if( 0 == pthread_create(&id, NULL,
+> generateEnrmap1, ptr) ) //Line No. 416
+>                 cout<<"First thread created.\n";
+>         if( 0 == pthread_create(&id, NULL,
+> generateEnrmap2, ptr) ) //Line No. 418
+>                 cout<<"Second thread created.\n";
+>         pthread_exit(NULL);
+> }
+> 
+> These are prototypes of two functions used in threads.
+> void * MonteCarlo :: generateEnrmap1(void *ptr)
+> void * MonteCarlo :: generateEnrmap2(void *ptr)
+> 
+> The only error I'm getting is as follows.
+> 
+> -bash-2.05b$ make
+> g++  -c -lpthread source/MonteCarlo.cc -Iheader
+> source/MonteCarlo.cc: In member function `void
+>    MonteCarlo::generateEnrmap(std::vector<std::string,
+>    std::allocator<std::string> >, int, float, float)':
+> source/MonteCarlo.cc:416: error: argument of type
+> `void*(MonteCarlo::)(void*)'
+>    does not match `void*(*)(void*)'
+> source/MonteCarlo.cc:418: error: argument of type
+> `void*(MonteCarlo::)(void*)'
+>    does not match `void*(*)(void*)'
+> make: *** [MonteCarlo.o] Error 1
+> -bash-2.05b$
+> 
+> Can anybody please help me in removing this error?
+> why this error message is showing one more * in
+> bracket?
+> 
+> Waiting for reply.
+> 
+> Thanks & regards.
+> 
+> Abhijit
+> 
+> 
+> 		
+> __________________________________ 
+> Discover Yahoo! 
+> Stay in touch with email, IM, photo sharing and more. Check it out! 
+> http://discover.yahoo.com/stayintouch.html
+
+
+

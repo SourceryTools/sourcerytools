@@ -1,0 +1,235 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [c++-pthreads] Restating the Jason model
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:c%2B%2B-pthreads%40codesourcery.com?Subject=Re%3A%20%5Bc%2B%2B-pthreads%5D%20Restating%20the%20Jason%20model&In-Reply-To=%3C4003E8D5.1030600%40hp.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000260.html">
+   <LINK REL="Next"  HREF="000253.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[c++-pthreads] Restating the Jason model</H1>
+    <B>Dave Butenhof</B> 
+    <A HREF="mailto:c%2B%2B-pthreads%40codesourcery.com?Subject=Re%3A%20%5Bc%2B%2B-pthreads%5D%20Restating%20the%20Jason%20model&In-Reply-To=%3C4003E8D5.1030600%40hp.com%3E"
+       TITLE="[c++-pthreads] Restating the Jason model">David.Butenhof at hp.com
+       </A><BR>
+    <I>Tue Jan 13 12:47:17 UTC 2004</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000260.html">[c++-pthreads] Restating the Jason model
+</A></li>
+        <LI>Next message: <A HREF="000253.html">[c++-pthreads] Restating the Jason model
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#252">[ date ]</a>
+              <a href="thread.html#252">[ thread ]</a>
+              <a href="subject.html#252">[ subject ]</a>
+              <a href="author.html#252">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Jason Merrill wrote:
+
+&gt;<i>I think this is an appropriate time to restate my proposal.  I think
+</I>&gt;<i>there's a fair amount of consensus around these three points:
+</I>&gt;<i>
+</I>&gt;<i> * Cancellation is a normal exception.
+</I>&gt;<i> * If a cancellation exception is destroyed, the cancellation request
+</I>&gt;<i>   is re-entered, and acted on again at the next cancellation point.
+</I>&gt;<i> * Cancellation is disabled during unwinding.
+</I>&gt;<i>
+</I>&gt;<i>But there are still some open questions:
+</I>&gt;<i>
+</I>&gt;<i> * Which of the POSIX cancellation points are cancellation points in C++?
+</I>&gt;<i>
+</I>&gt;<i>None of the mandatory cancellation points are mentioned in the C++
+</I>&gt;<i>standard, so I don't see any reason to prevent them from throwing
+</I>&gt;<i>cancellation in C++ code.
+</I>&gt;<i>
+</I>&gt;<i>POSIX also says that the C standard I/O functions may be cancellation
+</I>&gt;<i>points, while the C++ standard says that they don't throw.  This
+</I>&gt;<i>contradiction can be resolved either by allowing them to throw cancellation
+</I>&gt;<i>or declaring that they are not cancellation points when called from C++
+</I>&gt;<i>code; if we choose the latter, an implementation could just change them to
+</I>&gt;<i>never be cancellation points, since that is allowed by POSIX.
+</I>&gt;<i>
+</I>&gt;<i>Dave Butenhof mentioned that on Tru64 printf is not a cancellation point,
+</I>&gt;<i>to avoid having to deal with cleaning up internal state.  But what about
+</I>&gt;<i>scanf, which can block?  One of the convenient things about pthread
+</I>&gt;<i>cancellation is that it wakes up a blocked thread.  Does this not happen on
+</I>&gt;<i>Tru64 if the thread is using stdio functions?
+</I>&gt;<i>
+</I>&gt;<i>My preference is still to amend the C++ standard to allow stdio functions
+</I>&gt;<i>to throw cancellation.
+</I>&gt;<i>  
+</I>&gt;<i>
+</I>Since most platforms likely to support C++ cancellation already support 
+POSIX cancellation, making the rules compatible would be &quot;nice&quot;. 
+(Perhaps even essential for wide acceptance.)
+
+As such, the obvious path for C++ would be to start with, and extend as 
+necessary, the Single UNIX Specification (SUS) rules (which are in turn 
+extensions of the base POSIX rules to cover interfaces not defined by 
+POSIX). If you did this, you're starting with two cancellation point 
+lists: mandatory and optional. Implementations MUST raise cancel for all 
+required cancellation points, and MAY (but need not) for the optional 
+points. Applications, meanwhile, can depend portably on cancellation 
+from the mandatory points; while they always must be prepared for (but 
+cannot portably depend upon) cancellation from the optional points.
+
+The general logic for the division between mandatory and obsolete is 
+based on both &quot;traditional UNIX implementation&quot; (mandatory points are 
+almost always direct kernel syscalls while the optional points are 
+generally user library routines) and also on the efficiency/logic that 
+mandatory points ALWAYS (or at least &quot;nearly always&quot;) perform operations 
+subject to blocking, while the optional points SOMETIMES perform such 
+operations. (E.g., &quot;read&quot; always reads from a file unless there's an 
+error... while scanf reads from a file only when any existing buffer is 
+empty; you might make several scanf or printf calls purely from a local 
+stdio buffer.) The twin logic forks are therefore that the syscalls 
+(e.g., file access) are cancellation points; while &quot;higher level&quot; 
+operations that use these syscalls are allowed to act as cancellation 
+points only when they actually make a syscall. But that was a plausible 
+excuse: the real reason for mandatory cancellation points was that we 
+couldn't force everyone to analyze and substantially redesign their 
+stdio packages (in particular) to deal with cancellation and cleanup, so 
+we wanted to allow them to simply disable cancellation.
+
+The idea was that this would be &quot;transitional&quot;, but of course nothing 
+ever works out that way. Tru64's libc, like many, provides a set of 
+&quot;nocancel&quot; syscall stubs for internal use, and printf() (for example) 
+calls write_nc() instead of write() so that it never needs to deal with 
+cancellation. The issue for Tru64 is one of packaging, primarily; our 
+exception library (libexc) has a long and twisted history going back to 
+our original DCE OSF/1 implementation on MIPS R2000, using (along with 
+Mach and BSD and OSF/1) a bunch of MIPSCO IP... including Mark 
+Himmelstein's exceptions. It's big and a little unwieldy, and nobody was 
+willing to either merge it into libc (which I always thought was the 
+right solution) or to make libc depend on it. Thus there's simply no way 
+for libc code to handle exceptions, and &quot;we&quot; simply had no way to 
+implement the optional cancellation points.
+
+The mandatory cancellation points, as I said, were deliberately those 
+blocking entries that are &quot;pure syscalls&quot;; where user-mode cleanup isn't 
+an issue.
+
+&gt;<i> * Which bits of the C++ library are cancellation points?
+</I>&gt;<i>
+</I>&gt;<i>I would think pretty much all I/O code, and nothing else.
+</I>&gt;<i>  
+</I>&gt;<i>
+</I>Not just &quot;I/O&quot;, but in general any explicit control point that might 
+&quot;indefinitely block&quot;. Except for some low-level blocking operations, 
+like mutex lock, where we felt that requiring all calls to prepare for 
+cancellation would be impractical.
+
+&gt;<i>Closely related to this is the question of what happens if a cancellation
+</I>&gt;<i>exception is thrown under a formatted I/O function; currently it would be
+</I>&gt;<i>caught and discarded, so it would only escape on a flush or the like.  I
+</I>&gt;<i>think it should escape from formatted I/O as well.  This could be
+</I>&gt;<i>implemented by explicitly rethrowing cancel, by limiting the set of
+</I>&gt;<i>exceptions trapped, or by calling pthread_testcancel after the try/catch
+</I>&gt;<i>block.
+</I>&gt;<i>
+</I>&gt;<i>If formatted I/O functions continue to trap cancellation exceptions, they
+</I>&gt;<i>would not be cancellation points; a cancellation point in the C++ binding
+</I>&gt;<i>would be a function which can throw a cancellation exception.
+</I>&gt;<i>  
+</I>&gt;<i>
+</I>Any C++ runtime function is in much the same category as the user-mode C 
+runtime functions. With the &quot;exception&quot; that the C++ runtime definitely 
+CAN deal with exceptions. Still, though, presumably any C++ formatted 
+I/O is buffered, and therefore may not on each operation make a true 
+&quot;I/O call&quot;. Life is easier for programmers if they can depend on 
+behavior with no exceptions, arguing all cancellation points ought to be 
+mandatory and unconditional -- which would mean testing for cancel 
+explicitly when not otherwise making a cancellable call. On the other 
+hand, life is easier for C++ runtime developers if they're not required 
+to ensure that this happens in all possible code paths. And, like most C 
+runtime libraries, C++ runtimes may be written without preparation for 
+cancellation (or indeed exceptions in any form) in most of these code 
+paths, since the developers knew where THEY might raise exceptions, and 
+nobody else could do it to them.
+
+Idealism suggests supporting the application developers' desire for 
+consistency and predictability. Pragmatism argues against forcing all 
+C++ runtimes to be substantially analyzed and modified. Pragmatism won 
+in POSIX as it usually did, and many of the arguments I've seen in this 
+group suggest (unscientifically) that C++ committee members might share 
+some similar biases.
+
+&gt;<i> * Should cancellation also be disabled in destructors run during normal
+</I>&gt;<i>   execution?  In catch blocks?
+</I>&gt;<i>
+</I>&gt;<i>IMO, no and no.
+</I>&gt;<i>  
+</I>&gt;<i>
+</I>Cancellation should NOT be disabled in destructors? Did you mean to say 
+that?
+
+&gt;<i> * How can C++ code interact with a cancellation exception?
+</I>&gt;<i>
+</I>&gt;<i>I think everyone agrees that it should be possible to catch a cancel by
+</I>&gt;<i>name.  We still need to specify that name and any additional operations the
+</I>&gt;<i>cancel object might support.
+</I>&gt;<i>  
+</I>&gt;<i>
+</I>Additional operations on the cancel object. Interesting. Like, for 
+example, if the cancel object destructor were to automatically re-pend 
+the cancel unless the handler had already declared &quot;cancel.finalize()&quot;? 
+(Could or should this be done automatically be the runtime for 
+'catch(cancel)' as opposed to 'catch(...)'?)
+
+&gt;<i> * What about pthread_exit?
+</I>&gt;<i>
+</I>&gt;<i>I'm happy with the g++ status quo whereby destroying a pthread_exit
+</I>&gt;<i>exception calls terminate.  Unlike cancellation, the position of a call to
+</I>&gt;<i>pthread_exit is deterministic, so the user is responsible for making sure
+</I>&gt;<i>that it can propagate.
+</I>&gt;<i>  
+</I>&gt;<i>
+</I>Well, yes; although it also seems better to make one new rule for the 
+new &quot;thread terminating exceptions&quot; rather than two separate new rules.
+
+&gt;<i>Anything else?
+</I>&gt;<i>  
+</I>&gt;<i>
+</I>Yes; but I don't yet know what it is. ;-)
+
+-- 
+/--------------------[ <A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/c++-pthreads">David.Butenhof at hp.com</A> ]--------------------\
+|<i> Hewlett-Packard Company       Tru64 UNIX &amp; VMS Thread Architect |
+</I>|<i>     My book: <A HREF="http://www.awl.com/cseng/titles/0-201-63392-2/">http://www.awl.com/cseng/titles/0-201-63392-2/</A>     |
+</I>\----[ <A HREF="http://homepage.mac.com/dbutenhof/Threads/Threads.html">http://homepage.mac.com/dbutenhof/Threads/Threads.html</A> ]---/
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000260.html">[c++-pthreads] Restating the Jason model
+</A></li>
+	<LI>Next message: <A HREF="000253.html">[c++-pthreads] Restating the Jason model
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#252">[ date ]</a>
+              <a href="thread.html#252">[ thread ]</a>
+              <a href="subject.html#252">[ subject ]</a>
+              <a href="author.html#252">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/c++-pthreads">More information about the c++-pthreads
+mailing list</a><br>
+</body></html>

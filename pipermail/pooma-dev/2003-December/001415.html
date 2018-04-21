@@ -1,0 +1,136 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [pooma-dev] [Q] ReceiveIterate asymmetry bug?
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bpooma-dev%5D%20%5BQ%5D%20ReceiveIterate%20asymmetry%20bug%3F&In-Reply-To=%3CPine.LNX.4.53.0312111159120.2020%40bellatrix.tat.physik.uni-tuebingen.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001408.html">
+   <LINK REL="Next"  HREF="001410.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[pooma-dev] [Q] ReceiveIterate asymmetry bug?</H1>
+    <B>Richard Guenther</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bpooma-dev%5D%20%5BQ%5D%20ReceiveIterate%20asymmetry%20bug%3F&In-Reply-To=%3CPine.LNX.4.53.0312111159120.2020%40bellatrix.tat.physik.uni-tuebingen.de%3E"
+       TITLE="[pooma-dev] [Q] ReceiveIterate asymmetry bug?">rguenth at tat.physik.uni-tuebingen.de
+       </A><BR>
+    <I>Thu Dec 11 11:01:34 UTC 2003</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001408.html">[pooma-dev] [Q] ReceiveIterate asymmetry bug?
+</A></li>
+        <LI>Next message: <A HREF="001410.html">[pooma-dev] [Q] ReceiveIterate asymmetry bug?
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1415">[ date ]</a>
+              <a href="thread.html#1415">[ thread ]</a>
+              <a href="subject.html#1415">[ subject ]</a>
+              <a href="author.html#1415">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>On Tue, 9 Dec 2003, Richard Guenther wrote:
+
+&gt;<i> On Tue, 9 Dec 2003, James Crotinger wrote:
+</I>&gt;<i>
+</I>&gt;<i> &gt; Hi Richard,
+</I>&gt;<i> &gt;
+</I>&gt;<i> &gt; I'm interested, but very busy at the moment. This stuff was tested fairly
+</I>&gt;<i> &gt; strenuously back in '97, including purified, so if there is a resource bug,
+</I>&gt;<i> &gt; it has snuck in since. Unfortunately, the out-of-order execution details
+</I>&gt;<i> &gt; involving multiple contexts are more than a little rusty in my brain, and I
+</I>&gt;<i> &gt; don't see that I'll have time to review this soon. I'm pretty sure that
+</I>&gt;<i> &gt; out-of-order handling of these messages is critical if you want to get any
+</I>&gt;<i> &gt; advantage of out-of-order execution.
+</I>&gt;<i>
+</I>&gt;<i> Fair enough. I'm seeing &quot;random&quot; testresults, f.i. for the Particle
+</I>&gt;<i> destroy test, sometimes segfaulting, sometimes passing, sometimes failing,
+</I>&gt;<i> and this _seems_ to be fixed with this patch. But of course this kills
+</I>&gt;<i> performance too much. I just thought I'm missing some critical part of the
+</I>&gt;<i> code where it should magically work ;)
+</I>
+Another patch - this time with no predicted change in performance. Just to
+keep the view life until use.  Looks obviously correct to me, but didn't
+solve my reproducable SCore deadlock's in global reductions with blocking
+expressions off.
+
+Richard.
+
+--
+Richard Guenther &lt;richard dot guenther at uni-tuebingen dot de&gt;
+WWW: <A HREF="http://www.tat.physik.uni-tuebingen.de/~rguenth/">http://www.tat.physik.uni-tuebingen.de/~rguenth/</A>
+
+===== SendReceive.h 1.3 vs edited =====
+--- 1.3/r2/src/Tulip/SendReceive.h	Thu Oct 23 14:41:05 2003
++++ edited/SendReceive.h	Thu Dec 11 11:58:06 2003
+@@ -149,7 +149,7 @@
+     : Pooma::Iterate_t(Pooma::scheduler()),
+       fromContext_m(fromContext),
+       tag_m(tag),
+-      view_m(view)
++      view_m(new View(view))
+   {
+     PAssert(fromContext &gt;= 0);
+
+@@ -213,18 +213,19 @@
+
+ private:
+
+-  static void apply(const View &amp;viewLocal, IncomingView &amp;viewMessage)
++  static void apply(const View *viewLocal, IncomingView &amp;viewMessage)
+   {
+     // For now, we just copy the message into the brick accepting the data.
+
+-    KernelEvaluator&lt;InlineKernelTag&gt;::evaluate(viewLocal, OpAssign(),
++    KernelEvaluator&lt;InlineKernelTag&gt;::evaluate(*viewLocal, OpAssign(),
+ 					       viewMessage);
+
+     // Release the received block:
+     DataObjectRequest&lt;WriteRelease&gt; writeReq;
+-    engineFunctor(viewLocal, writeReq);
++    engineFunctor(*viewLocal, writeReq);
+
+     Pooma::gotIncomingMessage();
++    delete viewLocal;
+   }
+
+   // Context we're sending the data to.
+@@ -238,7 +239,7 @@
+   // The place to put the data we're receiving (typically a view of the
+   // engine).;
+
+-  View view_m;
++  View *view_m;
+ };
+
+ /**
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001408.html">[pooma-dev] [Q] ReceiveIterate asymmetry bug?
+</A></li>
+	<LI>Next message: <A HREF="001410.html">[pooma-dev] [Q] ReceiveIterate asymmetry bug?
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1415">[ date ]</a>
+              <a href="thread.html#1415">[ thread ]</a>
+              <a href="subject.html#1415">[ subject ]</a>
+              <a href="author.html#1415">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

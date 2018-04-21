@@ -1,0 +1,667 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> PATCH: Fix execution engine problems and miscellaneous other issues.
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:qmtest%40codesourcery.com?Subject=Re%3A%20PATCH%3A%20Fix%20execution%20engine%20problems%20and%20miscellaneous%20other%20issues.&In-Reply-To=%3C1060276137.941.162.camel%40doubledemon.codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000390.html">
+   <LINK REL="Next"  HREF="000392.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>PATCH: Fix execution engine problems and miscellaneous other issues.</H1>
+    <B>Mark Mitchell</B> 
+    <A HREF="mailto:qmtest%40codesourcery.com?Subject=Re%3A%20PATCH%3A%20Fix%20execution%20engine%20problems%20and%20miscellaneous%20other%20issues.&In-Reply-To=%3C1060276137.941.162.camel%40doubledemon.codesourcery.com%3E"
+       TITLE="PATCH: Fix execution engine problems and miscellaneous other issues.">mark at codesourcery.com
+       </A><BR>
+    <I>Thu Aug  7 17:08:57 UTC 2003</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000390.html">[qmtest] Patches for scheduler updates
+</A></li>
+        <LI>Next message: <A HREF="000392.html">Remote Option
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#391">[ date ]</a>
+              <a href="thread.html#391">[ thread ]</a>
+              <a href="subject.html#391">[ subject ]</a>
+              <a href="author.html#391">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>This patch combines the patches that Nathaniel and I have come up with
+over the last 24 hours.
+
+-- 
+Mark Mitchell
+CodeSourcery, LLC
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">mark at codesourcery.com</A>
+-------------- next part --------------
+2003-08-07  Nathaniel Smith  &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">njs at codesourcery.com</A>&gt;
+	    Mark Mitchell  &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">mark at codesourcery.com</A>&gt;
+
+	* qm/test/execution_engine.py: Improve documentation.
+	(ExecutionEngine.__TARGET_IDLE): New variable.
+	(ExecutionEngine.__TARGET_BUSY): Likewise.
+	(ExecutionEngine.__TARGET_STARVING): Likewise.
+	(ExecutionEngine.__num_idle_targets): Replace with...
+	(ExecutionEngine.__has_idle_targets): ...this.
+	(ExecutionEngine._RunTests): Incorporate above changes.
+	(ExecutionEngine.__AddResult): Likewise.
+	(ExecutionEngine.__AddToTargetPatternQueue): Fix typo.
+	* GNUMakefile.in (check-threads): Set new context variable
+	qmtest_target.
+	(check-processes): Likewise.
+	(check-rsh): Likewise.
+	* qm/qm.sh: Correct handling of QM_PATH when both QM_HOME and
+	QM_BUILD are set.
+	* tests/regress/QMTest/selftest.py (RegTest.Run): Use context
+	variable qmtest_target if defined.
+	* tests/regress/bad_target1/bad_target.qmt: Use a target group
+	that does not match the empty string.
+	* tests/regress/bad_target2/bad_target.qmt: Use a target group
+	that does not match the empty string.
+
+	* qm/test/classes/xml_database.py: Do not import dircache.
+
+	* scripts/qm-release: Improve snapshot generation.
+
+Index: GNUmakefile.in
+===================================================================
+RCS file: /home/sc/Repository/qm/GNUmakefile.in,v
+retrieving revision 1.23
+diff -c -5 -p -r1.23 GNUmakefile.in
+*** GNUmakefile.in	29 Jul 2003 20:22:43 -0000	1.23
+--- GNUmakefile.in	7 Aug 2003 17:00:28 -0000
+*************** check-threads: all
+*** 225,254 ****
+  	qm/test/qmtest -D tests create-target -a threads=4 \
+  		-T tests/QMTest/thread_target \
+  		thread thread_target.ThreadTarget
+  	qm/test/qmtest -D tests run -T tests/QMTest/thread_target \
+  		$(QMTESTFLAGS) \
+! 		-c qmtest_path=qm/test/qmtest
+  
+  check-processes: all
+  	rm -f tests/QMTest/process_target
+  	qm/test/qmtest -D tests create-target -a processes=4 \
+  		-T tests/QMTest/process_target \
+  		process process_target.ProcessTarget
+  	qm/test/qmtest -D tests run -T tests/QMTest/process_target \
+  		$(QMTESTFLAGS) \
+! 		-c qmtest_path=qm/test/qmtest
+  
+  check-rsh: all
+  	rm -f tests/QMTest/rsh_target
+  	qm/test/qmtest -D tests create-target \
+                  -a host=localhost -a remote_shell=ssh \
+  		-T tests/QMTest/rsh_target \
+  		rsh rsh_target.RSHTarget
+  	qm/test/qmtest -D tests run -T tests/QMTest/rsh_target \
+  		$(QMTESTFLAGS) \
+! 		-c qmtest_path=`pwd`/qm/test/qmtest
+  
+  ########################################################################
+  # Documentation Rules
+  ########################################################################
+  
+--- 225,257 ----
+  	qm/test/qmtest -D tests create-target -a threads=4 \
+  		-T tests/QMTest/thread_target \
+  		thread thread_target.ThreadTarget
+  	qm/test/qmtest -D tests run -T tests/QMTest/thread_target \
+  		$(QMTESTFLAGS) \
+! 		-c qmtest_path=qm/test/qmtest \
+! 		-c qmtest_target=tests/QMTest/thread_target
+  
+  check-processes: all
+  	rm -f tests/QMTest/process_target
+  	qm/test/qmtest -D tests create-target -a processes=4 \
+  		-T tests/QMTest/process_target \
+  		process process_target.ProcessTarget
+  	qm/test/qmtest -D tests run -T tests/QMTest/process_target \
+  		$(QMTESTFLAGS) \
+! 		-c qmtest_path=qm/test/qmtest \
+! 		-c qmtest_target=tests/QMTest/process_target
+  
+  check-rsh: all
+  	rm -f tests/QMTest/rsh_target
+  	qm/test/qmtest -D tests create-target \
+                  -a host=localhost -a remote_shell=ssh \
+  		-T tests/QMTest/rsh_target \
+  		rsh rsh_target.RSHTarget
+  	qm/test/qmtest -D tests run -T tests/QMTest/rsh_target \
+  		$(QMTESTFLAGS) \
+! 		-c qmtest_path=`pwd`/qm/test/qmtest \
+! 		-c qmtest_target=`pwd`/tests/QMTest/rsh_target
+  
+  ########################################################################
+  # Documentation Rules
+  ########################################################################
+  
+Index: qm/qm.sh
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/qm.sh,v
+retrieving revision 1.12
+diff -c -5 -p -r1.12 qm.sh
+*** qm/qm.sh	13 Jun 2003 05:12:58 -0000	1.12
+--- qm/qm.sh	7 Aug 2003 17:00:28 -0000
+*************** if test x&quot;${QM_HOME}&quot; = x; then
+*** 162,172 ****
+  	fi
+  	# Go the next containing directory.
+  	QM_HOME=`dirname &quot;${QM_HOME}&quot;`
+      done
+  else
+!     QM_PATH=$QM_HOME/bin/qmtest
+  fi
+  
+  # Export QM_HOME and QM_PATH so that we can find them from within Python.
+  export QM_HOME
+  export QM_PATH
+--- 162,177 ----
+  	fi
+  	# Go the next containing directory.
+  	QM_HOME=`dirname &quot;${QM_HOME}&quot;`
+      done
+  else
+!     # The QM_HOME variable was set.
+!     if test ${QM_BUILD} -eq 0; then
+! 	QM_PATH=$QM_HOME/bin/qmtest
+!     else
+! 	QM_PATH=$QM_HOME/qm/test/qmtest
+!     fi
+  fi
+  
+  # Export QM_HOME and QM_PATH so that we can find them from within Python.
+  export QM_HOME
+  export QM_PATH
+Index: qm/test/execution_engine.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/execution_engine.py,v
+retrieving revision 1.22
+diff -c -5 -p -r1.22 execution_engine.py
+*** qm/test/execution_engine.py	31 Jul 2003 23:17:50 -0000	1.22
+--- qm/test/execution_engine.py	7 Aug 2003 17:00:29 -0000
+*************** class ExecutionEngine:
+*** 161,170 ****
+--- 161,178 ----
+                  self.dependants = [test_id]
+              else:
+                  self.dependants.append(test_id)
+  
+  
++     # Every target is in one of three states: busy, idle, or starving.
++     # A busy target is running tests, an idle target is ready to run
++     # tests, and a starving target is ready to run tests, but no tests
++     # are available for it to run.
++     __TARGET_IDLE = &quot;IDLE&quot;
++     __TARGET_BUSY = &quot;BUSY&quot;
++     __TARGET_STARVING = &quot;STARVING&quot;
++ 
+  
+      def __init__(self,
+                   database,
+                   test_ids,
+                   context,
+*************** class ExecutionEngine:
+*** 310,330 ****
+          self.__test_stack = []
+          # A hash-table giving the names of the tests presently on the
+          # stack.  The names are the keys; the values are unused.
+          self.__ids_on_stack = {}
+  
+!         # Every target is in one of three states: busy, idle, or
+!         # starving.  A busy target is running tests, an idle target is
+!         # ready to run tests, and a starving target is ready to run
+!         # tests, but no tests are available for it to run.  The value
+!         # recorded in the table is 'None' for a starving target, true
+!         # for an idle target, and false for a busy target.
+          self.__target_state = {}
+          for target in self.__targets:
+!             self.__target_state[target] = 1
+!         # The total number of idle targets.
+!         self.__num_idle_targets = len(self.__targets)
+          
+          # Figure out what target groups are available.
+          self.__target_groups = {}
+          for target in self.__targets:
+              self.__target_groups[target.GetGroup()] = None
+--- 318,332 ----
+          self.__test_stack = []
+          # A hash-table giving the names of the tests presently on the
+          # stack.  The names are the keys; the values are unused.
+          self.__ids_on_stack = {}
+  
+!         # All targets are initially idle.
+          self.__target_state = {}
+          for target in self.__targets:
+!             self.__target_state[target] = self.__TARGET_IDLE
+!         self.__has_idle_targets = 1
+          
+          # Figure out what target groups are available.
+          self.__target_groups = {}
+          for target in self.__targets:
+              self.__target_groups[target.GetGroup()] = None
+*************** class ExecutionEngine:
+*** 343,374 ****
+              # Process any responses and update the count of idle targets.
+              while self.__CheckForResponse(wait=0):
+                  pass
+  
+              # Now look for idle targets.
+!             if self.__num_idle_targets == 0:
+                  # Block until one of the running tests completes.
+                  self._Trace(&quot;All targets are busy -- waiting.&quot;)
+                  self.__CheckForResponse(wait=1)
+                  self._Trace(&quot;Response received.&quot;)
+                  continue
+  
+              # Go through each of the idle targets, finding work for it
+              # to do.
+!             self.__num_idle_targets = 0
+              for target in self.__targets:
+!                 if self.__target_state[target] != 1:
+                      continue
+                  # Try to find work for the target.  If there is no
+                  # available work, the target is starving.
+                  if not self.__FeedTarget(target):
+!                     self.__target_state[target] = None
+                  else:
+!                     is_idle = target.IsIdle()
+!                     self.__target_state[target] = is_idle
+!                     if is_idle:
+!                         self.__num_idle_targets += 1
+  
+          # Now all tests have been started; we just have wait for them
+          # all to finish.
+          while self.__running:
+              self.__CheckForResponse(wait=1)
+--- 345,379 ----
+              # Process any responses and update the count of idle targets.
+              while self.__CheckForResponse(wait=0):
+                  pass
+  
+              # Now look for idle targets.
+!             if not self.__has_idle_targets:
+                  # Block until one of the running tests completes.
+                  self._Trace(&quot;All targets are busy -- waiting.&quot;)
+                  self.__CheckForResponse(wait=1)
+                  self._Trace(&quot;Response received.&quot;)
+                  continue
+  
+              # Go through each of the idle targets, finding work for it
+              # to do.
+!             self.__has_idle_targets = 0
+              for target in self.__targets:
+!                 if self.__target_state[target] != self.__TARGET_IDLE:
+                      continue
+                  # Try to find work for the target.  If there is no
+                  # available work, the target is starving.
+                  if not self.__FeedTarget(target):
+!                     self.__target_state[target] = self.__TARGET_STARVING
+                  else:
+!                     # We gave the target some work, which may have
+!                     # changed its idle state, so update the status.
+!                     if target.IsIdle():
+!                         self.__target_state[target] = self.__TARGET_IDLE
+!                         self.__has_idle_targets = 1
+!                     else:
+!                         self.__target_state[target] = self.__TARGET_BUSY
+  
+          # Now all tests have been started; we just have wait for them
+          # all to finish.
+          while self.__running:
+              self.__CheckForResponse(wait=1)
+*************** class ExecutionEngine:
+*** 382,405 ****
+          returns -- True, iff a test could be found to run on 'target'.
+          False otherwise.&quot;&quot;&quot;
+  
+          self._Trace(&quot;Looking for a test for target %s&quot; % target.GetName())
+  
+-         descriptor = None
+- 
+          # See if there is already a ready-to-run test for this target.
+          for pattern in self.__patterns.get(target.GetGroup(), []):
+              tests = self.__target_pattern_queues.get(pattern, [])
+              if tests:
+                  descriptor = tests.pop()
+                  break
+! 
+!         # If there is no ready test, find one.
+!         descriptor = self.__FindRunnableTest(target)
+!         if descriptor is None:
+!             # There are no more tests ready to run.
+!             return 0
+                  
+          target_name = target.GetName()
+          test_id = descriptor.GetId()
+          self._Trace(&quot;Running %s on %s&quot; % (test_id, target_name))
+          assert self.__statuses[test_id].GetState() == self.__TestStatus.READY
+--- 387,409 ----
+          returns -- True, iff a test could be found to run on 'target'.
+          False otherwise.&quot;&quot;&quot;
+  
+          self._Trace(&quot;Looking for a test for target %s&quot; % target.GetName())
+  
+          # See if there is already a ready-to-run test for this target.
+          for pattern in self.__patterns.get(target.GetGroup(), []):
+              tests = self.__target_pattern_queues.get(pattern, [])
+              if tests:
+                  descriptor = tests.pop()
+                  break
+!         else:
+!             # There was no ready-to-run test queued, so try to find one
+!             # another one.
+!             descriptor = self.__FindRunnableTest(target)
+!             if descriptor is None:
+!                 # There really are no more tests ready to run.
+!                 return 0
+                  
+          target_name = target.GetName()
+          test_id = descriptor.GetId()
+          self._Trace(&quot;Running %s on %s&quot; % (test_id, target_name))
+          assert self.__statuses[test_id].GetState() == self.__TestStatus.READY
+*************** class ExecutionEngine:
+*** 449,460 ****
+                  # here; if we were to do it earlier, we would be in
+                  # danger of being confused by dependency graphs like
+                  # A-&gt;B, A-&gt;C, B-&gt;C, where we can't know ahead of time
+                  # that A's dependence on C is unnecessary.
+                  if self.__statuses[new_test_id].HasBeenQueued():
+!                     # This one is already in process.  This is also what
+!                     # a dependency cycle looks like, so check for that
+                      # now.
+                      if new_test_id in self.__ids_on_stack:
+                          self._Trace(&quot;Cycle detected (%s)&quot;
+                                      % (new_test_id,))
+                          self.__AddUntestedResult \
+--- 453,464 ----
+                  # here; if we were to do it earlier, we would be in
+                  # danger of being confused by dependency graphs like
+                  # A-&gt;B, A-&gt;C, B-&gt;C, where we can't know ahead of time
+                  # that A's dependence on C is unnecessary.
+                  if self.__statuses[new_test_id].HasBeenQueued():
+!                     # This one is already in process.  This might
+!                     # indicate a dependency cycle, so check for that
+                      # now.
+                      if new_test_id in self.__ids_on_stack:
+                          self._Trace(&quot;Cycle detected (%s)&quot;
+                                      % (new_test_id,))
+                          self.__AddUntestedResult \
+*************** class ExecutionEngine:
+*** 550,560 ****
+          # matches any of the targets, do so now.
+          if not self.__pattern_ok.has_key(pattern):
+              self.__pattern_ok[pattern] = 0
+              for group in self.__target_groups:
+                  if re.match(pattern, group):
+!                     self.__pattern_ok[group] = 1
+                      patterns = self.__patterns.setdefault(group, [])
+                      patterns.append(pattern)
+          # If none of the targets can run this test, mark it untested.
+          if not self.__pattern_ok[pattern]:
+              self.__AddUntestedResult(test_id,
+--- 554,564 ----
+          # matches any of the targets, do so now.
+          if not self.__pattern_ok.has_key(pattern):
+              self.__pattern_ok[pattern] = 0
+              for group in self.__target_groups:
+                  if re.match(pattern, group):
+!                     self.__pattern_ok[pattern] = 1
+                      patterns = self.__patterns.setdefault(group, [])
+                      patterns.append(pattern)
+          # If none of the targets can run this test, mark it untested.
+          if not self.__pattern_ok[pattern]:
+              self.__AddUntestedResult(test_id,
+*************** class ExecutionEngine:
+*** 579,589 ****
+          prereqs = descriptor.GetPrerequisites()
+          for prereq_id, outcome in prereqs.iteritems():
+              try:
+                  prereq_status = self.__statuses[prereq_id]
+              except KeyError:
+!                 # This prerequisite is not being run at all.
+                  continue
+  
+              if prereq_status.IsFinished():
+                  prereq_outcome = prereq_status.outcome
+                  if outcome != prereq_outcome:
+--- 583,594 ----
+          prereqs = descriptor.GetPrerequisites()
+          for prereq_id, outcome in prereqs.iteritems():
+              try:
+                  prereq_status = self.__statuses[prereq_id]
+              except KeyError:
+!                 # This prerequisite is not being run at all, so skip
+!                 # it.
+                  continue
+  
+              if prereq_status.IsFinished():
+                  prereq_outcome = prereq_status.outcome
+                  if outcome != prereq_outcome:
+*************** class ExecutionEngine:
+*** 632,643 ****
+  
+          # This target might now be idle.
+          if (target and target.IsIdle()):
+              # Output a trace message.
+              self._Trace(&quot;Target is now idle.\n&quot;)
+!             self.__target_state[target] = 1
+!             self.__num_idle_targets += 1
+              
+          # Only tests have expectations or scheduling dependencies.
+          if result.GetKind() == Result.TEST:
+              # Record the outcome for this test.
+              test_status = self.__statuses[id]
+--- 637,648 ----
+  
+          # This target might now be idle.
+          if (target and target.IsIdle()):
+              # Output a trace message.
+              self._Trace(&quot;Target is now idle.\n&quot;)
+!             self.__target_state[target] = self.__TARGET_IDLE
+!             self.__has_idle_targets = 1
+              
+          # Only tests have expectations or scheduling dependencies.
+          if result.GetKind() == Result.TEST:
+              # Record the outcome for this test.
+              test_status = self.__statuses[id]
+*************** class ExecutionEngine:
+*** 668,679 ****
+                      self.__any_unexpected_outcomes = 1
+  
+              # Any targets that were starving may now be able to find
+              # work.
+              for t in self.__targets:
+!                 if self.__target_state[t] is None:
+!                     self.__target_state[t] = 1
+              
+          # Output a trace message.
+          self._Trace(&quot;Writing result for %s to streams.&quot; % id)
+  
+          # Report the result.
+--- 673,684 ----
+                      self.__any_unexpected_outcomes = 1
+  
+              # Any targets that were starving may now be able to find
+              # work.
+              for t in self.__targets:
+!                 if self.__target_state[t] == self.__TARGET_STARVING:
+!                     self.__target_state[t] = self.__TARGET_IDLE
+              
+          # Output a trace message.
+          self._Trace(&quot;Writing result for %s to streams.&quot; % id)
+  
+          # Report the result.
+Index: qm/test/classes/xml_database.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/classes/xml_database.py,v
+retrieving revision 1.14
+diff -c -5 -p -r1.14 xml_database.py
+*** qm/test/classes/xml_database.py	15 Jul 2003 18:48:21 -0000	1.14
+--- qm/test/classes/xml_database.py	7 Aug 2003 17:00:29 -0000
+***************
+*** 15,25 ****
+  
+  ########################################################################
+  # imports
+  ########################################################################
+  
+- import dircache
+  import os
+  import qm.common
+  import qm.fields
+  import qm.label
+  import qm.structured_text
+--- 15,24 ----
+Index: scripts/qm-release
+===================================================================
+RCS file: /home/sc/Repository/qm/scripts/qm-release,v
+retrieving revision 1.8
+diff -c -5 -p -r1.8 qm-release
+*** scripts/qm-release	6 Aug 2003 20:55:26 -0000	1.8
+--- scripts/qm-release	7 Aug 2003 17:00:29 -0000
+*************** tag_qm() {
+*** 71,90 ****
+      # Check out the source distribution.
+      ${CVS} co -d qm-${QM_VERSION} -r ${BRANCH} qm || \
+        error &quot;Could not check out QM&quot;
+      changedir qm-${QM_VERSION}
+      # Create the version file.
+! cat &gt; version &lt;&lt;EOF
+  # This file is automatically generated.  Do not edit.
+  
+  QM_VERSION=${QM_VERSION}
+  QM_MAJOR_VER=${QM_MAJOR_VER}
+  QM_MINOR_VER=${QM_MINOR_VER}
+  QM_RELEASE_VER=${QM_RELEASE_VER}
+  EOF
+!     # Commit the version file.
+!     ${CVS} commit -m 'Update version numbers.' version
+      # Tag the sources.  Using the &quot;-F&quot; option to CVS makes sure that any
+      # existing tag is moved, in case it takes several tries to get a 
+      # release that we are happy with.
+      ${CVS} tag -F ${QM_RELEASE_TAG} || \
+        error &quot;Could not tag QM&quot;
+--- 71,92 ----
+      # Check out the source distribution.
+      ${CVS} co -d qm-${QM_VERSION} -r ${BRANCH} qm || \
+        error &quot;Could not check out QM&quot;
+      changedir qm-${QM_VERSION}
+      # Create the version file.
+!     if [ $SNAPSHOT -eq 0 ]; then
+! 	cat &gt; version &lt;&lt;EOF
+  # This file is automatically generated.  Do not edit.
+  
+  QM_VERSION=${QM_VERSION}
+  QM_MAJOR_VER=${QM_MAJOR_VER}
+  QM_MINOR_VER=${QM_MINOR_VER}
+  QM_RELEASE_VER=${QM_RELEASE_VER}
+  EOF
+!         # Commit the version file.
+! 	${CVS} commit -m 'Update version numbers.' version
+!     fi
+      # Tag the sources.  Using the &quot;-F&quot; option to CVS makes sure that any
+      # existing tag is moved, in case it takes several tries to get a 
+      # release that we are happy with.
+      ${CVS} tag -F ${QM_RELEASE_TAG} || \
+        error &quot;Could not tag QM&quot;
+Index: tests/regress/QMTest/selftest.py
+===================================================================
+RCS file: /home/sc/Repository/qm/tests/regress/QMTest/selftest.py,v
+retrieving revision 1.1
+diff -c -5 -p -r1.1 selftest.py
+*** tests/regress/QMTest/selftest.py	24 Mar 2003 07:24:24 -0000	1.1
+--- tests/regress/QMTest/selftest.py	7 Aug 2003 17:00:29 -0000
+*************** class RegTest(Test):
+*** 66,76 ****
+--- 66,81 ----
+          assert os.path.isfile(results)
+          
+          # The QMTest binary to test is specified as a context variable.
+          qmtest = context['qmtest_path']
+  
++         # Set the basic argument vector.
+          argv = (qmtest, &quot;-D&quot;, path, &quot;run&quot;, &quot;-O&quot;, results, &quot;-o&quot;, output)
++         
++         # If the context also specifies a target, add that.
++         if context.has_key(&quot;qmtest_target&quot;):
++             argv += (&quot;-T&quot;, context[&quot;qmtest_target&quot;])
+  
+          e = qm.executable.RedirectedExecutable()
+          status = e.Run(argv)
+          stdout = e.stdout
+          stderr = e.stderr
+Index: tests/regress/bad_target1/bad_target.qmt
+===================================================================
+RCS file: /home/sc/Repository/qm/tests/regress/bad_target1/bad_target.qmt,v
+retrieving revision 1.1
+diff -c -5 -p -r1.1 bad_target.qmt
+*** tests/regress/bad_target1/bad_target.qmt	31 Jul 2003 23:17:50 -0000	1.1
+--- tests/regress/bad_target1/bad_target.qmt	7 Aug 2003 17:00:29 -0000
+***************
+*** 1,5 ****
+  &lt;?xml version=&quot;1.0&quot; ?&gt;
+  &lt;!DOCTYPE extension
+    PUBLIC '-//Software Carpentry//QMTest Extension V0.1//EN'
+    '<A HREF="http://www.software-carpentry.com/qm/xml/extension">http://www.software-carpentry.com/qm/xml/extension</A>'&gt;
+! &lt;extension class=&quot;python.ExecTest&quot; kind=&quot;test&quot;&gt;&lt;argument name=&quot;prerequisites&quot;&gt;&lt;set/&gt;&lt;/argument&gt;&lt;argument name=&quot;source&quot;&gt;&lt;text&gt;pass&lt;/text&gt;&lt;/argument&gt;&lt;argument name=&quot;target_group&quot;&gt;&lt;text&gt;$^&lt;/text&gt;&lt;/argument&gt;&lt;argument name=&quot;expression&quot;&gt;&lt;text&gt;1&lt;/text&gt;&lt;/argument&gt;&lt;argument name=&quot;resources&quot;&gt;&lt;set/&gt;&lt;/argument&gt;&lt;/extension&gt;
+\ No newline at end of file
+--- 1,5 ----
+  &lt;?xml version=&quot;1.0&quot; ?&gt;
+  &lt;!DOCTYPE extension
+    PUBLIC '-//Software Carpentry//QMTest Extension V0.1//EN'
+    '<A HREF="http://www.software-carpentry.com/qm/xml/extension">http://www.software-carpentry.com/qm/xml/extension</A>'&gt;
+! &lt;extension class=&quot;python.ExecTest&quot; kind=&quot;test&quot;&gt;&lt;argument name=&quot;prerequisites&quot;&gt;&lt;set/&gt;&lt;/argument&gt;&lt;argument name=&quot;source&quot;&gt;&lt;text&gt;pass&lt;/text&gt;&lt;/argument&gt;&lt;argument name=&quot;target_group&quot;&gt;&lt;text&gt;bad&lt;/text&gt;&lt;/argument&gt;&lt;argument name=&quot;expression&quot;&gt;&lt;text&gt;1&lt;/text&gt;&lt;/argument&gt;&lt;argument name=&quot;resources&quot;&gt;&lt;set/&gt;&lt;/argument&gt;&lt;/extension&gt;
+Index: tests/regress/bad_target2/bad_target.qmt
+===================================================================
+RCS file: /home/sc/Repository/qm/tests/regress/bad_target2/bad_target.qmt,v
+retrieving revision 1.1
+diff -c -5 -p -r1.1 bad_target.qmt
+*** tests/regress/bad_target2/bad_target.qmt	31 Jul 2003 23:17:51 -0000	1.1
+--- tests/regress/bad_target2/bad_target.qmt	7 Aug 2003 17:00:29 -0000
+***************
+*** 1,5 ****
+  &lt;?xml version=&quot;1.0&quot; ?&gt;
+  &lt;!DOCTYPE extension
+    PUBLIC '-//Software Carpentry//QMTest Extension V0.1//EN'
+    '<A HREF="http://www.software-carpentry.com/qm/xml/extension">http://www.software-carpentry.com/qm/xml/extension</A>'&gt;
+! &lt;extension class=&quot;python.ExecTest&quot; kind=&quot;test&quot;&gt;&lt;argument name=&quot;prerequisites&quot;&gt;&lt;set/&gt;&lt;/argument&gt;&lt;argument name=&quot;source&quot;&gt;&lt;text&gt;pass&lt;/text&gt;&lt;/argument&gt;&lt;argument name=&quot;target_group&quot;&gt;&lt;text&gt;$^&lt;/text&gt;&lt;/argument&gt;&lt;argument name=&quot;expression&quot;&gt;&lt;text&gt;1&lt;/text&gt;&lt;/argument&gt;&lt;argument name=&quot;resources&quot;&gt;&lt;set/&gt;&lt;/argument&gt;&lt;/extension&gt;
+\ No newline at end of file
+--- 1,5 ----
+  &lt;?xml version=&quot;1.0&quot; ?&gt;
+  &lt;!DOCTYPE extension
+    PUBLIC '-//Software Carpentry//QMTest Extension V0.1//EN'
+    '<A HREF="http://www.software-carpentry.com/qm/xml/extension">http://www.software-carpentry.com/qm/xml/extension</A>'&gt;
+! &lt;extension class=&quot;python.ExecTest&quot; kind=&quot;test&quot;&gt;&lt;argument name=&quot;prerequisites&quot;&gt;&lt;set/&gt;&lt;/argument&gt;&lt;argument name=&quot;source&quot;&gt;&lt;text&gt;pass&lt;/text&gt;&lt;/argument&gt;&lt;argument name=&quot;target_group&quot;&gt;&lt;text&gt;bad&lt;/text&gt;&lt;/argument&gt;&lt;argument name=&quot;expression&quot;&gt;&lt;text&gt;1&lt;/text&gt;&lt;/argument&gt;&lt;argument name=&quot;resources&quot;&gt;&lt;set/&gt;&lt;/argument&gt;&lt;/extension&gt;
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000390.html">[qmtest] Patches for scheduler updates
+</A></li>
+	<LI>Next message: <A HREF="000392.html">Remote Option
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#391">[ date ]</a>
+              <a href="thread.html#391">[ thread ]</a>
+              <a href="subject.html#391">[ subject ]</a>
+              <a href="author.html#391">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">More information about the qmtest
+mailing list</a><br>
+</body></html>

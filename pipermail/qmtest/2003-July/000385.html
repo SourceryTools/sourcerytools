@@ -1,0 +1,1644 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> PATCH: Execution engine improvements
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:qmtest%40codesourcery.com?Subject=Re%3A%20PATCH%3A%20Execution%20engine%20improvements&In-Reply-To=%3C200307312321.h6VNLniI022747%40doubledemon.codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000384.html">
+   
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>PATCH: Execution engine improvements</H1>
+    <B>Mark Mitchell</B> 
+    <A HREF="mailto:qmtest%40codesourcery.com?Subject=Re%3A%20PATCH%3A%20Execution%20engine%20improvements&In-Reply-To=%3C200307312321.h6VNLniI022747%40doubledemon.codesourcery.com%3E"
+       TITLE="PATCH: Execution engine improvements">mark at codesourcery.com
+       </A><BR>
+    <I>Thu Jul 31 23:21:49 UTC 2003</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000384.html">PATCH: Fix Windows text-comparison problems
+</A></li>
+        
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#385">[ date ]</a>
+              <a href="thread.html#385">[ thread ]</a>
+              <a href="subject.html#385">[ subject ]</a>
+              <a href="author.html#385">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>
+This patch (which is Nathaniel's patch, with some &quot;tidying&quot; by yours
+truly) improve the scalability of QMTest's execution engine by
+reducing the total amount of memory required and by avoiding a lengthy
+up-front computation to determine dependencies between tests.
+
+--
+Mark Mitchell
+CodeSourcery, LLC
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">mark at codesourcery.com</A>
+
+2003-07-31  Nathaniel Smith  &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">njs at codesourcery.com</A>&gt;
+	    Mark Mitchell  &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">mark at codesourcery.com</A>&gt;
+
+	* qm/test/execution_engine.py: Rewrite to improve scalability.
+	* test/regress/bad_target1: New test.
+	* test/regress/bad_target2: Likewise.
+	* test/regress/nocycle1: Likewise.
+	* test/regress/nocycle2: Likewise.
+	* benchmarks/throughput: New benchmark.
+
+	* qm/test/classes/text_result_stream.py (TextResultStream): Fix
+	typo in documentation.
+	* qm/test/doc/tour.xml: Update instructions to match GUI changes.
+
+Index: benchmarks/throughput/QMTest/classes.qmc
+===================================================================
+RCS file: benchmarks/throughput/QMTest/classes.qmc
+diff -N benchmarks/throughput/QMTest/classes.qmc
+*** /dev/null	1 Jan 1970 00:00:00 -0000
+--- benchmarks/throughput/QMTest/classes.qmc	31 Jul 2003 23:12:46 -0000
+***************
+*** 0 ****
+--- 1,2 ----
++ &lt;?xml version=&quot;1.0&quot; ?&gt;
++ &lt;class-directory&gt;&lt;class kind=&quot;test&quot;&gt;throughput.ThroughputTest&lt;/class&gt;&lt;class kind=&quot;database&quot;&gt;throughput.ThroughputDatabase&lt;/class&gt;&lt;/class-directory&gt;
+\ No newline at end of file
+Index: benchmarks/throughput/QMTest/configuration
+===================================================================
+RCS file: benchmarks/throughput/QMTest/configuration
+diff -N benchmarks/throughput/QMTest/configuration
+*** /dev/null	1 Jan 1970 00:00:00 -0000
+--- benchmarks/throughput/QMTest/configuration	31 Jul 2003 23:12:46 -0000
+***************
+*** 0 ****
+--- 1,2 ----
++ &lt;?xml version=&quot;1.0&quot; ?&gt;
++ &lt;extension class=&quot;throughput.ThroughputDatabase&quot; kind=&quot;database&quot;&gt;&lt;argument name=&quot;num_tests&quot;&gt;&lt;integer&gt;1000&lt;/integer&gt;&lt;/argument&gt;&lt;/extension&gt;
+Index: benchmarks/throughput/QMTest/throughput.py
+===================================================================
+RCS file: benchmarks/throughput/QMTest/throughput.py
+diff -N benchmarks/throughput/QMTest/throughput.py
+*** /dev/null	1 Jan 1970 00:00:00 -0000
+--- benchmarks/throughput/QMTest/throughput.py	31 Jul 2003 23:12:46 -0000
+***************
+*** 0 ****
+--- 1,70 ----
++ ########################################################################
++ #
++ # File:   throughput.py
++ # Author: Mark Mitchell
++ # Date:   07/31/2003
++ #
++ # Contents:
++ #   Test datbase for testing execution engine throughput.
++ #
++ # Copyright (c) 2003 by CodeSourcery, LLC.  All rights reserved. 
++ #
++ # For license terms see the file COPYING.
++ #
++ ########################################################################
++ 
++ ########################################################################
++ # Imports
++ ########################################################################
++ 
++ from qm.fields import *
++ from qm.test.database import *
++ from qm.test.result import *
++ from qm.test.test import *
++ import random
++ 
++ ########################################################################
++ # Classes
++ ########################################################################
++ 
++ class ThroughputTest(Test):
++ 
++     def Run(self, context, result):
++ 
++         return
++         
++ 
++     
++ class ThroughputDatabase(Database):
++ 
++     arguments = [
++         IntegerField(&quot;num_tests&quot;,
++                      default_value = 100)
++         ]
++ 
++         
++     def GetIds(self, kind, directory = &quot;&quot;, scan_subdirs = 1):
++ 
++         if kind != Database.TEST:
++             return super(ThroughputDatabase, self).GetIds(kind,
++                                                           directory,
++                                                           scan_subdirs)
++ 
++         tests = []
++         for x in xrange(self.num_tests):
++             tests.append(&quot;test%d&quot; % x)
++ 
++         return tests
++ 
++         
++     def GetTest(self, test_id):
++ 
++         prereqs = []
++         for x in xrange(random.randrange(5)):
++             test = &quot;test%d&quot; % random.randrange(self.num_tests)
++             outcome = random.choice(Result.outcomes)
++             prereqs.append((test, outcome))
++             
++         return TestDescriptor(self, test_id,
++                               &quot;throughput.ThroughputTest&quot;,
++                               { Test.PREREQUISITES_FIELD_ID : prereqs })
+Index: qm/test/execution_engine.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/execution_engine.py,v
+retrieving revision 1.21
+diff -c -5 -p -r1.21 execution_engine.py
+*** qm/test/execution_engine.py	3 Jul 2003 19:32:04 -0000	1.21
+--- qm/test/execution_engine.py	31 Jul 2003 23:12:47 -0000
+***************
+*** 20,29 ****
+--- 20,30 ----
+  import os
+  import qm.common
+  import qm.queue
+  from   qm.test.base import *
+  import qm.test.cmdline
++ import qm.test.database
+  from   qm.test.context import *
+  import qm.xmlutil
+  from   result import *
+  import select
+  import sys
+*************** class ExecutionEngine:
+*** 37,54 ****
+      &quot;&quot;&quot;A 'ExecutionEngine' executes tests.
+  
+      A 'ExecutionEngine' object handles the execution of a collection
+      of tests.
+  
+!     This class schedules the tests, plus the setup and cleanup of any
+!     resources they require, across one or more targets.
+  
+      The shedule is determined dynamically as the tests are executed
+      based on which targets are idle and which are not.  Therefore, the
+      testing load should be reasonably well balanced, even across a
+      heterogeneous network of testing machines.&quot;&quot;&quot;
+!     
+      def __init__(self,
+                   database,
+                   test_ids,
+                   context,
+                   targets,
+--- 38,171 ----
+      &quot;&quot;&quot;A 'ExecutionEngine' executes tests.
+  
+      A 'ExecutionEngine' object handles the execution of a collection
+      of tests.
+  
+!     This class schedules the tests across one or more targets.
+  
+      The shedule is determined dynamically as the tests are executed
+      based on which targets are idle and which are not.  Therefore, the
+      testing load should be reasonably well balanced, even across a
+      heterogeneous network of testing machines.&quot;&quot;&quot;
+! 
+! 
+!     class __TestStatus(object):
+!         &quot;&quot;&quot;A '__TestStatus' indicates whether or not a test has been run.
+! 
+!         The 'outcome' slot indicates whether the test has not be queued so
+!         that it can be run, has completed, or has not been processed at all.
+! 
+!         If there are tests that have this test as a prerequisite, they are
+!         recorded in the 'dependants' slot.
+! 
+!         Ever test passes through the following states, in the following
+!         order:
+! 
+!         1. Initial
+! 
+!            A test in this state has not yet been processed.  In this state,
+!            the 'outcome' slot is 'None'.
+! 
+!         2. Queued
+! 
+!            A test in this state has been placed on the stack of tests
+!            waiting to run.  In this state, the 'outcome' slot is
+!            'QUEUED'.  Such a test may be waiting for prerequisites to
+!            complete before it can run.
+! 
+!         3. Ready
+! 
+!            A test in this state is ready to run.  All prerequisites have
+!            completed, and their outcomes were as expected.  In this
+!            state, the 'outcome' slot is 'READY'.
+! 
+!         4. Finished
+! 
+!            A test in this state has finished running.  In this state, the
+!            'outcome' slot is one of the 'Result.outcomes'.
+! 
+!         The only exception to this order is that when an error is noted
+!         (like a failure to load a test from the database, or a
+!         prerequisite has an unexpected outcome) a test may jump to the
+!         &quot;finished&quot; state without passing through intermediate states.&quot;&quot;&quot;
+! 
+!         __slots__ = &quot;outcome&quot;, &quot;dependants&quot;
+! 
+!         QUEUED = &quot;QUEUED&quot;
+!         READY = &quot;READY&quot;
+! 
+!         def __init__(self):
+! 
+!             self.outcome = None
+!             self.dependants = None
+! 
+! 
+!         def GetState(self):
+!             &quot;&quot;&quot;Return the state of this test.
+! 
+!             returns -- The state of this test, using the representation
+!             documented above.&quot;&quot;&quot;
+!             
+!             return self.outcome
+!         
+!         
+!         def NoteQueued(self):
+!             &quot;&quot;&quot;Place the test into the &quot;queued&quot; state.&quot;&quot;&quot;
+! 
+!             assert self.outcome is None
+!             self.outcome = self.QUEUED
+! 
+! 
+!         def HasBeenQueued(self):
+!             &quot;&quot;&quot;Returns true if the test was ever queued.
+! 
+!             returns -- True if the test has ever been on the queue.
+!             Such a test may be ready to run, or may in fact have already
+!             run to completion.&quot;&quot;&quot;
+! 
+!             return self.outcome == self.QUEUED or self.HasBeenReady()
+! 
+! 
+!         def NoteReady(self):
+!             &quot;&quot;&quot;Place the test into the &quot;ready&quot; state.&quot;&quot;&quot;
+! 
+!             assert self.outcome is self.QUEUED
+!             self.outcome = self.READY
+!             
+! 
+!         def HasBeenReady(self):
+!             &quot;&quot;&quot;Returns true if the test was ever ready.
+! 
+!             returns -- True if the test was every ready to run.  Such a
+!             test may have already run to completion.&quot;&quot;&quot;
+! 
+!             return self.outcome == self.READY or self.IsFinished()
+! 
+! 
+!         def IsFinished(self):
+!             &quot;&quot;&quot;Returns true if the test is in the &quot;finished&quot; state.
+! 
+!             returns -- True if this test is in the &quot;finished&quot; state.&quot;&quot;&quot;
+! 
+!             return not (self.outcome is None
+!                         or self.outcome is self.READY
+!                         or self.outcome is self.QUEUED)
+! 
+! 
+!         def NoteDependant(self, test_id):
+!             &quot;&quot;&quot;Note that 'test_id' depends on 'self'.
+! 
+!             'test_id' -- The name of a test.  That test has this test as a
+!             prerequisite.&quot;&quot;&quot;
+! 
+!             if self.dependants is None:
+!                 self.dependants = [test_id]
+!             else:
+!                 self.dependants.append(test_id)
+! 
+! 
+! 
+      def __init__(self,
+                   database,
+                   test_ids,
+                   context,
+                   targets,
+*************** class ExecutionEngine:
+*** 59,69 ****
+          'database' -- The 'Database' containing the tests that will be
+          run.
+          
+          'test_ids' -- A sequence of IDs of tests to run.  Where
+          possible, the tests are started in the order specified.
+! 
+          'context' -- The context object to use when running tests.
+  
+          'targets' -- A sequence of 'Target' objects, representing
+          targets on which tests may be run.
+  
+--- 176,186 ----
+          'database' -- The 'Database' containing the tests that will be
+          run.
+          
+          'test_ids' -- A sequence of IDs of tests to run.  Where
+          possible, the tests are started in the order specified.
+!         
+          'context' -- The context object to use when running tests.
+  
+          'targets' -- A sequence of 'Target' objects, representing
+          targets on which tests may be run.
+  
+*************** class ExecutionEngine:
+*** 87,109 ****
+              self.__expectations = {}
+              
+          # There are no input handlers.
+          self.__input_handlers = {}
+          
+-         # All of the targets are idle at first.
+-         self.__idle_targets = targets[:]
+          # There are no responses from the targets yet.
+          self.__response_queue = qm.queue.Queue(0)
+          # There no pending or ready tests yet.
+-         self.__pending = []
+-         self.__ready = []
+          self.__running = 0
+  
+-         # The descriptor graph has not yet been created.
+-         self.__descriptors = {}
+-         self.__descriptor_graph = {}
+-         
+          self.__any_unexpected_outcomes = 0
+          
+          # Termination has not yet been requested.
+          self.__terminated = 0
+          
+--- 204,218 ----
+*************** class ExecutionEngine:
+*** 119,129 ****
+          
+          
+      def IsTerminationRequested(self):
+          &quot;&quot;&quot;Returns true if termination has been requested.
+  
+!         return -- True if Terminate has been called.&quot;&quot;&quot;
+  
+          return self.__terminated
+      
+  
+      def Run(self):
+--- 228,238 ----
+          
+          
+      def IsTerminationRequested(self):
+          &quot;&quot;&quot;Returns true if termination has been requested.
+  
+!         returns -- True if Terminate has been called.&quot;&quot;&quot;
+  
+          return self.__terminated
+      
+  
+      def Run(self):
+*************** class ExecutionEngine:
+*** 153,163 ****
+              for target in self.__targets:
+                  target.Stop()
+  
+              # Read responses until there are no more.
+              self._Trace(&quot;Checking for final responses.&quot;)
+!             while self._CheckForResponse(wait=0):
+                  pass
+              
+              # Let all of the result streams know that the test run is
+              # complete.
+              end_time_str = qm.common.format_time_iso(time.time())
+--- 262,272 ----
+              for target in self.__targets:
+                  target.Stop()
+  
+              # Read responses until there are no more.
+              self._Trace(&quot;Checking for final responses.&quot;)
+!             while self.__CheckForResponse(wait=0):
+                  pass
+              
+              # Let all of the result streams know that the test run is
+              # complete.
+              end_time_str = qm.common.format_time_iso(time.time())
+*************** class ExecutionEngine:
+*** 178,327 ****
+          The execution engine will periodically monitor 'fd'.  When input
+          is available, it will call 'function' passing it 'fd'.&quot;&quot;&quot;
+  
+          self.__input_handlers[fd] = function
+          
+!     
+      def _RunTests(self):
+-         &quot;&quot;&quot;Run all of the tests.
+  
+!         This function assumes that the targets have already been
+!         started.
+  
+!         The tests are run in the order that they were presented --
+!         modulo requirements regarding prerequisites and any
+!         nondeterminism introduced by running tests in parallel.&quot;&quot;&quot;
+! 
+!         # Create a directed graph where each node is a pair
+!         # (count, descriptor).  There is an edge from one node
+!         # to another if the first node is a prerequisite for the
+!         # second.  Begin by creating the nodes of the graph.
+          for id in self.__test_ids:
+!             try:
+!                 descriptor = self.__database.GetTest(id)
+!                 self.__descriptors[id] = descriptor
+!                 self.__descriptor_graph[descriptor] = [0, []]
+!                 self.__pending.append(descriptor)
+!             except:
+!                 result = Result(Result.TEST, id)
+!                 result.NoteException(cause = &quot;Could not load test.&quot;,
+!                                      outcome = Result.UNTESTED)
+!                 self._AddResult(result)
+!                 
+!         # Create the edges.
+!         for descriptor in self.__pending:
+!             prereqs = descriptor.GetPrerequisites()
+!             if prereqs:
+!                 for (prereq_id, outcome) in prereqs.items():
+!                     if not self.__descriptors.has_key(prereq_id):
+!                         # The prerequisite is not amongst the list of
+!                         # tests to run.  In that case we do still run
+!                         # the dependent test; it was explicitly
+!                         # requested by the user.
+!                         continue
+!                     prereq_desc = self.__descriptors[prereq_id]
+!                     self.__descriptor_graph[prereq_desc][1] \
+!                         .append((descriptor, outcome))
+!                     self.__descriptor_graph[descriptor][0] += 1
+! 
+!             if not self.__descriptor_graph[descriptor][0]:
+!                 # A node with no prerequisites is ready.
+!                 self.__ready.append(descriptor)
+! 
+!         # Iterate until there are no more tests to run.
+!         while ((self.__pending or self.__ready)
+!                and not self.IsTerminationRequested()):
+!             # If there are no idle targets, block until we get a
+!             # response.  There is nothing constructive we can do.
+!             idle_targets = self.__idle_targets
+!             if not idle_targets:
+                  self._Trace(&quot;All targets are busy -- waiting.&quot;)
+!                 # Read a reply from the response_queue.
+!                 self._CheckForResponse(wait=1)
+                  self._Trace(&quot;Response received.&quot;)
+-                 # Keep going.
+                  continue
+  
+!             # If there are no tests ready to run, but no tests are
+!             # actually running at this time, we have
+!             # a cycle in the dependency graph.  Pull the head off the
+!             # pending queue and mark it UNTESTED, see if that helps.
+!             if (not self.__ready and not self.__running):
+!                 descriptor = self.__pending[0]
+!                 self._Trace((&quot;Dependency cycle, discarding %s.&quot;
+!                              % descriptor.GetId()))
+!                 self.__pending.remove(descriptor)
+!                 self._AddUntestedResult(descriptor.GetId(),
+!                                         qm.message(&quot;dependency cycle&quot;))
+!                 self._UpdateDependentTests(descriptor, Result.UNTESTED)
+                  continue
+  
+!             # There is at least one idle target.  Try to find something
+!             # that it can do.
+!             wait = 1
+!             for descriptor in self.__ready:
+!                 for target in idle_targets:
+!                     if target.IsInGroup(descriptor.GetTargetGroup()):
+!                         # This test can be run on this target.  Remove
+!                         # it from the ready list.
+!                         self.__ready.remove(descriptor)
+!                         # And from the pending list.
+!                         try:
+!                             self.__pending.remove(descriptor)
+!                         except ValueError:
+!                             # If the test is not pending, that means it
+!                             # got pulled off for some reason
+!                             # (e.g. breaking dependency cycles).  Don't
+!                             # try to run it, it won't work.
+!                             self._Trace((&quot;Ready test %s not pending, skipped&quot;
+!                                          % descriptor.GetId()))
+!                             wait = 0
+!                             break
+! 
+!                         # Output a trace message.
+!                         self._Trace((&quot;About to run %s.&quot;
+!                                      % descriptor.GetId()))
+!                         # Run it.
+!                         self.__running += 1
+!                         target.RunTest(descriptor, self.__context)
+!                         # If the target is no longer idle, remove it
+!                         # from the idle_targets list.
+!                         if not target.IsIdle():
+!                             self._Trace(&quot;Target is no longer idle.&quot;)
+!                             self.__idle_targets.remove(target)
+!                         else:
+!                             self._Trace(&quot;Target is still idle.&quot;)
+!                         # We have done something useful on this
+!                         # iteration.
+!                         wait = 0
+!                         break
+  
+!                 if not wait:
+                      break
+  
+!             # Output a trace message.
+!             self._Trace(&quot;About to check for a response in %s mode.&quot;
+!                         % ((wait and &quot;blocking&quot;) or &quot;nonblocking&quot;))
+!                     
+!             # See if any targets have finished their assignments.  If
+!             # we did not schedule any additional work during this
+!             # iteration of the loop, there's no point in continuing
+!             # until some target finishes what it's doing.
+!             self._CheckForResponse(wait=wait)
+  
+              # Output a trace message.
+!             self._Trace(&quot;Done checking for responses.&quot;)
+  
+!         # Any tests that are still pending are untested, unless there
+!         # has been an explicit request that we exit immediately.
+!         if not self.IsTerminationRequested():
+!             for descriptor in self.__pending:
+!                 self._AddUntestedResult(descriptor.GetId(),
+!                                         qm.message(&quot;execution terminated&quot;))
+  
+  
+!     def _CheckForResponse(self, wait):
+          &quot;&quot;&quot;See if any of the targets have completed a task.
+  
+          'wait' -- If false, this function returns immediately if there
+          is no available response.  If 'wait' is true, this function
+          continues to wait until a response is available.
+--- 287,689 ----
+          The execution engine will periodically monitor 'fd'.  When input
+          is available, it will call 'function' passing it 'fd'.&quot;&quot;&quot;
+  
+          self.__input_handlers[fd] = function
+          
+! 
+      def _RunTests(self):
+  
+!         num_tests = len(self.__test_ids)
+  
+!         # No tests have been started yet.
+!         self.__num_tests_started = 0
+! 
+!         self.__tests_iterator = iter(self.__test_ids)
+! 
+!         # A map from the tests we are supposed to run to their current
+!         # status.
+!         self.__statuses = {}
+          for id in self.__test_ids:
+!             self.__statuses[id] = self.__TestStatus()
+! 
+!         # A stack of tests.  If a test has prerequisites, the
+!         # prerequisites will appear nearer to the top of the stack.
+!         self.__test_stack = []
+!         # A hash-table giving the names of the tests presently on the
+!         # stack.  The names are the keys; the values are unused.
+!         self.__ids_on_stack = {}
+! 
+!         # Every target is in one of three states: busy, idle, or
+!         # starving.  A busy target is running tests, an idle target is
+!         # ready to run tests, and a starving target is ready to run
+!         # tests, but no tests are available for it to run.  The value
+!         # recorded in the table is 'None' for a starving target, true
+!         # for an idle target, and false for a busy target.
+!         self.__target_state = {}
+!         for target in self.__targets:
+!             self.__target_state[target] = 1
+!         # The total number of idle targets.
+!         self.__num_idle_targets = len(self.__targets)
+!         
+!         # Figure out what target groups are available.
+!         self.__target_groups = {}
+!         for target in self.__targets:
+!             self.__target_groups[target.GetGroup()] = None
+!         self.__target_groups = self.__target_groups.keys()
+!         
+!         # A hash-table indicating whether or not a particular target
+!         # pattern is matched by any of our targets.
+!         self.__pattern_ok = {}
+!         # A map from target groups to patterns satisfied by the group.
+!         self.__patterns = {}
+!         # A map from target patterns to lists of test descriptors ready
+!         # to run.
+!         self.__target_pattern_queues = {}
+!         
+!         while self.__num_tests_started &lt; num_tests:
+!             # Process any responses and update the count of idle targets.
+!             while self.__CheckForResponse(wait=0):
+!                 pass
+! 
+!             # Now look for idle targets.
+!             if self.__num_idle_targets == 0:
+!                 # Block until one of the running tests completes.
+                  self._Trace(&quot;All targets are busy -- waiting.&quot;)
+!                 self.__CheckForResponse(wait=1)
+                  self._Trace(&quot;Response received.&quot;)
+                  continue
+  
+!             # Go through each of the idle targets, finding work for it
+!             # to do.
+!             self.__num_idle_targets = 0
+!             for target in self.__targets:
+!                 if self.__target_state[target] != 1:
+!                     continue
+!                 # Try to find work for the target.  If there is no
+!                 # available work, the target is starving.
+!                 if not self.__FeedTarget(target):
+!                     self.__target_state[target] = None
+!                 else:
+!                     is_idle = target.IsIdle()
+!                     self.__target_state[target] = is_idle
+!                     if is_idle:
+!                         self.__num_idle_targets += 1
+! 
+!         # Now all tests have been started; we just have wait for them
+!         # all to finish.
+!         while self.__running:
+!             self.__CheckForResponse(wait=1)
+! 
+! 
+!     def __FeedTarget(self, target):
+!         &quot;&quot;&quot;Run a test on 'target'
+! 
+!         'target' -- The 'Target' on which the test should be run.
+! 
+!         returns -- True, iff a test could be found to run on 'target'.
+!         False otherwise.&quot;&quot;&quot;
+! 
+!         self._Trace(&quot;Looking for a test for target %s&quot; % target.GetName())
+! 
+!         descriptor = None
+! 
+!         # See if there is already a ready-to-run test for this target.
+!         for pattern in self.__patterns.get(target.GetGroup(), []):
+!             tests = self.__target_pattern_queues.get(pattern, [])
+!             if tests:
+!                 descriptor = tests.pop()
+!                 break
+! 
+!         # If there is no ready test, find one.
+!         descriptor = self.__FindRunnableTest(target)
+!         if descriptor is None:
+!             # There are no more tests ready to run.
+!             return 0
+!                 
+!         target_name = target.GetName()
+!         test_id = descriptor.GetId()
+!         self._Trace(&quot;Running %s on %s&quot; % (test_id, target_name))
+!         assert self.__statuses[test_id].GetState() == self.__TestStatus.READY
+!         self.__num_tests_started += 1
+!         self.__running += 1
+!         target.RunTest(descriptor, self.__context)
+!         return 1
+! 
+! 
+!     def __FindRunnableTest(self, target):
+!         &quot;&quot;&quot;Return a test that is ready to run.
+! 
+!         'target' -- The 'Target' on which the test will run.
+!         
+!         returns -- the 'TestDescriptor' for the next available ready
+!         test, or 'None' if no test could be found that will run on
+!         'target'.
+! 
+!         If a test with unsatisfied prerequisites is encountered, the
+!         test will be pushed on the stack and the prerequisites processed
+!         recursively.&quot;&quot;&quot;
+! 
+!         while 1:
+!             if not self.__test_stack:
+!                 # We ran out of prerequisite tests, so pull a new one
+!                 # off the user's list.
+!                 try:
+!                     test_id = self.__tests_iterator.next()
+!                 except StopIteration:
+!                     # We're entirely out of fresh tests; give up.
+!                     return None
+!                 if self.__statuses[test_id].HasBeenQueued():
+!                     # This test has already been handled (probably
+!                     # because it's a prereq of a test already seen).
+!                     continue
+!                 # Try to add the new test to the stack.
+!                 if not self.__AddTestToStack(test_id):
+!                     # If that failed, look for another test.
+!                     continue
+!                 self._Trace(&quot;Added new test %s to stack&quot; % test_id)
+! 
+!             descriptor, prereqs = self.__test_stack[-1]
+!             # First look at the listed prereqs.
+!             if prereqs:
+!                 new_test_id = prereqs.pop()
+!                 # We must filter tests that are already in the process
+!                 # here; if we were to do it earlier, we would be in
+!                 # danger of being confused by dependency graphs like
+!                 # A-&gt;B, A-&gt;C, B-&gt;C, where we can't know ahead of time
+!                 # that A's dependence on C is unnecessary.
+!                 if self.__statuses[new_test_id].HasBeenQueued():
+!                     # This one is already in process.  This is also what
+!                     # a dependency cycle looks like, so check for that
+!                     # now.
+!                     if new_test_id in self.__ids_on_stack:
+!                         self._Trace(&quot;Cycle detected (%s)&quot;
+!                                     % (new_test_id,))
+!                         self.__AddUntestedResult \
+!                                  (new_test_id,
+!                                   qm.message(&quot;dependency cycle&quot;))
+!                     continue
+!                 else:
+!                     self.__AddTestToStack(new_test_id)
+!                     continue
+!             else:
+!                 # Remove the test from the stack.
+!                 test_id = descriptor.GetId()
+!                 del self.__ids_on_stack[test_id]
+!                 self.__test_stack.pop()
+! 
+!                 # Check to see if the test is already ready to run, or
+!                 # has completed.  The first case occurs when the test
+!                 # has prerequisites that have completed after it was
+!                 # placed on the stack; the second occurs when a test
+!                 # is marked UNTESTED after a cycle is detected.
+!                 if self.__statuses[test_id].HasBeenReady():
+!                     continue
+! 
+!                 # Now check the prerequisites.
+!                 prereqs = self.__GetPendingPrerequisites(descriptor)
+!                 # If one of the prerequisites failed, the test will have
+!                 # been marked UNTESTED.  Keep looking for a runnable
+!                 # test.
+!                 if prereqs is None:
+!                     continue
+!                 # If there are prerequisites, request notification when
+!                 # they have completed.
+!                 if prereqs:
+!                     for p in prereqs:
+!                         self.__statuses[p].NoteDependant(test_id)
+!                     # Keep looking for a runnable test.                        
+!                     continue
+! 
+!                 # This test is ready to run.  See if it can run on
+!                 # target.
+!                 if not target.IsInGroup(descriptor.GetTargetGroup()):
+!                     # This test can't be run on this target, but it can be
+!                     # run on another target.
+!                     self.__AddToTargetPatternQueue(descriptor)
+!                     continue
+!                     
+!                 self.__statuses[descriptor.GetId()].NoteReady()
+!                 return descriptor
+! 
+! 
+!     def __AddTestToStack(self, test_id):
+!         &quot;&quot;&quot;Adds 'test_id' to the stack of current tests.
+! 
+!         returns -- True if the test was added to the stack; false if the
+!         test could not be loaded.  In the latter case, an 'UNTESTED'
+!         result is recorded for the test.&quot;&quot;&quot;
+!         
+!         self._Trace(&quot;Trying to add %s to stack&quot; % test_id)
+! 
+!         # Update test status.
+!         self.__statuses[test_id].NoteQueued()
+! 
+!         # Load the descriptor.
+!         descriptor = self.__GetTestDescriptor(test_id)
+!         if not descriptor:
+!             return 0
+! 
+!         # Ignore prerequisites that are not going to be run at all.
+!         prereqs_iter = iter(descriptor.GetPrerequisites())
+!         relevant_prereqs = filter(self.__statuses.has_key, prereqs_iter)
+! 
+!         # Store the test on the stack.
+!         self.__ids_on_stack[test_id] = None
+!         self.__test_stack.append((descriptor, relevant_prereqs))
+! 
+!         return 1
+! 
+!         
+!     def __AddToTargetPatternQueue(self, descriptor):
+!         &quot;&quot;&quot;A a test to the appropriate target pattern queue.
+! 
+!         'descriptor' -- A 'TestDescriptor'.
+! 
+!         Adds the test to the target pattern queue indicated in the
+!         descriptor.&quot;&quot;&quot;
+! 
+!         test_id = descriptor.GetId()
+!         self.__statuses[test_id].NoteReady()
+! 
+!         pattern = descriptor.GetTargetGroup()
+! 
+!         # If we have not already determined whether or not this pattern
+!         # matches any of the targets, do so now.
+!         if not self.__pattern_ok.has_key(pattern):
+!             self.__pattern_ok[pattern] = 0
+!             for group in self.__target_groups:
+!                 if re.match(pattern, group):
+!                     self.__pattern_ok[group] = 1
+!                     patterns = self.__patterns.setdefault(group, [])
+!                     patterns.append(pattern)
+!         # If none of the targets can run this test, mark it untested.
+!         if not self.__pattern_ok[pattern]:
+!             self.__AddUntestedResult(test_id,
+!                                      &quot;No target matching %s.&quot; % pattern)
+!             return
+! 
+!         queue = self.__target_pattern_queues.setdefault(pattern, [])
+!         queue.append(descriptor)
+! 
+! 
+!     def __GetPendingPrerequisites(self, descriptor):
+!         &quot;&quot;&quot;Return pending prerequisite tests for 'descriptor'.
+! 
+!         'descriptor' -- A 'TestDescriptor'.
+!         
+!         returns -- A list of prerequisite test ids that have to
+!         complete, or 'None' if one of the prerequisites had an
+!         unexpected outcome.&quot;&quot;&quot;
+! 
+!         needed = []
+! 
+!         prereqs = descriptor.GetPrerequisites()
+!         for prereq_id, outcome in prereqs.iteritems():
+!             try:
+!                 prereq_status = self.__statuses[prereq_id]
+!             except KeyError:
+!                 # This prerequisite is not being run at all.
+                  continue
+  
+!             if prereq_status.IsFinished():
+!                 prereq_outcome = prereq_status.outcome
+!                 if outcome != prereq_outcome:
+!                     # Failed prerequisite.
+!                     self.__AddUntestedResult \
+!                         (descriptor.GetId(),
+!                          qm.message(&quot;failed prerequisite&quot;),
+!                          {'qmtest.prequisite': prereq_id,
+!                           'qmtest.outcome': prereq_outcome,
+!                           'qmtest.expected_outcome': outcome })
+!                     return None
+!             else:
+!                 # This prerequisite has not yet completed.
+!                 needed.append(prereq_id)
+  
+!         return needed
+! 
+! 
+!     def __AddResult(self, result):
+!         &quot;&quot;&quot;Report the result of running a test or resource.
+!         
+!         'result' -- A 'Result' object representing the result of running
+!         a test or resource.&quot;&quot;&quot;
+! 
+!         # Output a trace message.
+!         id = result.GetId()
+!         self._Trace(&quot;Recording %s result for %s.&quot; % (result.GetKind(), id))
+! 
+!         # Find the target with the name indicated in the result.
+!         if result.has_key(Result.TARGET):
+!             for target in self.__targets:
+!                 if target.GetName() == result[Result.TARGET]:
+                      break
++             else:
++                 assert 0, (&quot;No target %s exists (test id: %s)&quot;
++                            % (result[Result.TARGET], id))
++         else:
++             # Not all results will have associated targets.  If the
++             # test was not run at all, there will be no associated
++             # target.
++             target = None
+  
+!         # Having no target is a rare occurrence; output a trace message.
+!         if not target:
+!             self._Trace(&quot;No target for %s.&quot; % id)
+  
++         # This target might now be idle.
++         if (target and target.IsIdle()):
+              # Output a trace message.
+!             self._Trace(&quot;Target is now idle.\n&quot;)
+!             self.__target_state[target] = 1
+!             self.__num_idle_targets += 1
+!             
+!         # Only tests have expectations or scheduling dependencies.
+!         if result.GetKind() == Result.TEST:
+!             # Record the outcome for this test.
+!             test_status = self.__statuses[id]
+!             test_status.outcome = result.GetOutcome()
+! 
+!             # If there were tests waiting for this one to complete, they
+!             # may now be ready to execute.
+!             if test_status.dependants:
+!                 for dependant in test_status.dependants:
+!                     if not self.__statuses[dependant].HasBeenReady():
+!                         descriptor = self.__GetTestDescriptor(dependant)
+!                         if not descriptor:
+!                             continue
+!                         prereqs = self.__GetPendingPrerequisites(descriptor)
+!                         if prereqs is None:
+!                             continue
+!                         if not prereqs:
+!                             # All prerequisites ran and were satisfied.
+!                             # This test can now run.
+!                             self.__AddToTargetPatternQueue(descriptor)
+!                 # Free the memory consumed by the list.
+!                 del test_status.dependants
+! 
+!             # Check for unexpected outcomes.
+!             if result.GetKind() == Result.TEST:
+!                 if (self.__expectations.get(id, Result.PASS)
+!                     != result.GetOutcome()):
+!                     self.__any_unexpected_outcomes = 1
+! 
+!             # Any targets that were starving may now be able to find
+!             # work.
+!             for t in self.__targets:
+!                 if self.__target_state[t] is None:
+!                     self.__target_state[t] = 1
+!             
+!         # Output a trace message.
+!         self._Trace(&quot;Writing result for %s to streams.&quot; % id)
+  
+!         # Report the result.
+!         for rs in self.__result_streams:
+!             rs.WriteResult(result)
+  
+  
+!     def __CheckForResponse(self, wait):
+          &quot;&quot;&quot;See if any of the targets have completed a task.
+  
+          'wait' -- If false, this function returns immediately if there
+          is no available response.  If 'wait' is true, this function
+          continues to wait until a response is available.
+*************** class ExecutionEngine:
+*** 333,356 ****
+                  # Read a reply from the response_queue.
+                  result = self.__response_queue.get(0)
+                  # Output a trace message.
+                  self._Trace(&quot;Got %s result for %s from queue.&quot;
+                               % (result.GetKind(), result.GetId()))
+!                 # Handle it.
+!                 self._AddResult(result)
+                  if result.GetKind() == Result.TEST:
+                      assert self.__running &gt; 0
+                      self.__running -= 1
+                  # Output a trace message.
+                  self._Trace(&quot;Recorded result.&quot;)
+-                 # If this was a test result, there may be other tests that
+-                 # are now eligible to run.
+-                 if result.GetKind() == Result.TEST:
+-                     # Get the descriptor for this test.
+-                     descriptor = self.__descriptors[result.GetId()]
+-                     # Iterate through each of the dependent tests.
+-                     self._UpdateDependentTests(descriptor, result.GetOutcome())
+                  return result
+              except qm.queue.Empty:
+                  # If there is nothing in the queue, then this exception will
+                  # be thrown.
+                  if not wait:
+--- 695,711 ----
+                  # Read a reply from the response_queue.
+                  result = self.__response_queue.get(0)
+                  # Output a trace message.
+                  self._Trace(&quot;Got %s result for %s from queue.&quot;
+                               % (result.GetKind(), result.GetId()))
+!                 # Record the result.
+!                 self.__AddResult(result)
+                  if result.GetKind() == Result.TEST:
+                      assert self.__running &gt; 0
+                      self.__running -= 1
+                  # Output a trace message.
+                  self._Trace(&quot;Recorded result.&quot;)
+                  return result
+              except qm.queue.Empty:
+                  # If there is nothing in the queue, then this exception will
+                  # be thrown.
+                  if not wait:
+*************** class ExecutionEngine:
+*** 369,492 ****
+                  
+                  # There may be a response now.
+                  continue
+  
+  
+!     def _UpdateDependentTests(self, descriptor, outcome):
+!         &quot;&quot;&quot;Update the status of tests that depend on 'node'.
+! 
+!         'descriptor' -- A test descriptor.
+! 
+!         'outcome' -- The outcome associated with the test.
+! 
+!         If tests that depend on 'descriptor' required a particular
+!         outcome, and 'outcome' is different, mark them as untested.  If
+!         tests that depend on 'descriptor' are now eligible to run, add
+!         them to the '__ready' queue.&quot;&quot;&quot;
+! 
+!         node = self.__descriptor_graph[descriptor]
+!         for (d, o) in node[1]:
+!             # Find the node for the dependent test.
+!             n = self.__descriptor_graph[d]
+!             # If some other prerequisite has already had an undesired
+!             # outcome, there is nothing more to do.
+!             if n[0] == 0:
+!                 continue
+  
+!             # If the actual outcome is not the outcome that was
+!             # expected, the dependent test cannot be run.
+!             if outcome != o:
+!                 try:
+!                     # This test will never be run.
+!                     n[0] = 0
+!                     self.__pending.remove(d)
+!                     # Mark it untested.
+!                     self._AddUntestedResult(d.GetId(),
+!                                             qm.message(&quot;failed prerequisite&quot;),
+!                                             { 'qmtest.prequisite' :
+!                                               descriptor.GetId(),
+!                                               'qmtest.outcome' : outcome,
+!                                               'qmtest.expected_outcome' : o })
+!                     # Recursively remove tests that depend on d.
+!                     self._UpdateDependentTests(d, Result.UNTESTED)
+!                 except ValueError:
+!                     # This test has already been taken off the pending queue;
+!                     # assume a result has already been recorded.  This can
+!                     # happen when we're breaking dependency cycles.
+!                     pass
+!             else:
+!                 # Decrease the count associated with the node, if
+!                 # the test has not already been declared a failure.
+!                 n[0] -= 1
+!                 # If this was the last prerequisite, this test
+!                 # is now ready.
+!                 if n[0] == 0:
+!                     self.__ready.append(d)
+!                     
+!     
+!     def _AddResult(self, result):
+!         &quot;&quot;&quot;Report the result of running a test or resource.
+  
+!         'result' -- A 'Result' object representing the result of running
+!         a test or resource.&quot;&quot;&quot;
+  
+!         # Output a trace message.
+!         self._Trace(&quot;Recording %s result for %s.&quot;
+!                     % (result.GetKind(), result.GetId()))
+  
+!         # Find the target with the name indicated in the result.
+!         if result.has_key(Result.TARGET):
+!             for target in self.__targets:
+!                 if target.GetName() == result[Result.TARGET]:
+!                     break
+          else:
+!             # Not all results will have associated targets.  If the
+!             # test was not run at all, there will be no associated
+!             # target.
+!             target = None
+! 
+!         # Having no target is a rare occurrence; output a trace message.
+!         if not target:
+!             self._Trace(&quot;No target for %s.&quot; % result.GetId())
+!                         
+!         # Check for unexpected outcomes.
+!         if result.GetKind() == Result.TEST  \
+!            and (self.__expectations.get(result.GetId(), Result.PASS)
+!                 != result.GetOutcome()):
+!             self.__any_unexpected_outcomes = 1
+!             
+!         # This target might now be idle.
+!         if (target and target not in self.__idle_targets
+!             and target.IsIdle()):
+!             # Output a trace message.
+!             self._Trace(&quot;Target is now idle.\n&quot;)
+!             self.__idle_targets.append(target)
+! 
+!         # Output a trace message.
+!         self._Trace(&quot;Writing result for %s to streams.&quot; % result.GetId())
+! 
+!         # Report the result.
+!         for rs in self.__result_streams:
+!             rs.WriteResult(result)
+! 
+! 
+!     def _AddUntestedResult(self, test_name, cause, annotations={}):
+!         &quot;&quot;&quot;Add a 'Result' indicating that 'test_name' was not run.
+  
+-         'test_name' -- The label for the test that could not be run.
+  
+!         'cause' -- A string explaining why the test could not be run.
+  
+!         'annotations' -- A map from strings to strings giving
+!         additional annotations for the result.&quot;&quot;&quot;
+  
+!         # Create the result.
+!         result = Result(Result.TEST, test_name, Result.UNTESTED, annotations)
+!         result[Result.CAUSE] = cause
+!         self._AddResult(result)
+  
+  
+      def _Trace(self, message):
+          &quot;&quot;&quot;Write a trace 'message'.
+  
+          'message' -- A string to be output as a trace message.&quot;&quot;&quot;
+  
+--- 724,780 ----
+                  
+                  # There may be a response now.
+                  continue
+  
+  
+!     def __AddUntestedResult(self, test_name, cause, annotations={},
+!                             exc_info = None):
+!         &quot;&quot;&quot;Add a 'Result' indicating that 'test_name' was not run.
+  
+!         'test_name' -- The label for the test that could not be run.
+  
+!         'cause' -- A string explaining why the test could not be run.
+  
+!         'annotations' -- A map from strings to strings giving
+!         additional annotations for the result.
+  
+!         'exc_info' -- If this test could not be tested due to a thrown
+!         exception, 'exc_info' is the result of 'sys.exc_info()' when the
+!         exception was caught.  'None' otherwise.&quot;&quot;&quot;
+! 
+!         # Remember that this test was started.
+!         self.__num_tests_started += 1
+! 
+!         # Create and record the result.
+!         result = Result(Result.TEST, test_name, annotations = annotations)
+!         if exc_info:
+!             result.NoteException(exc_info, cause, Result.UNTESTED)
+          else:
+!             result.SetOutcome(Result.UNTESTED, cause)
+!         self.__AddResult(result)
+  
+  
+!     ### Utility methods.
+  
+!     def __GetTestDescriptor(self, test_id):
+!         &quot;&quot;&quot;Return the 'TestDescriptor' for 'test_id'.
+  
+!         returns -- The 'TestDescriptor' for 'test_id', or 'None' if the
+!         descriptor could not be loaded.
+  
++         If the database cannot load the descriptor, an 'UNTESTED' result
++         is recorded for 'test_id'.&quot;&quot;&quot;
+  
++         try:
++             return self.__database.GetTest(test_id)
++         except:
++             self.__AddUntestedResult(test_id,
++                                      &quot;Could not load test.&quot;,
++                                      exc_info = sys.exc_info())
++             return None
++         
++         
+      def _Trace(self, message):
+          &quot;&quot;&quot;Write a trace 'message'.
+  
+          'message' -- A string to be output as a trace message.&quot;&quot;&quot;
+  
+Index: qm/test/classes/text_result_stream.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/classes/text_result_stream.py,v
+retrieving revision 1.1
+diff -c -5 -p -r1.1 text_result_stream.py
+*** qm/test/classes/text_result_stream.py	16 Jun 2003 23:45:51 -0000	1.1
+--- qm/test/classes/text_result_stream.py	31 Jul 2003 23:12:48 -0000
+*************** class TextResultStream(FileResultStream)
+*** 79,90 ****
+              gives details about any tests with unexpected outcomes.
+  
+              The &quot;full&quot; format is like &quot;brief&quot; except that all
+              annotations are shown for tests as they are run.
+  
+!             The &quot;stats&quot; format is omits the failing tests section is
+!             omitted.&quot;&quot;&quot;),
+          ]
+      
+      def __init__(self, arguments):
+          &quot;&quot;&quot;Construct a 'TextResultStream'.
+  
+--- 79,89 ----
+              gives details about any tests with unexpected outcomes.
+  
+              The &quot;full&quot; format is like &quot;brief&quot; except that all
+              annotations are shown for tests as they are run.
+  
+!             The &quot;stats&quot; format omits the failing tests section.&quot;&quot;&quot;),
+          ]
+      
+      def __init__(self, arguments):
+          &quot;&quot;&quot;Construct a 'TextResultStream'.
+  
+Index: qm/test/doc/tour.xml
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/doc/tour.xml,v
+retrieving revision 1.6
+diff -c -5 -p -r1.6 tour.xml
+*** qm/test/doc/tour.xml	13 May 2003 07:10:47 -0000	1.6
+--- qm/test/doc/tour.xml	31 Jul 2003 23:12:48 -0000
+*************** QMTest running at <A HREF="http://127.0.0.1:1158/">http://127.0.0.1:1158/</A>
+*** 253,269 ****
+     &lt;guibutton&gt;OK&lt;/guibutton&gt; button at the bottom of the page to save
+     your changes.  Choose &lt;guibutton&gt;This Test&lt;/guibutton&gt; from the
+     &lt;guibutton&gt;Run&lt;/guibutton&gt; menu and observe that the test now
+     passes.&lt;/para&gt;
+  
+!    &lt;para&gt;Creating a new test works in a similar way.  Click on the
+!    &lt;guilabel&gt;Home&lt;/guilabel&gt; link to return to the main &qmtest; page.
+!    Then, select &lt;guibutton&gt;New Test&lt;/guibutton&gt; from the
+!    &lt;guilabel&gt;File&lt;/guilabel&gt; menu to create a new test.  &qmtest;
+!    displays a form that contains two fields: the test name, and the
+!    test class.  The test name identifies the test; the test class
+!    indicates what kind of test will be created.&lt;/para&gt;
+  
+     &lt;para&gt;Test names must be composed entirely of lowercase letters,
+     numbers, the &lt;quote&gt;_&lt;/quote&gt; character, and the &lt;quote&gt;.&lt;/quote&gt;
+     character.  You can think of test names like file names.  The
+     &lt;quote&gt;.&lt;/quote&gt; character takes the place of &lt;quote&gt;/&lt;/quote&gt; on
+--- 253,270 ----
+     &lt;guibutton&gt;OK&lt;/guibutton&gt; button at the bottom of the page to save
+     your changes.  Choose &lt;guibutton&gt;This Test&lt;/guibutton&gt; from the
+     &lt;guibutton&gt;Run&lt;/guibutton&gt; menu and observe that the test now
+     passes.&lt;/para&gt;
+  
+!    &lt;para&gt;Creating a new test works in a similar way.  Choose
+!    &lt;guilabel&gt;Directory&lt;/guilabel&gt; under the &lt;guilabel&gt;View&lt;/guilabel&gt;
+!    menu to return to the main &qmtest; page.  Then, select
+!    &lt;guibutton&gt;New Test&lt;/guibutton&gt; from the &lt;guilabel&gt;File&lt;/guilabel&gt;
+!    menu to create a new test.  &qmtest; displays a form that contains
+!    two fields: the test name, and the test class.  The test name
+!    identifies the test; the test class indicates what kind of test
+!    will be created.&lt;/para&gt;
+  
+     &lt;para&gt;Test names must be composed entirely of lowercase letters,
+     numbers, the &lt;quote&gt;_&lt;/quote&gt; character, and the &lt;quote&gt;.&lt;/quote&gt;
+     character.  You can think of test names like file names.  The
+     &lt;quote&gt;.&lt;/quote&gt; character takes the place of &lt;quote&gt;/&lt;/quote&gt; on
+*************** QMTest running at <A HREF="http://127.0.0.1:1158/">http://127.0.0.1:1158/</A>
+*** 279,312 ****
+     to run a group of related tests at once.&lt;/para&gt;
+  
+     &lt;para&gt;Enter &lt;filename&gt;command.test1&lt;/filename&gt; for the test name.
+     This will create a new test named &lt;filename&gt;test1&lt;/filename&gt; in the
+     &lt;filename&gt;command&lt;/filename&gt; directory.  Choose
+!    &lt;classname&gt;command.ExecTest&lt;/classname&gt; as the test class.  This
+!    kind of test runs a command and compares its actual output against
+!    the expected output.  If they match, the test passes.  This test
+!    class is useful for testing many programs.  Click on the
+     &lt;guibutton&gt;Next&lt;/guibutton&gt; button to continue.&lt;/para&gt;
+     
+     &lt;para&gt;Now, &qmtest; will present you with a form that looks just
+     like the form you used to edit &lt;filename&gt;exec1&lt;/filename&gt;, except
+     that the arguments are different.  The arguments are different
+     because you're creating a different kind of test.  Enter
+!    &lt;literal&gt;echo&lt;/literal&gt; in the &lt;guilabel&gt;Program&lt;/guilabel&gt; field.
+!    Click on the &lt;guibutton&gt;Add Another&lt;/guibutton&gt; button to add a program
+!    argument and enter &lt;literal&gt;test&lt;/literal&gt; in the box that appears.
+!    At this point, you've told qmtest that you want to run the command
+!    &lt;command&gt;echo test&lt;/command&gt;.  This command will produce an output
+!    (the word &lt;literal&gt;test&lt;/literal&gt;) as output, so find the
+!    &lt;guilabel&gt;Standard Output&lt;/guilabel&gt; box and enter
+!    &lt;literal&gt;test&lt;/literal&gt; in this box.  Make sure to hit the
+!    &lt;keycap&gt;Return&lt;/keycap&gt; key after you type &lt;literal&gt;test&lt;/literal&gt;;
+!    the &lt;command&gt;echo&lt;/command&gt; command will output a carriage return
+!    after it prints the word &lt;literal&gt;test&lt;/literal&gt;, so you must
+!    indicate that you expect a carriage return.  When you are done,
+!    click the &lt;guibutton&gt;OK&lt;/guibutton&gt; button at the bottom of the
+!    form.&lt;/para&gt;
+  
+     &lt;para&gt;Now you can select &lt;guibutton&gt;This Test&lt;/guibutton&gt; from the
+     &lt;guilabel&gt;Run&lt;/guilabel&gt; menu to run the test.&lt;/para&gt;
+  
+     &lt;para&gt;When you're done experimenting with &amp;qmtest, choose
+--- 280,309 ----
+     to run a group of related tests at once.&lt;/para&gt;
+  
+     &lt;para&gt;Enter &lt;filename&gt;command.test1&lt;/filename&gt; for the test name.
+     This will create a new test named &lt;filename&gt;test1&lt;/filename&gt; in the
+     &lt;filename&gt;command&lt;/filename&gt; directory.  Choose
+!    &lt;classname&gt;command.ShellCommandTest&lt;/classname&gt; as the test class.
+!    This kind of test runs a command and compares its actual output
+!    against the expected output.  If they match, the test passes.  This
+!    test class is useful for testing many programs.  Click on the
+     &lt;guibutton&gt;Next&lt;/guibutton&gt; button to continue.&lt;/para&gt;
+     
+     &lt;para&gt;Now, &qmtest; will present you with a form that looks just
+     like the form you used to edit &lt;filename&gt;exec1&lt;/filename&gt;, except
+     that the arguments are different.  The arguments are different
+     because you're creating a different kind of test.  Enter
+!    &lt;literal&gt;echo test&lt;/literal&gt; in the &lt;guilabel&gt;Command&lt;/guilabel&gt;
+!    field.  This command will produce an output (the word
+!    &lt;literal&gt;test&lt;/literal&gt;), so find the &lt;guilabel&gt;Standard
+!    Output&lt;/guilabel&gt; box and enter &lt;literal&gt;test&lt;/literal&gt; in this
+!    box.  Make sure to hit the &lt;keycap&gt;Return&lt;/keycap&gt; key after you
+!    type &lt;literal&gt;test&lt;/literal&gt;; the &lt;command&gt;echo&lt;/command&gt; command
+!    will output a carriage return after it prints the word
+!    &lt;literal&gt;test&lt;/literal&gt;, so you must indicate that you expect a
+!    carriage return.  When you are done, click the
+!    &lt;guibutton&gt;OK&lt;/guibutton&gt; button at the bottom of the form.&lt;/para&gt;
+  
+     &lt;para&gt;Now you can select &lt;guibutton&gt;This Test&lt;/guibutton&gt; from the
+     &lt;guilabel&gt;Run&lt;/guilabel&gt; menu to run the test.&lt;/para&gt;
+  
+     &lt;para&gt;When you're done experimenting with &amp;qmtest, choose
+Index: tests/regress/bad_target1/a.qmt
+===================================================================
+RCS file: tests/regress/bad_target1/a.qmt
+diff -N tests/regress/bad_target1/a.qmt
+*** /dev/null	1 Jan 1970 00:00:00 -0000
+--- tests/regress/bad_target1/a.qmt	31 Jul 2003 23:12:48 -0000
+***************
+*** 0 ****
+--- 1,5 ----
++ &lt;?xml version=&quot;1.0&quot; ?&gt;
++ &lt;!DOCTYPE extension
++   PUBLIC '-//Software Carpentry//QMTest Extension V0.1//EN'
++   '<A HREF="http://www.software-carpentry.com/qm/xml/extension">http://www.software-carpentry.com/qm/xml/extension</A>'&gt;
++ &lt;extension class=&quot;python.ExecTest&quot; kind=&quot;test&quot;&gt;&lt;argument name=&quot;prerequisites&quot;&gt;&lt;set/&gt;&lt;/argument&gt;&lt;argument name=&quot;source&quot;&gt;&lt;text&gt;pass&lt;/text&gt;&lt;/argument&gt;&lt;argument name=&quot;target_group&quot;&gt;&lt;text&gt;.*&lt;/text&gt;&lt;/argument&gt;&lt;argument name=&quot;expression&quot;&gt;&lt;text&gt;1&lt;/text&gt;&lt;/argument&gt;&lt;argument name=&quot;resources&quot;&gt;&lt;set/&gt;&lt;/argument&gt;&lt;/extension&gt;
+\ No newline at end of file
+Index: tests/regress/bad_target1/bad_target.qmt
+===================================================================
+RCS file: tests/regress/bad_target1/bad_target.qmt
+diff -N tests/regress/bad_target1/bad_target.qmt
+*** /dev/null	1 Jan 1970 00:00:00 -0000
+--- tests/regress/bad_target1/bad_target.qmt	31 Jul 2003 23:12:48 -0000
+***************
+*** 0 ****
+--- 1,5 ----
++ &lt;?xml version=&quot;1.0&quot; ?&gt;
++ &lt;!DOCTYPE extension
++   PUBLIC '-//Software Carpentry//QMTest Extension V0.1//EN'
++   '<A HREF="http://www.software-carpentry.com/qm/xml/extension">http://www.software-carpentry.com/qm/xml/extension</A>'&gt;
++ &lt;extension class=&quot;python.ExecTest&quot; kind=&quot;test&quot;&gt;&lt;argument name=&quot;prerequisites&quot;&gt;&lt;set/&gt;&lt;/argument&gt;&lt;argument name=&quot;source&quot;&gt;&lt;text&gt;pass&lt;/text&gt;&lt;/argument&gt;&lt;argument name=&quot;target_group&quot;&gt;&lt;text&gt;$^&lt;/text&gt;&lt;/argument&gt;&lt;argument name=&quot;expression&quot;&gt;&lt;text&gt;1&lt;/text&gt;&lt;/argument&gt;&lt;argument name=&quot;resources&quot;&gt;&lt;set/&gt;&lt;/argument&gt;&lt;/extension&gt;
+\ No newline at end of file
+Index: tests/regress/bad_target1/results.qmr
+===================================================================
+RCS file: tests/regress/bad_target1/results.qmr
+diff -N tests/regress/bad_target1/results.qmr
+Binary files /dev/null and results.qmr differ
+Index: tests/regress/bad_target1/QMTest/configuration
+===================================================================
+RCS file: tests/regress/bad_target1/QMTest/configuration
+diff -N tests/regress/bad_target1/QMTest/configuration
+*** /dev/null	1 Jan 1970 00:00:00 -0000
+--- tests/regress/bad_target1/QMTest/configuration	31 Jul 2003 23:12:48 -0000
+***************
+*** 0 ****
+--- 1,5 ----
++ &lt;?xml version=&quot;1.0&quot; ?&gt;
++ &lt;!DOCTYPE extension
++   PUBLIC '-//Software Carpentry//QMTest Extension V0.1//EN'
++   '<A HREF="http://www.software-carpentry.com/qm/xml/extension">http://www.software-carpentry.com/qm/xml/extension</A>'&gt;
++ &lt;extension class=&quot;xml_database.XMLDatabase&quot; kind=&quot;database&quot;/&gt;
+\ No newline at end of file
+Index: tests/regress/bad_target2/a.qmt
+===================================================================
+RCS file: tests/regress/bad_target2/a.qmt
+diff -N tests/regress/bad_target2/a.qmt
+*** /dev/null	1 Jan 1970 00:00:00 -0000
+--- tests/regress/bad_target2/a.qmt	31 Jul 2003 23:12:48 -0000
+***************
+*** 0 ****
+--- 1,5 ----
++ &lt;?xml version=&quot;1.0&quot; ?&gt;
++ &lt;!DOCTYPE extension
++   PUBLIC '-//Software Carpentry//QMTest Extension V0.1//EN'
++   '<A HREF="http://www.software-carpentry.com/qm/xml/extension">http://www.software-carpentry.com/qm/xml/extension</A>'&gt;
++ &lt;extension class=&quot;python.ExecTest&quot; kind=&quot;test&quot;&gt;&lt;argument name=&quot;prerequisites&quot;&gt;&lt;set&gt;&lt;tuple&gt;&lt;text&gt;bad_target&lt;/text&gt;&lt;enumeral&gt;PASS&lt;/enumeral&gt;&lt;/tuple&gt;&lt;/set&gt;&lt;/argument&gt;&lt;argument name=&quot;source&quot;&gt;&lt;text&gt;pass&lt;/text&gt;&lt;/argument&gt;&lt;argument name=&quot;target_group&quot;&gt;&lt;text&gt;.*&lt;/text&gt;&lt;/argument&gt;&lt;argument name=&quot;expression&quot;&gt;&lt;text&gt;1&lt;/text&gt;&lt;/argument&gt;&lt;argument name=&quot;resources&quot;&gt;&lt;set/&gt;&lt;/argument&gt;&lt;/extension&gt;
+Index: tests/regress/bad_target2/bad_target.qmt
+===================================================================
+RCS file: tests/regress/bad_target2/bad_target.qmt
+diff -N tests/regress/bad_target2/bad_target.qmt
+*** /dev/null	1 Jan 1970 00:00:00 -0000
+--- tests/regress/bad_target2/bad_target.qmt	31 Jul 2003 23:12:48 -0000
+***************
+*** 0 ****
+--- 1,5 ----
++ &lt;?xml version=&quot;1.0&quot; ?&gt;
++ &lt;!DOCTYPE extension
++   PUBLIC '-//Software Carpentry//QMTest Extension V0.1//EN'
++   '<A HREF="http://www.software-carpentry.com/qm/xml/extension">http://www.software-carpentry.com/qm/xml/extension</A>'&gt;
++ &lt;extension class=&quot;python.ExecTest&quot; kind=&quot;test&quot;&gt;&lt;argument name=&quot;prerequisites&quot;&gt;&lt;set/&gt;&lt;/argument&gt;&lt;argument name=&quot;source&quot;&gt;&lt;text&gt;pass&lt;/text&gt;&lt;/argument&gt;&lt;argument name=&quot;target_group&quot;&gt;&lt;text&gt;$^&lt;/text&gt;&lt;/argument&gt;&lt;argument name=&quot;expression&quot;&gt;&lt;text&gt;1&lt;/text&gt;&lt;/argument&gt;&lt;argument name=&quot;resources&quot;&gt;&lt;set/&gt;&lt;/argument&gt;&lt;/extension&gt;
+\ No newline at end of file
+Index: tests/regress/bad_target2/results.qmr
+===================================================================
+RCS file: tests/regress/bad_target2/results.qmr
+diff -N tests/regress/bad_target2/results.qmr
+Binary files /dev/null and results.qmr differ
+Index: tests/regress/bad_target2/QMTest/configuration
+===================================================================
+RCS file: tests/regress/bad_target2/QMTest/configuration
+diff -N tests/regress/bad_target2/QMTest/configuration
+*** /dev/null	1 Jan 1970 00:00:00 -0000
+--- tests/regress/bad_target2/QMTest/configuration	31 Jul 2003 23:12:48 -0000
+***************
+*** 0 ****
+--- 1,5 ----
++ &lt;?xml version=&quot;1.0&quot; ?&gt;
++ &lt;!DOCTYPE extension
++   PUBLIC '-//Software Carpentry//QMTest Extension V0.1//EN'
++   '<A HREF="http://www.software-carpentry.com/qm/xml/extension">http://www.software-carpentry.com/qm/xml/extension</A>'&gt;
++ &lt;extension class=&quot;xml_database.XMLDatabase&quot; kind=&quot;database&quot;/&gt;
+\ No newline at end of file
+Index: tests/regress/nocycle1/a.qmt
+===================================================================
+RCS file: tests/regress/nocycle1/a.qmt
+diff -N tests/regress/nocycle1/a.qmt
+*** /dev/null	1 Jan 1970 00:00:00 -0000
+--- tests/regress/nocycle1/a.qmt	31 Jul 2003 23:12:48 -0000
+***************
+*** 0 ****
+--- 1,5 ----
++ &lt;?xml version=&quot;1.0&quot; ?&gt;
++ &lt;!DOCTYPE extension
++   PUBLIC '-//Software Carpentry//QMTest Extension V0.1//EN'
++   '<A HREF="http://www.software-carpentry.com/qm/xml/extension">http://www.software-carpentry.com/qm/xml/extension</A>'&gt;
++ &lt;extension class=&quot;python.ExecTest&quot; kind=&quot;test&quot;&gt;&lt;argument name=&quot;prerequisites&quot;&gt;&lt;set&gt;&lt;tuple&gt;&lt;text&gt;b&lt;/text&gt;&lt;enumeral&gt;PASS&lt;/enumeral&gt;&lt;/tuple&gt;&lt;tuple&gt;&lt;text&gt;c&lt;/text&gt;&lt;enumeral&gt;PASS&lt;/enumeral&gt;&lt;/tuple&gt;&lt;/set&gt;&lt;/argument&gt;&lt;argument name=&quot;source&quot;&gt;&lt;text&gt;pass&lt;/text&gt;&lt;/argument&gt;&lt;argument name=&quot;target_group&quot;&gt;&lt;text&gt;.*&lt;/text&gt;&lt;/argument&gt;&lt;argument name=&quot;expression&quot;&gt;&lt;text&gt;1&lt;/text&gt;&lt;/argument&gt;&lt;argument name=&quot;resources&quot;&gt;&lt;set/&gt;&lt;/argument&gt;&lt;/extension&gt;
+Index: tests/regress/nocycle1/b.qmt
+===================================================================
+RCS file: tests/regress/nocycle1/b.qmt
+diff -N tests/regress/nocycle1/b.qmt
+*** /dev/null	1 Jan 1970 00:00:00 -0000
+--- tests/regress/nocycle1/b.qmt	31 Jul 2003 23:12:48 -0000
+***************
+*** 0 ****
+--- 1,5 ----
++ &lt;?xml version=&quot;1.0&quot; ?&gt;
++ &lt;!DOCTYPE extension
++   PUBLIC '-//Software Carpentry//QMTest Extension V0.1//EN'
++   '<A HREF="http://www.software-carpentry.com/qm/xml/extension">http://www.software-carpentry.com/qm/xml/extension</A>'&gt;
++ &lt;extension class=&quot;python.ExecTest&quot; kind=&quot;test&quot;&gt;&lt;argument name=&quot;prerequisites&quot;&gt;&lt;set&gt;&lt;tuple&gt;&lt;text&gt;d&lt;/text&gt;&lt;enumeral&gt;PASS&lt;/enumeral&gt;&lt;/tuple&gt;&lt;/set&gt;&lt;/argument&gt;&lt;argument name=&quot;source&quot;&gt;&lt;text&gt;pass&lt;/text&gt;&lt;/argument&gt;&lt;argument name=&quot;target_group&quot;&gt;&lt;text&gt;.*&lt;/text&gt;&lt;/argument&gt;&lt;argument name=&quot;expression&quot;&gt;&lt;text&gt;1&lt;/text&gt;&lt;/argument&gt;&lt;argument name=&quot;resources&quot;&gt;&lt;set/&gt;&lt;/argument&gt;&lt;/extension&gt;
+Index: tests/regress/nocycle1/c.qmt
+===================================================================
+RCS file: tests/regress/nocycle1/c.qmt
+diff -N tests/regress/nocycle1/c.qmt
+*** /dev/null	1 Jan 1970 00:00:00 -0000
+--- tests/regress/nocycle1/c.qmt	31 Jul 2003 23:12:48 -0000
+***************
+*** 0 ****
+--- 1,5 ----
++ &lt;?xml version=&quot;1.0&quot; ?&gt;
++ &lt;!DOCTYPE extension
++   PUBLIC '-//Software Carpentry//QMTest Extension V0.1//EN'
++   '<A HREF="http://www.software-carpentry.com/qm/xml/extension">http://www.software-carpentry.com/qm/xml/extension</A>'&gt;
++ &lt;extension class=&quot;python.ExecTest&quot; kind=&quot;test&quot;&gt;&lt;argument name=&quot;prerequisites&quot;&gt;&lt;set&gt;&lt;tuple&gt;&lt;text&gt;d&lt;/text&gt;&lt;enumeral&gt;PASS&lt;/enumeral&gt;&lt;/tuple&gt;&lt;/set&gt;&lt;/argument&gt;&lt;argument name=&quot;source&quot;&gt;&lt;text&gt;pass&lt;/text&gt;&lt;/argument&gt;&lt;argument name=&quot;target_group&quot;&gt;&lt;text&gt;.*&lt;/text&gt;&lt;/argument&gt;&lt;argument name=&quot;expression&quot;&gt;&lt;text&gt;1&lt;/text&gt;&lt;/argument&gt;&lt;argument name=&quot;resources&quot;&gt;&lt;set/&gt;&lt;/argument&gt;&lt;/extension&gt;
+Index: tests/regress/nocycle1/d.qmt
+===================================================================
+RCS file: tests/regress/nocycle1/d.qmt
+diff -N tests/regress/nocycle1/d.qmt
+*** /dev/null	1 Jan 1970 00:00:00 -0000
+--- tests/regress/nocycle1/d.qmt	31 Jul 2003 23:12:48 -0000
+***************
+*** 0 ****
+--- 1,5 ----
++ &lt;?xml version=&quot;1.0&quot; ?&gt;
++ &lt;!DOCTYPE extension
++   PUBLIC '-//Software Carpentry//QMTest Extension V0.1//EN'
++   '<A HREF="http://www.software-carpentry.com/qm/xml/extension">http://www.software-carpentry.com/qm/xml/extension</A>'&gt;
++ &lt;extension class=&quot;python.ExecTest&quot; kind=&quot;test&quot;&gt;&lt;argument name=&quot;prerequisites&quot;&gt;&lt;set&gt;&lt;tuple&gt;&lt;text&gt;e&lt;/text&gt;&lt;enumeral&gt;PASS&lt;/enumeral&gt;&lt;/tuple&gt;&lt;/set&gt;&lt;/argument&gt;&lt;argument name=&quot;source&quot;&gt;&lt;text&gt;pass&lt;/text&gt;&lt;/argument&gt;&lt;argument name=&quot;target_group&quot;&gt;&lt;text&gt;.*&lt;/text&gt;&lt;/argument&gt;&lt;argument name=&quot;expression&quot;&gt;&lt;text&gt;1&lt;/text&gt;&lt;/argument&gt;&lt;argument name=&quot;resources&quot;&gt;&lt;set/&gt;&lt;/argument&gt;&lt;/extension&gt;
+Index: tests/regress/nocycle1/e.qmt
+===================================================================
+RCS file: tests/regress/nocycle1/e.qmt
+diff -N tests/regress/nocycle1/e.qmt
+*** /dev/null	1 Jan 1970 00:00:00 -0000
+--- tests/regress/nocycle1/e.qmt	31 Jul 2003 23:12:48 -0000
+***************
+*** 0 ****
+--- 1,6 ----
++ &lt;?xml version=&quot;1.0&quot; ?&gt;
++ &lt;!DOCTYPE extension
++   PUBLIC '-//Software Carpentry//QMTest Extension V0.1//EN'
++   '<A HREF="http://www.software-carpentry.com/qm/xml/extension">http://www.software-carpentry.com/qm/xml/extension</A>'&gt;
++ &lt;extension class=&quot;python.ExecTest&quot; kind=&quot;test&quot;&gt;&lt;argument name=&quot;prerequisites&quot;&gt;&lt;set/&gt;&lt;/argument&gt;&lt;argument name=&quot;source&quot;&gt;&lt;text&gt;import time
++ time.sleep(1)&lt;/text&gt;&lt;/argument&gt;&lt;argument name=&quot;target_group&quot;&gt;&lt;text&gt;.*&lt;/text&gt;&lt;/argument&gt;&lt;argument name=&quot;expression&quot;&gt;&lt;text&gt;1&lt;/text&gt;&lt;/argument&gt;&lt;argument name=&quot;resources&quot;&gt;&lt;set/&gt;&lt;/argument&gt;&lt;/extension&gt;
+Index: tests/regress/nocycle1/results.qmr
+===================================================================
+RCS file: tests/regress/nocycle1/results.qmr
+diff -N tests/regress/nocycle1/results.qmr
+Binary files /dev/null and results.qmr differ
+Index: tests/regress/nocycle1/QMTest/configuration
+===================================================================
+RCS file: tests/regress/nocycle1/QMTest/configuration
+diff -N tests/regress/nocycle1/QMTest/configuration
+*** /dev/null	1 Jan 1970 00:00:00 -0000
+--- tests/regress/nocycle1/QMTest/configuration	31 Jul 2003 23:12:48 -0000
+***************
+*** 0 ****
+--- 1,5 ----
++ &lt;?xml version=&quot;1.0&quot; ?&gt;
++ &lt;!DOCTYPE extension
++   PUBLIC '-//Software Carpentry//QMTest Extension V0.1//EN'
++   '<A HREF="http://www.software-carpentry.com/qm/xml/extension">http://www.software-carpentry.com/qm/xml/extension</A>'&gt;
++ &lt;extension class=&quot;xml_database.XMLDatabase&quot; kind=&quot;database&quot;/&gt;
+\ No newline at end of file
+Index: tests/regress/nocycle2/a.qmt
+===================================================================
+RCS file: tests/regress/nocycle2/a.qmt
+diff -N tests/regress/nocycle2/a.qmt
+*** /dev/null	1 Jan 1970 00:00:00 -0000
+--- tests/regress/nocycle2/a.qmt	31 Jul 2003 23:12:48 -0000
+***************
+*** 0 ****
+--- 1,5 ----
++ &lt;?xml version=&quot;1.0&quot; ?&gt;
++ &lt;!DOCTYPE extension
++   PUBLIC '-//Software Carpentry//QMTest Extension V0.1//EN'
++   '<A HREF="http://www.software-carpentry.com/qm/xml/extension">http://www.software-carpentry.com/qm/xml/extension</A>'&gt;
++ &lt;extension class=&quot;python.ExecTest&quot; kind=&quot;test&quot;&gt;&lt;argument name=&quot;prerequisites&quot;&gt;&lt;set&gt;&lt;tuple&gt;&lt;text&gt;b&lt;/text&gt;&lt;enumeral&gt;PASS&lt;/enumeral&gt;&lt;/tuple&gt;&lt;tuple&gt;&lt;text&gt;c&lt;/text&gt;&lt;enumeral&gt;PASS&lt;/enumeral&gt;&lt;/tuple&gt;&lt;/set&gt;&lt;/argument&gt;&lt;argument name=&quot;source&quot;&gt;&lt;text&gt;pass&lt;/text&gt;&lt;/argument&gt;&lt;argument name=&quot;target_group&quot;&gt;&lt;text&gt;.*&lt;/text&gt;&lt;/argument&gt;&lt;argument name=&quot;expression&quot;&gt;&lt;text&gt;1&lt;/text&gt;&lt;/argument&gt;&lt;argument name=&quot;resources&quot;&gt;&lt;set/&gt;&lt;/argument&gt;&lt;/extension&gt;
+Index: tests/regress/nocycle2/b.qmt
+===================================================================
+RCS file: tests/regress/nocycle2/b.qmt
+diff -N tests/regress/nocycle2/b.qmt
+*** /dev/null	1 Jan 1970 00:00:00 -0000
+--- tests/regress/nocycle2/b.qmt	31 Jul 2003 23:12:48 -0000
+***************
+*** 0 ****
+--- 1,5 ----
++ &lt;?xml version=&quot;1.0&quot; ?&gt;
++ &lt;!DOCTYPE extension
++   PUBLIC '-//Software Carpentry//QMTest Extension V0.1//EN'
++   '<A HREF="http://www.software-carpentry.com/qm/xml/extension">http://www.software-carpentry.com/qm/xml/extension</A>'&gt;
++ &lt;extension class=&quot;python.ExecTest&quot; kind=&quot;test&quot;&gt;&lt;argument name=&quot;prerequisites&quot;&gt;&lt;set&gt;&lt;tuple&gt;&lt;text&gt;c&lt;/text&gt;&lt;enumeral&gt;PASS&lt;/enumeral&gt;&lt;/tuple&gt;&lt;/set&gt;&lt;/argument&gt;&lt;argument name=&quot;source&quot;&gt;&lt;text&gt;pass&lt;/text&gt;&lt;/argument&gt;&lt;argument name=&quot;target_group&quot;&gt;&lt;text&gt;.*&lt;/text&gt;&lt;/argument&gt;&lt;argument name=&quot;expression&quot;&gt;&lt;text&gt;1&lt;/text&gt;&lt;/argument&gt;&lt;argument name=&quot;resources&quot;&gt;&lt;set/&gt;&lt;/argument&gt;&lt;/extension&gt;
+Index: tests/regress/nocycle2/c.qmt
+===================================================================
+RCS file: tests/regress/nocycle2/c.qmt
+diff -N tests/regress/nocycle2/c.qmt
+*** /dev/null	1 Jan 1970 00:00:00 -0000
+--- tests/regress/nocycle2/c.qmt	31 Jul 2003 23:12:48 -0000
+***************
+*** 0 ****
+--- 1,5 ----
++ &lt;?xml version=&quot;1.0&quot; ?&gt;
++ &lt;!DOCTYPE extension
++   PUBLIC '-//Software Carpentry//QMTest Extension V0.1//EN'
++   '<A HREF="http://www.software-carpentry.com/qm/xml/extension">http://www.software-carpentry.com/qm/xml/extension</A>'&gt;
++ &lt;extension class=&quot;python.ExecTest&quot; kind=&quot;test&quot;&gt;&lt;argument name=&quot;prerequisites&quot;&gt;&lt;set/&gt;&lt;/argument&gt;&lt;argument name=&quot;source&quot;&gt;&lt;text&gt;pass&lt;/text&gt;&lt;/argument&gt;&lt;argument name=&quot;target_group&quot;&gt;&lt;text&gt;.*&lt;/text&gt;&lt;/argument&gt;&lt;argument name=&quot;expression&quot;&gt;&lt;text&gt;1&lt;/text&gt;&lt;/argument&gt;&lt;argument name=&quot;resources&quot;&gt;&lt;set/&gt;&lt;/argument&gt;&lt;/extension&gt;
+Index: tests/regress/nocycle2/results.qmr
+===================================================================
+RCS file: tests/regress/nocycle2/results.qmr
+diff -N tests/regress/nocycle2/results.qmr
+Binary files /dev/null and results.qmr differ
+Index: tests/regress/nocycle2/QMTest/configuration
+===================================================================
+RCS file: tests/regress/nocycle2/QMTest/configuration
+diff -N tests/regress/nocycle2/QMTest/configuration
+*** /dev/null	1 Jan 1970 00:00:00 -0000
+--- tests/regress/nocycle2/QMTest/configuration	31 Jul 2003 23:12:48 -0000
+***************
+*** 0 ****
+--- 1,5 ----
++ &lt;?xml version=&quot;1.0&quot; ?&gt;
++ &lt;!DOCTYPE extension
++   PUBLIC '-//Software Carpentry//QMTest Extension V0.1//EN'
++   '<A HREF="http://www.software-carpentry.com/qm/xml/extension">http://www.software-carpentry.com/qm/xml/extension</A>'&gt;
++ &lt;extension class=&quot;xml_database.XMLDatabase&quot; kind=&quot;database&quot;/&gt;
+\ No newline at end of file
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000384.html">PATCH: Fix Windows text-comparison problems
+</A></li>
+	
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#385">[ date ]</a>
+              <a href="thread.html#385">[ thread ]</a>
+              <a href="subject.html#385">[ subject ]</a>
+              <a href="author.html#385">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">More information about the qmtest
+mailing list</a><br>
+</body></html>

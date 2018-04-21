@@ -1,0 +1,2262 @@
+From rguenth at tat.physik.uni-tuebingen.de  Mon Aug  4 18:50:21 2003
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Mon, 4 Aug 2003 20:50:21 +0200 (CEST)
+Subject: [PATCH] Move big methods ool inside Partition/
+Message-ID: <Pine.LNX.4.44.0308042046000.584-100000@goofy>
+
+
+The following patch moves big methods out of line for classes
+inside Partition/.  There is no gain in inlining these methods
+and compile time improves with these not declared inline.  It
+also makes the class structures easier to read.
+
+Tested by compiling and Layout and Paritition tests on ppc-linux.
+
+Ok?
+
+Richard.
+
+
+2003Aug04  Richard Guenther <richard.guenther at uni-tuebingen.de>
+
+	* src/Partition/BisectionMapper.h: move big methods out of line.
+	src/Partition/ContextMapper.h: likewise.
+	src/Partition/ContiguousMapper.h: likewise.
+	src/Partition/DistributedMapper.h: likewise.
+	src/Partition/GridPartition.h: likewise.
+	src/Partition/SpatialPartition.h: likewise.
+	src/Partition/TilePartition.h: likewise.
+	src/Partition/UniformGridPartition.h: likewise.
+
+Index: src/Partition/BisectionMapper.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/Partition/BisectionMapper.h,v
+retrieving revision 1.6
+diff -u -u -r1.6 BisectionMapper.h
+--- src/Partition/BisectionMapper.h	23 Jan 2003 21:29:50 -0000	1.6
++++ src/Partition/BisectionMapper.h	4 Aug 2003 18:43:56 -0000
+@@ -69,115 +69,119 @@
+
+   //
+
+-  void map(const List_t & templist) const
+-  {
+-    int ncontexts = Pooma::contexts();
+-    int npatch = 1;
+-    for (int i =0;i<Dim; ++i)
+-      npatch*=blocks_m[i].first();
+-
+-    std::list<Domain_t> bvec;
+-
+-    Domain_t allb;
+-    for (int i = 0; i<Dim; ++i)
+-      allb[i]=Interval<1>(0,blocks_m[i].first()-1);
+-    bvec.push_back(allb);
+-
+-    while ( bvec.size() < ncontexts )
+-      {
+-	int s = 0;
+-	typename std::list<Domain_t>::iterator bstart = bvec.begin();
+-	typename std::list<Domain_t>::iterator bend = bvec.end();
+-	typename std::list<Domain_t>::iterator bpatch;
+-	// find the largest patch.
+-	for ( ; bstart != bend ; ++bstart)
+-	  {
+-	    if (s < (*bstart).size() )
+-	      {
+-		bpatch = bstart;
+-		s = (*bstart).size();
+-	      }
+-	  }
+-	// now find the largest dimension on the largest patch
+-	int d = 0;
+-	int sd = 0;
+-	for (int i = 0; i<Dim; ++i)
+-	  {
+-	    if ( sd < (*bpatch)[i].size() )
+-	      {
+-		d = i;
+-		sd = (*bpatch)[i].size();
+-	      }
+-	  }
+-	Domain_t hi(*bpatch),lo(*bpatch);
+-	int lopoint = hi[d].first();
+-	int hipoint = hi[d].last();
+-	int mid     = lopoint + ( (hipoint - lopoint)/2);
+-
+-	if (lopoint<=mid)
+-	  lo[d] = Interval<1>(lopoint,mid);
+-	else
+-	  lo[d] = Interval<1>(lopoint,lopoint);
+-	if ( hipoint>=mid+1)
+-	  hi[d] = Interval<1>(mid+1,hipoint);
+-	else
+-	  hi[d] = Interval<1>(hipoint,hipoint);
+-	bvec.erase(bpatch++);
+-	bvec.insert(bpatch,lo);
+-	bvec.insert(bpatch,hi);
+-      }
+-    // now step through the intervals, using their elements as indexes into
+-    // all_m;
+-    int strides[Dim];
+-    strides[0] = 1;
+-    for ( int i=1; i<Dim; ++i)
+-      strides[i] = strides[i-1]*blocks_m[i-1].first();
+-
+-    typename std::list<Domain_t>::iterator start = bvec.begin();
+-    typename std::list<Domain_t>::iterator end = bvec.end();
+-    int pcontext = 0;
+-    for ( ; start != end ; ++start)
+-      {
+-	int idx[Dim],mi[Dim],mx[Dim];
+-	for ( int  i = 0 ; i < Dim ; ++i)
+-	  {
+-	    idx[i] = mi[i] = (*start)[i].first();
+-	    mx[i]  = (*start)[i].last();
+-	  }
+-
+-	while ( idx[Dim-1] <= mx[Dim-1] )
+-	  {
+-	    int allIdx = 0;
+-	    for ( int i = 0 ; i < Dim ; ++i)
+-	      allIdx += idx[i]*strides[i];
+-	    (*templist[allIdx]).context() = pcontext;
+-	    ++idx[0];
+-	    for ( int i = 0 ; i < Dim ; ++i)
+-	      {
+-		if ( idx[i] > mx[i] )
+-		  {
+-		    if ( i!=(Dim-1) )
+-		      {
+-			++idx[i+1];
+-			idx[i]=mi[i];
+-		      }
+-		    else
+-		      ++idx[i];
+-		  }
+-		else
+-		  break;
+-	      }
+-	  }
+-	++pcontext;
+-      }
+-    // set the affinity and local ID values
+-    this->setAffinity(templist);
+-  }
++  void map(const List_t & templist) const;
+
+   // Memeber Data
+   Loc<Dim> blocks_m;
+
+ };
++
++template <int Dim>
++void BisectionMapper<Dim>::map(const List_t & templist) const
++{
++  int ncontexts = Pooma::contexts();
++  int npatch = 1;
++  for (int i =0;i<Dim; ++i)
++    npatch*=blocks_m[i].first();
++
++  std::list<Domain_t> bvec;
++
++  Domain_t allb;
++  for (int i = 0; i<Dim; ++i)
++    allb[i]=Interval<1>(0,blocks_m[i].first()-1);
++  bvec.push_back(allb);
++
++  while ( bvec.size() < ncontexts )
++    {
++      int s = 0;
++      typename std::list<Domain_t>::iterator bstart = bvec.begin();
++      typename std::list<Domain_t>::iterator bend = bvec.end();
++      typename std::list<Domain_t>::iterator bpatch;
++      // find the largest patch.
++      for ( ; bstart != bend ; ++bstart)
++	{
++	  if (s < (*bstart).size() )
++	    {
++	      bpatch = bstart;
++	      s = (*bstart).size();
++	    }
++	}
++      // now find the largest dimension on the largest patch
++      int d = 0;
++      int sd = 0;
++      for (int i = 0; i<Dim; ++i)
++	{
++	  if ( sd < (*bpatch)[i].size() )
++	    {
++	      d = i;
++	      sd = (*bpatch)[i].size();
++	    }
++	}
++      Domain_t hi(*bpatch),lo(*bpatch);
++      int lopoint = hi[d].first();
++      int hipoint = hi[d].last();
++      int mid     = lopoint + ( (hipoint - lopoint)/2);
++
++      if (lopoint<=mid)
++	lo[d] = Interval<1>(lopoint,mid);
++      else
++	lo[d] = Interval<1>(lopoint,lopoint);
++      if ( hipoint>=mid+1)
++	hi[d] = Interval<1>(mid+1,hipoint);
++      else
++	hi[d] = Interval<1>(hipoint,hipoint);
++      bvec.erase(bpatch++);
++      bvec.insert(bpatch,lo);
++      bvec.insert(bpatch,hi);
++    }
++  // now step through the intervals, using their elements as indexes into
++  // all_m;
++  int strides[Dim];
++  strides[0] = 1;
++  for ( int i=1; i<Dim; ++i)
++    strides[i] = strides[i-1]*blocks_m[i-1].first();
++
++  typename std::list<Domain_t>::iterator start = bvec.begin();
++  typename std::list<Domain_t>::iterator end = bvec.end();
++  int pcontext = 0;
++  for ( ; start != end ; ++start)
++    {
++      int idx[Dim],mi[Dim],mx[Dim];
++      for ( int  i = 0 ; i < Dim ; ++i)
++	{
++	  idx[i] = mi[i] = (*start)[i].first();
++	  mx[i]  = (*start)[i].last();
++	}
++
++      while ( idx[Dim-1] <= mx[Dim-1] )
++	{
++	  int allIdx = 0;
++	  for ( int i = 0 ; i < Dim ; ++i)
++	    allIdx += idx[i]*strides[i];
++	  (*templist[allIdx]).context() = pcontext;
++	  ++idx[0];
++	  for ( int i = 0 ; i < Dim ; ++i)
++	    {
++	      if ( idx[i] > mx[i] )
++		{
++		  if ( i!=(Dim-1) )
++		    {
++		      ++idx[i+1];
++		      idx[i]=mi[i];
++		    }
++		  else
++		    ++idx[i];
++		}
++	      else
++		break;
++	    }
++	}
++      ++pcontext;
++    }
++  // set the affinity and local ID values
++  this->setAffinity(templist);
++}
++
+
+ #endif   // POOMA_BISECTIONMAPPER_H
+
+Index: src/Partition/ContextMapper.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/Partition/ContextMapper.h,v
+retrieving revision 1.21
+diff -u -u -r1.21 ContextMapper.h
+--- src/Partition/ContextMapper.h	1 Jul 2002 22:25:53 -0000	1.21
++++ src/Partition/ContextMapper.h	4 Aug 2003 18:43:57 -0000
+@@ -83,36 +83,39 @@
+   virtual ~ContextMapper(){};
+
+   virtual void map(const List_t & templist) const = 0;
+-
+
+- void setAffinity(const List_t & templist) const
+-  {
+-    int affinityMax = Smarts::concurrency();
+-    int idMax = 0;
+-
+-    typename List_t::const_iterator start = templist.begin();
+-    typename List_t::const_iterator end = templist.end();
++  void setAffinity(const List_t & templist) const;
+
+-    for ( ; start != end ; ++start)
+-      if((*start)->context()==Pooma::context())
+-	{
+-	  (*start)->localID()=idMax;
+-	  ++idMax;
+-	}
+-
+-    start = templist.begin();
+-    for ( ; start != end ; ++start)
+-      {
+-	if((*start)->context()==Pooma::context())
+-	  (*start)->affinity() = static_cast<int>( affinityMax *
+-                                 ( (*start)->localID() /
+-                                 static_cast<double>(idMax) ) );
++};
++
++template<int Dim>
++void ContextMapper<Dim>::setAffinity(const List_t & templist) const
++{
++  int affinityMax = Smarts::concurrency();
++  int idMax = 0;
++
++  typename List_t::const_iterator start = templist.begin();
++  typename List_t::const_iterator end = templist.end();
++
++  for ( ; start != end ; ++start)
++    if((*start)->context()==Pooma::context())
++      {
++	(*start)->localID()=idMax;
++	++idMax;
+       }
+
+-    return;
+-  }
++  start = templist.begin();
++  for ( ; start != end ; ++start)
++    {
++      if((*start)->context()==Pooma::context())
++	(*start)->affinity() = static_cast<int>
++	  ( affinityMax * ( (*start)->localID()
++			    / static_cast<double>(idMax) ) );
++    }
++
++  return;
++}
+
+-};
+
+ template<int Dim>
+ class LocalMapper
+@@ -133,22 +136,23 @@
+   LocalMapper()
+   {}
+
+-  void map(const List_t & templist) const
+-  {
+-    int idMax = templist.size();
+-    int naff = Smarts::concurrency();
+-    for (int i = 0; i< templist.size(); ++i)
+-      {
+-	templist[i]->context() = -1;
+-	templist[i]->localID() = i;
+-	templist[i]->affinity() = static_cast<int>( ( naff * ( i /
+-                                  static_cast<double>(idMax) ) ) );
+-      }
+-  }
+-
+-
++  void map(const List_t & templist) const;
+
+ };
++
++template<int Dim>
++void LocalMapper<Dim>::map(const List_t & templist) const
++{
++  int idMax = templist.size();
++  int naff = Smarts::concurrency();
++  for (int i = 0; i< templist.size(); ++i)
++    {
++      templist[i]->context() = -1;
++      templist[i]->localID() = i;
++      templist[i]->affinity() = static_cast<int>( ( naff * ( i /
++				static_cast<double>(idMax) ) ) );
++    }
++}
+
+
+ #endif     // POOMA_CONTEXTMAPPER_H
+Index: src/Partition/ContiguousMapper.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/Partition/ContiguousMapper.h,v
+retrieving revision 1.3
+diff -u -u -r1.3 ContiguousMapper.h
+--- src/Partition/ContiguousMapper.h	12 Jun 2000 21:57:57 -0000	1.3
++++ src/Partition/ContiguousMapper.h	4 Aug 2003 18:43:57 -0000
+@@ -32,98 +32,103 @@
+   {
+   }
+
+-  void map(const List_t & templist) const
+-  {
+-    int idx[Dim];
+-    for (int i = 0;i<Dim;++i)
+-      idx[i]=0;
+-    int strides[Dim];
+-    strides[Dim-1] = 1;
+-    for ( int i=Dim-2; i>=0; --i)
+-      strides[i] = strides[i+1]*blocks_m[i+1].last();
+-
+-    int npatch = 1;
+-    for (int i=0; i<Dim; ++i)
+-      npatch *= blocks_m[i].first();
+-
+-    int ncontexts = Pooma::contexts();
+-    int npc = npatch/ncontexts;
+-
+-    int remainder = npatch - (npc*ncontexts);
+-
+-    int pcontext = 0;
+-    int c = 0;
+-    int patchdone = 0;
+-    int patchleft = npatch;
+-
+-    int incriment[Dim];
+-    for (int i =0 ; i<Dim; ++i) incriment[i] = 1;
+-    while ( true  )
+-      {
+-	int allIdx = 0;
+-	for ( int i = 0 ; i < Dim ; ++i)
+-	  allIdx += idx[i]*strides[i];
+-	(*templist[allIdx]).context() = pcontext;
+-
+-	++c;
+-	++patchdone;
+-	--patchleft;
+-
+-	if(c >= npc )
+-	  {
+-	    // if we are at the end of a context, and there are still
+-	    // remainder patches left over, extend the number of
+-	    // patches per context by one, if we are not at an edge
+-	    // in the first dimension. However, if we have extra
+-	    // patches left over, and are in danger of running out
+-	    // of contexts to add patches to, add them now.
+-
+-	    if (c == npc && remainder >0 &&
+-		((idx[0]-1 >= 0 && idx[0]+1<=(blocks_m[0].first()-1)) ||
+-		 (patchleft - ((npc+1)*(ncontexts-(pcontext+1))) >=0 )) )
+-	      --remainder;
+-	    else
+-	      {
+-		c = 0;
+-		++pcontext;
+-	      }
+-	  }
+-
+-	bool t = true;
+-	for ( int i = 0 ; i < Dim ; ++i)
+-	  {
+-	    t = t && (
+-		      idx[i] == (blocks_m[i]-1) && incriment[i] == 1
+-		      ||
+-		      idx[i] == 0 && incriment[i] == -1);
+-	  }
+-	if (t) break;
+-
+-	idx[0] += incriment[0];
+-	for ( int i = 0 ; i < Dim ; ++i)
+-	  {
+-	    if ( idx[i] > blocks_m[i].last()-1)
+-	      {
+-		idx[i+1]+=incriment[i+1];
+-		idx[i]=blocks_m[i].last()-1;
+-		incriment[i] *= -1;
+-	      }
+-	    else if (idx[i]<0)
+-	      {
+-		idx[i+1]+=incriment[i+1];
+-		idx[i]=0;
+-		incriment[i] *= -1;
+-	      }
+-	    else
+-	      break;
+-	  }
+-      }
++  void map(const List_t & templist) const;
+
+-    ContextMapper<Dim>::setAffinity(templist);
+-
+-  }
+   // Member Data
+   Loc<Dim> blocks_m;
+ };
++
++template<int Dim>
++void ContiguousMapper<Dim>::map(const List_t & templist) const
++{
++  int idx[Dim];
++  for (int i = 0;i<Dim;++i)
++    idx[i]=0;
++  int strides[Dim];
++  strides[Dim-1] = 1;
++  for ( int i=Dim-2; i>=0; --i)
++    strides[i] = strides[i+1]*blocks_m[i+1].last();
++
++  int npatch = 1;
++  for (int i=0; i<Dim; ++i)
++    npatch *= blocks_m[i].first();
++
++  int ncontexts = Pooma::contexts();
++  int npc = npatch/ncontexts;
++
++  int remainder = npatch - (npc*ncontexts);
++
++  int pcontext = 0;
++  int c = 0;
++  int patchdone = 0;
++  int patchleft = npatch;
++
++  int incriment[Dim];
++  for (int i =0 ; i<Dim; ++i) incriment[i] = 1;
++  while ( true  )
++    {
++      int allIdx = 0;
++      for ( int i = 0 ; i < Dim ; ++i)
++	allIdx += idx[i]*strides[i];
++      (*templist[allIdx]).context() = pcontext;
++
++      ++c;
++      ++patchdone;
++      --patchleft;
++
++      if(c >= npc )
++	{
++	  // if we are at the end of a context, and there are still
++	  // remainder patches left over, extend the number of
++	  // patches per context by one, if we are not at an edge
++	  // in the first dimension. However, if we have extra
++	  // patches left over, and are in danger of running out
++	  // of contexts to add patches to, add them now.
++
++	  if (c == npc && remainder >0 &&
++	      ((idx[0]-1 >= 0 && idx[0]+1<=(blocks_m[0].first()-1)) ||
++	       (patchleft - ((npc+1)*(ncontexts-(pcontext+1))) >=0 )) )
++	    --remainder;
++	  else
++	    {
++	      c = 0;
++	      ++pcontext;
++	    }
++	}
++
++      bool t = true;
++      for ( int i = 0 ; i < Dim ; ++i)
++	{
++	  t = t && (
++		    idx[i] == (blocks_m[i]-1) && incriment[i] == 1
++		    ||
++		    idx[i] == 0 && incriment[i] == -1);
++	}
++      if (t)
++	break;
++
++      idx[0] += incriment[0];
++      for ( int i = 0 ; i < Dim ; ++i)
++	{
++	  if ( idx[i] > blocks_m[i].last()-1)
++	    {
++	      idx[i+1]+=incriment[i+1];
++	      idx[i]=blocks_m[i].last()-1;
++	      incriment[i] *= -1;
++	    }
++	  else if (idx[i]<0)
++	    {
++	      idx[i+1]+=incriment[i+1];
++	      idx[i]=0;
++	      incriment[i] *= -1;
++	    }
++	  else
++	    break;
++	}
++    }
++
++  ContextMapper<Dim>::setAffinity(templist);
++}
++
+
+ #endif
+Index: src/Partition/DistributedMapper.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/Partition/DistributedMapper.h,v
+retrieving revision 1.8
+diff -u -u -r1.8 DistributedMapper.h
+--- src/Partition/DistributedMapper.h	3 Dec 2001 19:38:34 -0000	1.8
++++ src/Partition/DistributedMapper.h	4 Aug 2003 18:43:58 -0000
+@@ -59,34 +59,7 @@
+   }
+
+
+-  void map(const List_t & templist) const
+-  {
+-    int ncontexts = Pooma::contexts();
+-    int npc = templist.size()/ncontexts;
+-    // If there are more contexts than patches, assign one
+-    // patch per context for as many patches as there are.
+-    if(ncontexts> templist.size())
+-      {
+-	// we should probably alert the user here!!
+-	npc = 1;
+-	ncontexts = templist.size();
+-      }
+-
+-    if (Dim == 1)
+-      {
+-	// work around, since UniformMapper is 1-dim
+-	uniformMap(blocks_m,templist,WrappedInt<Dim>());
+-      }
+-    else if(npc<3)
+-      {
+-	ContiguousMapper<Dim>(blocks_m).map(templist);
+-      }
+-    else
+-      {
+-	BisectionMapper<Dim>(blocks_m).map(templist);
+-      }
+-    return;
+-  }
++  void map(const List_t & templist) const;
+
+   void uniformMap(const Loc<1> &blocks,
+ 		  const List_t &templist,
+@@ -109,6 +82,37 @@
+   Loc<Dim> blocks_m;
+
+ };
++
++template<int Dim>
++void DistributedMapper<Dim>::map(const List_t & templist) const
++{
++  int ncontexts = Pooma::contexts();
++  int npc = templist.size()/ncontexts;
++  // If there are more contexts than patches, assign one
++  // patch per context for as many patches as there are.
++  if(ncontexts> templist.size())
++    {
++      // we should probably alert the user here!!
++      npc = 1;
++      ncontexts = templist.size();
++    }
++
++  if (Dim == 1)
++    {
++      // work around, since UniformMapper is 1-dim
++      uniformMap(blocks_m,templist,WrappedInt<Dim>());
++    }
++  else if(npc<3)
++    {
++      ContiguousMapper<Dim>(blocks_m).map(templist);
++    }
++  else
++    {
++      BisectionMapper<Dim>(blocks_m).map(templist);
++    }
++  return;
++}
++
+
+ #endif
+
+Index: src/Partition/GridPartition.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/Partition/GridPartition.h,v
+retrieving revision 1.29
+diff -u -u -r1.29 GridPartition.h
+--- src/Partition/GridPartition.h	3 Dec 2001 19:38:34 -0000	1.29
++++ src/Partition/GridPartition.h	4 Aug 2003 18:43:58 -0000
+@@ -356,111 +356,7 @@
+   template<class D>
+   int partition(const D &domain,
+ 		List_t & all,
+-		const ContextMapper<Dim> &cmapper ) const
+-  {
+-    typedef typename DomainTraits<Domain_t>::Element_t Element_t;
+-
+-    // Make sure we have the right dimensionality.
+-
+-    CTAssert(Dim == DomainTraits<D>::dimensions);
+-    CTAssert(Dim == DomainTraits<Domain_t>::dimensions);
+-
+-    Grid<Dim> tgrid = grid();
+-
+-    // if an empty domain was passed, we make empty patches
+-    if (domain.empty())
+-      {
+-	int np = 1;
+-	for (int i=0;i<Dim;++i)
+-	  np*=blocks()[i].first();
+-
+-	int start=0;
+-	Domain_t o;
+-	Domain_t a;
+-	while (start<np)
+-	  {
+-	    int gid = all.size();
+-	    int lid = -1;
+-	    Value_t *node = new Value_t(o, a, -1, gid, lid);
+-	    all.push_back(node);
+-	    ++start;
+-	  }
+-	cmapper.map(all);
+-	return maxSize();
+-      }
+-
+-
+-    if (tgrid.empty()&&!domain.empty() )
+-      {
+-	tgrid = makeRGrid(domain,blocks_m);
+-      }
+-
+-    typename Grid<Dim>::blockIterator start = tgrid.beginBlock();
+-    typename Grid<Dim>::blockIterator end = tgrid.endBlock();
+-
+-    while (start!=end)
+-      {
+-	Loc<Dim> idx = start.point();
+-	Domain_t o = Pooma::NoInit();
+-	o = * start;
+-	Domain_t a = Pooma::NoInit();
+-	a = * start;
+-
+-	// Calculate the guard cell specification for this domain.
+-
+-	if (hasInternalGuards()||hasExternalGuards())
+-	  {
+-	    for (int i=0;i<Dim;i++)
+-	      {
+-		if (idx[i]==0)
+-		  {
+-		    if (hasExternalGuards())
+-		      {
+-			o[i]=Interval<1>(o[i].first()-externalGuards().lower(i),
+-					 o[i].last());
+-			a[i]=Interval<1>(a[i].first()-externalGuards().lower(i),
+-					 a[i].last());
+-		      }
+-		    if (hasInternalGuards() && idx[i]!=(blocks()[i].first()-1))
+-		      a[i]=Interval<1>(a[i].first(),
+-				       a[i].last()+internalGuards().upper(i));
+-		  }
+-		if (idx[i]==blocks()[i].first()-1)
+-		  {
+-		    if (hasExternalGuards())
+-		      {
+-			o[i]=Interval<1>(o[i].first(),
+-					 o[i].last()+externalGuards().upper(i));
+-			a[i]=Interval<1>(a[i].first(),
+-					 a[i].last()+externalGuards().upper(i));
+-		      }
+-		    if (hasInternalGuards()&&(idx[i]!=0))
+-		      a[i]=Interval<1>(a[i].first()-internalGuards().lower(i),
+-				       a[i].last());
+-		  }
+-		if (idx[i]!=0&&
+-		   idx[i]!=(blocks()[i].first()-1)&&
+-		   hasInternalGuards()) // it's a fully internal patch
+-		  a[i]=Interval<1>(o[i].first()-internalGuards().lower(i),
+-				   o[i].last()+internalGuards().upper(i));
+-
+-	      }
+-	  }
+-
+-	// Add the domain to the layout.
+-	int gid = all.size();
+-	int lid = -1;
+-	Value_t *node = new Value_t(o, a, -1, gid, lid);
+-	all.push_back(node);
+-
+-	// Increment our counters and iterators.
+-
+-	++start;
+-      }
+-
+-    cmapper.map(all);
+-    return maxSize();
+-  }
++		const ContextMapper<Dim> &cmapper ) const;
+
+   template<class D>
+   int partition(const D &domain,
+@@ -470,38 +366,7 @@
+   }
+
+   template<class Out>
+-  void print(Out &o) const
+-  {
+-    int i;
+-    o << "GridPartition<" << Dim << ">:" << std::endl;
+-    o << "  blocks_m = " << blocks_m << std::endl;
+-    o << "  hasInternalGuards_m  hasExternalGuards_m = ";
+-    o << hasInternalGuards_m<< " "<<hasExternalGuards_m<< std::endl;
+-    o << "  internalGuards_m:" << std::endl;
+-    o << "      upper       ";
+-    for (i=0; i < Dim; ++i)
+-      o << internalGuards_m.upper(i) << " ";
+-    o << std::endl;
+-    o << "      lower       ";
+-    for (i=0; i < Dim; ++i)
+-      o << internalGuards_m.lower(i) << " ";
+-    o << std::endl;
+-    o << "  externalGuards_m:" << std::endl;
+-    o << "      upper       ";
+-    for (i=0; i < Dim; ++i)
+-      o << externalGuards_m.upper(i) << " ";
+-    o << std::endl;
+-    o << "      lower       ";
+-    for (i=0; i < Dim; ++i)
+-      o << externalGuards_m.lower(i) << " ";
+-    o << std::endl;
+-    o << "  num_m = " << num_m << std::endl;
+-    o << "  grid_m = ";
+-    if (grid_m.empty() )
+-      o << "(empty)" << std::endl;
+-    else
+-      o << grid_m << std::endl;
+-  }
++  void print(Out &o) const;
+
+ private:
+
+@@ -534,6 +399,151 @@
+   Grid<Dim> grid_m;
+ };
+
++
++template<int Dim>
++template<class D>
++int GridPartition<Dim>::partition(const D &domain,
++				  List_t & all,
++				  const ContextMapper<Dim> &cmapper ) const
++{
++  typedef typename DomainTraits<Domain_t>::Element_t Element_t;
++
++  // Make sure we have the right dimensionality.
++
++  CTAssert(Dim == DomainTraits<D>::dimensions);
++  CTAssert(Dim == DomainTraits<Domain_t>::dimensions);
++
++  Grid<Dim> tgrid = grid();
++
++  // if an empty domain was passed, we make empty patches
++  if (domain.empty())
++    {
++      int np = 1;
++      for (int i=0;i<Dim;++i)
++	np*=blocks()[i].first();
++
++      int start=0;
++      Domain_t o;
++      Domain_t a;
++      while (start<np)
++	{
++	  int gid = all.size();
++	  int lid = -1;
++	  Value_t *node = new Value_t(o, a, -1, gid, lid);
++	  all.push_back(node);
++	  ++start;
++	}
++      cmapper.map(all);
++      return maxSize();
++    }
++
++
++  if (tgrid.empty()&&!domain.empty() )
++    {
++      tgrid = makeRGrid(domain,blocks_m);
++    }
++
++  typename Grid<Dim>::blockIterator start = tgrid.beginBlock();
++  typename Grid<Dim>::blockIterator end = tgrid.endBlock();
++
++  while (start!=end)
++    {
++      Loc<Dim> idx = start.point();
++      Domain_t o = Pooma::NoInit();
++      o = * start;
++      Domain_t a = Pooma::NoInit();
++      a = * start;
++
++      // Calculate the guard cell specification for this domain.
++
++      if (hasInternalGuards()||hasExternalGuards())
++	{
++	  for (int i=0;i<Dim;i++)
++	    {
++	      if (idx[i]==0)
++		{
++		  if (hasExternalGuards())
++		    {
++		      o[i]=Interval<1>(o[i].first()-externalGuards().lower(i),
++				       o[i].last());
++		      a[i]=Interval<1>(a[i].first()-externalGuards().lower(i),
++				       a[i].last());
++		    }
++		  if (hasInternalGuards() && idx[i]!=(blocks()[i].first()-1))
++		    a[i]=Interval<1>(a[i].first(),
++				     a[i].last()+internalGuards().upper(i));
++		}
++	      if (idx[i]==blocks()[i].first()-1)
++		{
++		  if (hasExternalGuards())
++		    {
++		      o[i]=Interval<1>(o[i].first(),
++				       o[i].last()+externalGuards().upper(i));
++		      a[i]=Interval<1>(a[i].first(),
++				       a[i].last()+externalGuards().upper(i));
++		    }
++		  if (hasInternalGuards()&&(idx[i]!=0))
++		    a[i]=Interval<1>(a[i].first()-internalGuards().lower(i),
++				     a[i].last());
++		}
++	      if (idx[i]!=0&&
++		  idx[i]!=(blocks()[i].first()-1)&&
++		  hasInternalGuards()) // it's a fully internal patch
++		a[i]=Interval<1>(o[i].first()-internalGuards().lower(i),
++				 o[i].last()+internalGuards().upper(i));
++
++	    }
++	}
++
++      // Add the domain to the layout.
++      int gid = all.size();
++      int lid = -1;
++      Value_t *node = new Value_t(o, a, -1, gid, lid);
++      all.push_back(node);
++
++      // Increment our counters and iterators.
++
++      ++start;
++    }
++
++  cmapper.map(all);
++  return maxSize();
++}
++
++template<int Dim>
++template<class Out>
++void GridPartition<Dim>::print(Out &o) const
++{
++  int i;
++  o << "GridPartition<" << Dim << ">:" << std::endl;
++  o << "  blocks_m = " << blocks_m << std::endl;
++  o << "  hasInternalGuards_m  hasExternalGuards_m = ";
++  o << hasInternalGuards_m<< " "<<hasExternalGuards_m<< std::endl;
++  o << "  internalGuards_m:" << std::endl;
++  o << "      upper       ";
++  for (i=0; i < Dim; ++i)
++    o << internalGuards_m.upper(i) << " ";
++  o << std::endl;
++  o << "      lower       ";
++  for (i=0; i < Dim; ++i)
++    o << internalGuards_m.lower(i) << " ";
++  o << std::endl;
++  o << "  externalGuards_m:" << std::endl;
++  o << "      upper       ";
++  for (i=0; i < Dim; ++i)
++    o << externalGuards_m.upper(i) << " ";
++  o << std::endl;
++  o << "      lower       ";
++  for (i=0; i < Dim; ++i)
++    o << externalGuards_m.lower(i) << " ";
++  o << std::endl;
++  o << "  num_m = " << num_m << std::endl;
++  o << "  grid_m = ";
++  if (grid_m.empty() )
++    o << "(empty)" << std::endl;
++  else
++    o << grid_m << std::endl;
++}
+
+
+ //-----------------------------------------------------------------------------
+Index: src/Partition/SpatialPartition.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/Partition/SpatialPartition.h,v
+retrieving revision 1.13
+diff -u -u -r1.13 SpatialPartition.h
+--- src/Partition/SpatialPartition.h	9 Jun 2000 00:35:16 -0000	1.13
++++ src/Partition/SpatialPartition.h	4 Aug 2003 18:43:59 -0000
+@@ -275,60 +275,10 @@
+   // Partition methods
+   //============================================================
+
+-
+-
+   template<class D,class Dom>
+   int partition(const D &domain,
+ 		std::vector< Node<Dom> *> & all,
+-		const ContextMapper<1> & cmapper ) const
+-    {
+-
+-      // Make sure we have the right dimensionality between the provided
+-      // domain and the layout's domain.  We do NOT need to have the
+-      // dimensionality match between the provided layout and reference
+-      // layout, however.
+-
+-      CTAssert(DomainTraits<D>::dimensions ==
+-	       DomainTraits<Dom>::dimensions);
+-
+-      // For now, this will only work with a 1D provided layout.
+-
+-      CTAssert(DomainTraits<D>::dimensions == 1);
+-
+-      // The provided domain must actually be empty for this to work,
+-      // since we generate empty domains.
+-
+-      PAssert(domain.empty());
+-
+-      // Loop through the patches in the reference domain now.  For each one,
+-      // just add in an empty domain, assigned to the same context
+-      // as the current node that we're iterating over.
+-
+-      typename RefLayout_t::const_iterator refpatch,
+-                                           endref = reference().endGlobal();
+-
+-      for (refpatch=reference().beginGlobal(); refpatch != endref; ++refpatch)
+-	{
+-	  Node<Dom> *node = new Node<Dom>(Dom(),
+-					  Dom(),
+-					  refpatch->context(),
+-					  refpatch->globalID(),
+-					  refpatch->localID());
+-	  all.push_back(node);
+-	}
+-
+-      // This call to the mapper for the case of DefaultSPMapper
+-      // is a no-op, and could be commented out. The above loop
+-      // does both the partitioning and the mapping. The structure
+-      // of the DefaultSPmapper is maintained for this special case
+-      // even though it's redundant.
+-
+-      cmapper.map(all);
+-
+-      // Return the number of domains we added in.
+-
+-      return maxSize();
+-    }
++		const ContextMapper<1> & cmapper ) const;
+
+   template<class D,class Dom>
+   int partition(const D & domain,
+@@ -342,12 +292,7 @@
+   //============================================================
+
+   template<class Out>
+-  void print(Out &o) const
+-    {
+-      o << "SpatialPartitioner:\n";
+-      o << "  reference layout = " << reference() << "\n";
+-      o << "  maximum patches = " << maxSize() << "\n";
+-    }
++  void print(Out &o) const;
+
+ private:
+   // The reference layout
+@@ -358,6 +303,68 @@
+
+   SpatialPartition();
+ };
++
++template<class ReferenceLayout>
++template<class D,class Dom>
++int SpatialPartition<ReferenceLayout>::partition(const D &domain,
++						 std::vector< Node<Dom> *> & all,
++						 const ContextMapper<1> & cmapper) const
++{
++  // Make sure we have the right dimensionality between the provided
++  // domain and the layout's domain.  We do NOT need to have the
++  // dimensionality match between the provided layout and reference
++  // layout, however.
++
++  CTAssert(DomainTraits<D>::dimensions ==
++	   DomainTraits<Dom>::dimensions);
++
++  // For now, this will only work with a 1D provided layout.
++
++  CTAssert(DomainTraits<D>::dimensions == 1);
++
++  // The provided domain must actually be empty for this to work,
++  // since we generate empty domains.
++
++  PAssert(domain.empty());
++
++  // Loop through the patches in the reference domain now.  For each one,
++  // just add in an empty domain, assigned to the same context
++  // as the current node that we're iterating over.
++
++  typename RefLayout_t::const_iterator refpatch,
++    endref = reference().endGlobal();
++
++  for (refpatch=reference().beginGlobal(); refpatch != endref; ++refpatch)
++    {
++      Node<Dom> *node = new Node<Dom>(Dom(),
++				      Dom(),
++				      refpatch->context(),
++				      refpatch->globalID(),
++				      refpatch->localID());
++      all.push_back(node);
++    }
++
++  // This call to the mapper for the case of DefaultSPMapper
++  // is a no-op, and could be commented out. The above loop
++  // does both the partitioning and the mapping. The structure
++  // of the DefaultSPmapper is maintained for this special case
++  // even though it's redundant.
++
++  cmapper.map(all);
++
++  // Return the number of domains we added in.
++
++  return maxSize();
++}
++
++template<class ReferenceLayout>
++template<class Out>
++void SpatialPartition<ReferenceLayout>::print(Out &o) const
++{
++  o << "SpatialPartitioner:\n";
++  o << "  reference layout = " << reference() << "\n";
++  o << "  maximum patches = " << maxSize() << "\n";
++}
+
+
+ //-----------------------------------------------------------------------------
+Index: src/Partition/TilePartition.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/Partition/TilePartition.h,v
+retrieving revision 1.12
+diff -u -u -r1.12 TilePartition.h
+--- src/Partition/TilePartition.h	23 Jan 2003 20:04:39 -0000	1.12
++++ src/Partition/TilePartition.h	4 Aug 2003 18:44:01 -0000
+@@ -83,55 +83,58 @@
+   {
+   }
+
+-  void map(const List_t & templist) const
+-  {
+-    int ncontexts = Pooma::contexts();
+-    int npc = templist.size()/ncontexts;
+-    if (templist.size()%ncontexts!=0) ++npc;
+-
+-    typename List_t::const_iterator start = templist.begin();
+-    typename List_t::const_iterator end = templist.end();
+-    int c = 0;
+-    int p = 0;
+-    for ( ; start!=end ; ++start)
+-      {
+-	(*start)->context() = p;
+-	if(p == Pooma::context())
+-	  (*start)->localID() = c;
+-
+-	++c;
+-	if (c > npc)
+-	  {
+-	    ++p;
+-	    c = 0;
+-	  }
+-      }
+-
+-    int affinityMax = Smarts::concurrency();
+-    int idMax = 0;
+-
+-    start = templist.begin();
+-    for ( ; start != end ; ++start)
+-      if((*start)->context()==Pooma::context())
+-	{
+-	  (*start)->localID()=idMax;
+-	  ++idMax;
+-	}
+-     start = templist.begin();
+-     for ( ; start != end ; ++start)
+-       {
+-	 if((*start)->context()==Pooma::context())
+-	   (*start)->affinity() = static_cast<int>( affinityMax *
+-				  ( (*start)->localID() /
+-				  static_cast<double>(idMax) ) );
+-       }
+-  }
++  void map(const List_t & templist) const;
+
+   // member data
+ private:
+
+ };
+
++template<int Dim>
++void DefaultTPmapper<Dim>::map(const List_t & templist) const
++{
++  int ncontexts = Pooma::contexts();
++  int npc = templist.size()/ncontexts;
++  if (templist.size()%ncontexts!=0) ++npc;
++
++  typename List_t::const_iterator start = templist.begin();
++  typename List_t::const_iterator end = templist.end();
++  int c = 0;
++  int p = 0;
++  for ( ; start!=end ; ++start)
++    {
++      (*start)->context() = p;
++      if(p == Pooma::context())
++	(*start)->localID() = c;
++
++      ++c;
++      if (c > npc)
++	{
++	  ++p;
++	  c = 0;
++	}
++    }
++
++  int affinityMax = Smarts::concurrency();
++  int idMax = 0;
++
++  start = templist.begin();
++  for ( ; start != end ; ++start)
++    if((*start)->context()==Pooma::context())
++      {
++	(*start)->localID()=idMax;
++	++idMax;
++      }
++  start = templist.begin();
++  for ( ; start != end ; ++start)
++    {
++      if((*start)->context()==Pooma::context())
++	(*start)->affinity() = static_cast<int>( affinityMax *
++						 ( (*start)->localID() /
++			       static_cast<double>(idMax) ) );
++    }
++}
++
+
+
+ //-----------------------------------------------------------------------------
+@@ -319,78 +322,7 @@
+   //============================================================
+
+   template<class D>
+-  int partition(const D &bbox,List_t &all,const ContextMapper<Dim> &cmapper) const
+-  {
+-    typedef typename DomainTraits<Domain_t>::Element_t Element_t;
+-
+-    // Make sure we have the right dimensionality.
+-
+-    CTAssert(Dim == DomainTraits<Domain_t>::dimensions);
+-
+-    typename PatchList_t::const_iterator start = tile_m.begin();
+-    typename PatchList_t::const_iterator end = tile_m.end();
+-
+-    while (start!=end)
+-      {
+-	Domain_t o = Pooma::NoInit();
+-	o = * start;
+-	Domain_t oo = o;
+-	Domain_t a = Pooma::NoInit();
+-	a = * start;
+-
+-	if (hasInternalGuards()||hasExternalGuards())
+-	  {
+-	    for (int i=0;i<Dim;i++)
+-	      {
+-		if (oo[i].first() == bbox[i].first())
+-		  {
+-		    if (hasExternalGuards())
+-		      {
+-			o[i]=Interval<1>(o[i].first()-externalGuards().lower(i),
+-					 o[i].last());
+-			a[i]=Interval<1>(a[i].first()-externalGuards().lower(i),
+-					 a[i].last());
+-		      }
+-		    if (hasInternalGuards() && oo[i].last() != bbox[i].last() )
+-		      a[i]=Interval<1>(a[i].first(),
+-				       a[i].last()+internalGuards().upper(i));
+-		  }
+-		if (oo[i].last()== bbox[i].last())
+-		  {
+-		    if (hasExternalGuards())
+-		      {
+-			o[i]=Interval<1>(o[i].first(),
+-					 o[i].last()+externalGuards().upper(i));
+-			a[i]=Interval<1>(a[i].first(),
+-					 a[i].last()+externalGuards().upper(i));
+-		      }
+-		    if (hasInternalGuards()&&(oo[i].first() != bbox[i].first()))
+-		      a[i]=Interval<1>(a[i].first()-internalGuards().lower(i),
+-				       a[i].last());
+-		  }
+-		if (oo[i].first()!=bbox[i].first() &&
+-		    oo[i].last() != bbox[i].last() &&
+-		   hasInternalGuards()) // it's a fully internal patch
+-		  a[i]=Interval<1>(o[i].first()-internalGuards().lower(i),
+-				   o[i].last()+internalGuards().upper(i));
+-
+-	      }
+-	  }
+-
+-	// Add the domain to the layout.
+-
+-	Value_t * node = new Value_t(o,a,-1,all.size(),-1);
+-	all.push_back(node);
+-
+-	// Increment our counters and iterators.
+-
+-	++start;
+-      }
+-
+-    cmapper.map(all);
+-
+-    return all.size();
+-  }
++  int partition(const D &bbox,List_t &all,const ContextMapper<Dim> &cmapper) const;
+
+   template<class D>
+   int partition(const D &bbox,List_t &all) const
+@@ -399,32 +331,7 @@
+   }
+
+   template<class Out>
+-  void print(Out &o) const
+-  {
+-    int i;
+-    o << "TilePartition<" << Dim << ">:" << std::endl;
+-    o << "  hasInternalGuards_m  hasExternalGuards_m = ";
+-    o << hasInternalGuards_m<< " "<<hasExternalGuards_m<< std::endl;
+-    o << "  internalGuards_m:" << std::endl;
+-    o << "      upper       ";
+-    for (i=0; i < Dim; ++i)
+-      o << internalGuards_m.upper(i) << " ";
+-    o << std::endl;
+-    o << "      lower       ";
+-    for (i=0; i < Dim; ++i)
+-      o << internalGuards_m.lower(i) << " ";
+-    o << std::endl;
+-    o << "  externalGuards_m:" << std::endl;
+-    o << "      upper       ";
+-    for (i=0; i < Dim; ++i)
+-      o << externalGuards_m.upper(i) << " ";
+-    o << std::endl;
+-    o << "      lower       ";
+-    for (i=0; i < Dim; ++i)
+-      o << externalGuards_m.lower(i) << " ";
+-    o << std::endl;
+-    o << "  num_m = " << num_m << std::endl;
+-  }
++  void print(Out &o) const;
+
+ private:
+
+@@ -454,6 +361,110 @@
+
+ };
+
++template<int Dim>
++template<class D>
++int TilePartition<Dim>::partition(const D &bbox, List_t &all,
++				  const ContextMapper<Dim> &cmapper) const
++{
++  typedef typename DomainTraits<Domain_t>::Element_t Element_t;
++
++  // Make sure we have the right dimensionality.
++
++  CTAssert(Dim == DomainTraits<Domain_t>::dimensions);
++
++  typename PatchList_t::const_iterator start = tile_m.begin();
++  typename PatchList_t::const_iterator end = tile_m.end();
++
++  while (start!=end)
++    {
++      Domain_t o = Pooma::NoInit();
++      o = * start;
++      Domain_t oo = o;
++      Domain_t a = Pooma::NoInit();
++      a = * start;
++
++      if (hasInternalGuards()||hasExternalGuards())
++	{
++	  for (int i=0;i<Dim;i++)
++	    {
++	      if (oo[i].first() == bbox[i].first())
++		{
++		  if (hasExternalGuards())
++		    {
++		      o[i]=Interval<1>(o[i].first()-externalGuards().lower(i),
++				       o[i].last());
++		      a[i]=Interval<1>(a[i].first()-externalGuards().lower(i),
++				       a[i].last());
++		    }
++		  if (hasInternalGuards() && oo[i].last() != bbox[i].last() )
++		    a[i]=Interval<1>(a[i].first(),
++				     a[i].last()+internalGuards().upper(i));
++		}
++	      if (oo[i].last()== bbox[i].last())
++		{
++		  if (hasExternalGuards())
++		    {
++		      o[i]=Interval<1>(o[i].first(),
++				       o[i].last()+externalGuards().upper(i));
++		      a[i]=Interval<1>(a[i].first(),
++				       a[i].last()+externalGuards().upper(i));
++		    }
++		  if (hasInternalGuards()&&(oo[i].first() != bbox[i].first()))
++		    a[i]=Interval<1>(a[i].first()-internalGuards().lower(i),
++				     a[i].last());
++		}
++	      if (oo[i].first()!=bbox[i].first() &&
++		  oo[i].last() != bbox[i].last() &&
++		  hasInternalGuards()) // it's a fully internal patch
++		a[i]=Interval<1>(o[i].first()-internalGuards().lower(i),
++				 o[i].last()+internalGuards().upper(i));
++
++	    }
++	}
++
++      // Add the domain to the layout.
++
++      Value_t * node = new Value_t(o,a,-1,all.size(),-1);
++      all.push_back(node);
++
++      // Increment our counters and iterators.
++
++      ++start;
++    }
++
++  cmapper.map(all);
++
++  return all.size();
++}
++
++template<int Dim>
++template<class Out>
++void TilePartition<Dim>::print(Out &o) const
++{
++  int i;
++  o << "TilePartition<" << Dim << ">:" << std::endl;
++  o << "  hasInternalGuards_m  hasExternalGuards_m = ";
++  o << hasInternalGuards_m<< " "<<hasExternalGuards_m<< std::endl;
++  o << "  internalGuards_m:" << std::endl;
++  o << "      upper       ";
++  for (i=0; i < Dim; ++i)
++    o << internalGuards_m.upper(i) << " ";
++  o << std::endl;
++  o << "      lower       ";
++  for (i=0; i < Dim; ++i)
++    o << internalGuards_m.lower(i) << " ";
++  o << std::endl;
++  o << "  externalGuards_m:" << std::endl;
++  o << "      upper       ";
++  for (i=0; i < Dim; ++i)
++    o << externalGuards_m.upper(i) << " ";
++  o << std::endl;
++  o << "      lower       ";
++  for (i=0; i < Dim; ++i)
++    o << externalGuards_m.lower(i) << " ";
++  o << std::endl;
++  o << "  num_m = " << num_m << std::endl;
++}
+
+
+ //-----------------------------------------------------------------------------
+Index: src/Partition/UniformGridPartition.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/Partition/UniformGridPartition.h,v
+retrieving revision 1.28
+diff -u -u -r1.28 UniformGridPartition.h
+--- src/Partition/UniformGridPartition.h	11 Dec 2001 20:43:30 -0000	1.28
++++ src/Partition/UniformGridPartition.h	4 Aug 2003 18:44:01 -0000
+@@ -286,140 +286,10 @@
+   // 'layoutData.addDomainList(List_t &templist)'.  Return the
+   // total number of subdomains added.
+
+-
+   template<class D>
+   int partition(const D &domain,
+ 		List_t & all,
+-		const ContextMapper<Dim>& cmapper) const
+-  {
+-
+-    // The type info for domain we should be creating for the layout.
+-
+-    typedef typename DomainTraits<Domain_t>::Element_t Element_t;
+-
+-    // Make sure we have the right dimensionality.
+-
+-    CTAssert(Dim == DomainTraits<D>::dimensions);
+-    CTAssert(Dim == DomainTraits<Domain_t>::dimensions);
+-
+-    // This will only work with UnitStride domains
+-
+-    CTAssert(DomainTraits<D>::unitStride == 1);
+-    CTAssert(DomainTraits<Domain_t>::unitStride == 1);
+-
+-    // make sure the list is empty
+-
+-    PAssert(all.size() == 0);
+-
+-    // Cache the origin of the domain and make sure the domain is
+-    // properly sized. Also, build a domain corresponding to the
+-    // number of blocks in each direction for iterating over below.
+-
+-    Element_t origin[Dim];
+-    Element_t sizes[Dim];
+-    Interval<Dim> bdomain = Pooma::NoInit(); // dummy initializer
+-
+-    int i;
+-
+-    for (i = 0; i < Dim; ++i)
+-      {
+-	if (!domain.empty())
+-	  {
+-	    int gcwidth =
+-	      (internalGuards_m.lower(i) > internalGuards_m.upper(i)) ?
+-	      internalGuards_m.lower(i) : internalGuards_m.upper(i);
+-
+-	    PInsist((domain[i].length() % blocks()[i].first()) == 0,
+-		    "All the blocks in a grid must be the same size.");
+-
+-	    origin[i]  = domain[i].first();
+-	    sizes[i]   = domain[i].length() / blocks()[i].first();
+-
+-	    PInsist(sizes[i] >= gcwidth,
+-		    "Block sizes too small for guard layer specification.");
+-	  }
+-	bdomain[i] = Interval<1>(blocks()[i].first());
+-      }
+-
+-    // Loop over all the blocks, creating new domains.
+-
+-    typename Interval<Dim>::const_iterator it = bdomain.begin();
+-    while (it != bdomain.end())
+-      {
+-	// Start with an initially empty domain and empty guard cells.
+-
+-	Domain_t owned;
+-	GuardLayers<Dim> iguards(0);
+-	GuardLayers<Dim> eguards(0);
+-
+-	// Calculate the subdomain, if the global domain is not empty.
+-	// If it is, we just use the empty domain.
+-
+-	if (!domain.empty())
+-	  {
+-	    Loc<Dim> pos = *it;
+-	    for (i = 0; i < Dim; ++i)
+-	      {
+-		int position = pos[i].first();
+-		Element_t a = origin[i] + sizes[i]*position;
+-		Element_t b = a + sizes[i] - 1;
+-		typedef typename
+-		  DomainTraits<Domain_t>::OneDomain_t OneDomain_t;
+-		owned[i] = OneDomain_t(a, b);
+-	      }
+-
+-	    // Calculate the internal and external guard layer specifications
+-	    // for this domain.
+-
+-	    if (hasGuards_m)
+-	      {
+-		iguards = internalGuards_m;
+-
+-		// Check if we're at an edge, and, if so, use the
+-		// external specification for that edge.
+-
+-		for (int d = 0; d < Dim; ++d)
+-		  {
+-		    int position = pos[d].first();
+-		    if ( position == bdomain[d].first() )
+-		      {
+-			eguards.lower(d) = externalGuards_m.lower(d);
+-			iguards.lower(d) = 0;
+-		      }
+-		    if ( position == bdomain[d].last() )
+-		      {
+-			eguards.upper(d) = externalGuards_m.upper(d);
+-			iguards.upper(d) = 0;
+-		      }
+-		  }
+-	      }
+-	  }
+-	typename Value_t::ID_t gid = all.size();
+-	typename Value_t::ID_t lid = (-1);
+-
+-	// Create a new Node object to store the subdomain data.
+-
+-	GuardLayers<Dim>::addGuardLayers(owned,eguards);
+-
+-	Domain_t allocated = owned;
+-
+-	GuardLayers<Dim>::addGuardLayers(allocated,iguards);
+-
+-	Value_t *node = new Value_t(owned, allocated, -1, gid, lid);
+-
+-	all.push_back(node);
+-
+-	// Increment our counters and iterators.
+-
+-	++it;
+-      }
+-
+-    cmapper.map(all);
+-
+-    // At the end, return # of domains created.
+-
+-    return num_m;
+-  }
++		const ContextMapper<Dim>& cmapper) const;
+
+   template<class D>
+   int partition(const D &domain, List_t & list) const
+@@ -470,6 +340,141 @@
+ //============================================================
+ // UniformGridPartition inline method definitions
+ //============================================================
++
++template<int Dim>
++template<class D>
++int UniformGridPartition<Dim>::partition(const D &domain,
++					 List_t & all,
++					 const ContextMapper<Dim>& cmapper) const
++{
++  // The type info for domain we should be creating for the layout.
++
++  typedef typename DomainTraits<Domain_t>::Element_t Element_t;
++
++  // Make sure we have the right dimensionality.
++
++  CTAssert(Dim == DomainTraits<D>::dimensions);
++  CTAssert(Dim == DomainTraits<Domain_t>::dimensions);
++
++  // This will only work with UnitStride domains
++
++  CTAssert(DomainTraits<D>::unitStride == 1);
++  CTAssert(DomainTraits<Domain_t>::unitStride == 1);
++
++  // make sure the list is empty
++
++  PAssert(all.size() == 0);
++
++  // Cache the origin of the domain and make sure the domain is
++  // properly sized. Also, build a domain corresponding to the
++  // number of blocks in each direction for iterating over below.
++
++  Element_t origin[Dim];
++  Element_t sizes[Dim];
++  Interval<Dim> bdomain = Pooma::NoInit(); // dummy initializer
++
++  int i;
++
++  for (i = 0; i < Dim; ++i)
++    {
++      if (!domain.empty())
++	{
++	  int gcwidth =
++	    (internalGuards_m.lower(i) > internalGuards_m.upper(i)) ?
++	    internalGuards_m.lower(i) : internalGuards_m.upper(i);
++
++	  PInsist((domain[i].length() % blocks()[i].first()) == 0,
++		  "All the blocks in a grid must be the same size.");
++
++	  origin[i]  = domain[i].first();
++	  sizes[i]   = domain[i].length() / blocks()[i].first();
++
++	  PInsist(sizes[i] >= gcwidth,
++		  "Block sizes too small for guard layer specification.");
++	}
++      bdomain[i] = Interval<1>(blocks()[i].first());
++    }
++
++  // Loop over all the blocks, creating new domains.
++
++  typename Interval<Dim>::const_iterator it = bdomain.begin();
++  while (it != bdomain.end())
++    {
++      // Start with an initially empty domain and empty guard cells.
++
++      Domain_t owned;
++      GuardLayers<Dim> iguards(0);
++      GuardLayers<Dim> eguards(0);
++
++      // Calculate the subdomain, if the global domain is not empty.
++      // If it is, we just use the empty domain.
++
++      if (!domain.empty())
++	{
++	  Loc<Dim> pos = *it;
++	  for (i = 0; i < Dim; ++i)
++	    {
++	      int position = pos[i].first();
++	      Element_t a = origin[i] + sizes[i]*position;
++	      Element_t b = a + sizes[i] - 1;
++	      typedef typename
++		DomainTraits<Domain_t>::OneDomain_t OneDomain_t;
++	      owned[i] = OneDomain_t(a, b);
++	    }
++
++	  // Calculate the internal and external guard layer specifications
++	  // for this domain.
++
++	  if (hasGuards_m)
++	    {
++	      iguards = internalGuards_m;
++
++	      // Check if we're at an edge, and, if so, use the
++	      // external specification for that edge.
++
++	      for (int d = 0; d < Dim; ++d)
++		{
++		  int position = pos[d].first();
++		  if ( position == bdomain[d].first() )
++		    {
++		      eguards.lower(d) = externalGuards_m.lower(d);
++		      iguards.lower(d) = 0;
++		    }
++		  if ( position == bdomain[d].last() )
++		    {
++		      eguards.upper(d) = externalGuards_m.upper(d);
++		      iguards.upper(d) = 0;
++		    }
++		}
++	    }
++	}
++      typename Value_t::ID_t gid = all.size();
++      typename Value_t::ID_t lid = (-1);
++
++      // Create a new Node object to store the subdomain data.
++
++      GuardLayers<Dim>::addGuardLayers(owned,eguards);
++
++      Domain_t allocated = owned;
++
++      GuardLayers<Dim>::addGuardLayers(allocated,iguards);
++
++      Value_t *node = new Value_t(owned, allocated, -1, gid, lid);
++
++      all.push_back(node);
++
++      // Increment our counters and iterators.
++
++      ++it;
++    }
++
++  cmapper.map(all);
++
++  // At the end, return # of domains created.
++
++  return num_m;
++}
++
+
+ //-----------------------------------------------------------------------------
+ //
+
+
+
+
+
+From rguenth at tat.physik.uni-tuebingen.de  Mon Aug  4 19:36:26 2003
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Mon, 4 Aug 2003 21:36:26 +0200 (CEST)
+Subject: [PATCH] Kill use of POOMA_NO_RESTRICT
+Message-ID: <Pine.LNX.4.44.0308042134050.584-100000@goofy>
+
+
+The following patch kills the use of POOMA_NO_RESTRICT in benchmarks (the
+only place it is used currently).  The restrict keyword is guaranteed to
+be bound by the configure script.
+
+Ok?
+
+Richard.
+
+2003Aug04 Richard Guenther <richard.guenther at uni-tuebingen.de>
+
+	benchmarks/ABCTest/ABCInC.c: Remove POOMA_NO_RESTRICT check.
+	benchmarks/Acoustic2d/Acoustic2dInC.c: likewise.
+	benchmarks/BlitzLoops/Loop18InC.c: likewise.
+	benchmarks/Doof2d/Doof2dInC.c: likewise.
+	benchmarks/Doof3d/Doof3dInC.c: likewise.
+	benchmarks/GKPoisson/GKPoissonInC.c: likewise.
+	benchmarks/SimpleArray/atestInC.c: likewise.
+	benchmarks/Solvers/Jacobi/JacobiInC.c: likewise.
+	benchmarks/Solvers/Krylov/CGAInC.c: likewise.
+	benchmarks/rbSOR/rbSORinC.c: likewise.
+
+Index: benchmarks/ABCTest/ABCInC.c
+===================================================================
+RCS file: /home/pooma/Repository/r2/benchmarks/ABCTest/ABCInC.c,v
+retrieving revision 1.10
+diff -u -r1.10 ABCInC.c
+--- benchmarks/ABCTest/ABCInC.c	12 Oct 2001 23:27:06 -0000	1.10
++++ benchmarks/ABCTest/ABCInC.c	4 Aug 2003 19:31:45 -0000
+@@ -32,11 +32,6 @@
+ #include "Pooma/Configuration.h"
+ #include <math.h>
+
+-/* define away "restrict" if it is not supported */
+-
+-#if POOMA_NO_RESTRICT
+-#define restrict /**/
+-#endif
+
+ /* wrapper for integrated C/C++ compilers */
+
+Index: benchmarks/Acoustic2d/Acoustic2dInC.c
+===================================================================
+RCS file: /home/pooma/Repository/r2/benchmarks/Acoustic2d/Acoustic2dInC.c,v
+retrieving revision 1.7
+diff -u -r1.7 Acoustic2dInC.c
+--- benchmarks/Acoustic2d/Acoustic2dInC.c	7 Mar 2000 13:14:43 -0000	1.7
++++ benchmarks/Acoustic2d/Acoustic2dInC.c	4 Aug 2003 19:31:45 -0000
+@@ -31,11 +31,6 @@
+
+ #include "Pooma/Configuration.h"
+
+-/* define away "restrict" if it is not supported */
+-
+-#if POOMA_NO_RESTRICT
+-#define restrict /**/
+-#endif
+
+ /* wrapper for integrated C/C++ compilers */
+
+Index: benchmarks/BlitzLoops/Loop18InC.c
+===================================================================
+RCS file: /home/pooma/Repository/r2/benchmarks/BlitzLoops/Loop18InC.c,v
+retrieving revision 1.8
+diff -u -r1.8 Loop18InC.c
+--- benchmarks/BlitzLoops/Loop18InC.c	7 Mar 2000 13:14:44 -0000	1.8
++++ benchmarks/BlitzLoops/Loop18InC.c	4 Aug 2003 19:31:45 -0000
+@@ -31,11 +31,6 @@
+
+ #include "Pooma/Configuration.h"
+
+-/* define away "restrict" keyword if not available */
+-
+-#if POOMA_NO_RESTRICT
+-#define restrict /**/
+-#endif
+
+ /* wrapper for integrated C/C++ compilers */
+
+Index: benchmarks/Doof2d/Doof2dInC.c
+===================================================================
+RCS file: /home/pooma/Repository/r2/benchmarks/Doof2d/Doof2dInC.c,v
+retrieving revision 1.15
+diff -u -r1.15 Doof2dInC.c
+--- benchmarks/Doof2d/Doof2dInC.c	15 Oct 2001 17:34:27 -0000	1.15
++++ benchmarks/Doof2d/Doof2dInC.c	4 Aug 2003 19:31:46 -0000
+@@ -31,11 +31,6 @@
+
+ #include "Pooma/Configuration.h"
+
+-/* define away "restrict" if it is not supported */
+-
+-#if POOMA_NO_RESTRICT
+-#define restrict /**/
+-#endif
+
+ /* wrapper for integrated C/C++ compilers */
+
+Index: benchmarks/Doof3d/Doof3dInC.c
+===================================================================
+RCS file: /home/pooma/Repository/r2/benchmarks/Doof3d/Doof3dInC.c,v
+retrieving revision 1.4
+diff -u -r1.4 Doof3dInC.c
+--- benchmarks/Doof3d/Doof3dInC.c	7 Mar 2000 13:14:56 -0000	1.4
++++ benchmarks/Doof3d/Doof3dInC.c	4 Aug 2003 19:31:47 -0000
+@@ -31,11 +31,6 @@
+
+ #include "Pooma/Configuration.h"
+
+-/* define away "restrict" if it is not supported */
+-
+-#if POOMA_NO_RESTRICT
+-#define restrict /**/
+-#endif
+
+ /* wrapper for integrated C/C++ compilers */
+
+Index: benchmarks/GKPoisson/GKPoissonInC.c
+===================================================================
+RCS file: /home/pooma/Repository/r2/benchmarks/GKPoisson/GKPoissonInC.c,v
+retrieving revision 1.6
+diff -u -r1.6 GKPoissonInC.c
+--- benchmarks/GKPoisson/GKPoissonInC.c	7 Mar 2000 13:14:58 -0000	1.6
++++ benchmarks/GKPoisson/GKPoissonInC.c	4 Aug 2003 19:31:47 -0000
+@@ -31,11 +31,6 @@
+
+ #include "Pooma/Configuration.h"
+
+-/* define away "restrict" if it is not supported */
+-
+-#if POOMA_NO_RESTRICT
+-#define restrict /**/
+-#endif
+
+ /* wrapper for integrated C/C++ compilers */
+
+Index: benchmarks/SimpleArray/atestInC.c
+===================================================================
+RCS file: /home/pooma/Repository/r2/benchmarks/SimpleArray/atestInC.c,v
+retrieving revision 1.8
+diff -u -r1.8 atestInC.c
+--- benchmarks/SimpleArray/atestInC.c	7 Mar 2000 13:15:02 -0000	1.8
++++ benchmarks/SimpleArray/atestInC.c	4 Aug 2003 19:31:47 -0000
+@@ -31,11 +31,6 @@
+
+ #include "Pooma/Configuration.h"
+
+-/* define away "restrict" if it is not supported */
+-
+-#if POOMA_NO_RESTRICT
+-#define restrict /**/
+-#endif
+
+ /* wrapper for integrated C/C++ compilers */
+
+Index: benchmarks/Solvers/Jacobi/JacobiInC.c
+===================================================================
+RCS file: /home/pooma/Repository/r2/benchmarks/Solvers/Jacobi/JacobiInC.c,v
+retrieving revision 1.8
+diff -u -r1.8 JacobiInC.c
+--- benchmarks/Solvers/Jacobi/JacobiInC.c	7 Mar 2000 13:15:03 -0000	1.8
++++ benchmarks/Solvers/Jacobi/JacobiInC.c	4 Aug 2003 19:31:47 -0000
+@@ -31,11 +31,6 @@
+
+ #include "Pooma/Configuration.h"
+
+-/* define away "restrict" if it is not supported */
+-
+-#if POOMA_NO_RESTRICT
+-#define restrict /**/
+-#endif
+
+ /* wrapper for integrated C/C++ compilers */
+
+Index: benchmarks/Solvers/Krylov/CGAInC.c
+===================================================================
+RCS file: /home/pooma/Repository/r2/benchmarks/Solvers/Krylov/CGAInC.c,v
+retrieving revision 1.9
+diff -u -r1.9 CGAInC.c
+--- benchmarks/Solvers/Krylov/CGAInC.c	7 Mar 2000 13:15:05 -0000	1.9
++++ benchmarks/Solvers/Krylov/CGAInC.c	4 Aug 2003 19:31:47 -0000
+@@ -31,11 +31,6 @@
+
+ #include "Pooma/Configuration.h"
+
+-/* define away "restrict" if it is not supported */
+-
+-#if POOMA_NO_RESTRICT
+-#define restrict /**/
+-#endif
+
+ /* wrapper for integrated C/C++ compiler */
+
+Index: benchmarks/rbSOR/rbSORinC.c
+===================================================================
+RCS file: /home/pooma/Repository/r2/benchmarks/rbSOR/rbSORinC.c,v
+retrieving revision 1.1
+diff -u -r1.1 rbSORinC.c
+--- benchmarks/rbSOR/rbSORinC.c	14 Mar 2000 08:00:18 -0000	1.1
++++ benchmarks/rbSOR/rbSORinC.c	4 Aug 2003 19:31:47 -0000
+@@ -31,11 +31,6 @@
+
+ #include "Pooma/Configuration.h"
+
+-/* define away "restrict" keyword if not available */
+-
+-#if POOMA_NO_RESTRICT
+-#define restrict /**/
+-#endif
+
+ /* wrapper for integrated C/C++ compilers */
+
+
+
+
+From rguenth at tat.physik.uni-tuebingen.de  Mon Aug  4 19:38:20 2003
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Mon, 4 Aug 2003 21:38:20 +0200 (CEST)
+Subject: [PATCH] always re-generate dependencies
+Message-ID: <Pine.LNX.4.44.0308042136480.584-100000@goofy>
+
+
+The following patch causes dependencies always to be re-generated at
+configure time.  Fixes unexpected failures due to broken dependencies.
+
+Ok?
+
+Richard.
+
+2003Aug04 Richard Guenther <richard.guenther at uni-tuebingen.de>
+
+	configure: always re-create dependencies.
+
+Index: configure
+===================================================================
+RCS file: /home/pooma/Repository/r2/configure,v
+retrieving revision 1.110
+diff -u -r1.110 configure
+--- configure	30 Jan 2003 20:46:24 -0000	1.110
++++ configure	4 Aug 2003 19:35:09 -0000
+@@ -2179,14 +2179,10 @@
+   # if the directory still does not exist, we should just quit
+   -d $suitelib or die "Could not find directory '$suitelib'.  Exiting.\n";
+
+-  # check for dependency info.  create it if not already there.
++  # run the 'make depend' command to create the dependency info
+   my $dependfile = "$suitelib/depend.mk";
+-  if (not -f $dependfile)
+-    {
+-      # run the 'make depend' command to create the dependency info
+-      print "Running 'make depend' to create dependency info ...\n" if $dbgprnt;
+-      system("$makecmd depend SUITE=$suite");
+-    }
++  print "Running 'make depend' to create dependency info ...\n" if $dbgprnt;
++  system("$makecmd depend SUITE=$suite");
+ }
+
+
+
+
+
+From rguenth at tat.physik.uni-tuebingen.de  Mon Aug  4 19:48:58 2003
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Mon, 4 Aug 2003 21:48:58 +0200 (CEST)
+Subject: [PATCH] Fix Field::makeOwnCopy() (ping)
+Message-ID: <Pine.LNX.4.44.0308042146500.584-100000@goofy>
+
+
+This is a ping for the fix for multi-subfield makeOwnCopy(). The patch is
+obviously correct, I think.
+
+Tested by compiling and Field on ppc-linux.
+
+Ok?
+
+Richard.
+
+2003Aug04 Richard Guenther <richard.guenther at uni-tuebingen.de>
+
+	src/Field/FieldEngine/FieldEngine.h: pass correct parent to
+	makeOwnCopy.
+
+Index: src/Field/FieldEngine/FieldEngine.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/Field/FieldEngine/FieldEngine.h,v
+retrieving revision 1.4
+diff -u -r1.4 FieldEngine.h
+--- src/Field/FieldEngine/FieldEngine.h	29 Jan 2003 19:35:38 -0000	1.4
++++ src/Field/FieldEngine/FieldEngine.h	4 Aug 2003 19:45:10 -0000
+@@ -606,7 +606,7 @@
+       {
+         data(m, c) = model[m*stride_m + c];
+         data(m, c).engine().makeOwnCopy();
+-        data(m, c).relations().makeOwnCopy(s);
++        data(m, c).relations().makeOwnCopy(s.subField(m, c));
+       }
+     }
+   }
+
+
+
+From rguenth at tat.physik.uni-tuebingen.de  Mon Aug  4 19:54:14 2003
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Mon, 4 Aug 2003 21:54:14 +0200 (CEST)
+Subject: [PATCH] Clean up domain accessors in Engine and Array
+Message-ID: <Pine.LNX.4.44.0308042149250.584-100000@goofy>
+
+
+This is my last pending change and probably the most controversical. It
+cleans up domain accessors of engines to return const references always.
+This fixes use of these as arguments to function calls which succeeds or
+fails now dependend on the actual engine implementation used. Array is
+changed accordingly and the expression engine needs a new member to
+contain the domain (doesnt affect runtime positively or negatively).
+
+Tested by full build and check on ppc-linux, ia32-linux and parallel
+cheetah-ia32-linux with no regressions.
+
+Ok?
+
+Richard.
+
+
+2003Aug04 Richard Guenther <richard.guenther at uni-tuebingen.de>
+
+	src/Array/Array.h: make domain accessors return const reference
+	objects.
+	src/Engine/ExpressionEngine.h: make domain() return const
+	reference object.
+	src/Engine/ForwardingEngine.h: likewise.
+	src/Engine/IndexFunctionEngine.h: likewise.
+	src/Engine/IndirectionEngine.h: likewise.
+	src/Engine/UserFunction.h: likewise.
+
+Index: src/Array/Array.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/Array/Array.h,v
+retrieving revision 1.146
+diff -u -r1.146 Array.h
+--- src/Array/Array.h	20 Feb 2003 16:39:42 -0000	1.146
++++ src/Array/Array.h	4 Aug 2003 19:47:36 -0000
+@@ -1806,17 +1806,17 @@
+   // Assessor functions that return this array's domain, which is obtained
+   // from the engine.
+
+-  inline Domain_t domain() const
++  inline const Domain_t& domain() const
+     {
+       return engine_m.domain();
+     }
+
+-  inline Domain_t physicalDomain() const
++  inline const Domain_t& physicalDomain() const
+     {
+       return engine_m.layout().innerDomain();
+     }
+
+-  inline Domain_t totalDomain() const
++  inline const Domain_t& totalDomain() const
+     {
+       return engine_m.domain();
+     }
+Index: src/Engine/ExpressionEngine.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/Engine/ExpressionEngine.h,v
+retrieving revision 1.76
+diff -u -r1.76 ExpressionEngine.h
+--- src/Engine/ExpressionEngine.h	26 Sep 2001 00:14:40 -0000	1.76
++++ src/Engine/ExpressionEngine.h	4 Aug 2003 19:47:37 -0000
+@@ -499,12 +499,14 @@
+   //---------------------------------------------------------------------------
+   // Expression constructor. Just stick the expression in local storage.
+
+-  inline Engine(const Expr &expr) : expr_m(expr) { }
++  inline Engine(const Expr &expr) : expr_m(expr),
++    domain_m(forEach(expr_m, DomainFunctorTag(), DomainFunctorTag())) { }
+
+   //---------------------------------------------------------------------------
+   // Copy constructor.
+
+-  inline Engine(const Engine_t &engine) : expr_m(engine.expression()) { }
++  inline Engine(const Engine_t &engine) : expr_m(engine.expression()),
++    domain_m(engine.domain()) { }
+
+   //---------------------------------------------------------------------------
+   // Subsetting Constructor. We build this expression engine, in place, from
+@@ -517,13 +519,15 @@
+   template<int Dim2, class T2, class Expr2, class Initializer>
+   inline Engine(const Engine<Dim2, T2, ExpressionTag<Expr2> > &e,
+     const Initializer &i)
+-  : expr_m(e.expression(), i)
++  : expr_m(e.expression(), i),
++    domain_m(forEach(expr_m, DomainFunctorTag(), DomainFunctorTag()))
+     { }
+
+   template<int Dim2, class T2, class Expr2, class I1, class I2>
+   inline Engine(const Engine<Dim2, T2, ExpressionTag<Expr2> > &e,
+                 const I1 &i1, const I2 &i2)
+-    : expr_m(e.expression(), i1, i2)
++    : expr_m(e.expression(), i1, i2),
++      domain_m(forEach(expr_m, DomainFunctorTag(), DomainFunctorTag()))
+   { }
+
+   //---------------------------------------------------------------------------
+@@ -531,7 +535,9 @@
+
+   template<class Expr2>
+   explicit inline Engine(const Engine<Dim,T,ExpressionTag<Expr2> > &e)
+-    : expr_m(e.expression()) { }
++    : expr_m(e.expression()),
++      domain_m(forEach(expr_m, DomainFunctorTag(), DomainFunctorTag()))
++  { }
+
+   //---------------------------------------------------------------------------
+   // Accessor functions that return the expression.
+@@ -600,12 +606,13 @@
+   // combine the results based on the DomainFunctorTag. The DomainFunctorTag
+   // combiners are above.
+
+-  Domain_t domain() const
++  inline const Domain_t& domain() const
+     {
+-      return forEach(expr_m, DomainFunctorTag(), DomainFunctorTag());
++      return domain_m;
+     }
+
+-  //---------------------------------------------------------------------------   // Return a layout.
++  //---------------------------------------------------------------------------
++  // Return a layout.
+
+   inline Layout_t layout() const { return Layout_t(domain()); }
+
+@@ -638,6 +645,10 @@
+   // The expression is stored here.
+
+   Expr expr_m;
++
++  // The domain of the expression.
++
++  Domain_t domain_m;
+
+ };
+
+Index: src/Engine/ForwardingEngine.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/Engine/ForwardingEngine.h,v
+retrieving revision 1.46
+diff -u -r1.46 ForwardingEngine.h
+--- src/Engine/ForwardingEngine.h	12 Mar 2003 21:45:26 -0000	1.46
++++ src/Engine/ForwardingEngine.h	4 Aug 2003 19:47:39 -0000
+@@ -266,7 +266,7 @@
+   //---------------------------------------------------------------------------
+   // Returns the domain, which is acquired from the contained engine.
+
+-  inline Domain_t domain() const { return elemEngine().domain(); }
++  inline const Domain_t& domain() const { return elemEngine().domain(); }
+
+   //---------------------------------------------------------------------------
+   // Return the first value for the specified direction.
+Index: src/Engine/IndexFunctionEngine.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/Engine/IndexFunctionEngine.h,v
+retrieving revision 1.24
+diff -u -r1.24 IndexFunctionEngine.h
+--- src/Engine/IndexFunctionEngine.h	3 Dec 2001 19:38:33 -0000	1.24
++++ src/Engine/IndexFunctionEngine.h	4 Aug 2003 19:47:39 -0000
+@@ -228,7 +228,7 @@
+   //---------------------------------------------------------------------------
+   // Return/set the domain. Also, return the base domain.
+
+-  const Domain_t &domain() const { return domain_m; }
++  inline const Domain_t &domain() const { return domain_m; }
+   void setDomain(const Domain_t &dom) { domain_m = dom; }
+
+   //---------------------------------------------------------------------------
+Index: src/Engine/IndirectionEngine.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/Engine/IndirectionEngine.h,v
+retrieving revision 1.24
+diff -u -r1.24 IndirectionEngine.h
+--- src/Engine/IndirectionEngine.h	12 Oct 2001 18:52:40 -0000	1.24
++++ src/Engine/IndirectionEngine.h	4 Aug 2003 19:47:40 -0000
+@@ -246,7 +246,7 @@
+
+   //---------------------------------------------------------------------------
+
+-  inline Domain_t domain() const
++  inline const Domain_t& domain() const
+   {
+     return array2_m.domain();
+   }
+Index: src/Engine/UserFunction.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/Engine/UserFunction.h,v
+retrieving revision 1.29
+diff -u -r1.29 UserFunction.h
+--- src/Engine/UserFunction.h	3 Dec 2001 19:38:33 -0000	1.29
++++ src/Engine/UserFunction.h	4 Aug 2003 19:47:41 -0000
+@@ -241,7 +241,7 @@
+   // Return the domain.
+   //---------------------------------------------------------------------------
+
+-  Domain_t domain() const { return expression_m.domain(); }
++  inline const Domain_t& domain() const { return expression_m.domain(); }
+
+   //---------------------------------------------------------------------------
+   // Return first index in the specified direction.
+
+
+

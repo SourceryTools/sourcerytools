@@ -1,0 +1,172 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [coldfire-gnu-discuss] systemcall select() seems to overwrite variables on the stack
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:coldfire-gnu-discuss%40codesourcery.com?Subject=Re%3A%20%5Bcoldfire-gnu-discuss%5D%20systemcall%20select%28%29%20seems%20to%20overwrite%0A%20variables%20on%20the%20stack&In-Reply-To=%3C4CB40133.5090305%40centersystems.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000744.html">
+   <LINK REL="Next"  HREF="000756.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[coldfire-gnu-discuss] systemcall select() seems to overwrite variables on the stack</H1>
+    <B>Andreas Wehrmann</B> 
+    <A HREF="mailto:coldfire-gnu-discuss%40codesourcery.com?Subject=Re%3A%20%5Bcoldfire-gnu-discuss%5D%20systemcall%20select%28%29%20seems%20to%20overwrite%0A%20variables%20on%20the%20stack&In-Reply-To=%3C4CB40133.5090305%40centersystems.com%3E"
+       TITLE="[coldfire-gnu-discuss] systemcall select() seems to overwrite variables on the stack">a.wehrmann at centersystems.com
+       </A><BR>
+    <I>Tue Oct 12 06:33:23 UTC 2010</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000744.html">systemcall select() seems to overwrite variables on the stack
+</A></li>
+        <LI>Next message: <A HREF="000756.html">[coldfire-gnu-discuss] systemcall select() seems to overwrite variables on the stack
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#747">[ date ]</a>
+              <a href="thread.html#747">[ thread ]</a>
+              <a href="subject.html#747">[ subject ]</a>
+              <a href="author.html#747">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>  A colleague and I managed to write a test program that reproduces a 
+problem related to calling select(). In the test program, when compiled 
+with optimization (-O2), the second call to select() never returns, not 
+even after the timeout. This seems to be a very delicate problem, 
+because if I change anything in the program it might work again. In this 
+special case: when I remove the trace after the call to select(), the 
+program works (with and without optimization enabled).
+Because of this, I attached the assembler output from the compiler, plus 
+a readable form and of course the source code of the test program + the 
+makefile used to build the program.
+I hope this helps.
+
+Best regards,
+Andreas Wehrmann
+
+On 10/11/2010 04:14 PM, Andreas Wehrmann wrote:
+&gt;<i> Hello!
+</I>&gt;<i>
+</I>&gt;<i> I recently came across a very annoying problem.
+</I>&gt;<i> All this is happening with the latest version of the toolchain
+</I>&gt;<i> (freescale-coldfire-m68k-linux-gnu-4.4-217.i686.rpm).
+</I>&gt;<i>
+</I>&gt;<i> I have a multithreading application in which one thread simply calls 
+</I>&gt;<i> select() in
+</I>&gt;<i> a loop for a single descriptor and then updates some pointers in case 
+</I>&gt;<i> of a successful return.
+</I>&gt;<i> The problem now is: The first parameter to select seems to get 
+</I>&gt;<i> destroyed in certain cases.
+</I>&gt;<i> I have included the problematic code as an attachement.
+</I>&gt;<i>
+</I>&gt;<i> The following happens: At the beginning of the thread, I declare the 
+</I>&gt;<i> variable &quot;nfds&quot; and
+</I>&gt;<i> initialize it with (select_fd + 1). But just after the return of 
+</I>&gt;<i> select() the variable has some useless value (see output). This 
+</I>&gt;<i> &quot;useless value&quot; is always the same!
+</I>&gt;<i> The code produces the following output:
+</I>&gt;<i>
+</I>&gt;<i> ...
+</I>&gt;<i> ldi_dev.c  before select_fd=67 | nfds = 68
+</I>&gt;<i> ldi_dev.c  before select_fd=67 | nfds = -2141341700
+</I>&gt;<i> ldi_dev.c  select(): Invalid argument
+</I>&gt;<i> ldi_dev.c  exiting mainloop
+</I>&gt;<i>
+</I>&gt;<i> The problem didn't occur with the old toolchain 
+</I>&gt;<i> (freescale-coldfire-m68k-linux-gnu-4.2-35.i686.rpm).
+</I>&gt;<i> The problem doesn't occur when compiling without the optimization flag 
+</I>&gt;<i> (the problematic code gets compiled with -O2 by default).
+</I>&gt;<i> The code works when using the poll() systemcall.
+</I>&gt;<i>
+</I>&gt;<i> Since the variable &quot;nfds&quot; is only visible to this particular thread,
+</I>&gt;<i> this cannot be a multithreading problem.
+</I>&gt;<i> See the attached screenshot for ddd output.
+</I>&gt;<i>
+</I>&gt;<i> Now what makes this even more confusing is, that the code seems to 
+</I>&gt;<i> work when I uncomment the trace just after the call to select()...
+</I>&gt;<i> I was assuming it might be a libc problem, because I came across this 
+</I>&gt;<i> mailinglist entry:
+</I>&gt;<i> <A HREF="http://sources.redhat.com/ml/libc-alpha/2003-06/msg00030.html">http://sources.redhat.com/ml/libc-alpha/2003-06/msg00030.html</A>
+</I>&gt;<i>
+</I>&gt;<i> I hope it's not a bug in the compiler. We updated to the latest 
+</I>&gt;<i> version of the toolchain because we ran across some mutex related 
+</I>&gt;<i> problems with the old version (it seems that sometimes threads don't 
+</I>&gt;<i> get waken up when they were waiting for a mutex that was locked the 
+</I>&gt;<i> moment they tried to acquire the lock).
+</I>&gt;<i>
+</I>&gt;<i> Best regards,
+</I>&gt;<i> Andreas Wehrmann
+</I>&gt;<i>
+</I>
+
+-- 
+Dipl.-Ing. (FH) Andreas Wehrmann
+Software Development
+--------------------------------------------------------------
+Center Communication Systems GmbH
+A-1210 Wien, Ignaz-K&#246;ck-Stra&#223;e 19
+Sitz in Wien
+FN 796 88p, Firmenbuchgericht Wien
+www.centersystems.com
+
+Tel.: +43 (0) 190 199 - 3616
+Mobile: +43 (0) 664 884 75916
+Fax: +43 (0) 190 199 - 2110
+E-Mail: <A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/coldfire-gnu-discuss">a.wehrmann at centersystems.com</A>
+
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: Makefile
+URL: &lt;<A HREF="http://sourcerytools.com/pipermail/coldfire-gnu-discuss/attachments/20101012/03232c27/attachment.ksh">http://sourcerytools.com/pipermail/coldfire-gnu-discuss/attachments/20101012/03232c27/attachment.ksh</A>&gt;
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: test_select.c
+Type: text/x-csrc
+Size: 1865 bytes
+Desc: not available
+URL: &lt;<A HREF="http://sourcerytools.com/pipermail/coldfire-gnu-discuss/attachments/20101012/03232c27/attachment.c">http://sourcerytools.com/pipermail/coldfire-gnu-discuss/attachments/20101012/03232c27/attachment.c</A>&gt;
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: test_select_O2.s
+URL: &lt;<A HREF="http://sourcerytools.com/pipermail/coldfire-gnu-discuss/attachments/20101012/03232c27/attachment-0001.ksh">http://sourcerytools.com/pipermail/coldfire-gnu-discuss/attachments/20101012/03232c27/attachment-0001.ksh</A>&gt;
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: test_select_O2_readable.output
+URL: &lt;<A HREF="http://sourcerytools.com/pipermail/coldfire-gnu-discuss/attachments/20101012/03232c27/attachment-0002.ksh">http://sourcerytools.com/pipermail/coldfire-gnu-discuss/attachments/20101012/03232c27/attachment-0002.ksh</A>&gt;
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: test_select_unoptimized.s
+URL: &lt;<A HREF="http://sourcerytools.com/pipermail/coldfire-gnu-discuss/attachments/20101012/03232c27/attachment-0003.ksh">http://sourcerytools.com/pipermail/coldfire-gnu-discuss/attachments/20101012/03232c27/attachment-0003.ksh</A>&gt;
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: test_select_unoptimized_readable.output
+URL: &lt;<A HREF="http://sourcerytools.com/pipermail/coldfire-gnu-discuss/attachments/20101012/03232c27/attachment-0004.ksh">http://sourcerytools.com/pipermail/coldfire-gnu-discuss/attachments/20101012/03232c27/attachment-0004.ksh</A>&gt;
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000744.html">systemcall select() seems to overwrite variables on the stack
+</A></li>
+	<LI>Next message: <A HREF="000756.html">[coldfire-gnu-discuss] systemcall select() seems to overwrite variables on the stack
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#747">[ date ]</a>
+              <a href="thread.html#747">[ thread ]</a>
+              <a href="subject.html#747">[ subject ]</a>
+              <a href="author.html#747">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/coldfire-gnu-discuss">More information about the coldfire-gnu-discuss
+mailing list</a><br>
+</body></html>

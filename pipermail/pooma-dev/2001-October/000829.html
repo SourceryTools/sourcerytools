@@ -1,0 +1,1058 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> Patch to NewField/Field.h (2/3)
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20Patch%20to%20NewField/Field.h%20%282/3%29&In-Reply-To=%3C200110162226.f9GMQeJ02801%40saltydog.lanl.gov%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000828.html">
+   <LINK REL="Next"  HREF="000830.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>Patch to NewField/Field.h (2/3)</H1>
+    <B>Dave Nystrom</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20Patch%20to%20NewField/Field.h%20%282/3%29&In-Reply-To=%3C200110162226.f9GMQeJ02801%40saltydog.lanl.gov%3E"
+       TITLE="Patch to NewField/Field.h (2/3)">wdn at lanl.gov
+       </A><BR>
+    <I>Tue Oct 16 22:26:40 UTC 2001</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000828.html">Patch to NewField/Field.h (3/3)
+</A></li>
+        <LI>Next message: <A HREF="000830.html">Patch to NewField/Field.h (1/3)
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#829">[ date ]</a>
+              <a href="thread.html#829">[ thread ]</a>
+              <a href="subject.html#829">[ subject ]</a>
+              <a href="author.html#829">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>  // Model-initializer constructor. Used by SubFieldView and 
+  // View1Implementation above and by MakeFieldReturn in FieldCreateLeaf.h.
+
+  template&lt;class GT2, class T2, class ET2, class Initializer&gt;
+  Field(const Field&lt;GT2, T2, ET2&gt; &amp;model, const Initializer &amp;i)
+  : fieldEngine_m(model.fieldEngine(), i)
+    { }
+
+  // Centering-Model constructor. This version differs from the one above
+  // in that it constructs a field with uninitialized engines with a new
+  // centering.  The new field gets its mesh and domain information from
+  // the model field.
+
+  template&lt;class Centering, class GT2, class T2, class ET2&gt;
+  Field(const Centering &amp;baseInit, const Field&lt;GT2, T2, ET2&gt; &amp;model)
+    : fieldEngine_m(baseInit, model.fieldEngine())
+  { }
+
+
+  //---------------------------------------------------------------------------
+  // Empty destructor is fine for us.
+  
+  ~Field() { }
+
+
+  //---------------------------------------------------------------------------
+  // Accessors.
+
+  inline const Engine_t &amp;engine() const
+    {
+      return fieldEngine_m.engine();
+    }
+
+  inline const FieldEngine_t &amp;fieldEngine() const
+    {
+      return fieldEngine_m;
+    }
+    
+  inline FieldEngine_t &amp;fieldEngine()
+    {
+      return fieldEngine_m;
+    }
+    
+  inline int numSubFields() const
+    {
+      return fieldEngine_m.numSubFields();
+    }
+        
+  inline const Domain_t physicalCellDomain() const
+    {
+      return fieldEngine_m.physicalCellDomain();
+    }
+        
+  inline Domain_t totalCellDomain() const
+    {
+      return fieldEngine_m.totalCellDomain();
+    }
+
+  Domain_t physicalDomain(int iSubfield) const
+    {
+      return fieldEngine_m.physicalDomain(iSubfield);
+    }
+
+  Domain_t totalDomain(int iSubfield) const
+    {
+      return fieldEngine_m.totalDomain(iSubfield);
+    }
+
+  Domain_t physicalDomain() const
+    {
+      return fieldEngine_m.physicalDomain();
+    }
+
+  Domain_t totalDomain() const
+    {
+      return fieldEngine_m.totalDomain();
+    }
+
+  Domain_t domain() const
+    {
+      return fieldEngine_m.physicalDomain();
+    }
+
+  Layout_t layout() const
+    {
+      return fieldEngine_m.engine().layout();
+    }
+
+  //---------------------------------------------------------------------------
+  // Instruct the field to make its own copy of its data.
+  // Recursively call ourself with subfield views of this field. When we're
+  // through, tell the fieldEngine to make a distinct copy of itself.
+
+  void makeOwnCopy()
+    {
+      if (numSubFields() == 0)
+        {
+          // Make a distinct copy of the fieldEngine.
+          
+          fieldEngine_m.makeOwnCopy(*this);
+        }
+      else
+        {
+          for (int i = 0; i &lt; numSubFields(); i++)
+            (*this)[i].makeOwnCopy();
+        }
+    }
+      
+  
+  //---------------------------------------------------------------------------
+  // Sub-field view creation function.
+  // A field consists of (potentially) several sub-fields. This function
+  // returns a view of one of these.
+
+  inline typename SubFieldView&lt;This_t&gt;::Type_t
+  operator[](int iSubfield) const
+    {
+      typedef SubFieldView&lt;This_t&gt; Ret_t;
+      return Ret_t::make(*this, iSubfield);
+    }
+
+
+  //---------------------------------------------------------------------------
+  // View-creation operations. These operator() and read() functions take 
+  // zero or more sub-domains, which combine to form a domain with 
+  // dimensionality identical to the rank of the field. The zero argument 
+  // version returns a view of the physical domain and the 'All'-suffixed
+  // versions return a view of the total domain.
+
+  inline typename View1&lt;This_t, Domain_t&gt;::ReadType_t 
+  read() const
+    {
+      typedef View1&lt;This_t, Domain_t&gt; Ret_t;
+      return Ret_t::makeRead(*this, physicalDomain());
+    }
+
+  inline typename View1&lt;This_t, Domain_t&gt;::ReadType_t 
+  readAll() const
+    {
+      typedef View1&lt;This_t, Domain_t&gt; Ret_t;
+      return Ret_t::makeRead(*this, totalDomain());
+    }
+
+  template&lt;class Sub1&gt; 
+  inline typename View1&lt;This_t, Sub1&gt;::ReadType_t 
+  read(const Sub1 &amp;s1) const
+    {
+      typedef View1&lt;This_t, Sub1&gt; Ret_t;
+      return Ret_t::makeRead(*this, s1);
+    }
+
+  template&lt;class Sub1, class Sub2&gt; 
+  inline typename View2&lt;This_t, Sub1, Sub2&gt;::ReadType_t 
+  read(const Sub1 &amp;s1, const Sub2 &amp;s2) const
+    {
+      typedef View2&lt;This_t, Sub1, Sub2&gt; Ret_t;
+      return Ret_t::makeRead(*this, s1, s2);
+    }
+
+  template&lt;class Sub1, class Sub2, class Sub3&gt; 
+  inline typename View3&lt;This_t, Sub1, Sub2, Sub3&gt;::ReadType_t 
+  read(const Sub1 &amp;s1, const Sub2 &amp;s2, const Sub3 &amp;s3) const
+    {
+      typedef View3&lt;This_t, Sub1, Sub2, Sub3&gt; Ret_t;
+      return Ret_t::makeRead(*this, s1, s2, s3);
+    }
+
+  inline typename View1&lt;This_t, Domain_t&gt;::Type_t 
+  operator()() const
+    {
+      typedef View1&lt;This_t, Domain_t&gt; Ret_t;
+      return Ret_t::make(*this, physicalDomain());
+    }
+
+  inline typename View1&lt;This_t, Domain_t&gt;::Type_t 
+  all() const
+    {
+      typedef View1&lt;This_t, Domain_t&gt; Ret_t;
+      return Ret_t::make(*this, totalDomain());
+    }
+
+  template&lt;class Sub1&gt; 
+  inline typename View1&lt;This_t, Sub1&gt;::Type_t 
+  operator()(const Sub1 &amp;s1) const
+    {
+      typedef View1&lt;This_t, Sub1&gt; Ret_t;
+      return Ret_t::make(*this, s1);
+    }
+
+  template&lt;class Sub1, class Sub2&gt; 
+  inline typename View2&lt;This_t, Sub1, Sub2&gt;::Type_t 
+  operator()(const Sub1 &amp;s1, const Sub2 &amp;s2) const
+    {
+      typedef View2&lt;This_t, Sub1, Sub2&gt; Ret_t;
+      return Ret_t::make(*this, s1, s2);
+    }
+
+  template&lt;class Sub1, class Sub2, class Sub3&gt; 
+  inline typename View3&lt;This_t, Sub1, Sub2, Sub3&gt;::Type_t 
+  operator()(const Sub1 &amp;s1, const Sub2 &amp;s2, const Sub3 &amp;s3) const
+    {
+      typedef View3&lt;This_t, Sub1, Sub2, Sub3&gt; Ret_t;
+      return Ret_t::make(*this, s1, s2, s3);
+    }
+
+
+  //---------------------------------------------------------------------------
+  // Component-forwarding functions. These work quite similar to the ones from
+  // Array except we produce a Field with the same GeometryTag.
+
+  inline typename ComponentView&lt;Loc&lt;1&gt;, This_t&gt;::Type_t
+  comp(const int &amp;i1) const
+  {
+    return ComponentView&lt;Loc&lt;1&gt;, This_t&gt;::make(*this, Loc&lt;1&gt;(i1));
+  }
+
+  inline typename ComponentView&lt;Loc&lt;2&gt;, This_t&gt;::Type_t
+  comp(int i1, int i2) const
+  {
+    return ComponentView&lt;Loc&lt;2&gt;, This_t&gt;::make(*this, Loc&lt;2&gt;(i1, i2));
+  }
+
+  template&lt;class Components&gt;
+  inline typename ComponentView&lt;Components, This_t&gt;::Type_t
+  comp(const Components &amp;loc) const
+  {
+    return ComponentView&lt;Components, This_t&gt;::make(*this, loc);
+  }
+
+
+  //---------------------------------------------------------------------------
+  // Patch accessor functions returns the i'th patch.
+
+  inline typename Patch&lt;This_t&gt;::Type_t
+  patchLocal(EnginePatch::PatchID_t i) const
+    {
+      return Patch&lt;This_t&gt;::make(*this, i);
+    }
+
+  inline int
+  numPatchesLocal() const
+  {
+    return engineFunctor(engine(), EngineNumPatches());
+  }
+
+  //---------------------------------------------------------------------------
+  // Copy assignment operators. We pack this assignment expression into a
+  // PETE binary expression tree node and then use this to construct an
+  // array with an expression engine. We then pass this on to an evaluator,
+  // which handles the computation. The first three versions handle assigning
+  // Arrays and ConstArrays to Arrays and the fourth one handles assigning
+  // scalars.
+
+  This_t &amp;operator=(const This_t &amp;rhs)
+    {
+      assign(*this, rhs, OpAssign());
+      return *this;
+    }
+
+  const This_t &amp;operator=(const This_t &amp;rhs) const
+    {
+      return assign(*this, rhs, OpAssign());
+    }
+
+  template&lt;class T1&gt;
+  const This_t &amp;operator=(const T1 &amp;rhs) const
+    {
+      return assign(*this, rhs, OpAssign());
+    }
+
+
+  //---------------------------------------------------------------------------
+  // Op-assignment operators. 
+
+  // Addition.
+
+  template&lt;class T1&gt;
+  const This_t &amp;operator+=(const T1 &amp;rhs) const
+    {
+      return assign(*this, rhs, OpAddAssign());
+    }
+
+  // Subtraction.
+
+  template&lt;class T1&gt;
+  const This_t &amp;operator-=(const T1 &amp;rhs) const
+    {
+      return assign(*this, rhs, OpSubtractAssign());
+    }
+
+  // Multiplication.
+
+  template&lt;class T1&gt;
+  const This_t &amp;operator*=(const T1 &amp;rhs) const
+    {
+      return assign(*this, rhs, OpMultiplyAssign());
+    }
+
+  // Division.
+
+  template&lt;class T1&gt;
+  const This_t &amp;operator/=(const T1 &amp;rhs) const
+    {
+      return assign(*this, rhs, OpDivideAssign());
+    }
+
+  // Modulus.
+
+  template&lt;class T1&gt;
+  const This_t &amp;operator%=(const T1 &amp;rhs) const
+    {
+      return assign(*this, rhs, OpModAssign());
+    }
+
+  // Bitwise-Or.
+
+  template&lt;class T1&gt;
+  const This_t &amp;operator|=(const T1 &amp;rhs) const
+    {
+      return assign(*this, rhs, OpBitwiseOrAssign());
+    }
+
+  // Bitwise-And.
+
+  template&lt;class T1&gt;
+  const This_t &amp;operator&amp;=(const T1 &amp;rhs) const
+    {
+      return assign(*this, rhs, OpBitwiseAndAssign());
+    }
+
+  // Bitwise-Xor.
+
+  template&lt;class T1&gt;
+  const This_t &amp;operator^=(const T1 &amp;rhs) const
+    {
+      return assign(*this, rhs, OpBitwiseXorAssign());
+    }
+
+  // Left shift.
+
+  template&lt;class T1&gt;
+  const This_t &amp;operator&lt;&lt;=(const T1 &amp;rhs) const
+    {
+      return assign(*this, rhs, OpLeftShiftAssign());
+    }
+
+  // Right shift.
+
+  template&lt;class T1&gt;
+  const This_t &amp;operator&gt;&gt;=(const T1 &amp;rhs) const
+    {
+      return assign(*this, rhs, OpRightShiftAssign());
+    }
+
+
+  //---------------------------------------------------------------------------
+  // Automatic update support.
+  
+  template&lt;class Category&gt;         
+  void addUpdater(const Category &amp;bc)
+  {
+    if (numSubFields() == 0)
+      {
+	fieldEngine_m.updaters().addUpdater(createUpdater(*this, bc));
+      }
+    else
+      {
+	for (int i = 0; i &lt; numSubFields(); i++)
+	  (*this)[i].addUpdater(bc);
+      }
+  }
+
+  template&lt;class UpdaterIntitializer&gt;  
+  void addUpdaters(const UpdaterIntitializer &amp;init)
+    {
+      init(*this);
+    }
+  
+  void removeUpdaters()
+    {
+      if (numSubFields() == 0)
+        fieldEngine_m.updaters().erase();
+      else
+        {
+          for (int i = 0; i &lt; numSubFields(); i++)
+            (*this)[i].removeUpdaters();
+        }
+    }
+  
+  void update(bool makeDirty = false) const
+    {
+      if (numSubFields() == 0)
+        {
+          if (makeDirty)
+            fieldEngine_m.updaters().setDirty();
+          fieldEngine_m.updaters().notifyPreRead();
+        }
+      else
+        {
+          for (int i = 0; i &lt; numSubFields(); i++)
+            (*this)[i].update(makeDirty);
+        }
+    }
+  
+  void setDirty() const
+    {
+      if (numSubFields() == 0)
+        {
+          fieldEngine_m.updaters().setDirty();
+        }
+      else
+        {
+          for (int i = 0; i &lt; numSubFields(); i++)
+            (*this)[i].setDirty();
+        }
+    }
+  
+  void clearDirty() const
+    {
+      if (numSubFields() == 0)
+        {
+          fieldEngine_m.updaters().clearDirty();
+        }
+      else
+        {
+          for (int i = 0; i &lt; numSubFields(); i++)
+            (*this)[i].clearDirty();
+        }
+    }
+
+
+private:
+
+  FieldEngine_t fieldEngine_m;
+
+};
+
+
+//----------------------------------------------------------------------
+// Set up a little traits class that distinguishes between OpAssign and
+// other assignment operators that read the LHS.
+//----------------------------------------------------------------------
+
+template&lt;class Op&gt;
+struct AssignOpReadWriteTraits
+{
+  enum { readLHS = true };
+};
+
+template&lt;&gt;
+struct AssignOpReadWriteTraits&lt;OpAssign&gt;
+{
+  enum { readLHS = false };
+};
+
+
+//----------------------------------------------------------------------
+// Apply the ConformTag to the leaves of the tree.
+// Check to see if a given Field conforms.
+//----------------------------------------------------------------------
+
+template&lt;class GeometryTag, class T, class EngineTag, int Dim&gt;
+struct LeafFunctor&lt;Field&lt;GeometryTag, T, EngineTag&gt;, ConformTag&lt;Dim&gt; &gt;
+{
+  typedef bool Type_t;
+  static Type_t apply1(const Interval&lt;Dim&gt; &amp;d, 
+    const ConformTag&lt;Dim&gt; &amp;ct)
+    {
+      return conforms(d, ct);
+    }
+  template&lt;int Dim2&gt;
+  static Type_t apply1(const Interval&lt;Dim2&gt; &amp;d, 
+    const ConformTag&lt;Dim&gt; &amp;ct)
+    {
+      return false;
+    }
+  static Type_t apply(const Field&lt;GeometryTag, T, EngineTag&gt; &amp;f,
+    const ConformTag&lt;Dim&gt; &amp;ct)
+    {
+      return apply1(f.physicalDomain(), ct);
+    }
+};
+
+
+//----------------------------------------------------------------------
+// This specialization of LeafFunctor is used to pass the 
+// DataObjectRequest functor down into the FieldEngine. The default 
+// behavior, given in the functor below, is to just pass it on to the 
+// fieldEngine's engine.
+//----------------------------------------------------------------------
+
+template&lt;class GeometryTag, class T, class EngineTag, class RequestType&gt;
+struct LeafFunctor&lt;Field&lt;GeometryTag, T, EngineTag&gt;,
+  DataObjectRequest&lt;RequestType&gt; &gt;
+{
+  typedef Field&lt;GeometryTag, T, EngineTag&gt; Subject_t;
+  typedef typename Subject_t::FieldEngine_t FieldEngine_t;
+  typedef LeafFunctor&lt;FieldEngine_t, DataObjectRequest&lt;RequestType&gt; &gt; 
+    LeafFunctor_t;
+  typedef typename LeafFunctor_t::Type_t Type_t;
+  enum { dataObject = LeafFunctor_t::dataObject };
+  
+  inline static
+  Type_t apply(const Subject_t &amp;f,
+               const DataObjectRequest&lt;RequestType&gt; &amp;functor)
+    {
+      return LeafFunctor_t::apply(field.fieldEngine(), functor);
+    }
+};
+
+template&lt;class GeometryTag, class T, class EngineTag, class RequestType&gt;
+struct LeafFunctor&lt;FieldEngine&lt;GeometryTag, T, EngineTag&gt;,
+  DataObjectRequest&lt;RequestType&gt; &gt;
+{
+  typedef typename FieldEngine&lt;GeometryTag, T, EngineTag&gt;::Engine_t 
+    Engine_t;
+  enum { dataObject = Engine_t::dataObject };
+  typedef typename DataObjectRequest&lt;RequestType&gt;::Type_t Type_t;
+  inline static
+  Type_t apply(const FieldEngine&lt;GeometryTag, T, EngineTag&gt; &amp;f,
+	           const DataObjectRequest&lt;RequestType&gt; &amp;functor)
+    {
+      return DataObjectApply&lt;dataObject&gt;::apply(f.engine(), functor);
+    }
+};
+
+
+//-----------------------------------------------------------------------------
+// This specialization of LeafFunctor is used to get the domain type or the
+// (zero-based) domain itself from a Field. Used only by Expression-Engine.
+//-----------------------------------------------------------------------------
+
+template&lt;class GeometryTag, class T, class EngineTag&gt;
+struct LeafFunctor&lt;Field&lt;GeometryTag, T, EngineTag&gt;, DomainFunctorTag&gt;
+{
+  typedef typename Field&lt;GeometryTag, T, EngineTag&gt;::Domain_t Type_t;
+
+  inline static Type_t apply(const Field&lt;GeometryTag, T, EngineTag&gt; &amp;f, 
+    const DomainFunctorTag &amp;)
+    {
+      // Return zero-based domain.
+      
+      return f.physicalDomain() - f.physicalDomain().firsts();
+    }
+};
+
+
+//-----------------------------------------------------------------------------
+// This specialization of LeafFunctor is used to pass the ExpressionApply
+// functor
+// down into the FieldEngine. The default behavior, given in the functor
+// below, is to just pass it on to the fieldEngine's engine.
+//-----------------------------------------------------------------------------
+
+template&lt;class GeometryTag, class T, class EngineTag, class Tag&gt;
+struct LeafFunctor&lt;Field&lt;GeometryTag, T, EngineTag&gt;, ExpressionApply&lt;Tag&gt; &gt;
+{
+  typedef Field&lt;GeometryTag, T, EngineTag&gt; Subject_t;
+  typedef typename Subject_t::FieldEngine_t FieldEngine_t;
+  typedef LeafFunctor&lt;FieldEngine_t, ExpressionApply&lt;Tag&gt; &gt; LeafFunctor_t;
+  typedef int Type_t;
+
+  inline static
+  Type_t apply(const Subject_t &amp;field, 
+	       const ExpressionApply&lt;Tag&gt; &amp;tag)
+    {
+      return LeafFunctor_t::apply(field.fieldEngine(), tag);
+    }
+};
+
+template&lt;class GeometryTag, class T, class EngineTag, class Tag&gt;
+struct LeafFunctor&lt;FieldEngine&lt;GeometryTag, T, EngineTag&gt;,
+  ExpressionApply&lt;Tag&gt; &gt;
+{
+  typedef FieldEngine&lt;GeometryTag, T, EngineTag&gt; Subject_t;
+  typedef typename Subject_t::Base_t Base_t;
+  typedef LeafFunctor&lt;Base_t, ExpressionApply&lt;Tag&gt; &gt; LeafFunctor_t;
+  typedef int Type_t;
+
+  inline static
+  Type_t apply(const Subject_t &amp;fieldEngine, 
+                 const ExpressionApply&lt;Tag&gt; &amp;tag)
+  {
+    return LeafFunctor_t::apply(fieldEngine, tag);
+  }
+};
+
+template&lt;class GeometryTag, class T, class EngineTag, class Tag&gt;
+struct LeafFunctor&lt;Field&lt;GeometryTag, T, EngineTag&gt;, EngineView&lt;Tag&gt; &gt;
+{
+  typedef Field&lt;GeometryTag, T, EngineTag&gt; Subject_t;
+  typedef typename Subject_t::Engine_t Engine_t;
+  typedef typename LeafFunctor&lt;Engine_t, EngineView&lt;Tag&gt; &gt;::Type_t NewEngine_t;
+  typedef typename NewEngine_t::Tag_t NewEngineTag_t;
+
+  // Don't bother computing NewGeometry tag yet.
+  // For now all EngineView operations are equivalent to Interval views.
+
+  typedef Field&lt;GeometryTag, T, NewEngineTag_t&gt; Type_t;
+
+  inline static
+  Type_t apply(const Subject_t &amp;field,
+	       const EngineView&lt;Tag&gt; &amp;tag)
+  {
+    return Type_t(field, tag);
+  }
+};
+
+
+//-----------------------------------------------------------------------------
+// Handle general engine functor requests.
+//-----------------------------------------------------------------------------
+
+template&lt;class GeometryTag, class T, class EngineTag, class Tag&gt;
+struct LeafFunctor&lt;Field&lt;GeometryTag, T, EngineTag&gt;, EngineFunctorTag&lt;Tag&gt; &gt;
+{
+  typedef typename Field&lt;GeometryTag,T,EngineTag&gt;::Engine_t Engine_t;
+  typedef typename EngineFunctor&lt;Engine_t,Tag&gt;::Type_t Type_t;
+  inline static
+  Type_t apply(const Field&lt;GeometryTag, T, EngineTag&gt; &amp;field,
+	       const EngineFunctorTag&lt;Tag&gt; &amp;tag)
+  {
+    return EngineFunctor&lt;Engine_t,Tag&gt;::apply(field.engine(), tag.tag());
+  }
+};
+
+
+//---------------------------------------------------------------------------
+// A specialization of EngineFunctor for field.
+//---------------------------------------------------------------------------
+
+template&lt;class GeometryTag, class T, class EngineTag, class Tag&gt;
+struct EngineFunctor&lt;Field&lt;GeometryTag, T, EngineTag&gt;, Tag&gt;
+{
+  typedef typename Field&lt;GeometryTag, T, EngineTag&gt;::Engine_t Engine_t;
+  typedef typename EngineFunctor&lt;Engine_t, Tag&gt;::Type_t Type_t;
+
+  inline static 
+  Type_t apply(const Field&lt;GeometryTag, T, EngineTag&gt; &amp;field,
+	           const Tag &amp;tag)
+    {
+      return engineFunctor(field.engine(), tag);
+    }
+};
+
+
+//-----------------------------------------------------------------------------
+// This version of LeafFunctor is used by Expression-Engines to used to 
+// evaluate a Field using indices. 
+//-----------------------------------------------------------------------------
+
+template&lt;class GeometryTag, class T, class EngineTag, int Dim&gt;
+struct LeafFunctor&lt;Field&lt;GeometryTag, T, EngineTag&gt;, EvalLeaf&lt;Dim&gt; &gt;
+{
+  typedef typename Field&lt;GeometryTag, T, EngineTag&gt;::Element_t Type_t;
+  inline static
+  Type_t apply(const Field&lt;GeometryTag, T, EngineTag&gt; &amp;f, 
+    const EvalLeaf&lt;Dim&gt; &amp;t) 
+    {
+      return t.eval(f.engine());
+    }
+};
+
+
+//-----------------------------------------------------------------------------
+// These leaf functor specializations are used to notify a field or expression
+// that it is going to be read and, therefore, needs to update itself. 
+//
+// The first LeafFunctor represents default behavior, which is to do nothing. 
+// The second handles fields other than those with expression-engines by simply
+// calling update(). The third passes the tag to the leaves.
+//
+// Fields with engines that store internal fields AND don't copy those
+// fields' updaters to its list must provide a specialization to get the 
+// internal fields to update.
+//
+// NOTE: we don't use the ExpressionApply machinery here because this really
+// operate on the engines.
+//
+//-----------------------------------------------------------------------------
+
+struct PerformUpdateTag
+{
+  POOMA_PURIFY_CONSTRUCTORS(PerformUpdateTag)
+};
+
+template&lt;class Node&gt;
+struct LeafFunctor&lt;Node, PerformUpdateTag&gt;
+{
+  typedef int Type_t;
+
+  inline static
+  Type_t apply(const Node &amp;, const PerformUpdateTag &amp;)
+    {
+      return 0;
+    }
+};
+
+
+template&lt;class GeometryTag, class T, class EngineTag&gt;
+struct LeafFunctor&lt;Field&lt;GeometryTag, T, EngineTag&gt;, 
+  PerformUpdateTag&gt;
+{
+  typedef Field&lt;GeometryTag, T, EngineTag&gt; Subject_t;
+  typedef int Type_t;
+
+  inline static
+  Type_t apply(const Subject_t &amp;f, const PerformUpdateTag &amp;)
+    {
+      f.update();
+      return 0;
+    }
+};
+
+template&lt;class GeometryTag, class T, class Expr&gt;
+struct LeafFunctor&lt;Field&lt;GeometryTag, T, ExpressionTag&lt;Expr&gt; &gt;, 
+  PerformUpdateTag&gt;
+{
+  typedef Field&lt;GeometryTag, T, ExpressionTag&lt;Expr&gt; &gt; Subject_t;
+  typedef int Type_t;
+
+  inline static
+  Type_t apply(const Subject_t &amp;f, const PerformUpdateTag &amp;tag)
+    {
+      forEach(f.engine().expression(), tag, NullCombine());
+      return 0;
+    }
+};
+
+
+//-----------------------------------------------------------------------------
+// This version of LeafFunctor is used to determine the type resulting from a
+// sub-field view. 
+//-----------------------------------------------------------------------------
+
+template&lt;class GeometryTag, class T, class EngineTag&gt;
+struct LeafFunctor&lt;Field&lt;GeometryTag, T, EngineTag&gt;, SubFieldViewFunctorTag&gt;
+{
+  typedef Field&lt;GeometryTag, T, EngineTag&gt; Type_t;
+};
+
+template&lt;class T&gt;
+struct LeafFunctor&lt;Scalar&lt;T&gt;, SubFieldViewFunctorTag&gt;
+{
+  typedef Scalar&lt;T&gt; Type_t;
+};
+
+
+//-----------------------------------------------------------------------------
+// This specialization of LeafFunctor is used to apply a view (subsetting) 
+// operation to a Field. The domain will always be zero-based since this
+// is used only by Expression-Engine. This is why we add the firsts() to
+// the domain.
+//-----------------------------------------------------------------------------
+
+template&lt;class GeometryTag, class T, class EngineTag, class Domain&gt;
+struct LeafFunctor&lt;Field&lt;GeometryTag, T, EngineTag&gt;, ViewFunctorTag&lt;Domain&gt; &gt;
+{
+  typedef typename View1&lt;Field&lt;GeometryTag, T, EngineTag&gt;, Domain&gt;::Type_t 
+    Type_t;
+};
+
+
+//-----------------------------------------------------------------------------
+// Overload the &lt;&lt; operator to print a Field to a stream.  This
+// uses the 'PrintField' class to perform the formatting of the data.
+// It will create a default printer, print out the field with it, and
+// return the stream object.
+//-----------------------------------------------------------------------------
+
+template &lt;class GeometryTag, class T, class EngineTag&gt;
+std::ostream &amp;operator&lt;&lt;(std::ostream &amp;o, 
+  const Field&lt;GeometryTag, T, EngineTag&gt; &amp;cf)
+{
+  Pooma::blockAndEvaluate();
+  PrintField().print(o, cf);
+  return o;
+}
+
+template &lt;class GeometryTag, class T, class EngineTag&gt;
+std::fstream &amp;operator&lt;&lt;(std::fstream &amp;f, 
+  const Field&lt;GeometryTag, T, EngineTag&gt; &amp;cf)
+{
+  Pooma::blockAndEvaluate();
+  PrintField().print(f, cf);
+  return f;
+}
+
+
+//-----------------------------------------------------------------------------
+// assign() function for Field assign-op array.
+//-----------------------------------------------------------------------------
+
+template&lt;class GeometryTag, class T, class EngineTag, 
+ int Dim2, class T2, class EngineTag2, class Op&gt;
+const Field&lt;GeometryTag, T, EngineTag&gt; &amp;
+assign(const Field&lt;GeometryTag, T, EngineTag&gt; &amp;lhs, 
+       const Array&lt;Dim2, T2, EngineTag2&gt; &amp;rhs, const Op &amp;op)
+{
+  int nsf = lhs.numSubFields();
+  
+  if (nsf != 0)
+    {
+      // We need to take sub-field views in order to get at all of the
+      // internal fields.
+      
+      for (int i = 0; i &lt; nsf; i++)
+        assign(lhs[i], rhs, op);
+    }
+  else
+    {
+      if (AssignOpReadWriteTraits&lt;Op&gt;::readLHS)
+        lhs.update();
+     
+      // Evaluate. 
+
+      Evaluator&lt;MainEvaluatorTag&gt;().evaluate(lhs, op, rhs);
+
+      // Having done the evaluation, we need to notify the LHS
+      // that we've just written.
+  
+      lhs.setDirty();
+    }
+        
+  return lhs;
+}
+
+
+//-----------------------------------------------------------------------------
+// assign() function for Field assign-op Field.
+//-----------------------------------------------------------------------------
+
+template&lt;class GeometryTag, class T, class EngineTag,
+  class GeometryTag2, class T2, class EngineTag2, class Op&gt;
+const Field&lt;GeometryTag, T, EngineTag&gt; &amp;
+assign(const Field&lt;GeometryTag, T, EngineTag&gt; &amp;lhs,
+       const Field&lt;GeometryTag2, T2, EngineTag2&gt; &amp;rhs,
+       const Op &amp;op)
+{
+  int nsf = lhs.numSubFields();
+  
+  if (nsf != 0)
+    {
+      // We need to take sub-field views in order to get at all of the
+      // internal fields.
+      
+      for (int i = 0; i &lt; nsf; i++)
+        assign(lhs[i], rhs[i], op);
+    }
+  else
+    {
+      // We need to notify the RHS and, when not doing pure assignment, the
+      // LHS that we are getting ready to read.
+      
+      forEach(rhs, PerformUpdateTag(), NullCombine());
+      
+      if (AssignOpReadWriteTraits&lt;Op&gt;::readLHS)
+        lhs.update();
+  
+      // Evaluate.
+
+      Evaluator&lt;MainEvaluatorTag&gt;().evaluate(lhs, op, rhs);
+
+      // Having done the evaluation, we need to notify the LHS
+      // that we've just written.
+  
+      lhs.setDirty();
+    }
+        
+  return lhs;
+}
+
+
+//-----------------------------------------------------------------------------
+// assign() function for Field assign-op scalar.
+//-----------------------------------------------------------------------------
+
+template&lt;class GeometryTag, class T, class EngineTag, class T1, class Op&gt;
+const Field&lt;GeometryTag, T, EngineTag&gt; &amp;
+assign(const Field&lt;GeometryTag, T, EngineTag&gt; &amp;lhs, const T1 &amp;rhs,
+       const Op &amp;op)
+{
+  int nsf = lhs.numSubFields();
+  
+  if (nsf != 0)
+    {
+      // We need to take sub-field views in order to get at all of the
+      // internal fields.
+      
+      for (int i = 0; i &lt; nsf; i++)
+        assign(lhs[i], rhs, op);
+    }
+  else
+    {
+      if (AssignOpReadWriteTraits&lt;Op&gt;::readLHS)
+        lhs.update();
+
+      // Make an array out of the scalar.
+
+      typedef Field&lt;GeometryTag, T, EngineTag&gt; LHS_t;
+      Array&lt;LHS_t::dimensions, T1, ConstantFunction&gt;  rhsExpr(lhs.physicalDomain());
+      rhsExpr.engine().setConstant(rhs);
+     
+      // Evaluate. 
+
+      Evaluator&lt;MainEvaluatorTag&gt;().evaluate(lhs, op, rhsExpr);
+
+      // Having done the evaluation, we need to notify the LHS
+      // that we've just written.
+  
+      lhs.setDirty();
+    }
+        
+  return lhs;
+}
+
+
+//-----------------------------------------------------------------------------
+// assign() function for Array assign-op Field.
+//-----------------------------------------------------------------------------
+
+template&lt;class GeometryTag, class T, class EngineTag,
+  int Dim2, class T2, class EngineTag2, class Op&gt;
+const Array&lt;Dim2, T2, EngineTag2&gt; &amp;
+assign(const Array&lt;Dim2, T2, EngineTag2&gt; &amp;lhs,
+       const Field&lt;GeometryTag, T, EngineTag&gt; &amp;rhs, const Op &amp;op)
+{
+  forEach(rhs, PerformUpdateTag(), NullCombine());
+
+  Evaluator&lt;MainEvaluatorTag&gt;().evaluate(lhs, op, rhs);
+
+  return lhs;
+}
+
+
+//-----------------------------------------------------------------------------
+// Compute whether or not a Field is currently compressed.
+//
+// This is only a sensible thing to do if there are no subfields, hence the
+// assertion.
+//-----------------------------------------------------------------------------
+
+template&lt;class GeometryTag, class T, class EngineTag&gt;
+inline bool compressed(const Field&lt;GeometryTag, T, EngineTag&gt; &amp;f)
+{
+  PAssert(f.numSubFields() == 0);
+  return compressed(f.engine());
+}
+
+
+//-----------------------------------------------------------------------------
+// Compute the fraction of the total domain that is currently compressed.
+//
+// This is only a sensible thing to do if there are no subfields, hence the
+// assertion.
+//-----------------------------------------------------------------------------
+
+template&lt;class GeometryTag, class T, class LTag&gt;
+inline double
+compressedFraction(
+  const Field&lt;GeometryTag, T, MultiPatch&lt;LTag,CompressibleBrick&gt; &gt; &amp;f)
+{
+  PAssert(f.numSubFields() == 0);
+  return compressedFraction(f.engine());
+}
+
+
+//-----------------------------------------------------------------------------
+// (Try to) compress all the patches of the Field. Only need to do work with
+// multipatch engines.
+//-----------------------------------------------------------------------------
+
+template&lt;class GeometryTag, class T, class LTag&gt;
+void
+compress(Field&lt;GeometryTag, T, MultiPatch&lt;LTag,CompressibleBrick&gt; &gt; &amp;)
+{
+  if (numSubFields() == 0)
+    {
+      compress(f.engine());
+    }
+  else
+    {
+      for (int i = 0; i &lt; numSubFields(); i++)
+        compress(f[i]);
+    }
+}
+
+
+//-----------------------------------------------------------------------------
+// Manually uncompress all the patches of the Field. Only need to do work with
+// multipatch engines.
+//-----------------------------------------------------------------------------
+
+template&lt;class GeometryTag, class T, class LTag&gt;
+void
+uncompress(Field&lt;GeometryTag, T, MultiPatch&lt;LTag,CompressibleBrick&gt; &gt; &amp;f)
+{
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000828.html">Patch to NewField/Field.h (3/3)
+</A></li>
+	<LI>Next message: <A HREF="000830.html">Patch to NewField/Field.h (1/3)
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#829">[ date ]</a>
+              <a href="thread.html#829">[ thread ]</a>
+              <a href="subject.html#829">[ subject ]</a>
+              <a href="author.html#829">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

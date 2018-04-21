@@ -1,0 +1,368 @@
+Index: Field.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/NewField/Field.h,v
+retrieving revision 1.15.2.11
+diff -c -p -r1.15.2.11 Field.h
+*** Field.h	2001/08/23 23:01:21	1.15.2.11
+--- Field.h	2001/08/28 21:27:04
+*************** class RelationListItem;
+*** 111,117 ****
+  // hand side (for example, other classes that derive from Field), define
+  // extra assign() functions that take the following arguments:
+  //
+! //   assign(Field<Mesh,T,EngineTag>, yourclass, Operator)
+  //
+  // where "yourclass" is the class that you would like to work on the
+  // right-hand side in an expression with a Field on the left-hand side.
+--- 111,117 ----
+  // hand side (for example, other classes that derive from Field), define
+  // extra assign() functions that take the following arguments:
+  //
+! //   assign(Field<MeshTag,T,EngineTag>, yourclass, Operator)
+  //
+  // where "yourclass" is the class that you would like to work on the
+  // right-hand side in an expression with a Field on the left-hand side.
+*************** public:
+*** 162,167 ****
+--- 162,187 ----
+  #endif
+        return Type_t(s, iSubField);
+      }
++ 
++   inline static Type_t make(const Type_t &s, int m, int c)
++   {
++ #if POOMA_BOUNDS_CHECK
++     PInsist(m >= 0 && m < s.numMaterials(),
++             "Field::subField(m, c) indexing error.");
++     PInsist(c >= 0 && c < s.centeringSize(),
++             "Field::subField(m, c) indexing error.");
++ #endif
++     return Type_t(s, m, c);
++   }
++ 
++   inline static Type_t make(int c, const Type_t &s)
++   {
++ #if POOMA_BOUNDS_CHECK
++     PInsist(c >= 0 && c < s.centeringSize(),
++             "Field::subField(m, c) indexing error.");
++ #endif
++     return Type_t(c, s);
++   }
+  };
+  
+  template<class MeshTag, class T, class Expr>
+*************** public:
+*** 187,192 ****
+--- 207,232 ----
+  #endif
+        return Type_t(s, iSubField);
+      }
++ 
++   inline static Type_t make(const Subject_t &s, int m, int c)
++   {
++ #if POOMA_BOUNDS_CHECK
++     PInsist(m >= 0 && m < s.numMaterials(),
++             "Field::subField(m, c) indexing error.");
++     PInsist(c >= 0 && c < s.centeringSize(),
++             "Field::subField(m, c) indexing error.");
++ #endif
++     return Type_t(s, m, c);
++   }
++ 
++   inline static Type_t make(int c, const Subject_t &s)
++   {
++ #if POOMA_BOUNDS_CHECK
++     PInsist(c >= 0 && c < s.centeringSize(),
++             "Field::subField(m, c) indexing error.");
++ #endif
++     return Type_t(c, s);
++   }
+  };
+  
+  
+*************** public:
+*** 1143,1151 ****
+    Field(const Field<GT2, T2, ET2> &model, const Initializer &i)
+    : fieldEngine_m(model.fieldEngine(), i)
+    { }
+  
+!   Field(const This_t &model, int m, int c)
+!   : fieldEngine_m(model.fieldEngine(), m, c)
+    { }
+  
+    //---------------------------------------------------------------------------
+--- 1183,1197 ----
+    Field(const Field<GT2, T2, ET2> &model, const Initializer &i)
+    : fieldEngine_m(model.fieldEngine(), i)
+    { }
++ 
++   template<class ET2>
++   Field(const Field<MeshTag, T, ET2> &model, int m, int c)
++     : fieldEngine_m(model.fieldEngine(), m, c)
++   { }
+  
+!   template<class ET2>
+!   Field(int c, const Field<MeshTag, T, ET2> &model)
+!     : fieldEngine_m(c, model.fieldEngine())
+    { }
+  
+    //---------------------------------------------------------------------------
+*************** public:
+*** 1183,1188 ****
+--- 1229,1239 ----
+      return fieldEngine().centering();
+    }
+  
++   inline int centeringSize() const
++   {
++     return fieldEngine().centeringSize();
++   }
++ 
+    inline int numMaterials() const
+      {
+        return fieldEngine().numMaterials();
+*************** public:
+*** 1259,1281 ****
+        return Ret_t::make(*this, iSubfield);
+      }
+  
+!   inline This_t
+    subField(int m, int c) const
+    {
+!     return This_t(*this, m, c);
+    }
+  
+!   inline This_t
+    center(int c) const
+    {
+!     return This_t(c, *this);
+    }
+  
+!   inline This_t
+    material(int m) const
+    {
+      PAssert(numMaterials() > 1);
+!     return This_t(*this, m);
+    }
+  
+    //---------------------------------------------------------------------------
+--- 1310,1335 ----
+        return Ret_t::make(*this, iSubfield);
+      }
+  
+!   inline typename SubFieldView<This_t>::Type_t
+    subField(int m, int c) const
+    {
+!     typedef SubFieldView<This_t> Ret_t;
+!     return Ret_t::make(*this, m, c);
+    }
+  
+!   inline typename SubFieldView<This_t>::Type_t
+    center(int c) const
+    {
+!     typedef SubFieldView<This_t> Ret_t;
+!     return Ret_t::make(c, *this);
+    }
+  
+!   inline typename SubFieldView<This_t>::Type_t
+    material(int m) const
+    {
+      PAssert(numMaterials() > 1);
+!     typedef SubFieldView<This_t> Ret_t;
+!     return Ret_t::make(*this, m);
+    }
+  
+    //---------------------------------------------------------------------------
+*************** assign(const Field<MeshTag, T, EngineTag
+*** 1959,1993 ****
+         const Field<MeshTag2, T2, EngineTag2> &rhs,
+         const Op &op)
+  {
+!   int nsf = lhs.numSubFields();
+!   
+!   if (nsf != 0)
+!     {
+!       // We need to take sub-field views in order to get at all of the
+!       // internal fields.
+!       
+!       for (int i = 0; i < nsf; i++)
+!         assign(lhs[i], rhs[i], op);
+!     }
+!   else
+      {
+        // We need to notify the RHS and, when not doing pure assignment, the
+        // LHS that we are getting ready to read.
+        
+!       forEach(rhs, PerformUpdateTag(), NullCombine());
+        
+        if (AssignOpReadWriteTraits<Op>::readLHS)
+!         lhs.applyRelations();
+    
+        // Evaluate.
+  
+!       Evaluator<MainEvaluatorTag>().evaluate(lhs, op, rhs);
+  
+        // Having done the evaluation, we need to notify the LHS
+        // that we've just written.
+    
+!       lhs.setDirty();
+      }
+          
+    return lhs;
+  }
+--- 2013,2041 ----
+         const Field<MeshTag2, T2, EngineTag2> &rhs,
+         const Op &op)
+  {
+!   for (int m = 0; m < lhs.numMaterials(); ++m)
+!   {
+!     for (int c = 0; c < lhs.centering().size(); ++ c)
+      {
+        // We need to notify the RHS and, when not doing pure assignment, the
+        // LHS that we are getting ready to read.
+        
+!       forEach(rhs.subField(m, c), PerformUpdateTag(), NullCombine());
+        
+        if (AssignOpReadWriteTraits<Op>::readLHS)
+!         lhs.subField(m, c).applyRelations();
+    
+        // Evaluate.
+  
+!       Evaluator<MainEvaluatorTag>().evaluate(lhs.subField(m, c), op,
+!                                              rhs.subField(m, c));
+  
+        // Having done the evaluation, we need to notify the LHS
+        // that we've just written.
+    
+!       lhs.subField(m, c).setDirty();
+      }
++   }
+          
+    return lhs;
+  }
+Index: PrintField.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/NewField/PrintField.h,v
+retrieving revision 1.3.2.1
+diff -c -p -r1.3.2.1 PrintField.h
+*** PrintField.h	2001/08/21 15:23:54	1.3.2.1
+--- PrintField.h	2001/08/28 21:27:05
+*************** public:
+*** 232,250 ****
+        a.applyRelations();
+        Pooma::blockAndEvaluate();
+        
+!       int n = a.numSubFields();
+!       if (n == 0)
+          {
+!           PerformPrintField<S,A,A::dimensions>::print(*this, s, a);
+          }
+!       else
+!         {
+!           for (int i = 0; i < n; i++)
+!             {
+!               s << "subfield #" << i << ":\n"<< "-------------\n";
+!               print(s, a[i]);
+!             }
+!         }
+      }    
+  
+  
+--- 232,247 ----
+        a.applyRelations();
+        Pooma::blockAndEvaluate();
+        
+!       for (int m = 0; m < a.numMaterials(); ++m)
+!       {
+!         s << "material #" << m << ":\n"<< "-------------\n";
+!         for (int c = 0; c < a.centering().size(); ++ c)
+          {
+!           s << "centering #" << c << " " << a.centering()[c]
+!             << ":\n"<< "-----------------\n";
+!           PerformPrintField<S,A,A::dimensions>::print(*this, s, a.subField(m, c));
+          }
+!       }
+      }    
+  
+  
+Index: FieldEngine/FieldEngine.ExprEngine.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/NewField/FieldEngine/Attic/FieldEngine.ExprEngine.h,v
+retrieving revision 1.1.2.1
+diff -c -p -r1.1.2.1 FieldEngine.ExprEngine.h
+*** FieldEngine/FieldEngine.ExprEngine.h	2001/08/23 23:01:22	1.1.2.1
+--- FieldEngine/FieldEngine.ExprEngine.h	2001/08/28 21:27:05
+*************** public:
+*** 217,230 ****
+      
+    // Sub-field view constructor. This is when we want to construct a view of
+    // one of the subFields in our top-level list.
+  
+!   template<class Expr2>  
+!   FieldEngine(const FieldEngine<Mesh, T, ExpressionTag<Expr2> > &model, 
+!     const int &iSubField)
+!   : engine_m(model.engine(), iSubField),
+!     referenceField_m(
+!       forEachRef(engine_m.expression(), FarLeftTag(), FarLeftTag()))
+!     { }  
+  
+    // Very important! Copy constructor is needed so that referenceField_m
+    // doesn't refer to someone else's expression.      
+--- 217,251 ----
+      
+    // Sub-field view constructor. This is when we want to construct a view of
+    // one of the subFields in our top-level list.
++   // All these constructors take ints.  We distinguish the sub-material view
++   // from the sub-center view by the order of the arguments.
+  
+!   // Version that takes a material and centering.
+! 
+!   template<class Expr2>
+!   FieldEngine(const FieldEngine<Mesh, T, ExpressionTag<Expr2> > &model, int m, int c)
+!     : engine_m(model.engine(), m, c),
+!       referenceField_m(forEachRef(engine_m.expression(),
+!                                   FarLeftTag(), FarLeftTag()))
+!   { }
+! 
+!   // sub-material view.
+! 
+!   template<class Expr2>
+!   FieldEngine(const FieldEngine<Mesh, T, ExpressionTag<Expr2> > &model, const int &m)
+!     : engine_m(model.engine(), m),
+!       referenceField_m(forEachRef(engine_m.expression(),
+!                                   FarLeftTag(), FarLeftTag()))
+!   { }  
+! 
+!   // sub-center view.
+! 
+!   template<class Expr2>
+!   FieldEngine(int c, const FieldEngine<Mesh, T, ExpressionTag<Expr2> > &model)
+!     : engine_m(c, model.engine()),
+!       referenceField_m(forEachRef(engine_m.expression(),
+!                                   FarLeftTag(), FarLeftTag()))
+!   { }
+  
+    // Very important! Copy constructor is needed so that referenceField_m
+    // doesn't refer to someone else's expression.      
+Index: FieldEngine/FieldEngine.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/NewField/FieldEngine/Attic/FieldEngine.h,v
+retrieving revision 1.1.2.1
+diff -c -p -r1.1.2.1 FieldEngine.h
+*** FieldEngine/FieldEngine.h	2001/08/23 23:01:22	1.1.2.1
+--- FieldEngine/FieldEngine.h	2001/08/28 21:27:05
+*************** public:
+*** 482,487 ****
+--- 482,493 ----
+      return data_m->engine();
+    }
+  
++   Engine_t &engine(int m, int c)
++   {
++     PAssert(data_m.isValid());
++     return data(m,c)->engine();
++   }
++ 
+    RelationList &relations() const
+    {
+      PAssert(data_m.isValid());

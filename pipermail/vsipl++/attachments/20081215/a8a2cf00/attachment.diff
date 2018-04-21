@@ -1,0 +1,71 @@
+Index: ChangeLog
+===================================================================
+--- ChangeLog	(revision 231462)
++++ ChangeLog	(working copy)
+@@ -1,3 +1,9 @@
++2008-12-15  Don McCoy  <don@codesourcery.com>
++
++	* benchmarks/dot.cpp: Fixed cases where backend is called directly, 
++	  skipping the dispatcher mechanism.
++	* benchmarks/maxval.hpp: Likewise.
++
+ 2008-12-15  Jules Bergmann  <jules@codesourcery.com>
+ 
+ 	* src/vsip/opt/cbe/spu/GNUmakefile.inc.in (clean): Remove .spe files.
+Index: benchmarks/dot.cpp
+===================================================================
+--- benchmarks/dot.cpp	(revision 231462)
++++ benchmarks/dot.cpp	(working copy)
+@@ -84,12 +84,10 @@
+ 
+ template <typename ImplTag,
+           typename T,
+-          bool     IsValid = impl::Evaluator<impl::
+-                     Op_prod_vv_dot, impl::Return_scalar<T>,
+-                     impl::Op_list_2<
+-                       typename Vector<T>::block_type, 
+-                       typename Vector<T>::block_type>, 
+-                     ImplTag>::ct_valid>
++          bool     IsValid = impl::dispatcher::Evaluator<
++            impl::dispatcher::Op_prod_vv_dot, ImplTag,
++            T(typename Vector<T>::block_type const&, 
++              typename Vector<T>::block_type const&) >::ct_valid>
+ struct t_dot2 : Benchmark_base
+ {
+   static length_type const Dec = 1;
+@@ -117,9 +115,9 @@
+ 
+     typedef typename Vector<T>::block_type block_type;
+ 
+-    typedef impl::Evaluator<impl::Op_prod_vv_dot, impl::Return_scalar<T>,
+-                            impl::Op_list_2<block_type, block_type>, ImplTag>
+-		Eval;
++    typedef impl::dispatcher::Evaluator<impl::dispatcher::Op_prod_vv_dot, 
++        ImplTag, T(block_type const&, block_type const&) > 
++      Eval;
+ 
+     assert(Eval::ct_valid);
+   
+Index: benchmarks/maxval.hpp
+===================================================================
+--- benchmarks/maxval.hpp	(revision 231462)
++++ benchmarks/maxval.hpp	(working copy)
+@@ -23,12 +23,12 @@
+ {
+ 
+   typedef typename vsip::impl::Block_layout<Block>::order_type order_type;
+-  typedef vsip::impl::Evaluator<vsip::impl::Op_reduce_idx<ReduceT>,
+-		      typename ReduceT<T>::result_type,
+-		      vsip::impl::Op_list_3<Block const&,
+-                                      vsip::Index<dim>&,
+-                                      order_type>,
+-                      Tag> evaluator;
++  typedef vsip::impl::dispatcher::Evaluator<
++    vsip::impl::dispatcher::Op_reduce_idx<ReduceT>, Tag,
++    void(typename ReduceT<T>::result_type&,
++        Block const&,
++        vsip::Index<dim>&,
++        order_type)> evaluator;
+ 
+   static void exec(T& r, Block const& a, Index<dim>& idx)
+   {

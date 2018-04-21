@@ -1,0 +1,4953 @@
+From mark at codesourcery.com  Tue Sep  2 01:13:41 2003
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Mon, 1 Sep 2003 18:13:41 -0700
+Subject: Forward Compatibility
+Message-ID: <200309020113.h821Dfrp011778@minax.codesourcery.com>
+
+
+One of the goals for QMTest 2.1 is to promise forward compatibility
+for (at least a subset of) the QMTest APIs.  For example, we'd like to
+say that a test class that satisfies such-and-such interfaces, and
+uses only such-and-such other functionality in QMTest, is guaranteed
+to work with all future versions of QMTest.
+
+That will clearly make it easier for people to commit to using QMTest
+for important projects.
+
+To accomplish this goal, we must first say what it means to *be*
+forward compatible; it's not entirely obvious.  Unfortunately,
+defining this formally would require putting back on the formal
+semantics that I wore in graduate school, and we'd end up with fifty
+pages of theorems.  So, the definition will be necessary semi-formal.
+
+Once we know what compatibility means, we'll have to audit various
+interfaces in QMTest to satisfy ourselves that we can live with them
+forever.  (Of course, we don't want to change them gratuitously, even
+at this point, because there are already a lot of extension classes
+relying on the current interface.)
+
+Thoughts/comments on the attached?
+
+--
+Mark Mitchell
+CodeSourcery, LLC
+mark at codesourcery.com
+
+Introduction
+
+  The purpose of this document is to define the notion of "forward
+  compatibility" for QMTest.  A QMTest user or extension class author
+  can upgrade to a new version of QMTest if the new version is
+  "forward compatible" with the old version.  This document defines
+  this concept in more detail.
+
+  The definition of forward compatibility relies on two key ideas:
+
+  1. The user and/or extension class author must only rely on
+     interfaces that have been specifically labeled as "compatible".
+     An interface that is not so labeled may be changed freely.
+
+     (Because no interface has been so labeled prior to QMTest 2.1,
+     all versions of QMTest up to and including 2.0.3 have been
+     vacuously forward compatible.)
+
+     Any labeled interface may modify the requirements described below
+     through its documentation.
+
+  2. The definition for larger units (such as classes or modules) is
+     built up from smaller units (such as variables or methods).
+
+Functions
+
+  A compatible function must not be removed.
+
+  The names of the function parameters and the order in which they
+  appear must not be altered.
+
+  The values of default arguments must not change unless the new values
+  have the same semantic implication as the old value.  (For example,
+  a default value of '{}' could be changed to a default value of
+  'None', if the new version of the function treated 'None' and '{}'
+  interchangeably.)
+
+  Parameter values that were previously valid (i.e., did not result in
+  an error message or the raising of an exception) must not become
+  invalid.  As an exception, if the previous behavior was incorrect,
+  in that the function did not follow its documented and intended
+  behavior, the previously valid parameter values may now be
+  considered invalid.
+
+  Parameter values that were previously invalid (i.e., resulted in an
+  error message or raising an exception) may now be considered valid.
+
+  New parameters may be added to a compatible function only if (a)
+  they are placed at the end of the parameter list and (b) they have
+  default values.
+
+  A function may be replaced with a callable object, or vice versa.
+
+Variables
+
+  All compatible variables are read only.  User code must not attempt
+  to modify a compatible variable.
+
+  A compatible variable must not be removed.
+
+  In general, the type of the variable must not change.  However, a
+  value whose type is a superclass may be replaced with a value whose
+  type is a subclass.  A value of a sequence type may be replaced with
+  a value of another sequence type.
+
+  A compatible variable whose value is a sequence type may contain
+  additional elements in the sequence.  A compatible variable whose
+  value is a dictionary type may add additional keys, or
+
+Classes
+ 
+  An old-style class may be replaced with a new-style class.
+
+  All direct or indirect superclasses must be compatible.
+
+  No direct or indirect superclass may be removed.  However, new super
+  classes may be added.  A direct superclass may become an indirect
+  superclass.
+
+  All functions and variables in the class must be compatible, with
+  two exceptions:
+
+  1. A function or variable may be removed, if a compatible function
+     is provided in a superclass.
+
+  2. A function or variable whose name begins with two underscores
+     need not be compatible.
+
+  Two classes that were previous different may become the same class,
+  provided that both names are still available.
+
+Modules
+
+  All functions, variables, and classes in a compatible module must be
+  compatible, with two exceptions:
+
+  1. A function, variable, or class whose name is not a public name in
+     the sense defined by Python.  (See the Python documentation for
+     "__all__" for a definintion of "public name".)
+
+  2. A function, variable, or class whose name begins with two
+     underscores need not be compatible.
+
+File Formats
+
+  A compatible file can be read by future versions of QMTest.
+
+
+From Pat_Lewis at Invesco.com  Tue Sep  2 13:17:02 2003
+From: Pat_Lewis at Invesco.com (Lewis, Pat H.)
+Date: Tue, 2 Sep 2003 08:17:02 -0500 
+Subject: [qmtest] Resource creation
+Message-ID: <D0FFFC6D8FB3D511A03C0003473BC4852CAA32@LOUEXCH2>
+
+> -----Original Message-----
+> From: Mark Mitchell [mailto:mark at codesourcery.com]
+> Sent: Friday, August 29, 2003 7:04 PM
+> 
+> Good find!
+> 
+> I've checked in this patch to fix the problem.
+> 
+
+This patch fixed the problem for me.  Thanks for the quick turnaround.
+
+
+
+From seefeld at sympatico.ca  Wed Sep  3 04:01:30 2003
+From: seefeld at sympatico.ca (Stefan Seefeld)
+Date: Wed, 03 Sep 2003 00:01:30 -0400
+Subject: [b,s]dist creation
+Message-ID: <3F55679A.5010608@sympatico.ca>
+
+hi there,
+
+attached is a patch that factors commands out of the setup.py
+file and stores them into 'qmdist/commands/'. This is mostly
+in preparation for more command fine-tuning, which may require
+standard commands such as 'bdist_rpm' to be extended for qmtest,
+as well as new packages such as 'check' to be added.
+
+Also attached is a new MANIFEST.in file.
+
+Using this patch, I'm able to build the following targets:
+
+sdist:         create a source distribution (tarball, zip file, etc.)
+bdist:         create a built (binary) distribution
+bdist_rpm:     create an RPM distribution
+bdist_wininst: create an executable installer for MS Windows
+
+In the hope that the changes are ok and that you can confirm
+these targets to work,
+
+		Stefan
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: diff
+URL: <http://sourcerytools.com/pipermail/qmtest/attachments/20030903/bc0307c8/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: MANIFEST.in
+URL: <http://sourcerytools.com/pipermail/qmtest/attachments/20030903/bc0307c8/attachment-0001.ksh>
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: qmdist.tgz
+Type: application/x-tar
+Size: 2802 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/qmtest/attachments/20030903/bc0307c8/attachment.tar>
+
+From mark at codesourcery.com  Sat Sep  6 01:59:43 2003
+From: mark at codesourcery.com (Mark Mitchell)
+Date: 05 Sep 2003 18:59:43 -0700
+Subject: [qmtest] [b,s]dist creation
+In-Reply-To: <3F55679A.5010608@sympatico.ca>
+References: <3F55679A.5010608@sympatico.ca>
+Message-ID: <1062813584.11339.272.camel@doubledemon.codesourcery.com>
+
+On Tue, 2003-09-02 at 21:01, Stefan Seefeld wrote:
+> hi there,
+> 
+> attached is a patch that factors commands out of the setup.py
+> file and stores them into 'qmdist/commands/'. This is mostly
+> in preparation for more command fine-tuning, which may require
+> standard commands such as 'bdist_rpm' to be extended for qmtest,
+> as well as new packages such as 'check' to be added.
+
+I finally got a chance to review this.
+
+This is very cool.
+
+A few notes:
+
+#1: I happened to have a bunch of extra stuff lying around in "scripts"
+when I ran "python2 setup.py sdist".  That all got put into the dist
+file.  I think we need to refine MANIFEST.in somewhat to be less
+all-inclusive.  The other possibility is to check out pristine versions
+of QMTest before building packages (which is what the current release
+script does).  That's OK, too.  What do you think?
+
+#2: To correct the above, I removed the stuff in scripts, but it still
+tried to use it.  I had to manually remove MANIFEST to get it to rebuild
+correctly.  Perhaps we need to automate this process using the Makefile
+or more magic in the distutils work you've done.  Or maybe we just need
+to have good directions about how to do stuff and/or update the
+scripts/qm-release.
+
+#3: bdist_rpm didn't work for me:
+
+rpm -ba --define _topdir
+/home/mitchell/dev/qm-mainline/build/bdist.linux-i686/rpm --clean
+build/bdist.linux-i686/rpm/SPECS/qm.spec
+
+On Red Hat 8.0, you have to say "rpmbuild -ba".  The current release
+script uses "rpmbuild" everywhere, because we generally don't build for
+older versions of GNU/Linux.  How do we change this bit?
+
+#4. bdist_wininst is extremely cool.  Very, very cool.  However, here's
+the downside: after installation, I couldn't run QMTest. :-(
+
+Here's the error:
+  
+Traceback (most recent call last):
+  File "c:\Python22\scripts\qmtest.py", line 39, in ?
+    import qm
+  File "C:\Python22\Lib\site-packages\qm\__init__.py", line 36, in ?
+    from qm.diagnostic import error, warning, message
+  File "C:\Python22\Lib\site-packages\qm\diagnostic.py", line 212, in ?
+    __initialize_module()
+  File "C:\Python22\Lib\site-packages\qm\diagnostic.py", line 205, in __initialize_module
+    diagnostic_set.ReadFromFile(diagnostic_file)
+  File "C:\Python22\Lib\site-packages\qm\diagnostic.py", line 83, in ReadFromFile
+    file = open(path, "r")
+IOError: [Errno 2] No such file or directory: 'build\x08dist.win32\\wininst\\DATA\\share\\qm\\diagnostics\\common.txt'
+
+What's up with that, do you think?
+
+The manual will also need updating if we do this, because the installed
+QMTest is in a different place than it used to be.  (It put it in
+c:\Python22\Scripts\qmtest.py.)
+
+#5: I'm a little nervous about relying on a largely unsupported Python
+component, i.e., distutils.  I *want* to rely on it, because this stuff
+seems much more automated and more likely to work well with Python and
+it's much more automated.  However, I'm pretty sure Bourne shell scripts
+and Makefiles will always work; I'd hate to find out that Python 2.8 had
+a totally busted distutils.  Convince me that ain't going to happen. :-)
+
+Coding nits:
+
+- We leave two lines between functions.  Some of the stuff in qmdist
+only has one line of spacing.
+
+- There should be:
+
+########################################################################
+# Imports
+#######################################################################
+
+and other similar blocks in the new qmdist files.  (Look at, say,
+executable.py for good examples.)
+
+- The MANIFEST.in comments should be full sentences.
+
+-- 
+Mark Mitchell
+CodeSourcery, LLC
+mark at codesourcery.com
+
+
+
+From seefeld at sympatico.ca  Sat Sep  6 18:04:03 2003
+From: seefeld at sympatico.ca (Stefan Seefeld)
+Date: Sat, 06 Sep 2003 14:04:03 -0400
+Subject: [qmtest] [b,s]dist creation
+In-Reply-To: <1062813584.11339.272.camel@doubledemon.codesourcery.com>
+References: <3F55679A.5010608@sympatico.ca> <1062813584.11339.272.camel@doubledemon.codesourcery.com>
+Message-ID: <3F5A2193.2000201@sympatico.ca>
+
+Mark Mitchell wrote:
+
+> A few notes:
+> 
+> #1: I happened to have a bunch of extra stuff lying around in "scripts"
+> when I ran "python2 setup.py sdist".  That all got put into the dist
+> file.  I think we need to refine MANIFEST.in somewhat to be less
+> all-inclusive.  The other possibility is to check out pristine versions
+> of QMTest before building packages (which is what the current release
+> script does).  That's OK, too.  What do you think?
+
+I'd be fine with both. Actually, I'm aware that the current MANIFEST
+template is too inclusive. That's partly because I don't fully understand
+the current directory structure and partly because I hope that once this
+build system is fully working we could clean the layout up a bit, i.e.
+make the source tree more isomorphic to an installed tree. Then the
+MANIFEST.in would be straight forward and clean.
+
+For a temporary solution it would probably be most efficient if you fixed
+that file as you know best which files are official and which are not.
+
+> #2: To correct the above, I removed the stuff in scripts, but it still
+> tried to use it.  I had to manually remove MANIFEST to get it to rebuild
+> correctly.  Perhaps we need to automate this process using the Makefile
+> or more magic in the distutils work you've done.  Or maybe we just need
+> to have good directions about how to do stuff and/or update the
+> scripts/qm-release.
+
+yeah, in your first build the MANIFEST file was generated with wrong entries.
+This file had to be removed manually. There are parameters to the 'sdist'
+command that force this file to be regenerated. But that's amounts to the
+same work as removing it by hand. We sure could make it such that it was always
+regenerated first.
+
+> #3: bdist_rpm didn't work for me:
+> 
+> rpm -ba --define _topdir
+> /home/mitchell/dev/qm-mainline/build/bdist.linux-i686/rpm --clean
+> build/bdist.linux-i686/rpm/SPECS/qm.spec
+> 
+> On Red Hat 8.0, you have to say "rpmbuild -ba".  The current release
+> script uses "rpmbuild" everywhere, because we generally don't build for
+> older versions of GNU/Linux.  How do we change this bit?
+
+yeah, I now remember that from RH 8, and found a solution at
+http://www.rpm.org/hintskinks/rpmbuild/
+
+I'v been running RH 9.0 for a while, and there it works again.
+
+Of course, if this turns out to be a problem I have to extend the 'bdist_rpm'
+command to use 'rpmbuild' instead.
+
+> #4. bdist_wininst is extremely cool.  Very, very cool.  However, here's
+> the downside: after installation, I couldn't run QMTest. :-(
+> 
+> Here's the error:
+>   
+> Traceback (most recent call last):
+>   File "c:\Python22\scripts\qmtest.py", line 39, in ?
+>     import qm
+>   File "C:\Python22\Lib\site-packages\qm\__init__.py", line 36, in ?
+>     from qm.diagnostic import error, warning, message
+>   File "C:\Python22\Lib\site-packages\qm\diagnostic.py", line 212, in ?
+>     __initialize_module()
+>   File "C:\Python22\Lib\site-packages\qm\diagnostic.py", line 205, in __initialize_module
+>     diagnostic_set.ReadFromFile(diagnostic_file)
+>   File "C:\Python22\Lib\site-packages\qm\diagnostic.py", line 83, in ReadFromFile
+>     file = open(path, "r")
+> IOError: [Errno 2] No such file or directory: 'build\x08dist.win32\\wininst\\DATA\\share\\qm\\diagnostics\\common.txt'
+> 
+> What's up with that, do you think?
+
+no idea yet. I only built it, but didn't actually test anything on the windows platform.
+I'll try to get to that on monday at work...
+
+> The manual will also need updating if we do this, because the installed
+> QMTest is in a different place than it used to be.  (It put it in
+> c:\Python22\Scripts\qmtest.py.)
+
+Well, I would suggest to rename/move the 'qmtest.py' file then (and others),
+so yes, the man pages need to be adjusted accordingly. Speaking of the
+windows executable: I'd very much like to make it (at least optionally)
+install two scripts: one that can be run from the windows cmd, the other
+from a cygwin shell. I believe the latter could be a tiny wrapper shell
+script, so not a big deal.
+
+> #5: I'm a little nervous about relying on a largely unsupported Python
+> component, i.e., distutils.  I *want* to rely on it, because this stuff
+> seems much more automated and more likely to work well with Python and
+> it's much more automated.  However, I'm pretty sure Bourne shell scripts
+> and Makefiles will always work; I'd hate to find out that Python 2.8 had
+> a totally busted distutils.  Convince me that ain't going to happen. :-)
+
+Yeah, I, too, have mixed feelings about distutils. However, as there isn't
+much activity on it right now, and yet many (python) packages use it, I
+think it will be around for quite some time. I'm really hoping that for
+python 2.8 something better will be around (such as scons with python
+building/packaging rules built in), and I'm volunteering to port the pydist
+stuff over then :-)
+
+> Coding nits:
+> 
+> - We leave two lines between functions.  Some of the stuff in qmdist
+> only has one line of spacing.
+> 
+> - There should be:
+> 
+> ########################################################################
+> # Imports
+> #######################################################################
+> 
+> and other similar blocks in the new qmdist files.  (Look at, say,
+> executable.py for good examples.)
+
+ok, will do.
+
+> - The MANIFEST.in comments should be full sentences.
+
+fine.
+
+Can I check it in then with these changes applied or do you prefer another
+patch first ?
+
+Regards,
+		Stefan
+
+
+
+From mark at codesourcery.com  Sun Sep  7 20:22:39 2003
+From: mark at codesourcery.com (Mark Mitchell)
+Date: 07 Sep 2003 13:22:39 -0700
+Subject: [qmtest] [b,s]dist creation
+In-Reply-To: <3F5A2193.2000201@sympatico.ca>
+References: <3F55679A.5010608@sympatico.ca>
+	<1062813584.11339.272.camel@doubledemon.codesourcery.com> 
+	<3F5A2193.2000201@sympatico.ca>
+Message-ID: <1062966159.5314.390.camel@doubledemon.codesourcery.com>
+
+
+> I'd be fine with both. Actually, I'm aware that the current MANIFEST
+> template is too inclusive. That's partly because I don't fully understand
+> the current directory structure and partly because I hope that once this
+> build system is fully working we could clean the layout up a bit, i.e.
+> make the source tree more isomorphic to an installed tree. Then the
+> MANIFEST.in would be straight forward and clean.
+
+We could also go to the other extreme, via something like:
+
+  cvs export -d tmp 
+  (cd tmp; find . -type f) > MANIFEST.in
+
+Having to manually update MANIFEST.in seems bad, and using wildcards
+seems dangerous, and the thing I suggest here seems cumbersome.
+
+> For a temporary solution it would probably be most efficient if you fixed
+> that file as you know best which files are official and which are not.
+
+I think the file is OK, it is just that it is only safe to use it in a
+completely virgin checkout.
+
+> yeah, I now remember that from RH 8, and found a solution at
+> http://www.rpm.org/hintskinks/rpmbuild/
+> 
+> I'v been running RH 9.0 for a while, and there it works again.
+> 
+> Of course, if this turns out to be a problem I have to extend the 'bdist_rpm'
+> command to use 'rpmbuild' instead.
+
+I think we should do that.  RH 8 is going to be around for a while, and
+"rpmbuild" will work on all future systems, presumably, so by doing a
+little extra work we make things more reliable for our users.
+ 
+> Well, I would suggest to rename/move the 'qmtest.py' file then (and others),
+> so yes, the man pages need to be adjusted accordingly. Speaking of the
+> windows executable: I'd very much like to make it (at least optionally)
+> install two scripts: one that can be run from the windows cmd, the other
+> from a cygwin shell. I believe the latter could be a tiny wrapper shell
+> script, so not a big deal.
+
+That makes sense.
+
+> Can I check it in then with these changes applied or do you prefer another
+> patch first ?
+
+It's OK to check it in.  Normally, we try hard to avoid having
+unfinished work in CVS, but we've already started down this road with
+distutils, so I think it makes sense to keep going in that way.
+
+Thanks,
+
+-- 
+Mark Mitchell
+CodeSourcery, LLC
+mark at codesourcery.com
+
+
+
+From mark at codesourcery.com  Mon Sep  8 06:51:47 2003
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Sun, 7 Sep 2003 23:51:47 -0700
+Subject: PATCH: Provide a textual representation for SetField
+Message-ID: <200309080651.h886pl0t003944@minax.codesourcery.com>
+
+
+This patch implements ParseTextValue for SetField so that values can
+be specified on the command line.
+
+--
+Mark Mitchell
+CodeSourcery, LLC
+mark at codesourcery.com
+
+2003-09-07  Mark Mitchell  <mark at codesourcery.com>
+
+	* qm/fields.py (cStringIO): Do not import.
+	(StringIO): Import.
+	(tokenize): Import.
+	(Field.FormatValueAsText): Use StringIO.
+	(Field.ParseTextValue): Improve documentation.
+	(SetField.FormatValueAsText): Make output match format expected 
+	by ...
+	(SetField.ParseTextField): ... this new method.
+	* qm/test/cmdline.py (QMTest.attribute_option_spec): Generalize
+	help text.
+	* share/diagnostics/common.txt (invalid set value): New message.
+
+Index: qm/fields.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/fields.py,v
+retrieving revision 1.77
+diff -c -5 -p -r1.77 fields.py
+*** qm/fields.py	30 Jul 2003 21:25:30 -0000	1.77
+--- qm/fields.py	8 Sep 2003 06:45:22 -0000
+*************** of test names."""
+*** 40,59 ****
+  # imports
+  ########################################################################
+  
+  import attachment
+  import common
+- import cStringIO
+  import formatter
+  import htmllib
+  import os
+  import re
+  import qm
+  import string
+  import structured_text
+  import sys
+  import time
+  import types
+  import urllib
+  import web
+  import xml.dom
+  import xmlutil
+--- 40,60 ----
+  # imports
+  ########################################################################
+  
+  import attachment
+  import common
+  import formatter
+  import htmllib
+  import os
+  import re
+  import qm
+  import string
++ import StringIO
+  import structured_text
+  import sys
+  import time
++ import tokenize
+  import types
+  import urllib
+  import web
+  import xml.dom
+  import xmlutil
+*************** class Field(object):
+*** 225,239 ****
+          'columns' -- The maximum width of each line of text.
+  
+          returns -- A plain-text string representing 'value'."""
+  
+          # Create a file to hold the result.
+!         text_file = cStringIO.StringIO()
+          # Format the field as HTML.
+!         html_file = cStringIO.StringIO(self.FormatValueAsHtml(None,
+!                                                               value,
+!                                                               "brief"))
+  
+          # Turn the HTML into plain text.
+          parser = htmllib.HTMLParser(formatter.AbstractFormatter
+                                      (formatter.DumbWriter(text_file,
+                                                            maxcol = columns)))
+--- 226,240 ----
+          'columns' -- The maximum width of each line of text.
+  
+          returns -- A plain-text string representing 'value'."""
+  
+          # Create a file to hold the result.
+!         text_file = StringIO.StringIO()
+          # Format the field as HTML.
+!         html_file = StringIO.StringIO(self.FormatValueAsHtml(None,
+!                                                              value,
+!                                                              "brief"))
+  
+          # Turn the HTML into plain text.
+          parser = htmllib.HTMLParser(formatter.AbstractFormatter
+                                      (formatter.DumbWriter(text_file,
+                                                            maxcol = columns)))
+*************** class Field(object):
+*** 307,317 ****
+      def ParseTextValue(self, value):
+          """Parse a value represented as a string.
+  
+          'value' -- A string representing the value.
+  
+!         returns -- The corresponding field value."""
+  
+          raise NotImplemented
+      
+          
+      def ParseFormValue(self, request, name, attachment_store):
+--- 308,320 ----
+      def ParseTextValue(self, value):
+          """Parse a value represented as a string.
+  
+          'value' -- A string representing the value.
+  
+!         returns -- The corresponding field value.  The value returned
+!         should be processed by 'Validate' to ensure that it is valid
+!         before it is returned."""
+  
+          raise NotImplemented
+      
+          
+      def ParseFormValue(self, request, name, attachment_store):
+*************** class SetField(Field):
+*** 868,879 ****
+          # comma-separated list. 
+          contained_field = self.GetContainedField()
+          formatted_items = []
+          for item in value:
+              formatted_item = contained_field.FormatValueAsText(item, columns)
+!             formatted_items.append(formatted_item)
+!         result = string.join(formatted_items, ", ")
+          return qm.common.wrap_lines(result, columns)
+  
+  
+      def FormatValueAsHtml(self, server, value, style, name=None):
+          # Use default value if requested.
+--- 871,882 ----
+          # comma-separated list. 
+          contained_field = self.GetContainedField()
+          formatted_items = []
+          for item in value:
+              formatted_item = contained_field.FormatValueAsText(item, columns)
+!             formatted_items.append(repr(formatted_item))
+!         result = "[ " + string.join(formatted_items, ", ") + " ]"
+          return qm.common.wrap_lines(result, columns)
+  
+  
+      def FormatValueAsHtml(self, server, value, style, name=None):
+          # Use default value if requested.
+*************** class SetField(Field):
+*** 979,988 ****
+--- 982,1044 ----
+          # validating each element in the contained field.
+          return map(lambda v: self.__contained.Validate(v),
+                     value)
+  
+  
++     def ParseTextValue(self, value):
++ 
++         def invalid(tok):
++             """Raise an exception indicating a problem with 'value'.
++             
++             'tok' -- A token indicating the position of the problem.
++ 
++             This function does not return; instead, it raises an
++             appropriate exception."""
++ 
++             raise qm.QMException, \
++                   qm.error("invalid set value", start = value[tok[2][1]:])
++             
++         # Use the Python parser to handle the elements of the set.
++         s = StringIO.StringIO(value)
++         g = tokenize.generate_tokens(s.readline)
++         
++         # Read the opening square bracket.
++         tok = g.next()
++         if tok[0] != tokenize.OP or tok[1] != "[":
++             invalid(tok)
++ 
++         # There are no elements yet.
++         elements = []
++ 
++         # Keep going until we find the closing bracket.
++         while 1:
++             # If we've reached the closing bracket, the set is
++             # complete.
++             tok = g.next()
++             if tok[0] == tokenize.OP and tok[1] == "]":
++                 break
++             # If this is not the first element of the set, there should
++             # be a comma before the next element.
++             if elements:
++                 if tok[0] != tokenize.OP or tok[1] != ",":
++                     invalid(tok)
++                 tok = g.next()
++             # The next token should be a string constant.
++             if tok[0] != tokenize.STRING:
++                 invalid(tok)
++             # Parse the string constant.
++             v = eval(tok[1])
++             elements.append(self.GetContainedField().ParseTextValue(v))
++ 
++         # There should not be any tokens left over.
++         tok = g.next()
++         if not tokenize.ISEOF(tok[0]):
++             invalid(tok)
++ 
++         return self.Validate(elements)
++         
++                        
+      def ParseFormValue(self, request, name, attachment_store):
+  
+          values = []
+  
+          contained_field = self.GetContainedField()
+Index: qm/test/cmdline.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/cmdline.py,v
+retrieving revision 1.95
+diff -c -5 -p -r1.95 cmdline.py
+*** qm/test/cmdline.py	20 Aug 2003 19:43:28 -0000	1.95
+--- qm/test/cmdline.py	8 Sep 2003 06:45:23 -0000
+*************** class QMTest:
+*** 274,284 ****
+  
+      attribute_option_spec = (
+          "a",
+          "attribute",
+          "KEY=VALUE",
+!         "Set a database attribute."
+          )
+  
+      extension_kind_option_spec = (
+          "k",
+          "kind",
+--- 274,284 ----
+  
+      attribute_option_spec = (
+          "a",
+          "attribute",
+          "KEY=VALUE",
+!         "Set an attribute of the extension class."
+          )
+  
+      extension_kind_option_spec = (
+          "k",
+          "kind",
+Index: share/diagnostics/common.txt
+===================================================================
+RCS file: /home/sc/Repository/qm/share/diagnostics/common.txt,v
+retrieving revision 1.21
+diff -c -5 -p -r1.21 common.txt
+*** share/diagnostics/common.txt	14 Apr 2003 06:06:40 -0000	1.21
+--- share/diagnostics/common.txt	8 Sep 2003 06:45:23 -0000
+*************** The user name or password you entered is
+*** 79,88 ****
+--- 79,94 ----
+  
+  @ invalid property
+  The property '%(error)s' is invalid.  Use the form 'NAME=VALUE' to
+  specify properties.  
+  
++ @ invalid set value
++ The set value provided could not be parsed.  The invalid part of the
++ value is "%(start)s".
++ 
++ A valid set value has the form "[ 'value1', 'value2', ... ]".
++ 
+  @ missing command
+  Specify a command.
+  
+  @ sendmail error
+  Could not execute your mail transport agent, `%(sendmail_path)s'.
+
+
+From stefan.seefeld at orthosoft.ca  Mon Sep  8 16:54:52 2003
+From: stefan.seefeld at orthosoft.ca (Stefan Seefeld)
+Date: Mon, 08 Sep 2003 12:54:52 -0400
+Subject: writing composite tests
+Message-ID: <df0ae448092121a7ae641e1d8a644d1d3f5cb214@Orthosoft.ca>
+
+hi there,
+
+I have a couple of tests that consist of various steps
+such as compiling, linking, executing, result (output)
+analysis.
+
+Each of these steps may be considered a test in itself,
+depending on the earlier steps. As such, I would model
+the situation as a 'composite test'.
+
+Can such an approach be supported by qmtest ?
+Would some of the components be generic enough to
+be provided by the qmtest package itself ?
+As of now, the only way to know whether a test
+passed is by inspecting the result, i.e. calling
+result.GetOutcome(). Wouldn't it be intuitive to
+also let the Test.Run() method return a flag indicating
+success ? Then I could write my composite test's 'Run'
+method simply as 'a.Run() and b.Run()'.
+But may be that is considered error-prone and redundant
+as the result is represented at two different places:
+the result object and the return value of 'Run()'...
+
+Regards,
+		Stefan
+
+
+
+From mark at codesourcery.com  Mon Sep  8 17:28:32 2003
+From: mark at codesourcery.com (Mark Mitchell)
+Date: 08 Sep 2003 10:28:32 -0700
+Subject: [qmtest] writing composite tests
+In-Reply-To: <df0ae448092121a7ae641e1d8a644d1d3f5cb214@Orthosoft.ca>
+References: <df0ae448092121a7ae641e1d8a644d1d3f5cb214@Orthosoft.ca>
+Message-ID: <1063042113.24169.10.camel@doubledemon.codesourcery.com>
+
+On Mon, 2003-09-08 at 09:54, Stefan Seefeld wrote:
+> hi there,
+> 
+> I have a couple of tests that consist of various steps
+> such as compiling, linking, executing, result (output)
+> analysis.
+> 
+> Each of these steps may be considered a test in itself,
+> depending on the earlier steps. As such, I would model
+> the situation as a 'composite test'.
+
+We've actually got some pretty nice test/database classes for
+compiling/linking/executing programs.  We should probably get those into
+QMTest proper, but we've never had the time to check over the interfaces
+as much as we'd like, and I'd like to avoid changing them after they go
+into QMTest.
+
+You can get them out of the "qtmc" module in the same repository as
+QMTest.
+
+> Can such an approach be supported by qmtest ?
+
+It was a fundamental design decision for QMTest that every test would
+have exactly one "outcome" (i.e., PASS/FAIL/UNTESTED/ERROR).
+
+There are tree ways to model what you suggest within QMTest.
+
+One is to use prerequisite tests; the linking test is only run if the
+compiling test has already PASSed.
+
+The second is to use a single test with multiple result annotations. 
+The test passes only if everything works, but it if it fails there is an
+annotation showing which step failed.
+
+The third way is to combine the first approach with a "suite"; you have
+tests "compile_a", "link_a", "run_a" which have one-another as
+prerequisites, and then you have an "a" suite which encompasses all
+three.  Then, you can say:
+
+  qmtest run a
+
+and the thing that you expect to happen will happen.
+
+> success ? Then I could write my composite test's 'Run'
+> method simply as 'a.Run() and b.Run()'.
+
+We've intentionally made it hard for one Test to get its hands on
+another Test.  The reason is that tests should be independent of
+another; this is another design goal.  If tests are not independent of
+one another then running one test is no longer a well-defined operation;
+each test is potentially dependent upon context created by other tests.
+
+-- 
+Mark Mitchell
+CodeSourcery, LLC
+mark at codesourcery.com
+
+
+
+From stefan.seefeld at orthosoft.ca  Mon Sep  8 17:39:31 2003
+From: stefan.seefeld at orthosoft.ca (Stefan Seefeld)
+Date: Mon, 08 Sep 2003 13:39:31 -0400
+Subject: [qmtest] writing composite tests
+References: <df0ae448092121a7ae641e1d8a644d1d3f5cb214@Orthosoft.ca> <1063042113.24169.10.camel@doubledemon.codesourcery.com>
+Message-ID: <6fbde710a5b4a03f8cce4ee22deb1c773f5cbc8c@Orthosoft.ca>
+
+Mark Mitchell wrote:
+
+> We've actually got some pretty nice test/database classes for
+> compiling/linking/executing programs.  We should probably get those into
+> QMTest proper, but we've never had the time to check over the interfaces
+> as much as we'd like, and I'd like to avoid changing them after they go
+> into QMTest.
+> 
+> You can get them out of the "qtmc" module in the same repository as
+> QMTest.
+
+ok, thanks, will do.
+
+[...]
+
+> We've intentionally made it hard for one Test to get its hands on
+> another Test.  The reason is that tests should be independent of
+> another; this is another design goal.  If tests are not independent of
+> one another then running one test is no longer a well-defined operation;
+> each test is potentially dependent upon context created by other tests.
+
+Ok, understood. I should have been clearer: I didn't mean to suggest any
+dependency relationship between tests, but only between test *classes*,
+so I can use the 'composite' design pattern. From a user's perspective
+there would only be a single test, and the result would contain all the
+relevant information about passes or failures.
+
+Regards,
+		Stefan
+
+
+
+
+From mark at codesourcery.com  Mon Sep  8 18:22:26 2003
+From: mark at codesourcery.com (Mark Mitchell)
+Date: 08 Sep 2003 11:22:26 -0700
+Subject: [qmtest] writing composite tests
+In-Reply-To: <6fbde710a5b4a03f8cce4ee22deb1c773f5cbc8c@Orthosoft.ca>
+References: <df0ae448092121a7ae641e1d8a644d1d3f5cb214@Orthosoft.ca>
+	<1063042113.24169.10.camel@doubledemon.codesourcery.com> 
+	<6fbde710a5b4a03f8cce4ee22deb1c773f5cbc8c@Orthosoft.ca>
+Message-ID: <1063045349.24134.14.camel@doubledemon.codesourcery.com>
+
+
+> > We've intentionally made it hard for one Test to get its hands on
+> > another Test.  The reason is that tests should be independent of
+> > another; this is another design goal.  If tests are not independent of
+> > one another then running one test is no longer a well-defined operation;
+> > each test is potentially dependent upon context created by other tests.
+> 
+> Ok, understood. I should have been clearer: I didn't mean to suggest any
+> dependency relationship between tests, but only between test *classes*,
+> so I can use the 'composite' design pattern. From a user's perspective
+> there would only be a single test, and the result would contain all the
+> relevant information about passes or failures.
+
+Ah, I see.  
+
+But, why do you have to change the Run interface?  The Run method in the
+composite class could simply pass its result parameter down to the
+contained test classes.  Wouldn't that work?
+ 
+-- 
+Mark Mitchell
+CodeSourcery, LLC
+mark at codesourcery.com
+
+
+
+From seefeld at sympatico.ca  Mon Sep  8 18:59:40 2003
+From: seefeld at sympatico.ca (Stefan Seefeld)
+Date: Mon, 08 Sep 2003 14:59:40 -0400
+Subject: [qmtest] writing composite tests
+References: <df0ae448092121a7ae641e1d8a644d1d3f5cb214@Orthosoft.ca>	<1063042113.24169.10.camel@doubledemon.codesourcery.com> 	<6fbde710a5b4a03f8cce4ee22deb1c773f5cbc8c@Orthosoft.ca> <1063045349.24134.14.camel@doubledemon.codesourcery.com>
+Message-ID: <efb5880a3883cec27bbff511dee3dae43f5ccf56@Orthosoft.ca>
+
+Mark Mitchell wrote:
+
+> But, why do you have to change the Run interface?  The Run method in the
+> composite class could simply pass its result parameter down to the
+> contained test classes.  Wouldn't that work?
+
+yes, sure. Then I'd write
+
+def Run(self, context, result):
+   self.a.Run(context, result)
+
+   if result.GetOutcome() == result.FAIL:
+     return
+
+   self.b.Run(context, result)
+
+
+which is a bit more verbose than just
+
+def Run(self, context, result):
+   return self.a.Run(context, result) and self.b.Run(context, result)
+
+Regards,
+		Stefan
+
+
+
+
+From mark at codesourcery.com  Mon Sep  8 19:56:28 2003
+From: mark at codesourcery.com (Mark Mitchell)
+Date: 08 Sep 2003 12:56:28 -0700
+Subject: [qmtest] writing composite tests
+In-Reply-To: <efb5880a3883cec27bbff511dee3dae43f5ccf56@Orthosoft.ca>
+References: <df0ae448092121a7ae641e1d8a644d1d3f5cb214@Orthosoft.ca>
+	 <1063042113.24169.10.camel@doubledemon.codesourcery.com>
+	 <6fbde710a5b4a03f8cce4ee22deb1c773f5cbc8c@Orthosoft.ca>
+	 <1063045349.24134.14.camel@doubledemon.codesourcery.com>
+	 <efb5880a3883cec27bbff511dee3dae43f5ccf56@Orthosoft.ca>
+Message-ID: <1063050988.14032.15.camel@minax.codesourcery.com>
+
+On Mon, 2003-09-08 at 11:59, Stefan Seefeld wrote:
+> Mark Mitchell wrote:
+> 
+> > But, why do you have to change the Run interface?  The Run method in the
+> > composite class could simply pass its result parameter down to the
+> > contained test classes.  Wouldn't that work?
+> 
+> yes, sure. Then I'd write
+> 
+> def Run(self, context, result):
+>    self.a.Run(context, result)
+> 
+>    if result.GetOutcome() == result.FAIL:
+>      return
+> 
+>    self.b.Run(context, result)
+> 
+> 
+> which is a bit more verbose than just
+> 
+> def Run(self, context, result):
+>    return self.a.Run(context, result) and self.b.Run(context, result)
+
+The flip side is that to make your way work, every Run method has to
+remember to return a value.  When we designed the interface, we thought
+it would be more reliable to avoid having to return the value.
+
+It's possible that some magic could be implemented so that the user's
+Run method doesn't have to return the value, but then the caller gets a
+value anyhow, but we didn't want to try that. :-)
+
+-- 
+Mark Mitchell <mark at codesourcery.com>
+CodeSourcery, LLC
+
+
+
+From njs at pobox.com  Mon Sep  8 22:43:37 2003
+From: njs at pobox.com (Nathaniel Smith)
+Date: Mon, 8 Sep 2003 15:43:37 -0700
+Subject: [qmtest] writing composite tests
+In-Reply-To: <efb5880a3883cec27bbff511dee3dae43f5ccf56@Orthosoft.ca>
+References: <df0ae448092121a7ae641e1d8a644d1d3f5cb214@Orthosoft.ca> <1063042113.24169.10.camel@doubledemon.codesourcery.com> <6fbde710a5b4a03f8cce4ee22deb1c773f5cbc8c@Orthosoft.ca> <1063045349.24134.14.camel@doubledemon.codesourcery.com> <efb5880a3883cec27bbff511dee3dae43f5ccf56@Orthosoft.ca>
+Message-ID: <20030908224337.GA21601@njs.dhis.org>
+
+On Mon, Sep 08, 2003 at 02:59:40PM -0400, Stefan Seefeld wrote:
+> Mark Mitchell wrote:
+> 
+> >But, why do you have to change the Run interface?  The Run method in the
+> >composite class could simply pass its result parameter down to the
+> >contained test classes.  Wouldn't that work?
+> 
+> yes, sure. Then I'd write
+> 
+> def Run(self, context, result):
+>   self.a.Run(context, result)
+> 
+>   if result.GetOutcome() == result.FAIL:
+>     return
+> 
+>   self.b.Run(context, result)
+> 
+> 
+> which is a bit more verbose than just
+> 
+> def Run(self, context, result):
+>   return self.a.Run(context, result) and self.b.Run(context, result)
+
+But you really want something more complicated anyway, because you
+want to merge all the "sub-results" -- just throwing out all the
+annotations is no good!  So I don't know that changing things
+like this buys you much.  For that matter, this wouldn't even work
+for just getting the right outcome; there are four possible outcomes
+to consider, and a boolean only allows for two.
+
+(Yes, the sig quote is randomly chosen.)
+
+-- Nathaniel
+
+-- 
+So let us espouse a less contested notion of truth and falsehood, even
+if it is philosophically debatable (if we listen to philosophers, we
+must debate everything, and there would be no end to the discussion).
+  -- Serendipities, Umberto Eco
+
+
+From mark at codesourcery.com  Fri Sep 12 18:23:00 2003
+From: mark at codesourcery.com (Mark Mitchell)
+Date: 12 Sep 2003 11:23:00 -0700
+Subject: PATCH: Handle missing FD_CLOEXEC
+Message-ID: <1063390984.14878.434.camel@doubledemon.codesourcery.com>
+
+The Python 2.2 RPM shipped with Red Hat 7.3 does not define
+fcntl.FD_CLOEXEC.
+
+This patch implements a workaround.
+
+-- 
+Mark Mitchell
+CodeSourcery, LLC
+mark at codesourcery.com
+-------------- next part --------------
+2003-09-12  Mark Mitchell  <mark at codesourcery.com>
+
+	* qm/executable.py (Executable._MakeCloseOnExec): Deal with
+	missing fcntl.FD_CLOEXEC.
+
+Index: qm/executable.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/executable.py,v
+retrieving revision 1.17
+diff -c -5 -p -r1.17 executable.py
+*** qm/executable.py	15 Aug 2003 09:05:23 -0000	1.17
+--- qm/executable.py	12 Sep 2003 18:13:02 -0000
+*************** class Executable(object):
+*** 317,328 ****
+  
+          UNIX only."""
+  
+          assert sys.platform != "win32"
+  
+!         old_flags = fcntl.fcntl(fd, fcntl.F_GETFD)
+!         fcntl.fcntl(fd, fcntl.F_SETFD, old_flags | fcntl.FD_CLOEXEC)
+  
+  
+      def __CreateCommandLine(self, arguments):
+          """Return a string giving the process command line.
+  
+--- 317,335 ----
+  
+          UNIX only."""
+  
+          assert sys.platform != "win32"
+  
+!         flags = fcntl.fcntl(fd, fcntl.F_GETFD)
+!         try:
+!             flags |= fcntl.FD_CLOEXEC
+!         except AttributeError:
+!             # The Python 2.2 RPM shipped with Red Hat Linux 7.3 does
+!             # not define FD_CLOEXEC.  Fortunately, FD_CLOEXEC is 1 on
+!             # every UNIX system.
+!             flags |= 1
+!         fcntl.fcntl(fd, fcntl.F_SETFD, flags)
+  
+  
+      def __CreateCommandLine(self, arguments):
+          """Return a string giving the process command line.
+  
+
+From seefeld at sympatico.ca  Sat Sep 13 00:09:51 2003
+From: seefeld at sympatico.ca (Stefan Seefeld)
+Date: Fri, 12 Sep 2003 20:09:51 -0400
+Subject: [qmtest] [b,s]dist creation
+In-Reply-To: <1062813584.11339.272.camel@doubledemon.codesourcery.com>
+References: <3F55679A.5010608@sympatico.ca> <1062813584.11339.272.camel@doubledemon.codesourcery.com>
+Message-ID: <3F62604F.8020007@sympatico.ca>
+
+Mark Mitchell wrote:
+
+> #3: bdist_rpm didn't work for me:
+> 
+> rpm -ba --define _topdir
+> /home/mitchell/dev/qm-mainline/build/bdist.linux-i686/rpm --clean
+> build/bdist.linux-i686/rpm/SPECS/qm.spec
+> 
+> On Red Hat 8.0, you have to say "rpmbuild -ba".  The current release
+> script uses "rpmbuild" everywhere, because we generally don't build for
+> older versions of GNU/Linux.  How do we change this bit?
+
+I'll provide a new bdist_rpm command shortly which changes two little
+bits of the original one:
+
+* it uses 'rpmbuild' instead of 'rpm'
+* it runs 'install --optimize --compile' instead of 'install'
+
+Unfortunately the original code is not that well designed, so to merge
+these two changes in I have to copy&paste some very lengthy
+functions :-(
+
+> #4. bdist_wininst is extremely cool.  Very, very cool.  However, here's
+
+after some deeper look into the code I'm not that much convinced any more
+about its coolness.
+
+> the downside: after installation, I couldn't run QMTest. :-(
+> 
+> Here's the error:
+>   
+> Traceback (most recent call last):
+>   File "c:\Python22\scripts\qmtest.py", line 39, in ?
+>     import qm
+>   File "C:\Python22\Lib\site-packages\qm\__init__.py", line 36, in ?
+>     from qm.diagnostic import error, warning, message
+>   File "C:\Python22\Lib\site-packages\qm\diagnostic.py", line 212, in ?
+>     __initialize_module()
+>   File "C:\Python22\Lib\site-packages\qm\diagnostic.py", line 205, in __initialize_module
+>     diagnostic_set.ReadFromFile(diagnostic_file)
+>   File "C:\Python22\Lib\site-packages\qm\diagnostic.py", line 83, in ReadFromFile
+>     file = open(path, "r")
+> IOError: [Errno 2] No such file or directory: 'build\x08dist.win32\\wininst\\DATA\\share\\qm\\diagnostics\\common.txt'
+> 
+> What's up with that, do you think?
+
+I'v had a close look at this. The issue is this:
+
+bdist_wininst calls 'install' with the 'install_data' parameter (and others) set to
+some special path that is only used temporarily, i.e. inside the distribution
+directory structure. The final install paths, i.e. the ones where the installer
+puts the files are different.
+A big chunk of the installer is some base64 encoded binary pasted right into the
+python module. Obviously I'm unable to figure out what that code does beside bootstrapping
+the installation process. I'v tried to contact the author or even the distutils list
+without any response so far :-(
+As I don't know how (and when !) the final installation paths are computed, I don't
+know how to fix this problem. All I know is where the data files got installed on my
+machine, but that's hardly enough to conclude anything.
+If anybody here has some hints or ideas, I'd very much appreciate it !
+
+Regards,
+		Stefan
+
+
+
+From mark at codesourcery.com  Sat Sep 13 00:46:15 2003
+From: mark at codesourcery.com (Mark Mitchell)
+Date: 12 Sep 2003 17:46:15 -0700
+Subject: [qmtest] [b,s]dist creation
+In-Reply-To: <3F62604F.8020007@sympatico.ca>
+References: <3F55679A.5010608@sympatico.ca>
+	<1062813584.11339.272.camel@doubledemon.codesourcery.com> 
+	<3F62604F.8020007@sympatico.ca>
+Message-ID: <1063413976.24917.500.camel@doubledemon.codesourcery.com>
+
+
+> Unfortunately the original code is not that well designed, so to merge
+> these two changes in I have to copy&paste some very lengthy
+> functions :-(
+
+Bummer.
+
+> bdist_wininst calls 'install' with the 'install_data' parameter (and others) set to
+> some special path that is only used temporarily, i.e. inside the distribution
+> directory structure. The final install paths, i.e. the ones where the installer
+> puts the files are different.
+
+Thanks for looking into this.
+
+OK, so that means that the idea of writing out QM_HOME in install_data
+doesn't work.  We have to be able to autodetect QM_HOME -- but we wanted
+to do that anyhow.
+
+Now, on UNIX, we (used to) use the logic in the "qmtest" shell script to
+find QM_HOME.  Now that we're invoking "qmtest.py" directly, this might
+be even easier.  Presumably, sys.argv[0] contains the path to qmtest.py
+(possibly relative to the current directory).  So, maybe now is the time
+to get rid of QM_HOME?  Instead, deduce it in qmtest.py, based on
+sys.argv[0].
+
+Nathaniel, any thoughts?
+
+-- 
+Mark Mitchell
+CodeSourcery, LLC
+mark at codesourcery.com
+
+
+
+From njs at pobox.com  Sat Sep 13 01:34:20 2003
+From: njs at pobox.com (Nathaniel Smith)
+Date: Fri, 12 Sep 2003 18:34:20 -0700
+Subject: [qmtest] [b,s]dist creation
+In-Reply-To: <1063413976.24917.500.camel@doubledemon.codesourcery.com>
+References: <3F55679A.5010608@sympatico.ca> <1062813584.11339.272.camel@doubledemon.codesourcery.com> <3F62604F.8020007@sympatico.ca> <1063413976.24917.500.camel@doubledemon.codesourcery.com>
+Message-ID: <20030913013420.GA7147@njs.dhis.org>
+
+On Fri, Sep 12, 2003 at 05:46:15PM -0700, Mark Mitchell wrote:
+> 
+> OK, so that means that the idea of writing out QM_HOME in install_data
+> doesn't work.  We have to be able to autodetect QM_HOME -- but we wanted
+> to do that anyhow.
+> 
+> Now, on UNIX, we (used to) use the logic in the "qmtest" shell script to
+> find QM_HOME.  Now that we're invoking "qmtest.py" directly, this might
+> be even easier.  Presumably, sys.argv[0] contains the path to qmtest.py
+> (possibly relative to the current directory).  So, maybe now is the time
+> to get rid of QM_HOME?  Instead, deduce it in qmtest.py, based on
+> sys.argv[0].
+
+It may be slightly better to use __file__ rather than sys.argv[0];
+__file__ is a global variable set inside each module to the filename
+containing that module.  It does appear to be relative if Python is
+invoked with a relative filename, so an os.normpath is in order before
+any chdir's.
+
+-- Nathaniel
+
+-- 
+"On arrival in my ward I was immediately served with lunch. `This is
+what you ordered yesterday.' I pointed out that I had just arrived,
+only to be told: `This is what your bed ordered.'"
+  -- Letter to the Editor, The Times, September 2000
+
+
+From seefeld at sympatico.ca  Sat Sep 13 16:12:39 2003
+From: seefeld at sympatico.ca (Stefan Seefeld)
+Date: Sat, 13 Sep 2003 12:12:39 -0400
+Subject: [qmtest] [b,s]dist creation
+In-Reply-To: <20030913013420.GA7147@njs.dhis.org>
+References: <3F55679A.5010608@sympatico.ca> <1062813584.11339.272.camel@doubledemon.codesourcery.com> <3F62604F.8020007@sympatico.ca> <1063413976.24917.500.camel@doubledemon.codesourcery.com> <20030913013420.GA7147@njs.dhis.org>
+Message-ID: <3F6341F7.9030509@sympatico.ca>
+
+Nathaniel Smith wrote:
+> On Fri, Sep 12, 2003 at 05:46:15PM -0700, Mark Mitchell wrote:
+> 
+>>OK, so that means that the idea of writing out QM_HOME in install_data
+>>doesn't work.  We have to be able to autodetect QM_HOME -- but we wanted
+>>to do that anyhow.
+>>
+>>Now, on UNIX, we (used to) use the logic in the "qmtest" shell script to
+>>find QM_HOME.  Now that we're invoking "qmtest.py" directly, this might
+>>be even easier.  Presumably, sys.argv[0] contains the path to qmtest.py
+>>(possibly relative to the current directory).  So, maybe now is the time
+>>to get rid of QM_HOME?  Instead, deduce it in qmtest.py, based on
+>>sys.argv[0].
+> 
+> 
+> It may be slightly better to use __file__ rather than sys.argv[0];
+> __file__ is a global variable set inside each module to the filename
+> containing that module.  It does appear to be relative if Python is
+> invoked with a relative filename, so an os.normpath is in order before
+> any chdir's.
+
+but __file__ tells you only about the module that uses it.
+The python module path however may be more or less unrelated to
+the path the data files are installed in ('/usr/local/share/' typically
+on unix).
+
+I would assume that there is a much stronger relation among the paths
+of the qmtest executable and the data files than there is among the qm
+modules and the data files. Therefor, if we use '__file__', it should
+be that of the qmtest executable, not any module inside the qm package.
+
+Stefan
+
+
+
+From njs at pobox.com  Sat Sep 13 20:33:53 2003
+From: njs at pobox.com (Nathaniel Smith)
+Date: Sat, 13 Sep 2003 13:33:53 -0700
+Subject: [qmtest] [b,s]dist creation
+In-Reply-To: <3F6341F7.9030509@sympatico.ca>
+References: <3F55679A.5010608@sympatico.ca> <1062813584.11339.272.camel@doubledemon.codesourcery.com> <3F62604F.8020007@sympatico.ca> <1063413976.24917.500.camel@doubledemon.codesourcery.com> <20030913013420.GA7147@njs.dhis.org> <3F6341F7.9030509@sympatico.ca>
+Message-ID: <20030913203353.GA28745@njs.dhis.org>
+
+On Sat, Sep 13, 2003 at 12:12:39PM -0400, Stefan Seefeld wrote:
+> but __file__ tells you only about the module that uses it.
+> The python module path however may be more or less unrelated to
+> the path the data files are installed in ('/usr/local/share/' typically
+> on unix).
+> 
+> I would assume that there is a much stronger relation among the paths
+> of the qmtest executable and the data files than there is among the qm
+> modules and the data files. Therefor, if we use '__file__', it should
+> be that of the qmtest executable, not any module inside the qm package.
+
+Yes, I meant the __file__ of the qmtest executable.
+
+-- Nathaniel
+
+-- 
+Details are all that matters; God dwells there, and you never get to
+see Him if you don't struggle to get them right. -- Stephen Jay Gould
+
+
+From mark at codesourcery.com  Mon Sep 15 20:35:22 2003
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Mon, 15 Sep 2003 13:35:22 -0700
+Subject: PATCH: Correct system ID for generated XML
+Message-ID: <200309152035.h8FKZMef000918@doubledemon.codesourcery.com>
+
+
+The system ids in the generated XML documents for QMTest were
+incorrect.  This patch redirects them to a stable URL.
+
+--
+Mark Mitchell
+CodeSourcery, LLC
+mark at codesourcery.com
+
+2003-09-15  Mark Mitchell  <mark at codesourcery.com>
+
+	* qm/extension.py (make_dom_document): Simplify.
+	* qm/user.py (XmlDatabase.Write): Likewise.
+	* qm/xmlutil.py (make_system_id): Use CodeSourcery URLs.
+	(make_public_id): New function.
+	(create_dom_document): Compute full system and public identifiers
+	here.
+	* qm/test/base.py (dtds): Remove.
+	* qm/test/cmdline.py (QMTest.__ExecuteCreateTarget): Adjust call
+	to create_dom_document.
+	(QMTest.__ExecuteRegister): Likewise.
+	* qm/test/classes/xml_database.py: Likewise.
+	* qm/test/classes/xml_result_stream.py: Likewise.
+	* qm/test/share/dtds/class-directory.dtd: Tidy.
+	* qm/test/share/dtds/result.dtd: Likewise.
+
+Index: qm/extension.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/extension.py,v
+retrieving revision 1.12
+diff -c -5 -p -r1.12 extension.py
+*** qm/extension.py	3 Jul 2003 19:32:04 -0000	1.12
+--- qm/extension.py	15 Sep 2003 20:05:02 -0000
+*************** def make_dom_document(extension_class, a
+*** 312,324 ****
+  
+      returns -- A new DOM document corresponding to an instance of the
+      extension class."""
+  
+      document = qm.xmlutil.create_dom_document(
+!             public_id=qm.test.base.dtds["extension"],
+!             dtd_file_name="extension",
+!             document_element_tag="extension"
+              )
+      make_dom_element(extension_class, arguments, document,
+                       document.documentElement)
+      return document
+      
+--- 312,323 ----
+  
+      returns -- A new DOM document corresponding to an instance of the
+      extension class."""
+  
+      document = qm.xmlutil.create_dom_document(
+!             public_id = "Extension",
+!             document_element_tag = "extension"
+              )
+      make_dom_element(extension_class, arguments, document,
+                       document.documentElement)
+      return document
+      
+Index: qm/user.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/user.py,v
+retrieving revision 1.10
+diff -c -5 -p -r1.10 user.py
+*** qm/user.py	11 Oct 2002 20:23:24 -0000	1.10
+--- qm/user.py	15 Sep 2003 20:05:02 -0000
+*************** class XmlDatabase:
+*** 387,398 ****
+      def Write(self):
+          """Write out the user database."""
+  
+          # Create a DOM document for the database.
+          document = xmlutil.create_dom_document(
+!             public_id=xml_user_database_dtd,
+!             dtd_file_name="user.dtd",
+              document_element_tag="users"
+              )
+          document_element = document.documentElement
+          # Create elements for users in the database.
+          for user in self.__users.values():
+--- 387,397 ----
+      def Write(self):
+          """Write out the user database."""
+  
+          # Create a DOM document for the database.
+          document = xmlutil.create_dom_document(
+!             public_id = "User",
+              document_element_tag="users"
+              )
+          document_element = document.documentElement
+          # Create elements for users in the database.
+          for user in self.__users.values():
+Index: qm/xmlutil.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/xmlutil.py,v
+retrieving revision 1.21
+diff -c -5 -p -r1.21 xmlutil.py
+*** qm/xmlutil.py	18 Jun 2003 17:14:01 -0000	1.21
+--- qm/xmlutil.py	15 Sep 2003 20:05:02 -0000
+*************** import xml.dom.minidom
+*** 25,38 ****
+  
+  ########################################################################
+  # functions
+  ########################################################################
+  
+  def make_system_id(name):
+!     """Construct a system ID for the file 'name'."""
+  
+!     return "http://www.software-carpentry.com/qm/xml/%s" % name
+  
+  
+  def load_xml_file(path):
+      """Return a DOM document loaded from the XML file 'path'."""
+  
+--- 25,52 ----
+  
+  ########################################################################
+  # functions
+  ########################################################################
+  
++ def make_public_id(name):
++     """Return a public ID for the DTD with the given 'name'.
++ 
++     'name' -- The name of the DTD.
++ 
++     returns -- A public ID for the DTD."""
++ 
++     return "-//QM/%s/%s//EN" % (qm.version, name)
++ 
++     
+  def make_system_id(name):
+!     """Return a system ID for the DTD with the given 'name'.
+! 
+!     'name' -- The name of the DTD, as a relative UNIX path.
+! 
+!     returns -- A URL for the DTD."""
+  
+!     return "http://www.codesourcery.com/qm/dtds/%s/%s" % (qm.version, name)
+  
+  
+  def load_xml_file(path):
+      """Return a DOM document loaded from the XML file 'path'."""
+  
+*************** def create_dom_text_element(document, ta
+*** 174,208 ****
+      return element
+  
+  
+  __dom_implementation = xml.dom.minidom.getDOMImplementation()
+  
+! def create_dom_document(public_id, dtd_file_name, document_element_tag):
+      """Create a DOM document.
+  
+!     'public_id' -- The public ID of the DTD to use for this document.
+! 
+!     'dtd_file_name' -- The name of the DTD file for this document.
+  
+      'document_element_tag' -- The tag of the main document element.
+  
+      returns -- A DOM document node."""
+  
+!     system_id = make_system_id(dtd_file_name)
+      # Create the document type for the XML document.
+      document_type = __dom_implementation.createDocumentType(
+          qualifiedName=document_element_tag,
+          publicId=public_id,
+          systemId=system_id
+          )
+      # Create a new DOM document.
+!     return __dom_implementation.createDocument(
+!         namespaceURI=None,
+!         qualifiedName=document_element_tag,
+!         doctype=document_type
+!         )
+!     
+  
+  __hyphen_regex = re.compile("(--+)")
+  
+  def __hyphen_replacement(match):
+      return "-" + " -" * (len(match.group(0)) - 1)
+--- 188,221 ----
+      return element
+  
+  
+  __dom_implementation = xml.dom.minidom.getDOMImplementation()
+  
+! def create_dom_document(public_id, document_element_tag):
+      """Create a DOM document.
+  
+!     'public_id' -- The (partial) public ID for the DTD.
+  
+      'document_element_tag' -- The tag of the main document element.
+  
+      returns -- A DOM document node."""
+  
+!     public_id = make_public_id(public_id)
+!     system_id = make_system_id(public_id.lower() + ".dtd")
+      # Create the document type for the XML document.
+      document_type = __dom_implementation.createDocumentType(
+          qualifiedName=document_element_tag,
+          publicId=public_id,
+          systemId=system_id
+          )
+      # Create a new DOM document.
+!     document = __dom_implementation.\
+!                     createDocument(namespaceURI=None,
+!                                    qualifiedName=document_element_tag,
+!                                    doctype=document_type)
+!     return document
+! 
+  
+  __hyphen_regex = re.compile("(--+)")
+  
+  def __hyphen_replacement(match):
+      return "-" + " -" * (len(match.group(0)) - 1)
+Index: qm/test/base.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/base.py,v
+retrieving revision 1.90
+diff -c -5 -p -r1.90 base.py
+*** qm/test/base.py	27 Aug 2003 16:17:57 -0000	1.90
+--- qm/test/base.py	15 Sep 2003 20:05:03 -0000
+*************** import string
+*** 32,62 ****
+  import sys
+  import tempfile
+  import types
+  
+  ########################################################################
+- # constants
+- ########################################################################
+- 
+- dtds = {
+-     "class-directory":
+-                     "-//Software Carpentry//QMTest Class Directory V0.1//EN",
+-     "extension":    "-//Software Carpentry//QMTest Extension V0.1//EN",
+-     "tdb-configuration":
+-                     "-//Software Carpentry//QMTest TDB Configuration V0.1//EN",
+-     "resource":     "-//Software Carpentry//QMTest Resource V0.1//EN",
+-     "result":       "-//Software Carpentry//QMTest Result V0.3//EN",
+-     "suite":        "-//Software Carpentry//QMTest Suite V0.1//EN",
+-     "target":       "-//Software Carpentry//QMTest Target V0.1//EN",
+-     "test":         "-//Software Carpentry//QMTest Test V0.1//EN",
+-     }
+- """A mapping for DTDs used by QMTest.
+- 
+- Keys are DTD types ("resource", "result", etc).  Values are the
+- corresponding DTD public identifiers."""
+- 
+- ########################################################################
+  # Exceptions
+  ########################################################################
+  
+  class CouldNotLoadExtensionError(QMException):
+      """An exception indicating that an extension class could not be loaded."""
+--- 32,41 ----
+Index: qm/test/cmdline.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/cmdline.py,v
+retrieving revision 1.97
+diff -c -5 -p -r1.97 cmdline.py
+*** qm/test/cmdline.py	15 Sep 2003 05:13:17 -0000	1.97
+--- qm/test/cmdline.py	15 Sep 2003 20:05:03 -0000
+*************** Valid formats are "full", "brief" (the d
+*** 976,987 ****
+              for duplicate in duplicates:
+                  targets_element.removeChild(duplicate)
+                  duplicate.unlink()
+          else:
+              document = (qm.xmlutil.create_dom_document
+!                         (public_id = dtds["target"],
+!                          dtd_file_name = "target.dtd",
+                           document_element_tag = "targets"))
+              targets_element = document.documentElement
+              
+          # Get the attributes.
+          attributes = self.__GetAttributeOptions()
+--- 976,986 ----
+              for duplicate in duplicates:
+                  targets_element.removeChild(duplicate)
+                  duplicate.unlink()
+          else:
+              document = (qm.xmlutil.create_dom_document
+!                         (public_id = "QMTest/Target",
+                           document_element_tag = "targets"))
+              targets_element = document.documentElement
+              
+          # Get the attributes.
+          attributes = self.__GetAttributeOptions()
+*************** Valid formats are "full", "brief" (the d
+*** 1120,1131 ****
+          classes_file_name = os.path.join(directory, "classes.qmc")
+          try:
+              document = qm.xmlutil.load_xml_file(classes_file_name)
+          except:
+              document = (qm.xmlutil.create_dom_document
+!                         (public_id=qm.test.base.dtds["class-directory"],
+!                          dtd_file_name="class-directory.dtd",
+                           document_element_tag="class-directory"))
+  
+          # Remove any previous entries for this class.
+          duplicates = []
+          for element in qm.xmlutil.get_children(document.documentElement,
+--- 1119,1129 ----
+          classes_file_name = os.path.join(directory, "classes.qmc")
+          try:
+              document = qm.xmlutil.load_xml_file(classes_file_name)
+          except:
+              document = (qm.xmlutil.create_dom_document
+!                         (public_id = "Class-Directory",
+                           document_element_tag="class-directory"))
+  
+          # Remove any previous entries for this class.
+          duplicates = []
+          for element in qm.xmlutil.get_children(document.documentElement,
+Index: qm/test/classes/xml_database.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/classes/xml_database.py,v
+retrieving revision 1.15
+diff -c -5 -p -r1.15 xml_database.py
+*** qm/test/classes/xml_database.py	7 Aug 2003 17:05:20 -0000	1.15
+--- qm/test/classes/xml_database.py	15 Sep 2003 20:05:03 -0000
+*************** class XMLDatabase(ExtensionDatabase):
+*** 117,128 ****
+          # Don't write directory suites to suite file.
+          assert not suite.IsImplicit()
+  
+          # Generate the document and document type for XML suite files.
+          document = qm.xmlutil.create_dom_document(
+!             public_id=qm.test.base.dtds["suite"],
+!             dtd_file_name="suite.dtd",
+              document_element_tag="suite"
+              )
+          # Construct the suite element node by adding children for test
+          # IDs and suite IDs.  Use the raw test and suite IDs, i.e. don't
+          # expand suites to their contained tests. 
+--- 117,127 ----
+          # Don't write directory suites to suite file.
+          assert not suite.IsImplicit()
+  
+          # Generate the document and document type for XML suite files.
+          document = qm.xmlutil.create_dom_document(
+!             public_id="QMTest/Suite",
+              document_element_tag="suite"
+              )
+          # Construct the suite element node by adding children for test
+          # IDs and suite IDs.  Use the raw test and suite IDs, i.e. don't
+          # expand suites to their contained tests. 
+Index: qm/test/classes/xml_result_stream.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/classes/xml_result_stream.py,v
+retrieving revision 1.3
+diff -c -5 -p -r1.3 xml_result_stream.py
+*** qm/test/classes/xml_result_stream.py	3 Jul 2003 19:32:04 -0000	1.3
+--- qm/test/classes/xml_result_stream.py	15 Sep 2003 20:05:03 -0000
+*************** class XMLResultStream(FileResultStream):
+*** 41,58 ****
+          super(XMLResultStream, self).__init__(arguments)
+          
+          # Create an XML document, since the DOM API requires you
+          # to have a document when you create a node.
+          self.__document = qm.xmlutil.create_dom_document(
+!             public_id=qm.test.base.dtds["result"],
+!             dtd_file_name="result.dtd",
+              document_element_tag="results")
+          # Write out the prologue.
+          self.file.write("<?xml version='1.0' encoding='ISO-8859-1'?>\n")
+          self.file.write('<!DOCTYPE results PUBLIC "%s" "%s">\n'
+!                         % (qm.test.base.dtds["result"],
+!                            qm.xmlutil.make_system_id("result.dtd")))
+          # Begin the list of results.
+          self.file.write("<results>\n")
+  
+  
+      def WriteAnnotation(self, key, value):
+--- 41,57 ----
+          super(XMLResultStream, self).__init__(arguments)
+          
+          # Create an XML document, since the DOM API requires you
+          # to have a document when you create a node.
+          self.__document = qm.xmlutil.create_dom_document(
+!             public_id="QMTest/Result",
+              document_element_tag="results")
+          # Write out the prologue.
+          self.file.write("<?xml version='1.0' encoding='ISO-8859-1'?>\n")
+          self.file.write('<!DOCTYPE results PUBLIC "%s" "%s">\n'
+!                         % (qm.xmlutil.make_public_id("QMTest/Result"),
+!                            qm.xmlutil.make_system_id("qmtest/result.dtd")))
+          # Begin the list of results.
+          self.file.write("<results>\n")
+  
+  
+      def WriteAnnotation(self, key, value):
+Index: qm/test/share/dtds/class-directory.dtd
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/share/dtds/class-directory.dtd,v
+retrieving revision 1.3
+diff -c -5 -p -r1.3 class-directory.dtd
+*** qm/test/share/dtds/class-directory.dtd	13 Jun 2002 17:30:31 -0000	1.3
+--- qm/test/share/dtds/class-directory.dtd	15 Sep 2003 20:05:03 -0000
+***************
+*** 5,28 ****
+    Date:   2001-10-09
+  
+    Contents:
+      DTD for class directory files.
+  
+!   Copyright (C) 2001, 2002 CodeSourcery LLC.  All rights reserved.
+  
+    For license terms see the file COPYING.
+  
+  -->
+  
+! <!-- NAME: QMTest Class Directory V0.1 -->
+  
+  <!-- A class directory. -->
+  <!ELEMENT class-directory (class*)>
+  
+  <!-- A class. -->
+  <!ELEMENT class (#PCDATA)>
+! <!ATTLIST class kind (database | file | resource | target | test) #REQUIRED>
+  
+  <!-- 
+    Local Variables:
+    mode: xml
+    indent-tabs-mode: nil
+--- 5,28 ----
+    Date:   2001-10-09
+  
+    Contents:
+      DTD for class directory files.
+  
+!   Copyright (C) 2001, 2002, 2003 CodeSourcery LLC.  All rights reserved.
+  
+    For license terms see the file COPYING.
+  
+  -->
+  
+! <!-- NAME: QMTest Class Directory -->
+  
+  <!-- A class directory. -->
+  <!ELEMENT class-directory (class*)>
+  
+  <!-- A class. -->
+  <!ELEMENT class (#PCDATA)>
+! <!ATTLIST class kind CDATA #REQUIRED>
+  
+  <!-- 
+    Local Variables:
+    mode: xml
+    indent-tabs-mode: nil
+Index: qm/test/share/dtds/result.dtd
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/share/dtds/result.dtd,v
+retrieving revision 1.3
+diff -c -5 -p -r1.3 result.dtd
+*** qm/test/share/dtds/result.dtd	28 May 2002 01:37:55 -0000	1.3
+--- qm/test/share/dtds/result.dtd	15 Sep 2003 20:05:03 -0000
+***************
+*** 3,31 ****
+    File:   results.dtd
+    Author: Alex Samuel
+    Date:   2001-03-14
+  
+    Contents:
+!     DTD for test result sets.
+  
+!   Copyright (C) 2001, 2002 CodeSourcery LLC.  All rights reserved.
+  
+    For license terms see the file COPYING.
+  
+  -->
+  
+! <!-- NAME: QMTest Result V0.3 -->
+  
+  <!-- The results of a test run.  -->
+! <!ELEMENT results (result*)>
+  
+! <!-- The result of executing a single test or resource function.  -->
+  <!ELEMENT result (outcome, property*)>
+  <!ATTLIST result id CDATA #REQUIRED
+                   kind (test | resource) #REQUIRED>
+  
+! <!-- The outcome of a test or resource function.  -->
+  <!ELEMENT outcome (#PCDATA)>
+  
+  <!-- An additional annotation to the result.  -->
+  <!ELEMENT property (#PCDATA)>
+  <!ATTLIST property name CDATA #REQUIRED>
+--- 3,35 ----
+    File:   results.dtd
+    Author: Alex Samuel
+    Date:   2001-03-14
+  
+    Contents:
+!     DTD for result files.
+  
+!   Copyright (C) 2001, 2002, 2003 CodeSourcery LLC.  All rights reserved.
+  
+    For license terms see the file COPYING.
+  
+  -->
+  
+! <!-- NAME: QMTest Result -->
+  
+  <!-- The results of a test run.  -->
+! <!ELEMENT results (result | annotation)*>
+  
+! <!-- Meta-data about the test run. -->
+! <!ELEMENT annotation (#PCDATA)>
+! <!ATTLIST annotation key CDATA #REQUIRED>
+! 
+! <!-- The result of executing a test or resource.  -->
+  <!ELEMENT result (outcome, property*)>
+  <!ATTLIST result id CDATA #REQUIRED
+                   kind (test | resource) #REQUIRED>
+  
+! <!-- The outcome of a test or resource.  -->
+  <!ELEMENT outcome (#PCDATA)>
+  
+  <!-- An additional annotation to the result.  -->
+  <!ELEMENT property (#PCDATA)>
+  <!ATTLIST property name CDATA #REQUIRED>
+
+
+From stefan.seefeld at orthosoft.ca  Tue Sep 16 12:50:30 2003
+From: stefan.seefeld at orthosoft.ca (Stefan Seefeld)
+Date: Tue, 16 Sep 2003 08:50:30 -0400
+Subject: rpm generation
+Message-ID: <77fbb3b04261c2139ca61aa752199cfe3f6703fd@Orthosoft.ca>
+
+hi there,
+
+I'v been looking some more into the rpm generation issues.
+The problem of distutils using 'rpm' on RH8 has been addressed
+in python 2.2.3, see http://www.python.org/2.2.3/NEWS.txt.
+
+Do you think it is appropriate to require this version ?
+(This is only a requirement for the build machine, after all,
+as 2.2.3 should be compatible with 2.2.1, which you already
+seem to require for the target machine anyways)
+
+Else I'd have to provide a lengthy patch that reimplements
+parts of bdist_rpm.
+
+Regards,
+		Stefan
+
+
+
+From mark at codesourcery.com  Tue Sep 16 15:30:08 2003
+From: mark at codesourcery.com (Mark Mitchell)
+Date: 16 Sep 2003 08:30:08 -0700
+Subject: [qmtest] rpm generation
+In-Reply-To: <77fbb3b04261c2139ca61aa752199cfe3f6703fd@Orthosoft.ca>
+References: <77fbb3b04261c2139ca61aa752199cfe3f6703fd@Orthosoft.ca>
+Message-ID: <1063726208.25231.575.camel@doubledemon.codesourcery.com>
+
+On Tue, 2003-09-16 at 05:50, Stefan Seefeld wrote:
+> hi there,
+> 
+> I'v been looking some more into the rpm generation issues.
+> The problem of distutils using 'rpm' on RH8 has been addressed
+> in python 2.2.3, see http://www.python.org/2.2.3/NEWS.txt.
+> 
+> Do you think it is appropriate to require this version ?
+
+That's probably OK.
+
+It's unfortunate, in that then as a packager you want to have two
+Python's installed: one to package with and one to test with.  However,
+as long as the bytecode generated by 2.2.3 can run on 2.2.1, that should
+work.
+
+I agree that copying large chunks of distutils code isn't very
+attractive.
+
+Let's not worry about this issue, in light of the fact that there are
+now two work arounds for the packager: Python 2.2.3 and/or messing with
+/etc/popt, and none of this affects the end-user.
+
+The Windows issues is more important because the resulting package file
+doesn't work.
+
+Do you want to try to work on the QM_HOME bits?  If not, let me know,
+and I will try to get to those.
+
+Thanks,
+ 
+-- 
+Mark Mitchell
+CodeSourcery, LLC
+mark at codesourcery.com
+
+
+
+From seefeld at sympatico.ca  Tue Sep 16 15:41:47 2003
+From: seefeld at sympatico.ca (Stefan Seefeld)
+Date: Tue, 16 Sep 2003 11:41:47 -0400
+Subject: [qmtest] rpm generation
+References: <77fbb3b04261c2139ca61aa752199cfe3f6703fd@Orthosoft.ca> <1063726208.25231.575.camel@doubledemon.codesourcery.com>
+Message-ID: <788bbb6c6f48353a4e6b409e5e9ce40c3f672c24@Orthosoft.ca>
+
+Mark Mitchell wrote:
+
+> Let's not worry about this issue, in light of the fact that there are
+> now two work arounds for the packager: Python 2.2.3 and/or messing with
+> /etc/popt, and none of this affects the end-user.
+
+agreed.
+
+> The Windows issues is more important because the resulting package file
+> doesn't work.
+> 
+> Do you want to try to work on the QM_HOME bits?  If not, let me know,
+> and I will try to get to those.
+
+I'm looking into it right now.
+
+Regards,
+		Stefan
+
+
+
+
+
+
+From seefeld at sympatico.ca  Tue Sep 16 20:32:42 2003
+From: seefeld at sympatico.ca (Stefan Seefeld)
+Date: Tue, 16 Sep 2003 16:32:42 -0400
+Subject: [qmtest] rpm generation
+References: <77fbb3b04261c2139ca61aa752199cfe3f6703fd@Orthosoft.ca> <1063726208.25231.575.camel@doubledemon.codesourcery.com>
+Message-ID: <48107570821fc5bbed6f6ff48ea11a9f3f67705b@Orthosoft.ca>
+
+Mark Mitchell wrote:
+
+> Do you want to try to work on the QM_HOME bits?  If not, let me know,
+> and I will try to get to those.
+
+Attached is a patch that fixes this issue:
+ From within the qmtest.py executable I deduce the data_dir by taking all
+but the two last components of the path (on unix it's installed in
+<prefix>/bin/qmtest.py, on windows in <prefix>/Scripts/qmtest.py).
+I didn't use the __file__ attribute as that is only defined for modules,
+not scripts / main executables.
+
+Just when I was ready with this patch I got a reply from the
+bdist_wininst author, who told me that python 2.3 contained an updated
+distutils version with an 'post_install' script feature, which looks
+like an even better way to fix this kind of thing. But as we go with
+python 2.2, that's not an option for now...
+
+Regards,
+		Stefan
+
+
+
+
+
+
+From seefeld at sympatico.ca  Tue Sep 16 20:34:12 2003
+From: seefeld at sympatico.ca (Stefan Seefeld)
+Date: Tue, 16 Sep 2003 16:34:12 -0400
+Subject: and here comes...
+References: <77fbb3b04261c2139ca61aa752199cfe3f6703fd@Orthosoft.ca> <1063726208.25231.575.camel@doubledemon.codesourcery.com> <48107570821fc5bbed6f6ff48ea11a9f3f67705b@Orthosoft.ca>
+Message-ID: <09550239a8600b519108d05f5977e9a63f6770b4@Orthosoft.ca>
+
+...the patch
+
+Sorry.
+
+Stefan
+
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: diff
+URL: <http://sourcerytools.com/pipermail/qmtest/attachments/20030916/77ad02f7/attachment.ksh>
+
+From mark at codesourcery.com  Wed Sep 17 19:11:29 2003
+From: mark at codesourcery.com (Mark Mitchell)
+Date: 17 Sep 2003 12:11:29 -0700
+Subject: [qmtest] and here comes...
+In-Reply-To: <09550239a8600b519108d05f5977e9a63f6770b4@Orthosoft.ca>
+References: <77fbb3b04261c2139ca61aa752199cfe3f6703fd@Orthosoft.ca>
+	<1063726208.25231.575.camel@doubledemon.codesourcery.com>
+	<48107570821fc5bbed6f6ff48ea11a9f3f67705b@Orthosoft.ca> 
+	<09550239a8600b519108d05f5977e9a63f6770b4@Orthosoft.ca>
+Message-ID: <1063825889.2550.110.camel@doubledemon.codesourcery.com>
+
+Stefan --
+
+Thanks for working on this; this patch is OK.
+
+-- 
+Mark Mitchell
+CodeSourcery, LLC
+mark at codesourcery.com
+
+
+
+From seefeld at sympatico.ca  Thu Sep 18 01:01:44 2003
+From: seefeld at sympatico.ca (Stefan Seefeld)
+Date: Wed, 17 Sep 2003 21:01:44 -0400
+Subject: new 'check' command
+Message-ID: <3F6903F8.1050304@sympatico.ca>
+
+hi there,
+
+this patch allows to run the self-tests (as priviously done
+with 'make check'). It operates with the executable and modules
+inside the source tree. To be able to do this I had to make two
+(temporary, I hope) changes:
+
+* define QM_BUILD (this is detected by the presence of the qm.config
+   module, which, when found, means QM_BUILD = 0
+
+* as the qmtest.py executable is right now in an unusual place,
+   I can't use the same procedure to deduce QM_HOME from it.
+   As a temporary workaround (until the source tree layout is
+   cleaned up) I set QM_HOME from within the qm/__init__.py
+   file only if it is not already defined. This means that in
+   order to run the 'check' command right now you have to define
+   QM_HOME manually.
+
+Please see 'python setup.py check --help' for the options, all
+test classes can be selected individually, 'all' is the default.
+
+Please let me know what features are missing from the new build
+system before you are ready for the file layout rearrangement.
+Once things are made more isomorphic to an installed tree (such
+as all data moved out of the 'qm' subtree into 'share/qm/', the
+'qmtest.py' executable to 'bin/qmtest', etc.) I can do some cleanup,
+such as remove the code using QM_BUILD and QM_HOME.
+
+Regards,
+		Stefan
+
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: check.py
+URL: <http://sourcerytools.com/pipermail/qmtest/attachments/20030917/c8191c13/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: patch
+URL: <http://sourcerytools.com/pipermail/qmtest/attachments/20030917/c8191c13/attachment-0001.ksh>
+
+From stefan.seefeld at orthosoft.ca  Fri Sep 19 18:31:16 2003
+From: stefan.seefeld at orthosoft.ca (Stefan Seefeld)
+Date: Fri, 19 Sep 2003 14:31:16 -0400
+Subject: RFE: result annotations
+Message-ID: <a0ff1edbe193e64544bab947beb07ec63f6b48a4@Orthosoft.ca>
+
+hello,
+
+Working with the xml_result_stream, I notice that the 'TRACEBACK'
+annotation (which is decorated with '<pre>' and '</pre>' is escaped
+in the resulting xml output. Is that intended ?
+
+What is the approach in general ? It seems lots of output text is
+assumed to be html. But then, putting it inside an xml output stream
+means some work is required. While escaping seems like a possibility,
+I don't believe it is the best option (see 
+http://norman.walsh.name/2003/09/16/escmarkup).
+
+I'm post-processing the output with xslt to generate a 'test matrix',
+and as it is now I can't recover the '<pre>' tag.
+
+Also, I'm wondering whether the annotation could be enhanced by
+providing the name of the suite a test is part of. Of course, the suite
+is implicitely given as 'foo.bar', but here, again, I'd like to be
+able to access this bit of meta-info from within xslt, so I can
+use suites to classify tests.
+
+Any thoughts ?
+
+Thanks,
+		Stefan
+
+
+
+From mark at codesourcery.com  Mon Sep 22 02:13:32 2003
+From: mark at codesourcery.com (Mark Mitchell)
+Date: 21 Sep 2003 19:13:32 -0700
+Subject: [qmtest] RFE: result annotations
+In-Reply-To: <a0ff1edbe193e64544bab947beb07ec63f6b48a4@Orthosoft.ca>
+References: <a0ff1edbe193e64544bab947beb07ec63f6b48a4@Orthosoft.ca>
+Message-ID: <1064196811.12893.23.camel@minax.codesourcery.com>
+
+On Fri, 2003-09-19 at 11:31, Stefan Seefeld wrote:
+> hello,
+> 
+> Working with the xml_result_stream, I notice that the 'TRACEBACK'
+> annotation (which is decorated with '<pre>' and '</pre>' is escaped
+> in the resulting xml output. Is that intended ?
+
+Yes.  If you do not quote special characters, then it is possible for
+the XML to be invalid -- even if you assume that the annotation is valid
+HTML.  (That is true because HTML does not have XML's strict
+requirements on matching beginning and ending tags.) 
+
+> What is the approach in general ? It seems lots of output text is
+> assumed to be html. But then, putting it inside an xml output stream
+> means some work is required. While escaping seems like a possibility,
+> I don't believe it is the best option (see 
+> http://norman.walsh.name/2003/09/16/escmarkup).
+
+Frankly, I don't think there's any other approach other than quoting.
+
+We want to preserve particular strings -- byte-for-byte.  I don't know
+of any other way to do that.
+
+> I'm post-processing the output with xslt to generate a 'test matrix',
+> and as it is now I can't recover the '<pre>' tag.
+
+I'm not sure what that's true.  The value of the text node contains the
+string "<pre>"; not the string "&lt;pre&gt;".  The externalized
+representation is the quoted form, but the value is the unquoted form.
+
+It may be that you want do disable output escaping (with
+xsl:disable-output-escaping), but I'm not sure.
+
+> Also, I'm wondering whether the annotation could be enhanced by
+> providing the name of the suite a test is part of. Of course, the suite
+> is implicitely given as 'foo.bar', but here, again, I'd like to be
+> able to access this bit of meta-info from within xslt, so I can
+> use suites to classify tests.
+
+The problem here is that the naming convention isn't standard across
+test classes -- for good reasons.  I suppose we could provide both the
+full name of the test and the sequence of path components that make it
+up, but that seems redundant.  I'm not sure exactly what to suggest.
+
+-- 
+Mark Mitchell <mark at codesourcery.com>
+CodeSourcery, LLC
+
+
+
+From mark at codesourcery.com  Mon Sep 22 06:22:04 2003
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Sun, 21 Sep 2003 23:22:04 -0700
+Subject: PATCH: XML improvements
+Message-ID: <200309220622.h8M6M4E8014340@minax.codesourcery.com>
+
+
+This patch allows us to turn on pretty-printed XML in a couple of
+places, which makes the XML output much more readable.  I intend to
+make similar changes for the "Extension" class storage while
+travelling this week.
+
+This is part of the overall audit that we're performing to stabilize
+the interfaces and APIs in preparation for QMTest 2.1.
+
+--
+Mark Mitchell
+CodeSourcery, LLC
+mark at codesourcery.com
+
+2003-09-21  Mark Mitchell  <mark at codesourcery.com>
+
+	* qm/xmlutil.py (get_children): Remove.
+	(get_child_texts): Don't use it.
+	* qm/test/base.py (get_extension_class_names_in_directory):
+	Support new class directory format.
+	* qm/test/cmdline.py (QMTest.__ExecuteRegister): Generate the
+	class directory using the new directory format.
+	* qm/test/database.py (load_database): Do not use get_children.
+	* qm/test/result.py (Result.MakeDomNode): Revise result format.
+	(__all__): New variable.
+	* qm/test/classes.qmc: Regenerated.
+	* qm/test/classes/xml_result_stream.py
+	(XMLResultStream.WriteAnnotation): Use indentation when writing
+	out results.
+	(XMLResultStream.WriteResult): Likewise.
+	(XMLResultReader._get_result_from_dom): Rename to ...
+	(XMLResultReader._GetResultFromDomNode): ... this.  Support old
+	and new formats.
+	* qm/test/share/dtds/result.dtd: Update.
+	* qm/test/share/dtds/class-directory.dtd: Likewise.
+
+Index: qm/xmlutil.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/xmlutil.py,v
+retrieving revision 1.22
+diff -c -5 -p -r1.22 xmlutil.py
+*** qm/xmlutil.py	15 Sep 2003 20:26:40 -0000	1.22
+--- qm/xmlutil.py	22 Sep 2003 04:41:58 -0000
+*************** def get_child(node, child_tag):
+*** 126,141 ****
+      if len(matching_children) != 1:
+          raise KeyError, child_tag
+      return matching_children[0]
+  
+  
+- def get_children(node, child_tag):
+-     """Return a sequence of children of 'node' whose tags are 'child_tag'."""
+-     
+-     return filter(child_tag_predicate(child_tag), node.childNodes)
+- 
+- 
+  def get_child_text(node, child_tag, default=None):
+      """Return the text contained in a child of DOM 'node'.
+  
+      'child_tag' -- The tag of the child node whose text is to be
+      retrieved.
+--- 126,135 ----
+*************** def get_child_texts(node, child_tag):
+*** 162,178 ****
+  
+      returns -- The list containing all child nodes of 'node' which have
+      tag 'child_tag'.  Each child must have exactly one child of its own,
+      which must be a text node."""
+  
+!     return map(get_dom_text, get_children(node, child_tag))
+  
+  
+  def create_dom_text_element(document, tag, text):
+      """Return a DOM element containing a single text node.
+  
+!     'document' -- The containing DOM document node.
+  
+      'tag' -- The element tag.
+  
+      'text' -- The text contents of the text node."""
+  
+--- 156,172 ----
+  
+      returns -- The list containing all child nodes of 'node' which have
+      tag 'child_tag'.  Each child must have exactly one child of its own,
+      which must be a text node."""
+  
+!     return map(get_dom_text, node.getElementsByTagName(child_tag))
+  
+  
+  def create_dom_text_element(document, tag, text):
+      """Return a DOM element containing a single text node.
+  
+!     'document' -- The containing DOM document.
+  
+      'tag' -- The element tag.
+  
+      'text' -- The text contents of the text node."""
+  
+Index: qm/test/base.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/base.py,v
+retrieving revision 1.91
+diff -c -5 -p -r1.91 base.py
+*** qm/test/base.py	15 Sep 2003 20:26:41 -0000	1.91
+--- qm/test/base.py	22 Sep 2003 04:41:58 -0000
+*************** def get_extension_class_names_in_directo
+*** 149,169 ****
+          document = qm.xmlutil.load_xml_file(file)
+          # Get the root node in the document.
+          root = document.documentElement
+          # Get the sequence of elements corresponding to each of the
+          # classes listed in the directory.
+!         classes = qm.xmlutil.get_children(root, 'class')
+          # Go through each of the classes to see what kind it is.
+          for c in classes:
+              kind = c.getAttribute('kind')
+              # Skip extensions we do not understand.  Perhaps they
+              # are for some other QM tool.
+              if kind not in extension_kinds:
+                  continue
+!             extensions[kind].append(qm.xmlutil.get_dom_text(c))
+      except:
+!         pass
+  
+      return extensions
+  
+  
+  def get_extension_class_names(kind, database, database_path = None):
+--- 149,177 ----
+          document = qm.xmlutil.load_xml_file(file)
+          # Get the root node in the document.
+          root = document.documentElement
+          # Get the sequence of elements corresponding to each of the
+          # classes listed in the directory.
+!         classes = root.getElementsByTagName("class")
+          # Go through each of the classes to see what kind it is.
+          for c in classes:
+              kind = c.getAttribute('kind')
+              # Skip extensions we do not understand.  Perhaps they
+              # are for some other QM tool.
+              if kind not in extension_kinds:
+                  continue
+!             if c.hasAttribute("name"):
+!                 name = c.getAttribute("name")
+!             else:
+!                 # Before QMTest 2.1, the class name was contained in
+!                 # the class element, rather than being an attribute.
+!                 name = qm.xmlutil.get_dom_text(c)
+!             # Strip whitespace.
+!             name = name.strip()
+!             extensions[kind].append(name)
+      except:
+!         raise
+  
+      return extensions
+  
+  
+  def get_extension_class_names(kind, database, database_path = None):
+Index: qm/test/cmdline.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/cmdline.py,v
+retrieving revision 1.98
+diff -c -5 -p -r1.98 cmdline.py
+*** qm/test/cmdline.py	15 Sep 2003 20:26:41 -0000	1.98
+--- qm/test/cmdline.py	22 Sep 2003 04:42:01 -0000
+*************** Valid formats are "full", "brief" (the d
+*** 1112,1149 ****
+          extension_class = get_extension_class_from_directory(class_name,
+                                                               kind,
+                                                               directory,
+                                                               directories)
+  
+!         # Update the classes.qmc file.  If it already exists, we must
+!         # read it in first.
+          classes_file_name = os.path.join(directory, "classes.qmc")
+!         try:
+!             document = qm.xmlutil.load_xml_file(classes_file_name)
+!         except:
+!             document = (qm.xmlutil.create_dom_document
+!                         (public_id = "Class-Directory",
+!                          document_element_tag="class-directory"))
+  
+!         # Remove any previous entries for this class.
+!         duplicates = []
+!         for element in qm.xmlutil.get_children(document.documentElement,
+!                                                "class"):
+!             if (str(qm.xmlutil.get_dom_text(element)) == class_name):
+!                 duplicates.append(element)
+!         for element in duplicates:
+!             document.documentElement.removeChild(element)
+!             element.unlink()
+!                 
+!         # Construct the new node.
+!         class_element = (qm.xmlutil.create_dom_text_element
+!                          (document, "class", class_name))
+!         class_element.setAttribute("kind", kind)
+!         document.documentElement.appendChild(class_element)
+  
+          # Write out the file.
+!         document.writexml(open(classes_file_name, "w"))
+  
+          return 0
+  
+          
+      def __ExecuteSummarize(self):
+--- 1112,1151 ----
+          extension_class = get_extension_class_from_directory(class_name,
+                                                               kind,
+                                                               directory,
+                                                               directories)
+  
+!         # Create or update the classes.qmc file.
+          classes_file_name = os.path.join(directory, "classes.qmc")
+!         
+!         # Create a new DOM document for the class directory.
+!         document = (qm.xmlutil.create_dom_document
+!                     (public_id = "Class-Directory",
+!                      document_element_tag="class-directory"))
+!         
+!         # Copy entries from the old file to the new one.
+!         extensions \
+!             = qm.test.base.get_extension_class_names_in_directory(directory)
+!         for k, ns in extensions.iteritems():
+!             for n in ns:
+!                 # Remove previous entries for the class being added.
+!                 if k == kind and n == class_name:
+!                     continue
+!                 element = document.createElement("class")
+!                 element.setAttribute("kind", k)
+!                 element.setAttribute("name", n)
+!                 document.documentElement.appendChild(element)
+  
+!         # Add an entry for the new element.
+!         element = document.createElement("class")
+!         element.setAttribute("kind", kind)
+!         element.setAttribute("name", class_name)
+!         document.documentElement.appendChild(element)        
+  
+          # Write out the file.
+!         document.writexml(open(classes_file_name, "w"),
+!                           addindent = " ", newl = "\n")
+  
+          return 0
+  
+          
+      def __ExecuteSummarize(self):
+Index: qm/test/database.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/database.py,v
+retrieving revision 1.38
+diff -c -5 -p -r1.38 database.py
+*** qm/test/database.py	23 Jun 2003 06:46:47 -0000	1.38
+--- qm/test/database.py	22 Sep 2003 04:42:03 -0000
+*************** def load_database(db_path):
+*** 1114,1125 ****
+             (document.documentElement,
+              lambda n: qm.test.base.get_extension_class(n, "database",
+                                                         None, db_path)))
+      # For backwards compatibility with QM 1.1.x, we look for "attribute"
+      # elements.
+!     for node in qm.xmlutil.get_children(document.documentElement,
+!                                         "attribute"):
+          name = node.getAttribute("name")
+          # These elements were only allowed to contain strings as
+          # values.
+          value = qm.xmlutil.get_dom_text(node)
+          # Python does not allow keyword arguments to have Unicode
+--- 1114,1124 ----
+             (document.documentElement,
+              lambda n: qm.test.base.get_extension_class(n, "database",
+                                                         None, db_path)))
+      # For backwards compatibility with QM 1.1.x, we look for "attribute"
+      # elements.
+!     for node in document.documentElement.getElementsByTagName("attribute"):
+          name = node.getAttribute("name")
+          # These elements were only allowed to contain strings as
+          # values.
+          value = qm.xmlutil.get_dom_text(node)
+          # Python does not allow keyword arguments to have Unicode
+Index: qm/test/qmtest.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/qmtest.py,v
+retrieving revision 1.25
+diff -c -5 -p -r1.25 qmtest.py
+*** qm/test/qmtest.py	17 Sep 2003 19:15:52 -0000	1.25
+--- qm/test/qmtest.py	22 Sep 2003 04:42:03 -0000
+*************** import sys
+*** 38,49 ****
+  import gc
+  
+  # This executable is supposed to live in ${QM_HOME}/bin (posix)
+  # or ${QM_HOME}\Scripts (nt) so we deduce the QM_HOME variable
+  # by stripping off the last two components of the path.
+! #
+! _qm_home = os.path.dirname(os.path.dirname(os.path.abspath(sys.argv[0])))
+  os.environ['QM_HOME']=_qm_home
+  
+  import qm
+  
+  class config:
+--- 38,50 ----
+  import gc
+  
+  # This executable is supposed to live in ${QM_HOME}/bin (posix)
+  # or ${QM_HOME}\Scripts (nt) so we deduce the QM_HOME variable
+  # by stripping off the last two components of the path.
+! _qm_home = os.environ.get("QM_HOME",
+!                           os.path.dirname(os.path.dirname(os.path.abspath
+!                                                           (sys.argv[0]))))
+  os.environ['QM_HOME']=_qm_home
+  
+  import qm
+  
+  class config:
+Index: qm/test/result.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/result.py,v
+retrieving revision 1.19
+diff -c -5 -p -r1.19 result.py
+*** qm/test/result.py	9 Aug 2003 05:15:02 -0000	1.19
+--- qm/test/result.py	22 Sep 2003 04:42:05 -0000
+*************** class Result:
+*** 323,345 ****
+          # Add a property element for each property.
+          keys = self.keys()
+          keys.sort()
+          for key in keys:
+              value = self[key]
+!             property_element = document.createElement("property")
+!             # The property name is an attribute.
+!             property_element.setAttribute("name", str(key))
+!             if type(value) in qm.common.string_types:
+!                 # The property value is contained in a text mode.
+!                 node = document.createTextNode(str(value))
+!                 property_element.appendChild(node)
+!             else:
+!                 for text in value:
+!                     node = document.createTextNode(str(text))
+!                     property_element.appendChild(node)
+!             # Add the property element to the result node.
+!             element.appendChild(property_element)
+  
+          return element
+  
+      # These methods allow 'Result' to act like a dictionary of
+      # annotations.
+--- 323,342 ----
+          # Add a property element for each property.
+          keys = self.keys()
+          keys.sort()
+          for key in keys:
+              value = self[key]
+!             annotation_element = document.createElement("annotation")
+!             # The annotation name is an attribute.
+!             annotation_element.setAttribute("name", str(key))
+!             # The annotation value is contained in a text node.  The
+!             # data is enclosed in quotes for robustness if the
+!             # document is pretty-printed.
+!             node = document.createTextNode('"' + str(value) + '"')
+!             annotation_element.appendChild(node)
+!             # Add the annotation element to the result node.
+!             element.appendChild(annotation_element)
+  
+          return element
+  
+      # These methods allow 'Result' to act like a dictionary of
+      # annotations.
+*************** class Result:
+*** 375,379 ****
+--- 372,382 ----
+  
+  
+      def items(self):
+          return self.__annotations.items()
+  
++ 
++ ########################################################################
++ # Variables
++ ########################################################################
++ 
++ __all__ = ["Result"]
+Index: qm/test/classes/classes.qmc
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/classes/classes.qmc,v
+retrieving revision 1.13
+diff -c -5 -p -r1.13 classes.qmc
+*** qm/test/classes/classes.qmc	3 Jul 2003 19:32:04 -0000	1.13
+--- qm/test/classes/classes.qmc	22 Sep 2003 04:42:05 -0000
+***************
+*** 1,27 ****
+  <?xml version="1.0" ?>
+  <class-directory>
+! <class kind="database">mount_database.MountDatabase</class>
+! <class kind="database">xml_database.XMLDatabase</class>
+! <class kind="test">command.ExecTest</class>
+! <class kind="test">command.ShellCommandTest</class>
+! <class kind="test">command.ShellScriptTest</class>
+! <class kind="test">file.FileContentsTest</class>
+! <class kind="test">python.ExecTest</class>
+! <class kind="test">python.ExceptionTest</class>
+! <class kind="test">python.StringExceptionTest</class>
+! <class kind="resource">temporary.TempDirectoryResource</class>
+! <class kind="target">serial_target.SerialTarget</class>
+! <class kind="target">thread_target.ThreadTarget</class>
+! <class kind="target">process_target.ProcessTarget</class>
+! <class kind="target">rsh_target.RSHTarget</class>
+! <class kind="label">file_label.FileLabel</class>
+! <class kind="label">python_label.PythonLabel</class>
+! <class kind="result_stream">text_result_stream.TextResultStream</class>
+! <class kind="result_stream">xml_result_stream.XMLResultStream</class>
+! <class kind="result_reader">xml_result_stream.XMLResultReader</class>
+! <class kind="result_stream">pickle_result_stream.PickleResultStream</class>
+! <class kind="result_reader">pickle_result_stream.PickleResultReader</class>
+! <class kind="result_stream">sql_result_stream.SQLResultStream</class>
+! <class kind="result_reader">sql_result_stream.SQLResultReader</class>
+! <class kind="result_stream">dejagnu_stream.DejaGNUStream</class>
+  </class-directory>
+--- 1,27 ----
+  <?xml version="1.0" ?>
+  <class-directory>
+!  <class kind="result_reader" name="pickle_result_stream.PickleResultReader"/>
+!  <class kind="result_reader" name="sql_result_stream.SQLResultReader"/>
+!  <class kind="result_reader" name="xml_result_stream.XMLResultReader"/>
+!  <class kind="result_stream" name="dejagnu_stream.DejaGNUStream"/>
+!  <class kind="result_stream" name="pickle_result_stream.PickleResultStream"/>
+!  <class kind="result_stream" name="sql_result_stream.SQLResultStream"/>
+!  <class kind="result_stream" name="text_result_stream.TextResultStream"/>
+!  <class kind="result_stream" name="xml_result_stream.XMLResultStream"/>
+!  <class kind="resource" name="temporary.TempDirectoryResource"/>
+!  <class kind="target" name="process_target.ProcessTarget"/>
+!  <class kind="target" name="rsh_target.RSHTarget"/>
+!  <class kind="target" name="serial_target.SerialTarget"/>
+!  <class kind="target" name="thread_target.ThreadTarget"/>
+!  <class kind="database" name="mount_database.MountDatabase"/>
+!  <class kind="test" name="command.ExecTest"/>
+!  <class kind="test" name="command.ShellCommandTest"/>
+!  <class kind="test" name="command.ShellScriptTest"/>
+!  <class kind="test" name="file.FileContentsTest"/>
+!  <class kind="test" name="python.ExceptionTest"/>
+!  <class kind="test" name="python.ExecTest"/>
+!  <class kind="test" name="python.StringExceptionTest"/>
+!  <class kind="label" name="file_label.FileLabel"/>
+!  <class kind="label" name="python_label.PythonLabel"/>
+!  <class kind="database" name="xml_database.XMLDatabase"/>
+  </class-directory>
+Index: qm/test/classes/xml_result_stream.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/classes/xml_result_stream.py,v
+retrieving revision 1.4
+diff -c -5 -p -r1.4 xml_result_stream.py
+*** qm/test/classes/xml_result_stream.py	15 Sep 2003 20:26:41 -0000	1.4
+--- qm/test/classes/xml_result_stream.py	22 Sep 2003 04:42:05 -0000
+*************** class XMLResultStream(FileResultStream):
+*** 54,89 ****
+          self.file.write("<results>\n")
+  
+  
+      def WriteAnnotation(self, key, value):
+  
+!             element = self.__document.createElement("annotation")
+!             element.setAttribute("key", key)
+!             text = self.__document.createTextNode(value)
+!             element.appendChild(text)
+!             element.writexml(self.file)
+!             # Following increases readability of output:
+!             self.file.write("\n")
+  
+  
+      def WriteResult(self, result):
+-         """Output a test or resource result.
+- 
+-         'result' -- A 'Result'."""
+  
+          element = result.MakeDomNode(self.__document)
+!         element.writexml(self.file)
+!         self.file.write("\n")
+          
+  
+      def Summarize(self):
+-         """Output summary information about the results.
+- 
+-         When this method is called, the test run is complete.  Summary
+-         information should be displayed for the user, if appropriate.
+-         Any finalization, such as the closing of open files, should
+-         also be performed at this point."""
+  
+          # Finish the list of results.
+          self.file.write("\n</results>\n")
+  
+          FileResultStream.Summarize(self)
+--- 54,78 ----
+          self.file.write("<results>\n")
+  
+  
+      def WriteAnnotation(self, key, value):
+  
+!         element = self.__document.createElement("annotation")
+!         element.setAttribute("key", key)
+!         text = self.__document.createTextNode(value)
+!         element.appendChild(text)
+!         element.writexml(self.file, addindent = " ", newl = "\n")
+  
+  
+      def WriteResult(self, result):
+  
+          element = result.MakeDomNode(self.__document)
+!         element.writexml(self.file, indent = " ", addindent = " ",
+!                          newl = "\n")
+          
+  
+      def Summarize(self):
+  
+          # Finish the list of results.
+          self.file.write("\n</results>\n")
+  
+          FileResultStream.Summarize(self)
+*************** class XMLResultReader(FileResultReader):
+*** 99,158 ****
+  
+          super(XMLResultReader, self).__init__(arguments)
+  
+          document = qm.xmlutil.load_xml(self.file)
+          node = document.documentElement
+!         results = qm.xmlutil.get_children(node, "result")
+          self.__node_iterator = iter(results)
+  
+          # Read out annotations
+          self._annotations = {}
+!         annotation_nodes = qm.xmlutil.get_children(node, "annotation")
+          for node in annotation_nodes:
+              key = node.getAttribute("key")
+!             value = qm.xmlutil.get_dom_text(node)
+              self._annotations[key] = value
+  
+  
+      def GetAnnotations(self):
+  
+          return self._annotations
+  
+  
+!     def _result_from_dom(self, node):
+          """Extract a result from a DOM node.
+  
+          'node' -- A DOM node corresponding to a "result" element.
+  
+          returns -- A 'Result' object."""
+  
+          assert node.tagName == "result"
+          # Extract the outcome.
+!         outcome = qm.xmlutil.get_child_text(node, "outcome")
+          # Extract the test ID.
+          test_id = node.getAttribute("id")
+          kind = node.getAttribute("kind")
+          # Build a Result.
+          result = Result(kind, test_id, outcome)
+!         # Extract properties, one for each property element.
+!         for property_node in node.getElementsByTagName("property"):
+!             # The name is stored in an attribute.
+!             name = property_node.getAttribute("name")
+!             # The value is stored in the child text node.
+!             value = qm.xmlutil.get_dom_text(property_node)
+!             # Store it.
+              result[name] = value
+  
+          return result
+  
+  
+-     def GetResult(self):
+- 
+-         try:
+-             return self._result_from_dom(self.__node_iterator.next())
+-         except StopIteration:
+-             return None
+  
+  ########################################################################
+  # Local Variables:
+  # mode: python
+  # indent-tabs-mode: nil
+--- 88,162 ----
+  
+          super(XMLResultReader, self).__init__(arguments)
+  
+          document = qm.xmlutil.load_xml(self.file)
+          node = document.documentElement
+!         results = node.getElementsByTagName("result")
+          self.__node_iterator = iter(results)
+  
+          # Read out annotations
+          self._annotations = {}
+!         annotation_nodes = node.getElementsByTagName("annotation")
+          for node in annotation_nodes:
+              key = node.getAttribute("key")
+!             value = qm.xmlutil.get_dom_text(node).strip()
+              self._annotations[key] = value
+  
+  
+      def GetAnnotations(self):
+  
+          return self._annotations
+  
+  
+!     def GetResult(self):
+! 
+!         try:
+!             return self._GetResultFromDomNode(self.__node_iterator.next())
+!         except StopIteration:
+!             return None
+! 
+! 
+!     def _GetResultFromDomNode(self, node):
+          """Extract a result from a DOM node.
+  
+          'node' -- A DOM node corresponding to a "result" element.
+  
+          returns -- A 'Result' object."""
+  
+          assert node.tagName == "result"
+          # Extract the outcome.
+!         outcome = qm.xmlutil.get_child_text(node, "outcome").strip()
+          # Extract the test ID.
+          test_id = node.getAttribute("id")
+          kind = node.getAttribute("kind")
+          # Build a Result.
+          result = Result(kind, test_id, outcome)
+!         # Extract annotations.
+!         for n in node.childNodes:
+!             if n.nodeType != node.ELEMENT_NODE:
+!                 continue
+!             if n.tagName == "annotation":
+!                 quoted = 1
+!             elif n.tagName == "property":
+!                 # Versions of QMTest before 2.1 used the "property" tag,
+!                 # and did not quote the contained text.
+!                 quoted = 0
+!             else:
+!                 continue
+!             # Get the name of the annotation.
+!             name = n.getAttribute("name")
+!             # Get the value of the annotation.
+!             value = qm.xmlutil.get_dom_text(n)
+!             if quoted:
+!                 # Remove whitespace and then remove the enclosing quotes.
+!                 value = value.strip()[1:-1]
+!             # Remember the annotation.
+              result[name] = value
+  
+          return result
+  
+  
+  
+  ########################################################################
+  # Local Variables:
+  # mode: python
+  # indent-tabs-mode: nil
+Index: qm/test/share/dtds/class-directory.dtd
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/share/dtds/class-directory.dtd,v
+retrieving revision 1.4
+diff -c -5 -p -r1.4 class-directory.dtd
+*** qm/test/share/dtds/class-directory.dtd	15 Sep 2003 20:26:41 -0000	1.4
+--- qm/test/share/dtds/class-directory.dtd	22 Sep 2003 04:42:05 -0000
+***************
+*** 19,28 ****
+--- 19,29 ----
+  <!ELEMENT class-directory (class*)>
+  
+  <!-- A class. -->
+  <!ELEMENT class (#PCDATA)>
+  <!ATTLIST class kind CDATA #REQUIRED>
++ <!ATTLIST class name CDATA #REQUIRED>
+  
+  <!-- 
+    Local Variables:
+    mode: xml
+    indent-tabs-mode: nil
+Index: qm/test/share/dtds/result.dtd
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/share/dtds/result.dtd,v
+retrieving revision 1.4
+diff -c -5 -p -r1.4 result.dtd
+*** qm/test/share/dtds/result.dtd	15 Sep 2003 20:26:42 -0000	1.4
+--- qm/test/share/dtds/result.dtd	22 Sep 2003 04:42:05 -0000
+***************
+*** 29,40 ****
+  
+  <!-- The outcome of a test or resource.  -->
+  <!ELEMENT outcome (#PCDATA)>
+  
+  <!-- An additional annotation to the result.  -->
+! <!ELEMENT property (#PCDATA)>
+! <!ATTLIST property name CDATA #REQUIRED>
+  
+  <!-- 
+    Local Variables:
+    mode: xml
+    indent-tabs-mode: nil
+--- 29,40 ----
+  
+  <!-- The outcome of a test or resource.  -->
+  <!ELEMENT outcome (#PCDATA)>
+  
+  <!-- An additional annotation to the result.  -->
+! <!ELEMENT annotation (#PCDATA)>
+! <!ATTLIST annotation name CDATA #REQUIRED>
+  
+  <!-- 
+    Local Variables:
+    mode: xml
+    indent-tabs-mode: nil
+Index: tests/results_files/xml_results_v2.qmr
+===================================================================
+RCS file: tests/results_files/xml_results_v2.qmr
+diff -N tests/results_files/xml_results_v2.qmr
+*** /dev/null	1 Jan 1970 00:00:00 -0000
+--- tests/results_files/xml_results_v2.qmr	22 Sep 2003 04:42:05 -0000
+***************
+*** 0 ****
+--- 1,105 ----
++ <?xml version='1.0' encoding='ISO-8859-1'?>
++ <!DOCTYPE results PUBLIC "-//QM/2.1/QMTest/Result//EN" "http://www.codesourcery.com/qm/dtds/2.1/qmtest/result.dtd">
++ <results>
++ <annotation key="qmtest.run.start_time">
++  2003-09-22T01:43:05Z
++ </annotation>
++  <result id="error" kind="test">
++   <outcome>
++    ERROR
++   </outcome>
++   <annotation name="qmtest.cause">
++    &quot;Exception evaluating expression.&quot;
++   </annotation>
++   <annotation name="qmtest.exception">
++    &quot;exceptions.SyntaxError: invalid syntax (line 1)&quot;
++   </annotation>
++   <annotation name="qmtest.target">
++    &quot;local&quot;
++   </annotation>
++   <annotation name="qmtest.traceback">
++    &quot;&lt;pre&gt;  File &quot;/home/mitchell/dev/qm-mainline/qm/test/classes/python.py&quot;, line 101, in Run
++     global_namespace, local_namespace)
++ &lt;/pre&gt;&quot;
++   </annotation>
++  </result>
++  <result id="fail" kind="test">
++   <outcome>
++    FAIL
++   </outcome>
++   <annotation name="ExecTest.expr">
++    &quot;0&quot;
++   </annotation>
++   <annotation name="ExecTest.value">
++    &quot;0&quot;
++   </annotation>
++   <annotation name="qmtest.cause">
++    &quot;Expression evaluates to false.&quot;
++   </annotation>
++   <annotation name="qmtest.target">
++    &quot;local&quot;
++   </annotation>
++  </result>
++  <result id="tmpdir_resource" kind="resource_setup">
++   <outcome>
++    PASS
++   </outcome>
++   <annotation name="qmtest.target">
++    &quot;local&quot;
++   </annotation>
++  </result>
++  <result id="fail_with_tmpdir" kind="test">
++   <outcome>
++    FAIL
++   </outcome>
++   <annotation name="ExecTest.expr">
++    &quot;0&quot;
++   </annotation>
++   <annotation name="ExecTest.value">
++    &quot;0&quot;
++   </annotation>
++   <annotation name="qmtest.cause">
++    &quot;Expression evaluates to false.&quot;
++   </annotation>
++   <annotation name="qmtest.target">
++    &quot;local&quot;
++   </annotation>
++  </result>
++  <result id="pass" kind="test">
++   <outcome>
++    PASS
++   </outcome>
++   <annotation name="qmtest.target">
++    &quot;local&quot;
++   </annotation>
++  </result>
++  <result id="untested" kind="test">
++   <outcome>
++    UNTESTED
++   </outcome>
++   <annotation name="qmtest.cause">
++    &quot;A prerequisite produced an incorrect outcome.&quot;
++   </annotation>
++   <annotation name="qmtest.expected_outcome">
++    &quot;PASS&quot;
++   </annotation>
++   <annotation name="qmtest.outcome">
++    &quot;FAIL&quot;
++   </annotation>
++   <annotation name="qmtest.prequisite">
++    &quot;fail&quot;
++   </annotation>
++  </result>
++  <result id="tmpdir_resource" kind="resource_cleanup">
++   <outcome>
++    PASS
++   </outcome>
++   <annotation name="qmtest.target">
++    &quot;local&quot;
++   </annotation>
++  </result>
++ <annotation key="qmtest.run.end_time">
++  2003-09-22T01:43:05Z
++ </annotation>
++ 
++ </results>
+
+
+From seefeld at sympatico.ca  Mon Sep 22 12:54:45 2003
+From: seefeld at sympatico.ca (Stefan Seefeld)
+Date: Mon, 22 Sep 2003 08:54:45 -0400
+Subject: [qmtest] RFE: result annotations
+References: <a0ff1edbe193e64544bab947beb07ec63f6b48a4@Orthosoft.ca> <1064196811.12893.23.camel@minax.codesourcery.com>
+Message-ID: <07ef5449f0f67237981d0cf94f96bae63f6eee82@Orthosoft.ca>
+
+Mark Mitchell wrote:
+> On Fri, 2003-09-19 at 11:31, Stefan Seefeld wrote:
+> 
+>>hello,
+>>
+>>Working with the xml_result_stream, I notice that the 'TRACEBACK'
+>>annotation (which is decorated with '<pre>' and '</pre>' is escaped
+>>in the resulting xml output. Is that intended ?
+> 
+> 
+> Yes.  If you do not quote special characters, then it is possible for
+> the XML to be invalid -- even if you assume that the annotation is valid
+> HTML.  (That is true because HTML does not have XML's strict
+> requirements on matching beginning and ending tags.) 
+
+understood.
+
+>>What is the approach in general ? It seems lots of output text is
+>>assumed to be html. But then, putting it inside an xml output stream
+>>means some work is required. While escaping seems like a possibility,
+>>I don't believe it is the best option (see 
+>>http://norman.walsh.name/2003/09/16/escmarkup).
+> 
+> 
+> Frankly, I don't think there's any other approach other than quoting.
+> 
+> We want to preserve particular strings -- byte-for-byte.  I don't know
+> of any other way to do that.
+
+hmm, you could define your document type via xml schema, and then allow
+inside <annotation> nodes any valid xhtml.
+
+>>I'm post-processing the output with xslt to generate a 'test matrix',
+>>and as it is now I can't recover the '<pre>' tag.
+> 
+> 
+> I'm not sure what that's true.  The value of the text node contains the
+> string "<pre>"; not the string "&lt;pre&gt;".  The externalized
+> representation is the quoted form, but the value is the unquoted form.
+
+well, yeah, the string contains "<pre>", but it's not part of the
+markup. Yet I do want to treat it with xslt, and therefor it has to be
+part of the markup, not the text node's content.
+
+
+> The problem here is that the naming convention isn't standard across
+> test classes -- for good reasons.
+
+What naming convention are you referring to ? I thought a test database
+is defined in terms of tests and suites (of tests), and 'foo.bar.baz' is
+the (unique) way to refer to test 'baz' in suite 'bar' in suite 'foo'.
+
+Regards,
+		Stefan
+
+
+
+From mark at codesourcery.com  Tue Sep 23 14:23:20 2003
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Tue, 23 Sep 2003 07:23:20 -0700
+Subject: [qmtest] RFE: result annotations
+References: <a0ff1edbe193e64544bab947beb07ec63f6b48a4@Orthosoft.ca> <1064196811.12893.23.camel@minax.codesourcery.com> <07ef5449f0f67237981d0cf94f96bae63f6eee82@Orthosoft.ca>
+Message-ID: <006601c381e7$432802f0$6c0b3781@minax>
+
+> hmm, you could define your document type via xml schema, and then allow
+> inside <annotation> nodes any valid xhtml.
+
+I don't know how to do that, but if it works...
+
+I'm concerned about how that would work with DOM.  We want to be able to get
+the text back from the node somehow.  With Python's current DOM
+capabilities, I'm not sure that there's any way to use an XML schema to
+guide the tree construction.
+
+> well, yeah, the string contains "<pre>", but it's not part of the
+> markup. Yet I do want to treat it with xslt, and therefor it has to be
+> part of the markup, not the text node's content.
+
+Oh, I see.
+
+I don't know what to do about that.  The good news is that the DTDs are so
+simple that you can probably pre-process the XML using a technique other
+than XSLT, but I know that's not ideal...
+
+-- Mark
+
+
+
+From seefeld at sympatico.ca  Wed Sep 24 00:41:53 2003
+From: seefeld at sympatico.ca (Stefan Seefeld)
+Date: Tue, 23 Sep 2003 20:41:53 -0400
+Subject: [qmtest] RFE: result annotations
+In-Reply-To: <006601c381e7$432802f0$6c0b3781@minax>
+References: <a0ff1edbe193e64544bab947beb07ec63f6b48a4@Orthosoft.ca> <1064196811.12893.23.camel@minax.codesourcery.com> <07ef5449f0f67237981d0cf94f96bae63f6eee82@Orthosoft.ca> <006601c381e7$432802f0$6c0b3781@minax>
+Message-ID: <3F70E851.9070203@sympatico.ca>
+
+Mark Mitchell wrote:
+>>hmm, you could define your document type via xml schema, and then allow
+>>inside <annotation> nodes any valid xhtml.
+> 
+> 
+> I don't know how to do that, but if it works...
+> 
+> I'm concerned about how that would work with DOM.  We want to be able to get
+> the text back from the node somehow.  With Python's current DOM
+> capabilities, I'm not sure that there's any way to use an XML schema to
+> guide the tree construction.
+
+I don't exactly understand what you mean by 'get the text back'. Since
+qmtest knows the schema it supports, it's certainly possible to return
+the 'content' of the *known* nodes (such as 'annotation'). This content
+would then be a subtree, which qmtest should treat as a black box.
+
+So the only difference I can see is that instead of it being pure text
+(with embedded markup) it would be an actual dom tree. Either way qmtest
+doesn't care.
+
+Regards,
+		Stefan
+
+
+
+From mark at codesourcery.com  Wed Sep 24 02:24:29 2003
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Tue, 23 Sep 2003 19:24:29 -0700
+Subject: [qmtest] RFE: result annotations
+References: <a0ff1edbe193e64544bab947beb07ec63f6b48a4@Orthosoft.ca> <1064196811.12893.23.camel@minax.codesourcery.com> <07ef5449f0f67237981d0cf94f96bae63f6eee82@Orthosoft.ca> <006601c381e7$432802f0$6c0b3781@minax> <3F70E851.9070203@sympatico.ca>
+Message-ID: <006401c38242$fbeb2550$01cf000a@minax>
+
+
+> I don't exactly understand what you mean by 'get the text back'. Since
+> qmtest knows the schema it supports, it's certainly possible to return
+> the 'content' of the *known* nodes (such as 'annotation'). This content
+> would then be a subtree, which qmtest should treat as a black box.
+>
+> So the only difference I can see is that instead of it being pure text
+> (with embedded markup) it would be an actual dom tree. Either way qmtest
+> doesn't care.
+
+It cares when it needs to print out the string with "qmtest summarize" or
+when it writes out another result stream.  How would we get it back in that
+case?
+
+-- Mark
+
+
+
+From seefeld at sympatico.ca  Wed Sep 24 04:56:05 2003
+From: seefeld at sympatico.ca (Stefan Seefeld)
+Date: Wed, 24 Sep 2003 00:56:05 -0400
+Subject: [qmtest] RFE: result annotations
+In-Reply-To: <006401c38242$fbeb2550$01cf000a@minax>
+References: <a0ff1edbe193e64544bab947beb07ec63f6b48a4@Orthosoft.ca> <1064196811.12893.23.camel@minax.codesourcery.com> <07ef5449f0f67237981d0cf94f96bae63f6eee82@Orthosoft.ca> <006601c381e7$432802f0$6c0b3781@minax> <3F70E851.9070203@sympatico.ca> <006401c38242$fbeb2550$01cf000a@minax>
+Message-ID: <3F7123E5.5010900@sympatico.ca>
+
+Mark Mitchell wrote:
+
+ > It cares when it needs to print out the string with "qmtest summarize" or
+ > when it writes out another result stream.  How would we get it back in that
+ > case?
+
+I'd expect the python xml module to provide a way to serialize nodes similar
+to xslt's <xsl:copy-of>. I'll look into it and try to come up with a little
+patch as a proof of concept. Then you can see whether it fits your needs.
+
+Stefan
+
+
+
+From seefeld at sympatico.ca  Wed Sep 24 04:57:28 2003
+From: seefeld at sympatico.ca (Stefan Seefeld)
+Date: Wed, 24 Sep 2003 00:57:28 -0400
+Subject: [qmtest] new 'check' command
+In-Reply-To: <3F6903F8.1050304@sympatico.ca>
+References: <3F6903F8.1050304@sympatico.ca>
+Message-ID: <3F712438.4020507@sympatico.ca>
+
+did anybody find the time to review this patch ?
+
+What about the timeframe in general for an 'official'
+switch to the new build system ? Will it be part of
+the 2.1 release that was talked about earlier ?
+
+Stefan
+
+
+
+From njs at pobox.com  Wed Sep 24 06:09:56 2003
+From: njs at pobox.com (Nathaniel Smith)
+Date: Tue, 23 Sep 2003 23:09:56 -0700
+Subject: [qmtest] RFE: result annotations
+In-Reply-To: <3F7123E5.5010900@sympatico.ca>
+References: <a0ff1edbe193e64544bab947beb07ec63f6b48a4@Orthosoft.ca> <1064196811.12893.23.camel@minax.codesourcery.com> <07ef5449f0f67237981d0cf94f96bae63f6eee82@Orthosoft.ca> <006601c381e7$432802f0$6c0b3781@minax> <3F70E851.9070203@sympatico.ca> <006401c38242$fbeb2550$01cf000a@minax> <3F7123E5.5010900@sympatico.ca>
+Message-ID: <20030924060956.GA19901@njs.dhis.org>
+
+On Wed, Sep 24, 2003 at 12:56:05AM -0400, Stefan Seefeld wrote:
+> Mark Mitchell wrote:
+> 
+> > It cares when it needs to print out the string with "qmtest summarize" or
+> > when it writes out another result stream.  How would we get it back in 
+> that
+> > case?
+> 
+> I'd expect the python xml module to provide a way to serialize nodes similar
+> to xslt's <xsl:copy-of>. I'll look into it and try to come up with a little
+> patch as a proof of concept. Then you can see whether it fits your needs.
+
+Do we even know that annotations are, in general, proper XHTML?
+We've documented them as being HTML (though they're not even properly
+treated as that ATM; we don't handle character entities right at all),
+and HTML in real life is rarely well-formed XML.  I'm worried that if
+we start parsing it as XML, we'll start getting parse errors
+who-knows-where...
+
+-- Nathaniel
+
+-- 
+In mathematics, it's not enough to read the words
+you have to hear the music
+
+
+From seefeld at sympatico.ca  Wed Sep 24 12:45:37 2003
+From: seefeld at sympatico.ca (Stefan Seefeld)
+Date: Wed, 24 Sep 2003 08:45:37 -0400
+Subject: [qmtest] RFE: result annotations
+References: <a0ff1edbe193e64544bab947beb07ec63f6b48a4@Orthosoft.ca> <1064196811.12893.23.camel@minax.codesourcery.com> <07ef5449f0f67237981d0cf94f96bae63f6eee82@Orthosoft.ca> <006601c381e7$432802f0$6c0b3781@minax> <3F70E851.9070203@sympatico.ca> <006401c38242$fbeb2550$01cf000a@minax> <3F7123E5.5010900@sympatico.ca> <20030924060956.GA19901@njs.dhis.org>
+Message-ID: <89b7fa277fe5aa7bf79419e4fa3168ae3f718f86@Orthosoft.ca>
+
+Nathaniel Smith wrote:
+> On Wed, Sep 24, 2003 at 12:56:05AM -0400, Stefan Seefeld wrote:
+> 
+>>Mark Mitchell wrote:
+>>
+>>
+>>>It cares when it needs to print out the string with "qmtest summarize" or
+>>>when it writes out another result stream.  How would we get it back in 
+>>
+>>that
+>>
+>>>case?
+>>
+>>I'd expect the python xml module to provide a way to serialize nodes similar
+>>to xslt's <xsl:copy-of>. I'll look into it and try to come up with a little
+>>patch as a proof of concept. Then you can see whether it fits your needs.
+> 
+> 
+> Do we even know that annotations are, in general, proper XHTML?
+> We've documented them as being HTML (though they're not even properly
+> treated as that ATM; we don't handle character entities right at all),
+> and HTML in real life is rarely well-formed XML.  I'm worried that if
+> we start parsing it as XML, we'll start getting parse errors
+> who-knows-where...
+
+Yes, I agree, and I didn't mean to suggest we should 'just' treat the 
+content as xhtml. Rather, I'd suggest that the requirements be that all
+content has to be valid xhtml.
+
+While it would be possible to keep it the way it is now, i.e. treat the
+content as text, that makes postprocessing of the data hard:
+
+It means that to recover any structure (markup) I have first to strip
+off the metadata from qmtest (xslt with output method 'text'), then
+reinterpret this 'text' as html. But that is pretty cumbersome as
+to interpret that html I'd need the metadata I just stripped off !
+
+Stefan
+
+
+
+From mark at codesourcery.com  Wed Sep 24 14:42:51 2003
+From: mark at codesourcery.com (Mark Mitchell)
+Date: 24 Sep 2003 07:42:51 -0700
+Subject: [qmtest] RFE: result annotations
+In-Reply-To: <20030924060956.GA19901@njs.dhis.org>
+References: <a0ff1edbe193e64544bab947beb07ec63f6b48a4@Orthosoft.ca>
+	 <1064196811.12893.23.camel@minax.codesourcery.com>
+	 <07ef5449f0f67237981d0cf94f96bae63f6eee82@Orthosoft.ca>
+	 <006601c381e7$432802f0$6c0b3781@minax> <3F70E851.9070203@sympatico.ca>
+	 <006401c38242$fbeb2550$01cf000a@minax> <3F7123E5.5010900@sympatico.ca>
+	 <20030924060956.GA19901@njs.dhis.org>
+Message-ID: <1064414571.3392.44.camel@minax.codesourcery.com>
+
+On Tue, 2003-09-23 at 23:09, Nathaniel Smith wrote:
+> On Wed, Sep 24, 2003 at 12:56:05AM -0400, Stefan Seefeld wrote:
+> > Mark Mitchell wrote:
+> > 
+> > > It cares when it needs to print out the string with "qmtest summarize" or
+> > > when it writes out another result stream.  How would we get it back in 
+> > that
+> > > case?
+> > 
+> > I'd expect the python xml module to provide a way to serialize nodes similar
+> > to xslt's <xsl:copy-of>. I'll look into it and try to come up with a little
+> > patch as a proof of concept. Then you can see whether it fits your needs.
+> 
+> Do we even know that annotations are, in general, proper XHTML?
+> We've documented them as being HTML (though they're not even properly
+> treated as that ATM; we don't handle character entities right at all),
+> and HTML in real life is rarely well-formed XML.  I'm worried that if
+> we start parsing it as XML, we'll start getting parse errors
+> who-knows-where...
+
+Right now, we assume they are HTML, not XHTML.
+
+And, we do handle character entities correctly in results files; they
+are escaped.
+
+If the HTML is invalid, it will be stored correctly in the results
+files, but not displayed correctly in the GUI.  (I'm not sure how to
+correctly display invalid HTML, but we make no attempt to discern
+validity; we just dump it into the web page.)
+
+-- 
+Mark Mitchell <mark at codesourcery.com>
+CodeSourcery, LLC
+
+
+
+From mark at codesourcery.com  Thu Sep 25 19:28:32 2003
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Thu, 25 Sep 2003 12:28:32 -0700
+Subject: PATCH: Timeouts for Windows
+Message-ID: <019c01c3839b$34ecf5a0$01cf000a@minax>
+
+This patch implements timeout support for Windpws.
+
+The support is not quite as good as for UNIX because the Python Win32
+extensions do not yet support CreateJobObject and related functions.
+Therefore, if the child process has children of its own, this patch does not
+ensure that they are killed when the timeout expires.  Does anyone happen to
+know if the Win32 extensions are going to add that support any time soon?
+
+--
+Mark Mitchell
+CodeSourcery, LLC
+mark at codesourcery.com
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: diffs
+Type: application/octet-stream
+Size: 10894 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/qmtest/attachments/20030925/a3b4e1db/attachment.obj>
+
+From mark at codesourcery.com  Fri Sep 26 23:04:32 2003
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Fri, 26 Sep 2003 16:04:32 -0700
+Subject: PATCH: Make result annotations always available for ExecTest
+Message-ID: <200309262304.h8QN4Wkt030807@doubledemon.codesourcery.com>
+
+
+This test makes the result annotations for ExecTest (the exit code,
+stdout, and stderr) always available.  Until now, they've only been
+available on FAILing tests.  That's not in keeping with the spirit of
+these kinds of annotations; you want to be able to look at them in the
+results file whether or not the test fails.
+
+I've also updated the documentation to remove an obsolete mention of
+carriage-return issues in execution tests.
+
+--
+Mark Mitchell
+CodeSourcery, LLC
+mark at codesourcery.com
+
+2003-09-25  Mark Mitchell  <mark at codesourcery.com>
+
+	* qm/test/classes/command.py (ExecTestBase.arguments): Improve
+	documentation for exit_code.
+	* qm/test/doc/tour.xml: Remove discussion of carriage-returns in
+	execution tests.
+
+Index: qm/test/classes/command.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/classes/command.py,v
+retrieving revision 1.41
+diff -c -5 -p -r1.41 command.py
+*** qm/test/classes/command.py	25 Sep 2003 19:23:12 -0000	1.41
+--- qm/test/classes/command.py	26 Sep 2003 22:53:58 -0000
+*************** class ExecTestBase(Test):
+*** 199,224 ****
+              else:
+                  exit_code = os.WEXITSTATUS(exit_status)
+              # Get the output generated by the program.
+              stdout = e.stdout
+              stderr = e.stderr
+              # Check to see if the exit code matches.
+              if exit_code != self.exit_code:
+                  causes.append("exit_code")
+                  result["ExecTest.expected_exit_code"] \
+                      = str(self.exit_code)
+-                 result["ExecTest.exit_code"] = str(exit_code)
+              # Check to see if the standard output matches.
+              if not self.__CompareText(stdout, self.stdout):
+                  causes.append("standard output")
+-                 result["ExecTest.stdout"] = "<pre>" + stdout + "</pre>"
+                  result["ExecTest.expected_stdout"] \
+                      = "<pre>" + self.stdout + "</pre>"
+              # Check to see that the standard error matches.
+              if not self.__CompareText(stderr, self.stderr):
+                  causes.append("standard error")
+-                 result["ExecTest.stderr"] = "<pre>" + stderr + "</pre>"
+                  result["ExecTest.expected_stderr"] \
+                      = "<pre>" + self.stderr + "</pre>"
+              # If anything went wrong, the test failed.
+              if causes:
+                  result.Fail("Unexpected %s." % string.join(causes, ", ")) 
+--- 199,225 ----
+              else:
+                  exit_code = os.WEXITSTATUS(exit_status)
+              # Get the output generated by the program.
+              stdout = e.stdout
+              stderr = e.stderr
++             # Record the results.
++             result["ExecTest.exit_code"] = str(exit_code)
++             result["ExecTest.stdout"] = "<pre>" + stdout + "</pre>"
++             result["ExecTest.stderr"] = "<pre>" + stderr + "</pre>"
+              # Check to see if the exit code matches.
+              if exit_code != self.exit_code:
+                  causes.append("exit_code")
+                  result["ExecTest.expected_exit_code"] \
+                      = str(self.exit_code)
+              # Check to see if the standard output matches.
+              if not self.__CompareText(stdout, self.stdout):
+                  causes.append("standard output")
+                  result["ExecTest.expected_stdout"] \
+                      = "<pre>" + self.stdout + "</pre>"
+              # Check to see that the standard error matches.
+              if not self.__CompareText(stderr, self.stderr):
+                  causes.append("standard error")
+                  result["ExecTest.expected_stderr"] \
+                      = "<pre>" + self.stderr + "</pre>"
+              # If anything went wrong, the test failed.
+              if causes:
+                  result.Fail("Unexpected %s." % string.join(causes, ", ")) 
+Index: qm/test/doc/tour.xml
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/doc/tour.xml,v
+retrieving revision 1.7
+diff -c -5 -p -r1.7 tour.xml
+*** qm/test/doc/tour.xml	31 Jul 2003 23:17:50 -0000	1.7
+--- qm/test/doc/tour.xml	26 Sep 2003 22:53:58 -0000
+*************** QMTest running at http://127.0.0.1:1158/
+*** 294,309 ****
+     because you're creating a different kind of test.  Enter
+     <literal>echo test</literal> in the <guilabel>Command</guilabel>
+     field.  This command will produce an output (the word
+     <literal>test</literal>), so find the <guilabel>Standard
+     Output</guilabel> box and enter <literal>test</literal> in this
+!    box.  Make sure to hit the <keycap>Return</keycap> key after you
+!    type <literal>test</literal>; the <command>echo</command> command
+!    will output a carriage return after it prints the word
+!    <literal>test</literal>, so you must indicate that you expect a
+!    carriage return.  When you are done, click the
+!    <guibutton>OK</guibutton> button at the bottom of the form.</para>
+  
+     <para>Now you can select <guibutton>This Test</guibutton> from the
+     <guilabel>Run</guilabel> menu to run the test.</para>
+  
+     <para>When you're done experimenting with &qmtest, choose
+--- 294,305 ----
+     because you're creating a different kind of test.  Enter
+     <literal>echo test</literal> in the <guilabel>Command</guilabel>
+     field.  This command will produce an output (the word
+     <literal>test</literal>), so find the <guilabel>Standard
+     Output</guilabel> box and enter <literal>test</literal> in this
+!    box.  When you are done, click the <guibutton>OK</guibutton> button
+!    at the bottom of the form.</para>
+  
+     <para>Now you can select <guibutton>This Test</guibutton> from the
+     <guilabel>Run</guilabel> menu to run the test.</para>
+  
+     <para>When you're done experimenting with &qmtest, choose
+
+
+From mark at codesourcery.com  Sun Sep 28 18:34:49 2003
+From: mark at codesourcery.com (Mark Mitchell)
+Date: 28 Sep 2003 11:34:49 -0700
+Subject: PATCH: Add --help support for "qmtest remote"
+Message-ID: <1064774089.4279.26.camel@minax.codesourcery.com>
+
+The "qmtest remote" command is only used by QMTest when invoking
+itself.  One user was surprised that "qmtest remote --help" didn't work;
+this patch makes it work.
+
+-- 
+Mark Mitchell <mark at codesourcery.com>
+CodeSourcery, LLC
+-------------- next part --------------
+2003-09-28  Mark Mitchell  <mark at codesourcery.com>
+
+	* qm/test/cmdline.py (commands_spec): Add --help support for
+	"qmtest remote".
+
+Index: qm/test/cmdline.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/cmdline.py,v
+retrieving revision 1.99
+diff -c -5 -p -r1.99 cmdline.py
+*** qm/test/cmdline.py	22 Sep 2003 04:53:47 -0000	1.99
+--- qm/test/cmdline.py	28 Sep 2003 18:22:26 -0000
+*************** in the directory containing the module t
+*** 416,426 ****
+           """
+  Runs QMTest as a remote server.  This mode is only used by QMTest
+  itself when distributing tests across multiple machines.  Users
+  should not directly invoke QMTest with this option.
+           """,
+!          ()
+           ),
+  
+          ("run",
+           "Run one or more tests.",
+           "[ ID ... ]",
+--- 416,426 ----
+           """
+  Runs QMTest as a remote server.  This mode is only used by QMTest
+  itself when distributing tests across multiple machines.  Users
+  should not directly invoke QMTest with this option.
+           """,
+!          (help_option_spec,)
+           ),
+  
+          ("run",
+           "Run one or more tests.",
+           "[ ID ... ]",
+
+From mark at codesourcery.com  Sun Sep 28 21:16:41 2003
+From: mark at codesourcery.com (Mark Mitchell)
+Date: 28 Sep 2003 14:16:41 -0700
+Subject: PATCH: Fix qmtest summarize --help output
+Message-ID: <1064783800.4279.29.camel@minax.codesourcery.com>
+
+This patch makes QMTest automatically generate the list of format
+options generated by qmtest summarize --help.  (At present, the "batch"
+format was omitted from the help output.)
+
+-- 
+Mark Mitchell <mark at codesourcery.com>
+CodeSourcery, LLC
+-------------- next part --------------
+2003-09-28  Mark Mitchell  <mark at codesourcery.com>
+
+	* qm/test/cmdline.py (QMTest.summary_formats): Rearrange order.
+	(QMTest.commands_spec): Automatically generate lists of --format
+	options.
+	* qm/test/classes/text_result_stream.py
+	(TextResultStream.arguments): Specify valid enumerals for format.
+
+Index: qm/test/cmdline.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/cmdline.py,v
+retrieving revision 1.100
+diff -c -5 -p -r1.100 cmdline.py
+*** qm/test/cmdline.py	28 Sep 2003 18:24:27 -0000	1.100
+--- qm/test/cmdline.py	28 Sep 2003 21:04:06 -0000
+*************** class QMTest:
+*** 94,104 ****
+      """A string listing the available extension kinds."""
+  
+      db_path_environment_variable = "QMTEST_DB_PATH"
+      """The environment variable specifying the test database path."""
+  
+!     summary_formats = ("full", "brief", "stats", "batch", "none")
+      """Valid formats for result summaries."""
+  
+      context_file_name = "context"
+      """The default name of a context file."""
+      
+--- 94,104 ----
+      """A string listing the available extension kinds."""
+  
+      db_path_environment_variable = "QMTEST_DB_PATH"
+      """The environment variable specifying the test database path."""
+  
+!     summary_formats = ("brief", "full", "stats", "batch", "none")
+      """Valid formats for result summaries."""
+  
+      context_file_name = "context"
+      """The default name of a context file."""
+      
+*************** suite IDs to run; omit arguments to run 
+*** 431,443 ****
+  
+  Test results are written to "results.qmr".  Use the '--output' option to
+  specify a different output file, or '--no-output' to supress results.
+  
+  Use the '--format' option to specify the output format for the summary.
+! Valid formats are "full", "brief" (the default), "stats", and "none".
+! The summary is written to standard output.
+!          """,
+           (
+             concurrent_option_spec,
+             context_file_spec,
+             context_option_spec,
+             format_option_spec,
+--- 431,442 ----
+  
+  Test results are written to "results.qmr".  Use the '--output' option to
+  specify a different output file, or '--no-output' to supress results.
+  
+  Use the '--format' option to specify the output format for the summary.
+! Valid formats are %s.
+!          """ % _make_comma_separated_string(summary_formats, "and"),
+           (
+             concurrent_option_spec,
+             context_file_spec,
+             context_option_spec,
+             format_option_spec,
+*************** Loads a test results file and summarizes
+*** 461,472 ****
+  to the results file.  Optionally, specify one or more test or suite IDs
+  whose results are shown.  If none are specified, shows all tests that
+  did not pass.
+  
+  Use the '--format' option to specify the output format for the summary.
+! Valid formats are "full", "brief" (the default), "stats", and "none".
+!          """,
+           ( help_option_spec,
+             format_option_spec,
+             outcomes_option_spec,
+             result_stream_spec)
+           ),
+--- 460,471 ----
+  to the results file.  Optionally, specify one or more test or suite IDs
+  whose results are shown.  If none are specified, shows all tests that
+  did not pass.
+  
+  Use the '--format' option to specify the output format for the summary.
+! Valid formats are %s.
+!          """ % _make_comma_separated_string(summary_formats, "and"),
+           ( help_option_spec,
+             format_option_spec,
+             outcomes_option_spec,
+             result_stream_spec)
+           ),
+Index: qm/test/classes/text_result_stream.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/classes/text_result_stream.py,v
+retrieving revision 1.4
+diff -c -5 -p -r1.4 text_result_stream.py
+*** qm/test/classes/text_result_stream.py	12 Aug 2003 20:14:18 -0000	1.4
+--- qm/test/classes/text_result_stream.py	28 Sep 2003 21:04:06 -0000
+*************** class TextResultStream(FileResultStream)
+*** 80,90 ****
+  
+              The "full" format is like "brief" except that all
+              annotations are shown for tests as they are run.
+  
+              In the "stats" format only the summary statistics are
+!             displayed."""),
+          ]
+      
+      def __init__(self, arguments):
+          """Construct a 'TextResultStream'.
+  
+--- 80,91 ----
+  
+              The "full" format is like "brief" except that all
+              annotations are shown for tests as they are run.
+  
+              In the "stats" format only the summary statistics are
+!             displayed.""",
+!             enumerals = ["brief", "batch", "full", "stats"])
+          ]
+      
+      def __init__(self, arguments):
+          """Construct a 'TextResultStream'.
+  
+
+From mark at codesourcery.com  Sun Sep 28 23:04:53 2003
+From: mark at codesourcery.com (Mark Mitchell)
+Date: 28 Sep 2003 16:04:53 -0700
+Subject: PATCH: Make PickleResultReader handle StringIO files
+Message-ID: <1064790293.4279.34.camel@minax.codesourcery.com>
+
+This patch fixes the reading of expectation files in the GUI.  (Before
+this patch, you get an unhandled exception in the GUI.)
+
+When the ResultReader abstraction was created, this code (which was in
+load_outcomes) did not get moved into the PickleResultReader class. 
+Nathaniel, did you make this change purposefully, or was it just an
+accident?
+
+It would be nice if Python provided a better way to handle the EOF
+condition, but I haven't found it yet.  If anyone has suggestions, that
+would be great.
+
+-- 
+Mark Mitchell <mark at codesourcery.com>
+CodeSourcery, LLC
+-------------- next part --------------
+2003-09-28  Mark Mitchell  <mark at codesourcery.com>
+
+	* qm/test/classes/pickle_result_stream.py
+	(PickleResultReader.__init__): Treat cPickle.UnpicklingError like
+	EOFError.
+
+Index: qm/test/classes/pickle_result_stream.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/classes/pickle_result_stream.py,v
+retrieving revision 1.5
+diff -c -5 -p -r1.5 pickle_result_stream.py
+*** qm/test/classes/pickle_result_stream.py	15 Jul 2003 00:10:36 -0000	1.5
+--- qm/test/classes/pickle_result_stream.py	28 Sep 2003 21:56:10 -0000
+*************** class PickleResultReader(FileResultReade
+*** 179,189 ****
+          self._annotations = {}
+  
+          # Check for a version number
+          try:
+              version = self.__unpickler.load()
+!         except EOFError:
+              # This file is empty, no more handling needed.
+              return
+          
+          if not isinstance(version, int):
+              # Version 0 file, no version number; in fact, we're
+--- 179,189 ----
+          self._annotations = {}
+  
+          # Check for a version number
+          try:
+              version = self.__unpickler.load()
+!         except (EOFError, cPickle.UnpicklingError):
+              # This file is empty, no more handling needed.
+              return
+          
+          if not isinstance(version, int):
+              # Version 0 file, no version number; in fact, we're
+*************** class PickleResultReader(FileResultReade
+*** 247,257 ****
+      def GetResult(self):
+  
+          while 1:
+              try:
+                  thing = self.__unpickler.load()
+!             except EOFError:
+                  return None
+              else:
+                  if thing is _annotation_sentinel:
+                      # We're looking for results, but this is an annotation,
+                      # so skip over it.
+--- 247,261 ----
+      def GetResult(self):
+  
+          while 1:
+              try:
+                  thing = self.__unpickler.load()
+!             except (EOFError, cPickle.UnpicklingError):
+!                 # When reading from a StringIO, no EOFError will be
+!                 # raised when the unpickler tries to read from the file.
+!                 # Instead, the unpickler raises UnpicklingError when it
+!                 # tries to unpickle the empty string.
+                  return None
+              else:
+                  if thing is _annotation_sentinel:
+                      # We're looking for results, but this is an annotation,
+                      # so skip over it.
+
+From njs at pobox.com  Sun Sep 28 23:33:38 2003
+From: njs at pobox.com (Nathaniel Smith)
+Date: Sun, 28 Sep 2003 16:33:38 -0700
+Subject: [qmtest] PATCH: Make PickleResultReader handle StringIO files
+In-Reply-To: <1064790293.4279.34.camel@minax.codesourcery.com>
+References: <1064790293.4279.34.camel@minax.codesourcery.com>
+Message-ID: <20030928233338.GA2967@njs.dhis.org>
+
+On Sun, Sep 28, 2003 at 04:04:53PM -0700, Mark Mitchell wrote:
+> When the ResultReader abstraction was created, this code (which was in
+> load_outcomes) did not get moved into the PickleResultReader class. 
+> Nathaniel, did you make this change purposefully, or was it just an
+> accident?
+
+I made it on purpose.  The old code treated both 'EOFError's and
+'UnpickleableError's as marking end-of-file, with a comment that the
+latter was required because of buggy interaction between cPickle and
+cStringIO.  I checked with a 2.2 interpreter, and found that this
+buggy interaction didn't occur.  Just now:
+
+~$ python2.2
+Python 2.2.3 (#1, Jun  4 2003, 02:54:59) 
+[GCC 3.3 (Debian)] on linux2
+Type "help", "copyright", "credits" or "license" for more information.
+>>> import cStringIO
+>>> import cPickle
+>>> up = cPickle.Unpickler(cStringIO.StringIO(""))
+>>> up.load()
+Traceback (most recent call last):
+  File "<stdin>", line 1, in ?
+EOFError
+>>> 
+
+... so I figured it was yet another bit of cruft left over from Python
+1.4 or whatever, and stripped it out.
+
+It sounds like I should have checked an even earlier version of 2.2?
+The Redhat 7.3 box I have access seems to have 2.2.2 installed, and it
+works just like 2.2.3.  But I guess 2.2.0 or 2.2.1 were still broken?
+Oops.
+
+-- Nathaniel
+
+-- 
+"On arrival in my ward I was immediately served with lunch. `This is
+what you ordered yesterday.' I pointed out that I had just arrived,
+only to be told: `This is what your bed ordered.'"
+  -- Letter to the Editor, The Times, September 2000
+
+
+From mark at codesourcery.com  Mon Sep 29 00:09:22 2003
+From: mark at codesourcery.com (Mark Mitchell)
+Date: 28 Sep 2003 17:09:22 -0700
+Subject: [qmtest] PATCH: Make PickleResultReader handle StringIO files
+In-Reply-To: <20030928233338.GA2967@njs.dhis.org>
+References: <1064790293.4279.34.camel@minax.codesourcery.com>
+	 <20030928233338.GA2967@njs.dhis.org>
+Message-ID: <1064794162.4279.39.camel@minax.codesourcery.com>
+
+On Sun, 2003-09-28 at 16:33, Nathaniel Smith wrote:
+> On Sun, Sep 28, 2003 at 04:04:53PM -0700, Mark Mitchell wrote:
+> > When the ResultReader abstraction was created, this code (which was in
+> > load_outcomes) did not get moved into the PickleResultReader class. 
+> > Nathaniel, did you make this change purposefully, or was it just an
+> > accident?
+> 
+> I made it on purpose.  The old code treated both 'EOFError's and
+> 'UnpickleableError's as marking end-of-file, with a comment that the
+> latter was required because of buggy interaction between cPickle and
+> cStringIO.  I checked with a 2.2 interpreter, and found that this
+> buggy interaction didn't occur.  Just now:
+> 
+> ~$ python2.2
+> Python 2.2.3 (#1, Jun  4 2003, 02:54:59) 
+> [GCC 3.3 (Debian)] on linux2
+> Type "help", "copyright", "credits" or "license" for more information.
+> >>> import cStringIO
+
+Actually, I don't think this is a version thing -- it's a StringIO vs.
+cStringIO thing.  Your test code works fine with Python 2.2.1 on my Red
+Hat 9 box -- but not if you replace cStringIO with StringIO.
+
+We could use cStringIO internally -- but we've got no good way to
+prevent users from wanting to use StringIO themselves, so I think we
+still need the compensation code in PickleResultReader.  I'm not sure
+why StringIO doesn't sythesize the EOFError exception; that may be a
+misfeature in the Python library.
+
+-- 
+Mark Mitchell <mark at codesourcery.com>
+CodeSourcery, LLC
+
+
+
+From mark at codesourcery.com  Mon Sep 29 00:51:22 2003
+From: mark at codesourcery.com (Mark Mitchell)
+Date: 28 Sep 2003 17:51:22 -0700
+Subject: PATCH: Fix errors in reference documentation
+Message-ID: <1064796682.4279.81.camel@minax.codesourcery.com>
+
+This patch fixes several errors in the reference documentation.
+
+-- 
+Mark Mitchell <mark at codesourcery.com>
+CodeSourcery, LLC
+-------------- next part --------------
+2003-09-28  Mark Mitchell  <mark at codesourcery.com>
+
+	* qm/test/doc/reference.xml: Remove documentation for non-existant
+	--summary and --no-summary options to "qmtest run".  Fix typo in
+	-O documentation for "qmtest summarize".  Improve --pid-file
+	documentation.
+
+Index: qm/test/doc/reference.xml
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/doc/reference.xml,v
+retrieving revision 1.32
+diff -c -5 -p -r1.32 reference.xml
+*** qm/test/doc/reference.xml	20 Aug 2003 19:43:28 -0000	1.32
+--- qm/test/doc/reference.xml	29 Sep 2003 00:36:41 -0000
+***************
+*** 1332,1368 ****
+         linkend="sec-testcmd-create"/>.</para>
+        </listitem>
+       </varlistentry>
+  
+       <varlistentry>
+-       <term><option>-s</option> <replaceable>file</replaceable></term>
+-       <term>
+-        <option>&dashdash;summary</option> <replaceable>file</replaceable> 
+-       </term>
+-       <listitem>
+-        <para>Write a summary of the test run to
+-        <replaceable>file</replaceable>.  Specify "<literal>-</literal>"
+-        (a hyphen) to write results to standard output (the
+-        default).</para>
+- 
+-        <para>&qmtest; prints a summary of test results, including
+-        statistics and the names of tests that did not pass.  If
+-        expected outcomes were specified, the the names of tests that
+-        had unexpected results are printed, instead of the names of
+-        tests that did not pass.</para>
+-       </listitem>
+-      </varlistentry>
+- 
+-      <varlistentry>
+-       <term><option>-S</option></term>
+-       <term><option>&dashdash;no-summary</option></term>
+-       <listitem> 
+-        <para>Do not produce a summary of the test run.</para>
+-       </listitem>
+-      </varlistentry>
+- 
+-      <varlistentry>
+        <term>
+         <option>&dashdash;seed</option> <replaceable>integer</replaceable>
+        </term>
+        <listitem>
+         <para>If the <option>&dashdash;random</option> is used, &qmtest;
+--- 1332,1341 ----
+***************
+*** 1448,1458 ****
+       </varlistentry>
+    
+       <varlistentry>
+        <term><option>-O</option> <replaceable>file</replaceable></term>
+        <term>
+!        <option>&dashdash;option</option> <replaceable>file</replaceable>
+        </term>
+        <listitem>
+         <para>For details about this option, see the description of the 
+         <command>qmtest run</command> command.</para>
+        </listitem>
+--- 1421,1431 ----
+       </varlistentry>
+    
+       <varlistentry>
+        <term><option>-O</option> <replaceable>file</replaceable></term>
+        <term>
+!        <option>&dashdash;outcomes</option> <replaceable>file</replaceable>
+        </term>
+        <listitem>
+         <para>For details about this option, see the description of the 
+         <command>qmtest run</command> command.</para>
+        </listitem>
+***************
+*** 1538,1550 ****
+        <glossterm>
+         <property>pid-file</property>
+        </glossterm>
+        <glossdef>
+         <para>The default path to use when creating a PID file with the
+!        <option>&dashdash;pid-file</option> option.  If this entry is
+!        not present, an appropriate platform-specific default value is
+!        used.</para>
+        </glossdef>
+       </glossentry>
+      </glosslist>
+  
+    </section> <!-- sec-config-file -->
+--- 1511,1524 ----
+        <glossterm>
+         <property>pid-file</property>
+        </glossterm>
+        <glossdef>
+         <para>The default path to use when creating a PID file with the
+!        <option>&dashdash;pid-file</option> option.  (See <xref
+!        linkend="sec-testcmd-gui"/> for more information about this
+!        option.) If this entry is not present, an appropriate
+!        platform-specific default value is used.</para>
+        </glossdef>
+       </glossentry>
+      </glosslist>
+  
+    </section> <!-- sec-config-file -->
+
+From njs at pobox.com  Mon Sep 29 02:24:00 2003
+From: njs at pobox.com (Nathaniel Smith)
+Date: Sun, 28 Sep 2003 19:24:00 -0700
+Subject: [qmtest] PATCH: Make PickleResultReader handle StringIO files
+In-Reply-To: <1064794162.4279.39.camel@minax.codesourcery.com>
+References: <1064790293.4279.34.camel@minax.codesourcery.com> <20030928233338.GA2967@njs.dhis.org> <1064794162.4279.39.camel@minax.codesourcery.com>
+Message-ID: <20030929022400.GA961@njs.dhis.org>
+
+On Sun, Sep 28, 2003 at 05:09:22PM -0700, Mark Mitchell wrote:
+> On Sun, 2003-09-28 at 16:33, Nathaniel Smith wrote:
+> > ~$ python2.2
+> > Python 2.2.3 (#1, Jun  4 2003, 02:54:59) 
+> > [GCC 3.3 (Debian)] on linux2
+> > Type "help", "copyright", "credits" or "license" for more information.
+> > >>> import cStringIO
+> 
+> Actually, I don't think this is a version thing -- it's a StringIO vs.
+> cStringIO thing.  Your test code works fine with Python 2.2.1 on my Red
+> Hat 9 box -- but not if you replace cStringIO with StringIO.
+> 
+> We could use cStringIO internally -- but we've got no good way to
+> prevent users from wanting to use StringIO themselves, so I think we
+> still need the compensation code in PickleResultReader.  I'm not sure
+> why StringIO doesn't sythesize the EOFError exception; that may be a
+> misfeature in the Python library.
+
+Hrm, yeah, that makes sense.  Must have gotten confused.
+
+The StringIO bug, for the record, actually does seem to be fixed in
+2.3; once we start depending on it, I'll become right about this code
+;-).
+
+(I guess if one were worried about still noticing invalid pickle
+files, a future-compatible workaround would be to do something like:
+
+except cPickle.UnpicklingError:
+    if sys.version_info < (2, 3) \
+       and instanceof(self.file, StringIO.StringIO):
+         # handle EOF
+    else:
+         raise
+
+More importantly, it would mark the code clearly self-obsolescing...)
+
+-- Nathaniel
+
+-- 
+"Lull'd in the countless chambers of the brain,
+Our thoughts are link'd by many a hidden chain:
+Awake but one, and lo! what myriads rise!
+Each stamps its image as the other flies"
+  -- Ann Ward Radcliffe, The Mysteries of Udolpho
+
+
+From mark at codesourcery.com  Mon Sep 29 07:11:44 2003
+From: mark at codesourcery.com (Mark Mitchell)
+Date: 29 Sep 2003 00:11:44 -0700
+Subject: PATCH: Eliminate QM_BUILD
+Message-ID: <1064819504.4279.154.camel@minax.codesourcery.com>
+
+This patch eliminates the use of the QM_BUILD environment variable --
+one more step towards the vision of QMTest-as-library.  The technical
+details were inspirated by one of Stefan's patches.
+
+-- 
+Mark Mitchell <mark at codesourcery.com>
+CodeSourcery, LLC
+-------------- next part --------------
+? TODO
+? autom4te.cache
+? foo
+? results.qmr
+? doc/index.html
+? doc/qm
+? qm/external/__init__.pyc
+? qm/test/classes/variant_database.py
+? share/dtds
+? tests/regress/QMTest/regression_database.pyc
+? tests/regress/QMTest/selftest.pyc
+? tests/regress/tuple1/QMTest/tuple_test.pyc
+? tests/results_files/QMTest/results_file_database.pyc
+? tests/results_files/QMTest/results_file_test.pyc
+Index: ChangeLog
+===================================================================
+RCS file: /home/sc/Repository/qm/ChangeLog,v
+retrieving revision 1.560
+diff -c -5 -p -r1.560 ChangeLog
+*** ChangeLog	29 Sep 2003 00:49:29 -0000	1.560
+--- ChangeLog	29 Sep 2003 07:02:41 -0000
+***************
+*** 1,7 ****
+--- 1,29 ----
+  2003-09-28  Mark Mitchell  <mark at codesourcery.com>
+  
++ 	* GNUmakefile.in ($(SCRIPTS)): Don't set QM_BUILD.
++ 	* qm/__init__.py: Set common.is_installed.
++ 	* qm/common.py (get_share_directory): Don't use QM_BUILD.
++ 	(get_doc_directory): Likewise.
++ 	(is_installed): New variable.
++ 	* qm/diagnostic.py (__diagnostic_set): New variable.
++ 	(__help_set): Likewise.
++ 	(get_diagnostic_set): New function.
++ 	(get_help_set): Likewise.
++ 	(message): Use them.
++ 	(error): Likewise.
++ 	(warning): Likewise.
++ 	(load_messages): Likewise.
++ 	(__initialize_module): Remove.
++ 	(diagnostic_set): Likewise.
++ 	(help_set): Likewise.
++ 	* qm/qm.sh: Eliminate QM_BUILD.
++ 	* qm/web.py (make_help_link): Use diagnostic.get_help_set().
++ 	* qm/test/web/web.py (DefaultDtmlPage.__init__): Don't use
++ 	QM_BUILD.
++ 	* qmdist/command/install_data.py (install_data.run): Simplify.
++ 
+  	* doc/qm-opl.xml: Remove Software Carpentry references.
+  	* doc/manual/common-manual.xml: Likewise.
+  	* qm/test/doc/manual.xml: Update version number.
+  
+  	* qm/test/doc/reference.xml: Remove documentation for non-existant
+Index: GNUmakefile.in
+===================================================================
+RCS file: /home/sc/Repository/qm/GNUmakefile.in,v
+retrieving revision 1.28
+diff -c -5 -p -r1.28 GNUmakefile.in
+*** GNUmakefile.in	29 Aug 2003 22:36:24 -0000	1.28
+--- GNUmakefile.in	29 Sep 2003 07:02:41 -0000
+*************** else
+*** 169,179 ****
+  PYTHONEXE = `@PYTHON@ -c "import sys; print sys.prefix"`\\python
+  $(SCRIPTS): GNUmakefile
+  	rm -rf $@
+  	echo -e "@echo off\r" > $@
+  	echo -e "set QM_HOME=C:\\progra~1\qm\r" >> $@
+- 	echo -e "set QM_BUILD=0\r" >> $@
+  	echo -e "set PYTHONPATH=%C:\\Program Files\\QM\\$(RELLIBDIR);%PYTHONPATH%\r" >> $@
+  	echo -n "$(PYTHONEXE)" \
+                   \"%QM_HOME%\\$(RELLIBDIR)\\$(subst /,\\,$(basename $@)).py\" \
+            >> $@
+  	echo -e " %1 %2 %3 %4 %5 %6 %7 %8 %9\r" >> $@
+--- 169,178 ----
+Index: qm/__init__.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/__init__.py,v
+retrieving revision 1.8
+diff -c -5 -p -r1.8 __init__.py
+*** qm/__init__.py	17 Sep 2003 19:15:52 -0000	1.8
+--- qm/__init__.py	29 Sep 2003 07:02:41 -0000
+***************
+*** 16,38 ****
+  ########################################################################
+  # imports
+  ########################################################################
+  
+  import string
+  
+  try:
+      # The config file is created during "make install" by setup.py.
+      from qm.config import version
+      version_info = tuple(string.split(version, '.'))
+      """The version of QM as a tuple of '(major, minor, release)'."""
+  except:
+      # If qm.config was not available, we are running out of the source tree.
+      from qm.__version import version, version_info
+! 
+! from qm.common import *
+! from qm.diagnostic import error, warning, message
+! 
+  ########################################################################
+  # Local Variables:
+  # mode: python
+  # indent-tabs-mode: nil
+  # End:
+--- 16,38 ----
+  ########################################################################
+  # imports
+  ########################################################################
+  
+  import string
++ from qm.common import *
++ from qm.diagnostic import error, warning, message
+  
+  try:
+      # The config file is created during "make install" by setup.py.
+      from qm.config import version
+      version_info = tuple(string.split(version, '.'))
+      """The version of QM as a tuple of '(major, minor, release)'."""
+  except:
+      # If qm.config was not available, we are running out of the source tree.
++     common.is_installed = 0
+      from qm.__version import version, version_info
+!     
+  ########################################################################
+  # Local Variables:
+  # mode: python
+  # indent-tabs-mode: nil
+  # End:
+Index: qm/common.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/common.py,v
+retrieving revision 1.73
+diff -c -5 -p -r1.73 common.py
+*** qm/common.py	20 Aug 2003 00:36:49 -0000	1.73
+--- qm/common.py	29 Sep 2003 07:02:42 -0000
+*************** class RcConfiguration(ConfigParser.Confi
+*** 221,241 ****
+  
+  def get_share_directory(*components):
+      """Return the path to a file in the QM data file directory."""
+  
+      home_dir = os.environ["QM_HOME"]
+!     if os.environ.get("QM_BUILD") == "1":
+          return os.path.join(home_dir, "share", *components)
+      else:
+          return os.path.join(home_dir, "share", "qm", *components)
+  
+  
+  def get_doc_directory(*components):
+      """Return a path to a file in the QM documentation file directory."""
+  
+      home_dir = os.environ["QM_HOME"]
+!     if os.environ.get("QM_BUILD") == "1":
+          return os.path.join(home_dir, "qm", *components)
+      else:
+          return os.path.join(home_dir, "share", "doc", "qm", *components)
+  
+  
+--- 221,241 ----
+  
+  def get_share_directory(*components):
+      """Return the path to a file in the QM data file directory."""
+  
+      home_dir = os.environ["QM_HOME"]
+!     if not is_installed:
+          return os.path.join(home_dir, "share", *components)
+      else:
+          return os.path.join(home_dir, "share", "qm", *components)
+  
+  
+  def get_doc_directory(*components):
+      """Return a path to a file in the QM documentation file directory."""
+  
+      home_dir = os.environ["QM_HOME"]
+!     if not is_installed:
+          return os.path.join(home_dir, "qm", *components)
+      else:
+          return os.path.join(home_dir, "share", "doc", "qm", *components)
+  
+  
+*************** def read_assignments(file):
+*** 829,838 ****
+--- 829,844 ----
+      return assignments
+  
+  ########################################################################
+  # variables
+  ########################################################################
++ 
++ is_installed = 1
++ """True if this application has been installed.
++ 
++ True if the application has been installed.  False if the application is
++ running out of the source tree."""
+  
+  rc = RcConfiguration()
+  """The configuration stored in system and user rc files."""
+  
+  # The next number to be used when handing out unqiue tag strings.
+Index: qm/diagnostic.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/diagnostic.py,v
+retrieving revision 1.9
+diff -c -5 -p -r1.9 diagnostic.py
+*** qm/diagnostic.py	28 May 2002 01:37:53 -0000	1.9
+--- qm/diagnostic.py	29 Sep 2003 07:02:42 -0000
+*************** class DiagnosticSet:
+*** 125,218 ****
+              output.write("%s: %s: %s\n"
+                           % (common.program_name, severity, message)) 
+          return message
+  
+  
+  
+  ########################################################################
+  # functions
+  ########################################################################
+  
+  def message(tag, **substitutions):
+      """Generate a diagnostic message."""
+  
+!     global diagnostic_set
+!     return apply(diagnostic_set.Generate,
+                   (tag, "message", None),
+                   substitutions)
+  
+  
+  def error(tag, output=None, **substitutions):
+      """Generate or emit an error diagnostic."""
+  
+!     global diagnostic_set
+!     return apply(diagnostic_set.Generate,
+                   (tag, "error", output, ),
+                   substitutions)
+  
+      
+  def warning(tag, output=None, **substitutions):
+      """Generate or emit a warning diagnostic."""
+  
+!     global diagnostic_set
+!     return apply(diagnostic_set.Generate,
+                   (tag, "warning", output, ),
+                   substitutions)
+  
+  
+  def load_messages(tool):
+      """Read messages that apply to 'tool'.
+  
+      'tool' -- A string giving the name of a QM tool."""
+  
+      # Load diagnostics.
+!     if os.environ['QM_BUILD'] == '1':
+          diagnostic_file \
+              = qm.get_share_directory("..", "qm", tool, "share",
+                                       "messages", "diagnostics.txt")
+      else:
+          diagnostic_file \
+            = qm.get_share_directory("messages", tool, "diagnostics.txt")
+!     diagnostic_set.ReadFromFile(diagnostic_file)
+      # Load help messages.
+!     if os.environ['QM_BUILD'] == '1':
+          diagnostic_file \
+              = qm.get_share_directory("..", "qm", tool, "share",
+                                       "messages", "help.txt")
+      else:
+          diagnostic_file \
+              = qm.get_share_directory("messages", tool, "help.txt")
+!     help_set.ReadFromFile(diagnostic_file)
+      
+-     
+- ########################################################################
+- # variables
+- ########################################################################
+- 
+- diagnostic_set = DiagnosticSet()
+- """The 'DiagnosticSet' object from which diagnostics are generated."""
+- 
+- help_set = DiagnosticSet()
+- """The 'DiagnosticSet'object from which help text messages are
+- generated."""
+- 
+- ########################################################################
+- # initialization
+- ########################################################################
+- 
+- def __initialize_module():
+-     # Load common diagnostics.
+-     diagnostic_file = qm.get_share_directory("diagnostics", "common.txt")
+-     diagnostic_set.ReadFromFile(diagnostic_file)
+- 
+-     # Load common help messages.
+-     help_file = qm.get_share_directory("diagnostics", "common-help.txt")
+-     help_set.ReadFromFile(help_file)
+- 
+- 
+- __initialize_module()
+- 
+  ########################################################################
+  # Local Variables:
+  # mode: python
+  # indent-tabs-mode: nil
+  # fill-column: 72
+--- 125,225 ----
+              output.write("%s: %s: %s\n"
+                           % (common.program_name, severity, message)) 
+          return message
+  
+  
++ ########################################################################
++ # Variables
++ ########################################################################
++ 
++ __diagnostic_set = None
++ """The 'DiagnosticSet' object from which diagnostics are generated."""
++ 
++ __help_set = None
++ """The 'DiagnosticSet'object from which help text messages are
++ generated."""
+  
+  ########################################################################
+  # functions
+  ########################################################################
+  
++ def get_diagnostic_set():
++     """Return the 'DiagnosticSet' containing warning/error messages.
++ 
++     returns -- The 'DiagnosticSet' containing warning/error messages."""
++ 
++     global __diagnostic_set
++     if __diagnostic_set is None:
++         __diagnostic_set = DiagnosticSet()
++         __diagnostic_set.ReadFromFile(qm.get_share_directory("diagnostics",
++                                                              "common.txt"))
++ 
++     return __diagnostic_set
++ 
++ 
++ def get_help_set():
++     """Return the 'DiagnosticSet' for help messages.
++ 
++     returns -- The 'DiagnosticSet' containing help messages."""
++ 
++     global __help_set
++     if __help_set is None:
++         __help_set = DiagnosticSet()
++         __help_set.ReadFromFile(qm.get_share_directory("diagnostics",
++                                                        "common-help.txt"))
++ 
++     return __help_set
++ 
++     
+  def message(tag, **substitutions):
+      """Generate a diagnostic message."""
+  
+!     return apply(get_diagnostic_set().Generate,
+                   (tag, "message", None),
+                   substitutions)
+  
+  
+  def error(tag, output=None, **substitutions):
+      """Generate or emit an error diagnostic."""
+  
+!     return apply(get_diagnostic_set().Generate,
+                   (tag, "error", output, ),
+                   substitutions)
+  
+      
+  def warning(tag, output=None, **substitutions):
+      """Generate or emit a warning diagnostic."""
+  
+!     return apply(get_diagnostic_set().Generate,
+                   (tag, "warning", output, ),
+                   substitutions)
+  
+  
+  def load_messages(tool):
+      """Read messages that apply to 'tool'.
+  
+      'tool' -- A string giving the name of a QM tool."""
+  
+      # Load diagnostics.
+!     if not qm.common.is_installed:
+          diagnostic_file \
+              = qm.get_share_directory("..", "qm", tool, "share",
+                                       "messages", "diagnostics.txt")
+      else:
+          diagnostic_file \
+            = qm.get_share_directory("messages", tool, "diagnostics.txt")
+!     get_diagnostic_set().ReadFromFile(diagnostic_file)
+      # Load help messages.
+!     if not qm.common.is_installed:
+          diagnostic_file \
+              = qm.get_share_directory("..", "qm", tool, "share",
+                                       "messages", "help.txt")
+      else:
+          diagnostic_file \
+              = qm.get_share_directory("messages", tool, "help.txt")
+!     get_help_set().ReadFromFile(diagnostic_file)
+      
+  ########################################################################
+  # Local Variables:
+  # mode: python
+  # indent-tabs-mode: nil
+  # fill-column: 72
+Index: qm/qm.sh
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/qm.sh,v
+retrieving revision 1.15
+diff -c -5 -p -r1.15 qm.sh
+*** qm/qm.sh	6 Sep 2003 05:24:01 -0000	1.15
+--- qm/qm.sh	29 Sep 2003 07:02:42 -0000
+*************** qm_split_path() {
+*** 98,116 ****
+  #    installation.  In the former case, we have found an installed QM;
+  #    in the latter we have found a build directory where QM is being
+  #    developed.
+  #
+  # After determining the root of the QM installation, set the QM_HOME
+! # environment variable to that value.  If we have found QM in the
+! # build directory, set the QM_BUILD environment variable to 1.  
+! # Otherwise, set it to 0.
+  #
+  # Set QM_PATH to the path to this script.
+  
+- # Assume that QM is not running out of the build directory.
+- QM_BUILD=${QM_BUILD:-0}
+- 
+  # Check to see if QM_HOME is set.
+  if test x"${QM_HOME}" = x; then
+      # Find the path to this script.  Set qm_path to the absolute
+      # path to this script.
+      if qm_is_absolute_path "$0"; then
+--- 98,111 ----
+  #    installation.  In the former case, we have found an installed QM;
+  #    in the latter we have found a build directory where QM is being
+  #    developed.
+  #
+  # After determining the root of the QM installation, set the QM_HOME
+! # environment variable to that value.
+  #
+  # Set QM_PATH to the path to this script.
+  
+  # Check to see if QM_HOME is set.
+  if test x"${QM_HOME}" = x; then
+      # Find the path to this script.  Set qm_path to the absolute
+      # path to this script.
+      if qm_is_absolute_path "$0"; then
+*************** if test x"${QM_HOME}" = x; then
+*** 150,189 ****
+  	    break
+  	fi
+  	# Alternatively, if we have find a file called `qm/qm.sh',
+  	# then we have found the root of the QM build directory.
+  	if test -f "${QM_HOME}/qm/qm.sh"; then
+- 	    QM_BUILD=1
+  	    break
+  	fi
+  	# If we have reached the root directory, then we have run
+  	# out of places to look.
+  	if test "x${QM_HOME}" = x/; then
+  	    qm_could_not_find_qm
+  	fi
+  	# Go the next containing directory.
+  	QM_HOME=`dirname "${QM_HOME}"`
+      done
+  else
+!     # The QM_HOME variable was set.
+!     if test ${QM_BUILD} -eq 0; then
+! 	QM_PATH=$QM_HOME/bin/qmtest
+!     else
+! 	QM_PATH=$QM_HOME/qm/test/qmtest
+!     fi
+  fi
+  
+  # Export QM_HOME and QM_PATH so that we can find them from within Python.
+  export QM_HOME
+  export QM_PATH
+- # Export QM_BUILD so that QM knows where to look for other modules.
+- export QM_BUILD
+  
+  # When running QMTest from the build environment, run Python without
+  # optimization.  In a production environment, use optimization.
+  if test x"${QM_PYTHON_FLAGS}" = x; then
+!     if test ${QM_BUILD} -eq 1; then
+          QM_PYTHON_FLAGS=""
+      else
+          QM_PYTHON_FLAGS="-O"
+      fi
+  fi
+--- 145,187 ----
+  	    break
+  	fi
+  	# Alternatively, if we have find a file called `qm/qm.sh',
+  	# then we have found the root of the QM build directory.
+  	if test -f "${QM_HOME}/qm/qm.sh"; then
+  	    break
+  	fi
+  	# If we have reached the root directory, then we have run
+  	# out of places to look.
+  	if test "x${QM_HOME}" = x/; then
+  	    qm_could_not_find_qm
+  	fi
+  	# Go the next containing directory.
+  	QM_HOME=`dirname "${QM_HOME}"`
+      done
++ fi
++ 
++ # Figure out whether or not we are running out of the build directory.
++ if test -f "${QM_HOME}/qm/qm.sh"; then
++     qm_build=1
+  else
+!     qm_build=0
+! fi
+! 
+! if test ${qm_build} -eq 0; then
+!     QM_PATH=$QM_HOME/bin/qmtest
+! else
+!     QM_PATH=$QM_HOME/qm/test/qmtest
+  fi
+  
+  # Export QM_HOME and QM_PATH so that we can find them from within Python.
+  export QM_HOME
+  export QM_PATH
+  
+  # When running QMTest from the build environment, run Python without
+  # optimization.  In a production environment, use optimization.
+  if test x"${QM_PYTHON_FLAGS}" = x; then
+!     if test ${qm_build} -eq 1; then
+          QM_PYTHON_FLAGS=""
+      else
+          QM_PYTHON_FLAGS="-O"
+      fi
+  fi
+*************** elif test -f "/usr/bin/python2"; then
+*** 215,225 ****
+  else
+      qm_python="python"
+  fi
+  
+  # Figure out where to find the main Python script.
+! if test ${QM_BUILD} -eq 0; then
+      qm_libdir="${QM_HOME}/${qm_rel_libdir}"
+  else
+      qm_libdir="${QM_HOME}/qm"
+  fi
+  qm_script=`basename $0`
+--- 213,223 ----
+  else
+      qm_python="python"
+  fi
+  
+  # Figure out where to find the main Python script.
+! if test ${qm_build} -eq 0; then
+      qm_libdir="${QM_HOME}/${qm_rel_libdir}"
+  else
+      qm_libdir="${QM_HOME}/qm"
+  fi
+  qm_script=`basename $0`
+Index: qm/web.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/web.py,v
+retrieving revision 1.75
+diff -c -5 -p -r1.75 web.py
+*** qm/web.py	30 Jul 2003 21:25:30 -0000	1.75
+--- qm/web.py	29 Sep 2003 07:02:43 -0000
+*************** def make_help_link(help_text_tag, label=
+*** 2124,2134 ****
+      'label' -- The help link label.
+  
+      'substitutions' -- Substitutions to the help diagnostic."""
+      
+      # Construct the help text.
+!     help_text = apply(diagnostic.help_set.Generate,
+                        (help_text_tag, "help", None),
+                        substitutions)
+      # Convert it to HTML.
+      help_text = qm.structured_text.to_html(help_text)
+      # Make the link.
+--- 2124,2134 ----
+      'label' -- The help link label.
+  
+      'substitutions' -- Substitutions to the help diagnostic."""
+      
+      # Construct the help text.
+!     help_text = apply(diagnostic.get_help_set().Generate,
+                        (help_text_tag, "help", None),
+                        substitutions)
+      # Convert it to HTML.
+      help_text = qm.structured_text.to_html(help_text)
+      # Make the link.
+Index: qm/test/web/web.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/web/web.py,v
+retrieving revision 1.77
+diff -c -5 -p -r1.77 web.py
+*** qm/test/web/web.py	27 Aug 2003 16:03:26 -0000	1.77
+--- qm/test/web/web.py	29 Sep 2003 07:02:44 -0000
+*************** class DefaultDtmlPage(qm.web.DtmlPage):
+*** 53,63 ****
+          'dtml_template' -- The file name of the DTML template, relative
+          to the DTML directory."""
+          
+          # In the build tree, tool-specific DTML pages are in a different
+          # location.
+!         if (os.environ['QM_BUILD'] == '1'
+              and os.path.dirname(dtml_template) == "test"):
+              dtml_template \
+                  = os.path.join("..", "..", "qm", "test", "share",
+                                 "dtml", os.path.basename(dtml_template))
+  
+--- 53,63 ----
+          'dtml_template' -- The file name of the DTML template, relative
+          to the DTML directory."""
+          
+          # In the build tree, tool-specific DTML pages are in a different
+          # location.
+!         if (not qm.common.is_installed
+              and os.path.dirname(dtml_template) == "test"):
+              dtml_template \
+                  = os.path.join("..", "..", "qm", "test", "share",
+                                 "dtml", os.path.basename(dtml_template))
+  
+Index: qmdist/command/install_data.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qmdist/command/install_data.py,v
+retrieving revision 1.2
+diff -c -5 -p -r1.2 install_data.py
+*** qmdist/command/install_data.py	17 Sep 2003 19:15:52 -0000	1.2
+--- qmdist/command/install_data.py	29 Sep 2003 07:02:44 -0000
+*************** class install_data(base.install_data):
+*** 29,41 ****
+          il = self.distribution.get_command_obj('install_lib')
+          base.install_data.run(self)
+          config = os.path.join(il.install_dir, 'qm/config.py')
+          self.announce("generating %s" %(config))
+          outf = open(config, "w")
+-         outf.write("#the old way...\n")
+-         outf.write("import os\n")
+-         outf.write("os.environ['QM_BUILD']='0'\n")
+-         outf.write("#the new way...\n")
+          outf.write("version='%s'\n"%(self.distribution.get_version()))
+          
+          outf.write("\n")
+          self.outfiles.append(config)
+--- 29,37 ----
+
+From mark at codesourcery.com  Mon Sep 29 07:13:21 2003
+From: mark at codesourcery.com (Mark Mitchell)
+Date: 29 Sep 2003 00:13:21 -0700
+Subject: [qmtest] new 'check' command
+In-Reply-To: <3F6903F8.1050304@sympatico.ca>
+References: <3F6903F8.1050304@sympatico.ca>
+Message-ID: <1064819601.4279.157.camel@minax.codesourcery.com>
+
+On Wed, 2003-09-17 at 18:01, Stefan Seefeld wrote:
+> hi there,
+> 
+> this patch allows to run the self-tests (as priviously done
+> with 'make check'). It operates with the executable and modules
+> inside the source tree. To be able to do this I had to make two
+> (temporary, I hope) changes:
+> 
+> * define QM_BUILD (this is detected by the presence of the qm.config
+>    module, which, when found, means QM_BUILD = 0
+> 
+> * as the qmtest.py executable is right now in an unusual place,
+>    I can't use the same procedure to deduce QM_HOME from it.
+>    As a temporary workaround (until the source tree layout is
+>    cleaned up) I set QM_HOME from within the qm/__init__.py
+>    file only if it is not already defined. This means that in
+>    order to run the 'check' command right now you have to define
+>    QM_HOME manually.
+
+I think my recent check-ins will have eliminated the need for these two
+patches.
+
+The new check.py file is OK.
+
+Thanks!
+
+-- 
+Mark Mitchell <mark at codesourcery.com>
+CodeSourcery, LLC
+
+
+
+From seefeld at sympatico.ca  Tue Sep 30 13:02:22 2003
+From: seefeld at sympatico.ca (Stefan Seefeld)
+Date: Tue, 30 Sep 2003 09:02:22 -0400
+Subject: [qmtest] new 'check' command
+References: <3F6903F8.1050304@sympatico.ca> <1064819601.4279.157.camel@minax.codesourcery.com>
+Message-ID: <f424c7876edc88dfd57ce784adb972603f797af5@Orthosoft.ca>
+
+Mark Mitchell wrote:
+
+> The new check.py file is OK.
+
+ok, it's checked in. However, this command assumes 'qmtest.py' is
+executable (which it is after installation). So to make it work
+even inside the source tree the qm/test/qmtest.py file's permissions
+have to be changed.
+
+What else is missing / can I do to bring the new build system up to
+speed so the old stuff can be dropped ? As soon as the file layout
+is a bit reorganized there is quite a bit of cleanup that can be done.
+
+Also, you may consider to provide more metadata to the setup.py file
+(see 
+http://www.python.org/doc/current/dist/setup-script.html#SECTION000360000000000000000).
+
+That would help increase the project's visibility especially inside
+the python community, which will certainly draw in many new users.
+
+In a similar vein, what do you think about a set of demo databases
+to get users up to speed with the concepts and the possibilities
+of qmtest ?
+
+I'd be willing to help assemble some...
+
+Regards,
+		Stefan
+
+
+
+
+
+
+From Anders.Hasselqvist at tss.teleca.se  Tue Sep 30 13:07:56 2003
+From: Anders.Hasselqvist at tss.teleca.se (Anders Hasselqvist)
+Date: Tue, 30 Sep 2003 15:07:56 +0200
+Subject: Date for new release?
+Message-ID: <9EEF3C7F0B31F544919778197B64D76002593487@au-sth01-ex.ausys.se>
+
+Hi,
+
+I'm new to this list. Maybe this has been asked often but I can't find any
+Archive of this list to search.
+
+I looked at the CVS and it seems there has been a lot of bugfixes and
+improvements.
+Is there a planned date for a new release?
+
+Regards,
+--
+Anders Hasselqvist
+
+
+From Anders.Hasselqvist at tss.teleca.se  Tue Sep 30 15:02:21 2003
+From: Anders.Hasselqvist at tss.teleca.se (Anders Hasselqvist)
+Date: Tue, 30 Sep 2003 17:02:21 +0200
+Subject: Bug in get_extension_directories (base.py) in Windows
+Message-ID: <9EEF3C7F0B31F544919778197B64D76002593488@au-sth01-ex.ausys.se>
+
+Hi,
+
+I wanted to set the QMTEST_CLASS_PATH to H:\exjobb\python but
+this doesn't work since the string is split by ':'
+I think it should be ';' in Windows.
+
+>From base.py:
+-------------
+# Start with the directories that the user has specified in the
+# QNTEST_CLASSPATH environment variable.
+  if os.environ.has_key('QMTEST_CLASS_PATH'):
+  dirs = string.split(os.environ['QMTEST_CLASS_PATH'], ':')
+-------------
+
+Regards,
+--
+Anders Hasselqvist
+
+
+From seefeld at sympatico.ca  Tue Sep 30 16:18:45 2003
+From: seefeld at sympatico.ca (Stefan Seefeld)
+Date: Tue, 30 Sep 2003 12:18:45 -0400
+Subject: working with the xml result stream
+Message-ID: <9ddc2050bf1ad07345ba5b49ae6f4d743f79a905@Orthosoft.ca>
+
+I'v run into a little issue with the generated xml output using
+xml-result-stream.
+
+I run qmtest on a variety of platforms, and I generate one xml
+result file for each. Then I process these files with xslt to
+generate a 'result matrix'. At some point I'm determining the
+number of failures/passes/etc., and the xslt way to do this is
+with an xpath expression such as
+
+"count($target/results/result[outcome='FAIL'])"
+
+The problem is that the content of 'outcome' nodes varies
+between platforms, i.e. on linux it may be
+
+<outcome>PASS</outcome>
+
+and on windows
+
+   <outcome>
+    PASS
+   </outcome>
+
+This means that I can't just compare the string values that
+easily, since the content differs in whitespace.
+
+Thus my question: wouldn't it be more natural to put the outcome
+value into an attribute ?
+A temporary workaround for my xpath expression may be to use
+"contains(outcome, 'FAIL')", but that seems quite hackish.
+
+Checking with the document type definition for result files
+I think it would be perfectly fine to make such a change,
+i.e. the outcome is actually an enum, so the dtd / schema could
+well be tightened a bit to make processing easier.
+
+Any thoughts ?
+
+Stefan
+
+
+

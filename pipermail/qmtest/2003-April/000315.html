@@ -1,0 +1,430 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> PATCH: Improve handling of resources that depend on other resources
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:qmtest%40codesourcery.com?Subject=Re%3A%20PATCH%3A%20Improve%20handling%20of%20resources%20that%20depend%20on%20other%20resources&In-Reply-To=%3C200304231902.h3NJ2gtC003611%40minax.codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000316.html">
+   
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>PATCH: Improve handling of resources that depend on other resources</H1>
+    <B>Mark Mitchell</B> 
+    <A HREF="mailto:qmtest%40codesourcery.com?Subject=Re%3A%20PATCH%3A%20Improve%20handling%20of%20resources%20that%20depend%20on%20other%20resources&In-Reply-To=%3C200304231902.h3NJ2gtC003611%40minax.codesourcery.com%3E"
+       TITLE="PATCH: Improve handling of resources that depend on other resources">mark at codesourcery.com
+       </A><BR>
+    <I>Wed Apr 23 19:02:42 UTC 2003</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000316.html">[qmtest] Proposal: modules reload
+</A></li>
+        
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#315">[ date ]</a>
+              <a href="thread.html#315">[ thread ]</a>
+              <a href="subject.html#315">[ subject ]</a>
+              <a href="author.html#315">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>
+One resource can depend on another in QMTest 2.1.
+
+This patch fixes some bugs in the current implementation whereby
+context properties set by the resources were not available to tests
+depending on them.
+
+There are a couple of the miscellaneous enhancements as well.
+
+--
+Mark Mitchell
+CodeSourcery, LLC
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">mark at codesourcery.com</A>
+
+2003-04-23  Mark Mitchell  &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">mark at codesourcery.com</A>&gt;
+
+	* qm/test/context.py (Context.GetAddedProperties): New method.
+	(ContextWrapper.GetAddedProperties): Recur.
+	* qm/test/target.py (Target._SetUpResource): Handle resources
+	dependent on other resources.
+
+	* qm/test/file_database.py (ExtensionDatabase._IsFile): Handle
+	empty extensions more gracefully.
+
+	* qm/test/result.py (Result.SetOutcome): Add cause and annotations
+	parameters.
+	(Result.Fail): Use it.
+
+Index: qm/test/context.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/context.py,v
+retrieving revision 1.7
+diff -c -5 -p -r1.7 context.py
+*** qm/test/context.py	25 Nov 2002 10:24:05 -0000	1.7
+--- qm/test/context.py	23 Apr 2003 18:54:48 -0000
+***************
+*** 5,15 ****
+  # Date:   11/06/2001
+  #
+  # Contents:
+  #   QMTest Context class
+  #
+! # Copyright (c) 2001, 2002, 2003 by CodeSourcery, LLC.  All rights reserved. 
+  #
+  ########################################################################
+  
+  ########################################################################
+  # Imports
+--- 5,15 ----
+  # Date:   11/06/2001
+  #
+  # Contents:
+  #   QMTest Context class
+  #
+! # Copyright (c) 2001, 2002, 2003 by CodeSourcery, LLC.  All rights reserved. 
+  #
+  ########################################################################
+  
+  ########################################################################
+  # Imports
+*************** class Context:
+*** 168,177 ****
+--- 168,186 ----
+          return result
+  
+  
+      # Helper methods.
+  
++     def GetAddedProperties(self):
++         &quot;&quot;&quot;Return the properties added to this context by resources.
++ 
++         returns -- A map from strings to values indicating properties
++         that were added to this context by resources.&quot;&quot;&quot;
++         
++         return {}
++ 
++     
+      def ValidateKey(self, key):
+          &quot;&quot;&quot;Validate 'key'.
+  
+          raises -- 'ValueError' if 'key' is not a string.
+  
+*************** class ContextWrapper:
+*** 217,231 ****
+          self.__extra = extra_properties.copy()
+          self.__added = {}
+  
+  
+      def GetAddedProperties(self):
+!         &quot;&quot;&quot;Return the properties added after this wrapper was created.&quot;&quot;&quot;
+  
+!         return self.__added
+  
+  
+      def __getitem__(self, key):
+          &quot;&quot;&quot;Return a property value.&quot;&quot;&quot;
+  
+          # Check added properties first.
+          try:
+--- 226,255 ----
+          self.__extra = extra_properties.copy()
+          self.__added = {}
+  
+  
+      def GetAddedProperties(self):
+!         &quot;&quot;&quot;Return the properties added to this context by resources.
+! 
+!         returns -- A map from strings to values indicating properties
+!         that were added to this context by resources.&quot;&quot;&quot;
+  
+!         added = self.__context.GetAddedProperties()
+!         added.update(self.__added)
+!         return added
+  
+  
++     def ValidateKey(self, key):
++         &quot;&quot;&quot;Validate 'key'.
++ 
++         raises -- 'ValueError' if 'key' is not a string.
++ 
++         raises -- 'RuntimeError' if 'key' is not valid.&quot;&quot;&quot;
++ 
++         return self.__context.ValidateKey(key)
++ 
++     
+      def __getitem__(self, key):
+          &quot;&quot;&quot;Return a property value.&quot;&quot;&quot;
+  
+          # Check added properties first.
+          try:
+Index: qm/test/file_database.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/file_database.py,v
+retrieving revision 1.17
+diff -c -5 -p -r1.17 file_database.py
+*** qm/test/file_database.py	24 Mar 2003 07:24:24 -0000	1.17
+--- qm/test/file_database.py	23 Apr 2003 18:54:48 -0000
+*************** class FileDatabase(Database):
+*** 453,463 ****
+  
+  
+  
+  class ExtensionDatabase(FileDatabase):
+      &quot;&quot;&quot;An 'ExtensionFileDatabase' is a 'FileDatabase' where each kind of
+!     entity (test, suite, resource) has a particular extension.
+  
+      'ExtensionDatabase' is an abstract class.&quot;&quot;&quot;
+  
+      arguments = [
+          qm.fields.TextField(
+--- 453,467 ----
+  
+  
+  
+  class ExtensionDatabase(FileDatabase):
+      &quot;&quot;&quot;An 'ExtensionFileDatabase' is a 'FileDatabase' where each kind of
+!     entity (test, suite, resource) has a particular extension.  For
+!     examples, if tests have the extension '.qmt', then all files ending
+!     with '.qmt' are considered tests.  If an extension for a particular
+!     kind of entity is not specified is the empty string, then all files
+!     will be considered to be that kind of entity.
+  
+      'ExtensionDatabase' is an abstract class.&quot;&quot;&quot;
+  
+      arguments = [
+          qm.fields.TextField(
+*************** class ExtensionDatabase(FileDatabase):
+*** 552,564 ****
+      def _IsFile(self, kind, path):
+  
+          if kind == Database.SUITE and path == self.GetRoot():
+              return 1
+  
+!         extension = os.path.splitext(path)[1]
+!         if extension != self._extensions[kind]:
+!             return 0
+  
+          return (os.path.isfile(path)
+                  or (kind == Database.SUITE and os.path.isdir(path)))
+          
+  
+--- 556,570 ----
+      def _IsFile(self, kind, path):
+  
+          if kind == Database.SUITE and path == self.GetRoot():
+              return 1
+  
+!         kind_extension = self._extensions[kind]
+!         if kind_extension:
+!             extension = os.path.splitext(path)[1]
+!             if extension != kind_extension:
+!                 return 0
+  
+          return (os.path.isfile(path)
+                  or (kind == Database.SUITE and os.path.isdir(path)))
+          
+  
+Index: qm/test/result.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/result.py,v
+retrieving revision 1.16
+diff -c -5 -p -r1.16 result.py
+*** qm/test/result.py	20 Mar 2003 16:55:17 -0000	1.16
+--- qm/test/result.py	23 Apr 2003 18:54:48 -0000
+*************** class Result:
+*** 162,198 ****
+          will be one of the 'Result.outcomes'.&quot;&quot;&quot;
+  
+          return self.__outcome
+      
+          
+!     def SetOutcome(self, outcome):
+          &quot;&quot;&quot;Set the outcome associated with the test.
+  
+!         'outcome' -- One of the 'Result.outcomes'.&quot;&quot;&quot;
+  
+          assert outcome in Result.outcomes
+          self.__outcome = outcome
+  
+  
+      def Annotate(self, annotations):
+          &quot;&quot;&quot;Add 'annotations' to the current set of annotations.&quot;&quot;&quot;
+          self.__annotations.update(annotations)
+  
+  
+!     def Fail(self, cause=None, annotations={}):
+          &quot;&quot;&quot;Mark the test as failing.
+  
+          'cause' -- If not 'None', this value becomes the value of the
+          'Result.CAUSE' annotation.
+  
+          'annotations' -- The annotations are added to the current set
+          of annotations.&quot;&quot;&quot;
+  
+!         self.SetOutcome(Result.FAIL)
+!         if cause:
+!             self[Result.CAUSE] = cause
+!         self.Annotate(annotations)
+  
+          
+      def GetId(self):
+          &quot;&quot;&quot;Return the label for the test or resource.
+  
+--- 162,204 ----
+          will be one of the 'Result.outcomes'.&quot;&quot;&quot;
+  
+          return self.__outcome
+      
+          
+!     def SetOutcome(self, outcome, cause = None, annotations = {}):
+          &quot;&quot;&quot;Set the outcome associated with the test.
+  
+!         'outcome' -- One of the 'Result.outcomes'.
+! 
+!         'cause' -- If not 'None', this value becomes the value of the
+!         'Result.CAUSE' annotation.
+! 
+!         'annotations' -- The annotations are added to the current set
+!         of annotations.&quot;&quot;&quot;
+  
+          assert outcome in Result.outcomes
+          self.__outcome = outcome
++         if cause:
++             self[Result.CAUSE] = cause
++         self.Annotate(annotations)
+  
+  
+      def Annotate(self, annotations):
+          &quot;&quot;&quot;Add 'annotations' to the current set of annotations.&quot;&quot;&quot;
+          self.__annotations.update(annotations)
+  
+  
+!     def Fail(self, cause = None, annotations = {}):
+          &quot;&quot;&quot;Mark the test as failing.
+  
+          'cause' -- If not 'None', this value becomes the value of the
+          'Result.CAUSE' annotation.
+  
+          'annotations' -- The annotations are added to the current set
+          of annotations.&quot;&quot;&quot;
+  
+!         self.SetOutcome(Result.FAIL, cause, annotations)
+  
+          
+      def GetId(self):
+          &quot;&quot;&quot;Return the label for the test or resource.
+  
+Index: qm/test/target.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/target.py,v
+retrieving revision 1.18
+diff -c -5 -p -r1.18 target.py
+*** qm/test/target.py	17 Apr 2003 22:48:48 -0000	1.18
+--- qm/test/target.py	23 Apr 2003 18:54:48 -0000
+*************** class Target(qm.extension.Extension):
+*** 291,302 ****
+          indicating the test or resource that is about to be run.
+  
+          'context' -- The 'Context' in which the resources will be
+          executed.
+  
+!         returns -- A list of additional context properties that should
+!         be available to the test.&quot;&quot;&quot;
+          
+          # See if there are resources that need to be set up.
+          properties = {}
+          for resource in descriptor.GetResources():
+              (r, outcome, resource_properties) \
+--- 291,303 ----
+          indicating the test or resource that is about to be run.
+  
+          'context' -- The 'Context' in which the resources will be
+          executed.
+  
+!         returns -- A tuple of the same form as is returned by
+!         '_BeginResourceSetUp' when the resource has already been set
+!         up.&quot;&quot;&quot;
+          
+          # See if there are resources that need to be set up.
+          properties = {}
+          for resource in descriptor.GetResources():
+              (r, outcome, resource_properties) \
+*************** class Target(qm.extension.Extension):
+*** 327,347 ****
+          # If it has already been set up, there is no need to do it
+          # again.
+          if rop:
+              return rop
+          # Set up the context.
+!         context = ContextWrapper(context)
+!         result = Result(Result.RESOURCE_SETUP, resource_name, context,
+                          Result.PASS)
+          resource = None
+          # Get the resource descriptor.
+          try:
+              resource_desc = self.GetDatabase().GetResource(resource_name)
+              # Set up the resources on which this resource depends.
+!             self.__SetUpResources(resource_desc, context)
+              # Set up the resource itself.
+!             resource_desc.SetUp(context, result)
+              # Obtain the resource within the try-block so that if it
+              # cannot be obtained the exception is handled below.
+              resource = resource_desc.GetItem()
+          except self.__ResourceSetUpException, e:
+              result.Fail(qm.message(&quot;failed resource&quot;),
+--- 328,352 ----
+          # If it has already been set up, there is no need to do it
+          # again.
+          if rop:
+              return rop
+          # Set up the context.
+!         wrapper = ContextWrapper(context)
+!         result = Result(Result.RESOURCE_SETUP, resource_name, wrapper,
+                          Result.PASS)
+          resource = None
+          # Get the resource descriptor.
+          try:
+              resource_desc = self.GetDatabase().GetResource(resource_name)
+              # Set up the resources on which this resource depends.
+!             properties = self.__SetUpResources(resource_desc, context)
+!             # Add the context properties from those resources to the
+!             # context for the resource that is now being set up.
+!             for k, v in properties.items():
+!                 wrapper[k] = v
+              # Set up the resource itself.
+!             resource_desc.SetUp(wrapper, result)
+              # Obtain the resource within the try-block so that if it
+              # cannot be obtained the exception is handled below.
+              resource = resource_desc.GetItem()
+          except self.__ResourceSetUpException, e:
+              result.Fail(qm.message(&quot;failed resource&quot;),
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000316.html">[qmtest] Proposal: modules reload
+</A></li>
+	
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#315">[ date ]</a>
+              <a href="thread.html#315">[ thread ]</a>
+              <a href="subject.html#315">[ subject ]</a>
+              <a href="author.html#315">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">More information about the qmtest
+mailing list</a><br>
+</body></html>

@@ -1,0 +1,595 @@
+From stefan at codesourcery.com  Sun Apr  1 18:34:40 2007
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Sun, 01 Apr 2007 14:34:40 -0400
+Subject: [qmtest] "[Errno 3] No such process" problem on Ubuntu
+In-Reply-To: <20070330154005.21068.qmail@web53804.mail.re2.yahoo.com>
+References: <20070330154005.21068.qmail@web53804.mail.re2.yahoo.com>
+Message-ID: <460FFB40.9020504@codesourcery.com>
+
+Edisson Braga Jr. wrote:
+> Hi,
+> 
+> We're trying to work with QMTest, but we are getting some problems to have it running on Ubuntu machines.
+> 
+> The problem we have is similar to the ones reported in http://www.codesourcery.com/archives/qmtest/msg01223.html and http://www.codesourcery.com/archives/qmtest/msg01196.html. In some situations, like running a shell command test on the GUI or just calling "python setup.py check", QMTest returns an exception "[Errno 3] No such process".
+> 
+> I got this problem on Ubuntu Edgy (6.10), which is the current stable version. I also tried on Ubuntu Feisty (7.04), which is currently in a beta version, but I also got the same problem. 
+> 
+> I also tried on an older Ubuntu version - Ubuntu Dapper (6.06) -  and it worked fine.
+> 
+> So, do you guys have some new information about this? There is some way to have it running on the current Ubuntu versions? Since this problem was also seen in other distributions, there is some solution for this problem on the QMTest side?
+
+As this appears to be a bug in either the kernel or the C library, and I don't see it on my current
+system (FC6), I haven't put any efford in working around the problem. May be reporting the bug to
+some ubuntu tracker will speed up any relevant upgrade ?
+
+
+> 
+> BTW, I followed the workaround suggested by Stefan in a previous e-mail (catch and ignore that particular exception thrown by os.setpgid() ) and I didn't get the "[Errno 3] No such process" anymore. However, when I run "python setup.py check" sometimes the test freezes at the beginning of the tests during the execution of "xmldb.signals_unblocked". When it doesn't freeze on this point, it will freeze during the SSH test. If I interrupt the execution at this point, the Traceback will show this:
+> 
+> qmtest: Interrupted.
+> Traceback (most recent call last):
+>   File "/home/edisson/src/qmsrc/qm-svn/build/scripts-2.4/qmtest", line 132, in ?
+>     exit_code = main()
+>   File "/home/edisson/src/qmsrc/qm-svn/build/scripts-2.4/qmtest", line 110, in main
+>     exit_code = command.Execute()
+>   File "/home/edisson/src/qmsrc/qm-svn/build/lib.linux-i686-2.4/qm/test/cmdline.py", line 784, in Execute
+>     return method()
+>   File "/home/edisson/src/qmsrc/qm-svn/build/lib.linux-i686-2.4/qm/test/cmdline.py", line 1691, in __ExecuteRun
+>     if engine.Run():
+>   File "/home/edisson/src/qmsrc/qm-svn/build/lib.linux-i686-2.4/qm/test/execution_engine.py", line 275, in Run
+>     self._RunTests()
+>   File "/home/edisson/src/qmsrc/qm-svn/build/lib.linux-i686-2.4/qm/test/execution_engine.py", line 375, in _RunTests
+>     self.__CheckForResponse(wait=1)
+>   File "/home/edisson/src/qmsrc/qm-svn/build/lib.linux-i686-2.4/qm/test/execution_engine.py", line 760, in __CheckForResponse
+>     fds = select.select (fds, [], [], 0.1)[0]
+> KeyboardInterrupt
+> interrupted
+> 
+> I'm using python2.4.
+> 
+> I would appreciate to have some help on this subject!
+
+Are you expecting to actually use the QMTest GUI (as opposed to the command line interface),
+with the ProcessTarget / SSH ? If not I would suggest to simply avoid that particular test
+suite (for example by just running 'python setup.py check --serial').
+
+Thanks,
+		Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+
+
+From seefeld at sympatico.ca  Sun Apr  1 19:21:30 2007
+From: seefeld at sympatico.ca (Stefan Seefeld)
+Date: Sun, 01 Apr 2007 15:21:30 -0400
+Subject: [qmtest] QMTest plans
+In-Reply-To: <20070330204316.74691.qmail@web63511.mail.re1.yahoo.com>
+References: <20070330204316.74691.qmail@web63511.mail.re1.yahoo.com>
+Message-ID: <4610063A.6030005@sympatico.ca>
+
+Rodrigo Belem wrote:
+> Hello everybody,
+> 
+> 
+> 
+> Does QMTest already support python2.5? If not, there are any plans to do this migration? I'm running Ubuntu feisty (7.04) and got errors related (I guess) to ExceptionTest class in qm/test/classes/python.py . Maybe the reason is the differences between the traceback format on python2.4 and python2.5, as you can see in the example below:
+
+Indeed, there are some issues with QMTest & python 2.5. I already resolved a major problem by
+upgrading some Zope modules used as part of the GUI. More changes are planned.
+Most of QMTest should work find with Python 2.5, though.
+
+Thanks for pointing out the ExceptionTest issue. I'll look into it more, since I don't yet
+understand what change in Python's exception handling causes it. (And yes, I would appreciate
+any solution you may already have come up with !)
+
+
+> I'd like to contribute to qmtest and I think that the better way to start would be with small changes.
+
+Great !
+
+> Would you like to receive patches changing the code to use some PEPs (Python Enhancement Proposals)?
+> My suggestions are the pep-0008[0], pep-0257[1], pep-0290[2].
+
+>From looking at the PEPs you mention I take it you are most interested in stylistic cleanup (as
+opposed to new features, or fixes to open issues). Correct ?
+
+> And how about changing modules to use subprocess[3] as a command executer, and other similar changes?
+
+As much as I'd appreciate any cleanup, it is important to remain backward compatible (such as with
+Python 2.3, which doesn't have the subprocess module).
+
+> BTW, any plans to release a new version? When?
+
+There are no concrete plans (neither concerning any date, nor a feature set).
+I'm currently working on a new GUI (still using some Zope modules) that will hopefully be
+more flexible and easy to customize.
+I also have a new 'Expectation Database' type in the works that allows to more flexibly
+and conveniently handle expectations and the way they are specified and stored.
+Finally, there is some efford going into API cleanup.
+
+If you have any particular things you'd like to see enhanced in QMTest, I'm very much interested
+to know about them. (Contributions are certainly appreciated, too, though it would be good to
+coordinate first to avoid to waste anyone's effort.)
+
+Thanks,
+		Stefan
+
+-- 
+
+      ...ich hab' noch einen Koffer in Berlin...
+
+
+From rclbelem at gmail.com  Mon Apr  2 23:14:37 2007
+From: rclbelem at gmail.com (Rodrigo Belem)
+Date: Mon, 2 Apr 2007 19:14:37 -0400
+Subject: [qmtest] QMTest plans
+Message-ID: <2da425e70704021614m104faa8fw5c8450c84cbb380a@mail.gmail.com>
+
+> Rodrigo Belem wrote:
+> > Hello everybody,
+
+> Thanks for pointing out the ExceptionTest issue. I'll look into it more, since
+> I don't yet
+> understand what change in Python's exception handling causes it. (And yes, I
+> would appreciate
+> any solution you may already have come up with !)
+>
+
+I'll look deeper to code a solution :-)
+
+> > Would you like to receive patches changing the code to use some PEPs (Python
+> > Enhancement Proposals)?
+> > My suggestions are the pep-0008[0], pep-0257[1], pep-0290[2].
+>
+> From looking at the PEPs you mention I take it you are most interested in
+> stylistic cleanup (as
+> opposed to new features, or fixes to open issues). Correct ?
+>
+
+Yes, for now just stylistic cleanup. I think doing by this way I'll
+learn the code and the code maintenance will become easier. After this
+I'll be ready to do another things.
+
+> > And how about changing modules to use subprocess[3] as a command
+> > executer, and other similar changes?
+>
+> As much as I'd appreciate any cleanup, it is important to remain backward
+> compatible (such as with
+> Python 2.3, which doesn't have the subprocess module).
+>
+
+A python version verification could be done to select the module to
+use. We can place some warning messages that qmtest will work with
+python from 2.4. What do you think?
+
+> > BTW, any plans to release a new version? When?
+>
+> There are no concrete plans (neither concerning any date, nor a feature set).
+> I'm currently working on a new GUI (still using some Zope modules) that will
+> hopefully be
+> more flexible and easy to customize.
+> I also have a new 'Expectation Database' type in the works that allows to more
+> flexibly
+> and conveniently handle expectations and the way they are specified and stored.
+> Finally, there is some efford going into API cleanup.
+>
+> If you have any particular things you'd like to see enhanced in QMTest, I'm
+> very much interested
+> to know about them. (Contributions are certainly appreciated, too, though it
+> would be good to
+> coordinate first to avoid to waste anyone's effort.)
+>
+
+There is another interesting project[0] that you can get some ideias.
+I know almost all source code.
+
+
+I have another thing to ask you. Could you setup an access to the svn
+via https webdav?
+
+
+
+Thanks,
+
+
+Rodrigo Belem.
+
+
+[0] http://pyret.sf.net
+
+
+From stefan at codesourcery.com  Tue Apr 10 16:25:47 2007
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Tue, 10 Apr 2007 12:25:47 -0400
+Subject: Res: [qmtest] QMTest plans
+In-Reply-To: <20070410161535.41339.qmail@web53804.mail.re2.yahoo.com>
+References: <20070410161535.41339.qmail@web53804.mail.re2.yahoo.com>
+Message-ID: <461BBA8B.8060502@codesourcery.com>
+
+Edisson Braga wrote:
+
+> I also took a look on the QMTest source code and I agree with Rodrigo,
+> regarding porting QMTest to Python 2.5, including the use of subprocess
+> module.
+> 
+> IMHO, the best would be if you guys make available a new QMTest release
+> (2.4?) which is fully compatible with Python 2.3 and 2.4. Afterwards,
+> create a new branch for a new QMTest version (3.x?), which will use
+> Python 2.5 as base for the development. Although on this new version
+> QMTest would loose the backward compatibility with older Python
+> versions, there will still be an available working version for Python
+> 2.3 and 2.4. This way it's possible to clean up the source code and,
+> more important, allow QMTest to be improved with the use of new Python
+> features.
+> 
+> What do you think?
+
+I still fail to see any compelling reason to drop support for python
+not as recent as version 2.5. (And there are a lot of distributions that
+only contain python 2.3 or 2.4 by default).
+We haven't yet discussed any new features that would require a break up
+with older python versions. Cleanup in itself, though certainly valuable,
+doesn't count.
+
+Regards,
+		Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+
+
+From morten.mossige at gmail.com  Tue Apr 10 20:00:12 2007
+From: morten.mossige at gmail.com (Morten Mossige)
+Date: Tue, 10 Apr 2007 22:00:12 +0200
+Subject: Multiple databases
+Message-ID: <87bb47550704101300u639e7dcey18c65d57e97869f8@mail.gmail.com>
+
+Hi
+In the doc i read the following:
+"
+
+3.1.6. Test Database
+
+In general, QMTest can only use one test database at a time. However,
+it is possible to create a test database which contains other test
+databases. This mechanism allows you to store the tests associated
+with different parts of a large application in different test
+databases, and still combine them into a single large test database
+when required."
+
+My question is then: How is this done?
+
+
+
+br Morten
+
+
+From seefeld at sympatico.ca  Tue Apr 10 20:27:56 2007
+From: seefeld at sympatico.ca (Stefan Seefeld)
+Date: Tue, 10 Apr 2007 16:27:56 -0400
+Subject: [qmtest] Multiple databases
+In-Reply-To: <87bb47550704101300u639e7dcey18c65d57e97869f8@mail.gmail.com>
+References: <87bb47550704101300u639e7dcey18c65d57e97869f8@mail.gmail.com>
+Message-ID: <461BF34C.3090908@sympatico.ca>
+
+Morten Mossige wrote:
+> Hi
+> In the doc i read the following:
+> "
+> 
+> 3.1.6. Test Database
+> 
+> In general, QMTest can only use one test database at a time. However,
+> it is possible to create a test database which contains other test
+> databases. This mechanism allows you to store the tests associated
+> with different parts of a large application in different test
+> databases, and still combine them into a single large test database
+> when required."
+> 
+> My question is then: How is this done?
+
+The answer is in the docstring of the MountDatabase class:
+
+
+   "The contained databases are found by looking for subdirectories of
+    the MountDatabase directory.  Every immediate subdirectory which
+    is itself a QMTest database is mounted; its mount point is the
+    name of the subdirectory."
+
+In other words, if you have two test database directories in a common
+parent directory, you may set up a new 'MountDatabase' test database
+there that will make the content of the two appear in two subdirectories
+named like the directories in the actual file system.
+
+(It may be a good idea to generalize that to allow MountDatabase to
+refer to its mounted databases anywhere in the filesystem, not just
+in direct subdirs of its own root directory.)
+
+Regards,
+		Stefan
+
+
+-- 
+
+      ...ich hab' noch einen Koffer in Berlin...
+
+
+From morten.mossige at gmail.com  Wed Apr 11 07:17:56 2007
+From: morten.mossige at gmail.com (Morten Mossige)
+Date: Wed, 11 Apr 2007 09:17:56 +0200
+Subject: [qmtest] Multiple databases
+In-Reply-To: <461BF34C.3090908@sympatico.ca>
+References: <87bb47550704101300u639e7dcey18c65d57e97869f8@mail.gmail.com>
+	 <461BF34C.3090908@sympatico.ca>
+Message-ID: <87bb47550704110017w44f8c5aq26542c9d2a583c5f@mail.gmail.com>
+
+2007/4/10, Stefan Seefeld <seefeld at sympatico.ca>:
+> Morten Mossige wrote:
+> > Hi
+> > In the doc i read the following:
+> > "
+> >
+> > 3.1.6. Test Database
+> >
+> > In general, QMTest can only use one test database at a time. However,
+> > it is possible to create a test database which contains other test
+> > databases. This mechanism allows you to store the tests associated
+> > with different parts of a large application in different test
+> > databases, and still combine them into a single large test database
+> > when required."
+> >
+> > My question is then: How is this done?
+>
+> The answer is in the docstring of the MountDatabase class:
+>
+>
+>   "The contained databases are found by looking for subdirectories of
+>    the MountDatabase directory.  Every immediate subdirectory which
+>    is itself a QMTest database is mounted; its mount point is the
+>    name of the subdirectory."
+>
+> In other words, if you have two test database directories in a common
+> parent directory, you may set up a new 'MountDatabase' test database
+> there that will make the content of the two appear in two subdirectories
+> named like the directories in the actual file system.
+>
+> (It may be a good idea to generalize that to allow MountDatabase to
+> refer to its mounted databases anywhere in the filesystem, not just
+> in direct subdirs of its own root directory.)
+>
+> Regards,
+>                Stefan
+>
+>
+> --
+>
+>      ...ich hab' noch einen Koffer in Berlin...
+>
+
+Hi
+Thanks for answer.
+I'm still not sure if I fully understand how to do this.
+But let me give an ex. of how I would like have it:
+I have several different applications, placed in the following
+directory structure:
+
+root+app+---app1--+--src
+        |         |
+        |         +--test
+        |
+        +---app2--+--src
+        |         |
+        |         +--test
+        |
+        +---app3--+--src
+        |         |
+        |         +--test
+        |
+        |
+       +MasterTest
+
+I would like to have a single test database in each app<n>\test
+directory which tests only this application. But in the MasterTest dir
+I would like to have a testdatabase which will run all the subtests +
+integration test (tests which require several app's running together.
+The tests in app<n>\test will typically be runned by developers, while
+the test in MasterTest will be runned automatically by the daily build
+system (build server).
+Also: How is the best way of getting a html based report out of the
+MasterTest test?
+Will it be possible to use qmtest like this?
+
+br. Morten
+
+
+From stefan at codesourcery.com  Wed Apr 11 17:43:54 2007
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Wed, 11 Apr 2007 13:43:54 -0400
+Subject: [qmtest] Multiple databases
+In-Reply-To: <87bb47550704110017w44f8c5aq26542c9d2a583c5f@mail.gmail.com>
+References: <87bb47550704101300u639e7dcey18c65d57e97869f8@mail.gmail.com>	 <461BF34C.3090908@sympatico.ca> <87bb47550704110017w44f8c5aq26542c9d2a583c5f@mail.gmail.com>
+Message-ID: <461D1E5A.7030807@codesourcery.com>
+
+Morten Mossige wrote:
+
+> I'm still not sure if I fully understand how to do this.
+> But let me give an ex. of how I would like have it:
+> I have several different applications, placed in the following
+> directory structure:
+> 
+> root+app+---app1--+--src
+>        |         |
+>        |         +--test
+>        |
+>        +---app2--+--src
+>        |         |
+>        |         +--test
+>        |
+>        +---app3--+--src
+>        |         |
+>        |         +--test
+>        |
+>        |
+>       +MasterTest
+> 
+> I would like to have a single test database in each app<n>\test
+> directory which tests only this application. But in the MasterTest dir
+> I would like to have a testdatabase which will run all the subtests +
+> integration test (tests which require several app's running together.
+> The tests in app<n>\test will typically be runned by developers, while
+> the test in MasterTest will be runned automatically by the daily build
+> system (build server).
+
+Your description sounds like a sensible database design to me. Please
+note that, while QMTest comes with a set of 'extension classes' built-in,
+it is also designed for extensibility, specifically to make it possible to
+easily customize it.
+I believe you may be able to get best results if you write your own
+Database and Test classes, following the documentation, for example
+
+http://www.codesourcery.com/public/qmtest/qm-snapshot/share/doc/qmtest/html/tutorial/extending-database-classes.html
+http://www.codesourcery.com/public/qmtest/qm-snapshot/share/doc/qmtest/html/tutorial/extending-test-classes.html
+
+> Also: How is the best way of getting a html based report out of the
+> MasterTest test?
+
+QMTest stores testrun results in result files. The specific format of a result
+file (or in fact whether to write to a file or to a results database, or...)
+is as extensible as most other aspects; you may well write your own 'result_stream'.
+
+The QMTest command line interface provides a 'report' command that will process
+(potentially multiple) testrun results files into a single test report (XML).
+We provide an XSLT stylesheet to translate that into other media (such as HTML),
+though you likely want to customize that process as is typical for XSLT processing
+of XML input.
+
+Regards,
+		Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+
+
+From morten.mossige at gmail.com  Tue Apr 17 18:44:07 2007
+From: morten.mossige at gmail.com (Morten Mossige)
+Date: Tue, 17 Apr 2007 20:44:07 +0200
+Subject: [qmtest] Multiple databases
+In-Reply-To: <461BF34C.3090908@sympatico.ca>
+References: <87bb47550704101300u639e7dcey18c65d57e97869f8@mail.gmail.com>
+	 <461BF34C.3090908@sympatico.ca>
+Message-ID: <87bb47550704171144w626f8c05l9fc4c32b369b315b@mail.gmail.com>
+
+>
+> The answer is in the docstring of the MountDatabase class:
+>
+>
+>   "The contained databases are found by looking for subdirectories of
+>    the MountDatabase directory.  Every immediate subdirectory which
+>    is itself a QMTest database is mounted; its mount point is the
+>    name of the subdirectory."
+>
+> In other words, if you have two test database directories in a common
+> parent directory, you may set up a new 'MountDatabase' test database
+> there that will make the content of the two appear in two subdirectories
+> named like the directories in the actual file system.
+>
+> (It may be a good idea to generalize that to allow MountDatabase to
+> refer to its mounted databases anywhere in the filesystem, not just
+> in direct subdirs of its own root directory.)
+>
+> Regards,
+>                Stefan
+>
+
+Hi
+Could you please give practical ex.of how to do this (commandline ex.)
+br Morten (qmtest newbie)
+
+
+From rclbelem at gmail.com  Tue Apr 17 22:11:05 2007
+From: rclbelem at gmail.com (Rodrigo Belem)
+Date: Tue, 17 Apr 2007 18:11:05 -0400
+Subject: qmtest exceptiontest
+Message-ID: <2da425e70704171511o933cb94p532acd5cae05480e@mail.gmail.com>
+
+Hi Stefan,
+
+Trying to use QMTest on python2.5 I faced a problem which I've solved
+with a small change on the source code. The problem is that on the
+file qmtest/qm/test/classes/python.py there is a expression evaluation
+"type(exc_info[0]) is types.ClassType" which will always fail on
+python2.5. If you check by yourself, you'll see that
+"type(exc_info[0])" will return different results on python2.5 and
+python2.4, for example.
+
+Please see the attached patch and let me know your opinion about.
+
+Regards,
+
+
+Rodrigo Belem.
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: qm-exceptiontest.diff
+Type: text/x-patch
+Size: 982 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/qmtest/attachments/20070417/28565201/attachment.bin>
+
+From nina.svensen at gmail.com  Wed Apr 25 08:18:23 2007
+From: nina.svensen at gmail.com (Nina Svensen)
+Date: Wed, 25 Apr 2007 09:18:23 +0100
+Subject: Test databases in filesystem
+Message-ID: <5758df410704250118g4e00e754t9c77ead22181559@mail.gmail.com>
+
+Hi,
+I would like to run test databases that are located anywhere in my
+filesystem, from another test database located in another directory
+(not a parent directory). Is there a way to do this without having to
+rewrite or extend the qmtest sourcecode?
+
+regards
+Nina
+
+
+From stefan at codesourcery.com  Thu Apr 26 14:39:40 2007
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Thu, 26 Apr 2007 10:39:40 -0400
+Subject: [qmtest] Test databases in filesystem
+In-Reply-To: <5758df410704250118g4e00e754t9c77ead22181559@mail.gmail.com>
+References: <5758df410704250118g4e00e754t9c77ead22181559@mail.gmail.com>
+Message-ID: <4630B9AC.4090409@codesourcery.com>
+
+Nina Svensen wrote:
+> Hi,
+> I would like to run test databases that are located anywhere in my
+> filesystem, from another test database located in another directory
+> (not a parent directory). Is there a way to do this without having to
+> rewrite or extend the qmtest sourcecode?
+
+No, unfortunately that's not possible right now without extending
+existing classes / interfaces. The default implementation for file databases
+uses the test database root as base directory when determining absolute filenames.
+While easy to extend, this does involve some (minimal) python coding.
+
+Regards,
+		Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+
+

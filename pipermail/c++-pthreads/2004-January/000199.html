@@ -1,0 +1,127 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [c++-pthreads] Re: thread-safety definition
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:c%2B%2B-pthreads%40codesourcery.com?Subject=Re%3A%20%5Bc%2B%2B-pthreads%5D%20Re%3A%20thread-safety%20definition&In-Reply-To=%3C20040112010213.GB14371%40jupiter.cs.mu.oz.au%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000192.html">
+   <LINK REL="Next"  HREF="000200.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[c++-pthreads] Re: thread-safety definition</H1>
+    <B>Fergus Henderson</B> 
+    <A HREF="mailto:c%2B%2B-pthreads%40codesourcery.com?Subject=Re%3A%20%5Bc%2B%2B-pthreads%5D%20Re%3A%20thread-safety%20definition&In-Reply-To=%3C20040112010213.GB14371%40jupiter.cs.mu.oz.au%3E"
+       TITLE="[c++-pthreads] Re: thread-safety definition">fjh at cs.mu.oz.au
+       </A><BR>
+    <I>Mon Jan 12 01:02:13 UTC 2004</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000192.html">thread-safety definition
+</A></li>
+        <LI>Next message: <A HREF="000200.html">thread-safety definition
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#199">[ date ]</a>
+              <a href="thread.html#199">[ thread ]</a>
+              <a href="subject.html#199">[ subject ]</a>
+              <a href="author.html#199">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>On 09-Jan-2004, David Abrahams &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/c++-pthreads">dave at boost-consulting.com</A>&gt; wrote:
+&gt;<i> Dave Butenhof &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/c++-pthreads">David.Butenhof at hp.com</A>&gt; writes:
+</I>&gt;<i> 
+</I>&gt;<i> &gt; Lessee here, Nathan's model I
+</I>&gt;<i> &gt; believe could be trivially characterized as &quot;return failure status on
+</I>&gt;<i> &gt; any cancellation point until you hit a C++ function allowed to
+</I>&gt;<i> &gt; throw&quot;. This would apparently disable any cleanup operations involving
+</I>&gt;<i> &gt; cancellation points (they'd fail) at least prior to the first throw
+</I>&gt;<i> &gt; point -- and it's not precisely clear how the &quot;pending cancel&quot; state
+</I>&gt;<i> &gt; is to be managed even beyond that point. While it might eventually
+</I>&gt;<i> &gt; lead to cancellation, it won't reliably perform cleanup. 
+</I>&gt;<i> 
+</I>&gt;<i> I'm having trouble understanding.  How does a &quot;pending cancel state&quot;
+</I>&gt;<i> perform cleanup?  And what do &quot;reliably&quot; and &quot;cleanup&quot; mean to you?
+</I>
+I think &quot;it&quot; in the last sentence quote above refers to Nathan's model,
+not to the pending cancel state.
+
+The problem is that cleanup -- e.g. execution of C++ destructors on
+stack unwinding -- may involve calls to I/O routines that are themselves
+cancellation points.  If these routines fail, then the cleanup functions
+will not achieve their intended purpose; they will not be able to release
+the resources that the thread holds.  Nathan's model implies that they
+will fail.
+
+&gt;<i> &gt; It doesn't matter. There are many problems lurking here, and only one
+</I>&gt;<i> &gt; of the more obvious is that this attempt to avoid breaking C code that
+</I>&gt;<i> &gt; depends on 'if (error) {cleanup(); return error;}' will still break if
+</I>&gt;<i> &gt; 'cleanup()' depends on any cancellation points... which in fact is
+</I>&gt;<i> &gt; quite likely if 'error' originates from a cancellation point (e.g.,
+</I>&gt;<i> &gt; I/O). 
+</I>&gt;<i> 
+</I>&gt;<i> In what sense will it break?
+</I>
+In this example, the function &quot;cleanup()&quot; may need to do I/O to
+properly release the resources that the thread holds, but this
+I/O will fail.
+
+&gt;<i> &gt; (It might actually be
+</I>&gt;<i> &gt; better if the pending cancel wasn't &quot;sticky&quot;, 
+</I>&gt;<i> 
+</I>&gt;<i> You lost me.  What's &quot;sticky&quot;?
+</I>
+When a thread gets a cancellation request, the first
+cancellation point encountered thereafter will act on that request
+(by unwinding the stack, or in Nathan's model by returning an error
+return status and setting errno = ECANCELLED).  If another
+cancellation point is encountered after that, and there has not
+been another cancellation request, then the cancellation point
+will normally not have any effect.
+
+With &quot;sticky&quot; cancels, after a cancellation request,
+*every* subsequent cancellation point will act on the cancel
+(by unwinding the stack, or failing with ECANCELLED).
+
+&quot;stick&quot; cancels make it difficult/impossible to clean up properly,
+since cleaning up may involve doing I/O, and in particular by calling
+functions that Posix specifies are cancellation points.  These functions
+will fail to do the I/O, because they will instead attempt to act on
+the cancellation again (i.e. re-raising the cancellation exception
+or failing with ECANCELLED).
+
+-- 
+Fergus Henderson &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/c++-pthreads">fjh at cs.mu.oz.au</A>&gt;  |  &quot;I have always known that the pursuit
+The University of Melbourne         |  of excellence is a lethal habit&quot;
+WWW: &lt;<A HREF="http://www.cs.mu.oz.au/~fjh">http://www.cs.mu.oz.au/~fjh</A>&gt;  |     -- the last words of T. S. Garp.
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000192.html">thread-safety definition
+</A></li>
+	<LI>Next message: <A HREF="000200.html">thread-safety definition
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#199">[ date ]</a>
+              <a href="thread.html#199">[ thread ]</a>
+              <a href="subject.html#199">[ subject ]</a>
+              <a href="author.html#199">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/c++-pthreads">More information about the c++-pthreads
+mailing list</a><br>
+</body></html>

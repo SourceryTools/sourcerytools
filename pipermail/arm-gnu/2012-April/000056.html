@@ -1,0 +1,113 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [arm-gnu] Placing variable at absolute address in RAM
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:arm-gnu%40codesourcery.com?Subject=Re%3A%20%5Barm-gnu%5D%20Placing%20variable%20at%20absolute%20address%20in%20RAM&In-Reply-To=%3C1333557236.8618.YahooMailNeo%40web162701.mail.bf1.yahoo.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   
+   <LINK REL="Next"  HREF="000057.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[arm-gnu] Placing variable at absolute address in RAM</H1>
+    <B>JM</B> 
+    <A HREF="mailto:arm-gnu%40codesourcery.com?Subject=Re%3A%20%5Barm-gnu%5D%20Placing%20variable%20at%20absolute%20address%20in%20RAM&In-Reply-To=%3C1333557236.8618.YahooMailNeo%40web162701.mail.bf1.yahoo.com%3E"
+       TITLE="[arm-gnu] Placing variable at absolute address in RAM">hondgm at yahoo.com
+       </A><BR>
+    <I>Wed Apr  4 16:33:56 UTC 2012</I>
+    <P><UL>
+        
+        <LI>Next message: <A HREF="000057.html">[arm-gnu] Placing variable at absolute address in RAM
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#56">[ date ]</a>
+              <a href="thread.html#56">[ thread ]</a>
+              <a href="subject.html#56">[ subject ]</a>
+              <a href="author.html#56">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Hello
+
+I've researched this, asked on other forums, and so far I'm no closer.&#160;&#160;
+
+I'm trying to place a variable at a specific address in RAM on a TI ARM Cortex-M3.&#160; I have good reason for doing so, which I can explain briefly:
+
+The micro I'm using, LM3S9B92 has a DMA controller.&#160; There are 32 DMA channels and each channel requires a 16 byte struct in RAM for housekeeping.&#160; These 32 structs are placed into an array, which is 512 bytes if you do the math, and must be placed on a 1024 byte boundary.&#160; Now....the datasheet indicates that the RAM for unused DMA channels can be used for something else.&#160; I'm using only one DMA channel, which is near the end of the list.&#160; If it were near the beginning, this would be easier to recover at least some of the wasted RAM by simply not making the array 32 members long.
+
+So what I want to do is reserve 16 bytes of RAM at a strategic location.&#160; It must be 464 bytes from a 1024 byte boundary.&#160; This I believe will allow the lone DMA channel to function and not allocate unused RAM.
+
+I believe this will involve the linker script, and possibly Makefile.&#160; I'm ok with Makefile modifications.&#160; The linker file I'm almost clueless on.&#160; Any ideas?&#160; My current linker file is below:
+
+MEMORY
+{
+&#160;&#160;&#160; FLASH (rx) : ORIGIN = 0x00001000, LENGTH = 252K
+&#160;&#160;&#160; SRAM (rwx) : ORIGIN = 0x20000000, LENGTH = 96K
+}
+
+SECTIONS
+{
+&#160;&#160;&#160; .text :
+&#160;&#160;&#160; {
+&#160;&#160;&#160;&#160;&#160;&#160;&#160; KEEP(*(.isr_vector))
+&#160;&#160;&#160;&#160;&#160;&#160;&#160; *(.text*)
+&#160;&#160;&#160;&#160;&#160;&#160;&#160; *(.rodata*)
+&#160;&#160;&#160;&#160;&#160;&#160;&#160; _etext = .;
+&#160;&#160;&#160; } &gt; FLASH
+
+&#160;&#160;&#160; .data : AT (ADDR(.text) + SIZEOF(.text))
+&#160;&#160;&#160; {
+&#160;&#160;&#160;&#160;&#160;&#160;&#160; _data = .;
+&#160;&#160;&#160;&#160;&#160;&#160;&#160; *(vtable)
+&#160;&#160;&#160;&#160;&#160;&#160;&#160; *(.data*)
+&#160;&#160;&#160;&#160;&#160;&#160;&#160; _edata = .;
+&#160;&#160;&#160; } &gt; SRAM
+
+&#160;&#160;&#160; .bss(NOLOAD) :
+&#160;&#160;&#160; {
+&#160;&#160;&#160;&#160;&#160;&#160;&#160; _bss = .;
+&#160;&#160;&#160;&#160;&#160;&#160;&#160; *(.bss*)
+&#160;&#160;&#160;&#160;&#160;&#160;&#160; *(COMMON)
+&#160;&#160;&#160;&#160;&#160;&#160;&#160; _ebss = .;
+&#160;&#160;&#160;&#160;&#160;&#160;&#160; . = ALIGN (8);
+&#160;&#160;&#160;&#160;&#160;&#160; _end = .;
+&#160;&#160;&#160; } &gt; SRAM
+}
+
+/* end of allocated ram _end */
+PROVIDE( _HEAP_START = _end );
+
+/* end of the heap -&gt; align 8 byte */ 
+PROVIDE ( _HEAP_END = ALIGN(ORIGIN(SRAM) + LENGTH(SRAM),8) );
+-------------- next part --------------
+An HTML attachment was scrubbed...
+URL: &lt;<A HREF="http://sourcerytools.com/pipermail/arm-gnu/attachments/20120404/f704b899/attachment.html">http://sourcerytools.com/pipermail/arm-gnu/attachments/20120404/f704b899/attachment.html</A>&gt;
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	
+	<LI>Next message: <A HREF="000057.html">[arm-gnu] Placing variable at absolute address in RAM
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#56">[ date ]</a>
+              <a href="thread.html#56">[ thread ]</a>
+              <a href="subject.html#56">[ subject ]</a>
+              <a href="author.html#56">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/arm-gnu">More information about the arm-gnu
+mailing list</a><br>
+</body></html>

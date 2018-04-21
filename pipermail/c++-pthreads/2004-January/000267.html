@@ -1,0 +1,135 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [c++-pthreads] Re: thread-safety definition
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:c%2B%2B-pthreads%40codesourcery.com?Subject=Re%3A%20%5Bc%2B%2B-pthreads%5D%20Re%3A%20thread-safety%20definition&In-Reply-To=%3C20040113193119.GA3011%40diablo.name%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000238.html">
+   <LINK REL="Next"  HREF="000250.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[c++-pthreads] Re: thread-safety definition</H1>
+    <B>Ted Baker</B> 
+    <A HREF="mailto:c%2B%2B-pthreads%40codesourcery.com?Subject=Re%3A%20%5Bc%2B%2B-pthreads%5D%20Re%3A%20thread-safety%20definition&In-Reply-To=%3C20040113193119.GA3011%40diablo.name%3E"
+       TITLE="[c++-pthreads] Re: thread-safety definition">baker at cs.fsu.edu
+       </A><BR>
+    <I>Tue Jan 13 19:31:19 UTC 2004</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000238.html">[c++-pthreads] Re: thread-safety definition
+</A></li>
+        <LI>Next message: <A HREF="000250.html">[c++-pthreads] Re: thread-safety definition
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#267">[ date ]</a>
+              <a href="thread.html#267">[ thread ]</a>
+              <a href="subject.html#267">[ subject ]</a>
+              <a href="author.html#267">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>&gt;<i> I still think that uncatchable exceptions aren't the right answer.  
+</I>&gt;<i> Think
+</I>&gt;<i> about the scope of the modifications that would be required:
+</I>&gt;<i>  1. To a good first approximation, all code that catches and rethrows
+</I>&gt;<i>       exceptions, and that might be used in a cancellable thread, would
+</I>&gt;<i>       have to be modified.   (The basis of my claim: if you have to do
+</I>&gt;<i>       some cleanup whenever an exception passes through your code,
+</I>&gt;<i>       you'll still have to do it for cancellations too.)
+</I>
+&gt;<i>   1a. This isn't too different from saying that all code that catches
+</I>&gt;<i>          exceptions will have to be modified.  Most code that catches
+</I>&gt;<i>          an exception ends up rethrowing it.
+</I>
+&gt;<i>    2. Now think about what kind of modification we're talking about.
+</I>&gt;<i>        Again, to a good first approximation, cleanup is cleanup.  So
+</I>&gt;<i>        the example I've give above would be rewritten:
+</I>
+&gt;<i>        catch(...) {
+</I>&gt;<i>          do_some_partial_cleanup();
+</I>&gt;<i>          throw;
+</I>&gt;<i>        }
+</I>&gt;<i>        catch (CancellationException) {
+</I>&gt;<i>          do_some_partial_cleanup();
+</I>&gt;<i>          throw;
+</I>&gt;<i>        }
+</I>&gt;<i>       We don't really want that to become recommended C++ style,
+</I>&gt;<i>       do we?
+</I>
+Right, if you have code with catch(...)+throw for
+general purpose cleanup, if catch(...) does not catch cancellation
+you will miss the cleanup unless you put in explicit handler for
+cancellation, and that means (ugly, bad) code changes.
+
+On the other hand, if your style for providing cleanup code for
+exceptions in general uses a local object with destructor to
+achieve the cleanup (apparently the meaning of &quot;RAII&quot;) then you
+*don't* want catch(...) to catch cancellation.
+
+{RAII protect;
+   ... code that may be cancelled or throw other exceptions ...
+}
+
+class RAII {
+   ...
+   RAII () {
+     ... allocate some stuff ...
+   }
+   ~RAII () {
+     try {
+       ... deallocate stuff ...
+     } catch (...) {
+       // want to give up quietly if deallocation causes an exception
+       // but don't want to gobble up cancellation
+     }
+   }
+   ...
+};
+
+It seems you can't have it both ways.  If catch(...) catches
+cancellation, then destructors that are intended catch everything
+without rethrowing can gobble up cancellation.  On the other hand,
+if catch(...) does not catch cancellation, then destructors that
+are intended to catch everything and rethrow will be bypassed.
+
+I see better now why the idea of magically &quot;reasserting&quot;
+cancellation is appealing.  That is, you can allow catch(...) to
+catch cancellation, and if it is gobbled up you get it back again.
+The only trick is to find exactly the right places to reassert the
+cancellation.
+
+--Ted
+
+
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000238.html">[c++-pthreads] Re: thread-safety definition
+</A></li>
+	<LI>Next message: <A HREF="000250.html">[c++-pthreads] Re: thread-safety definition
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#267">[ date ]</a>
+              <a href="thread.html#267">[ thread ]</a>
+              <a href="subject.html#267">[ subject ]</a>
+              <a href="author.html#267">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/c++-pthreads">More information about the c++-pthreads
+mailing list</a><br>
+</body></html>

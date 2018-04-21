@@ -1,0 +1,182 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [c++-pthreads] Re: thread-safety definition
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:c%2B%2B-pthreads%40codesourcery.com?Subject=Re%3A%20%5Bc%2B%2B-pthreads%5D%20Re%3A%20thread-safety%20definition&In-Reply-To=%3C3FFE9C82.3060500%40hp.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000169.html">
+   <LINK REL="Next"  HREF="000185.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[c++-pthreads] Re: thread-safety definition</H1>
+    <B>Dave Butenhof</B> 
+    <A HREF="mailto:c%2B%2B-pthreads%40codesourcery.com?Subject=Re%3A%20%5Bc%2B%2B-pthreads%5D%20Re%3A%20thread-safety%20definition&In-Reply-To=%3C3FFE9C82.3060500%40hp.com%3E"
+       TITLE="[c++-pthreads] Re: thread-safety definition">David.Butenhof at hp.com
+       </A><BR>
+    <I>Fri Jan  9 12:20:18 UTC 2004</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000169.html">thread-safety definition
+</A></li>
+        <LI>Next message: <A HREF="000185.html">[c++-pthreads] Re: thread-safety definition
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#181">[ date ]</a>
+              <a href="thread.html#181">[ thread ]</a>
+              <a href="subject.html#181">[ subject ]</a>
+              <a href="author.html#181">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>David Abrahams wrote:
+
+&gt;&gt;<i>Ah. I see the problem. I believe that you neglected to file in
+</I>&gt;&gt;<i>triplicate the official &quot;List of all matters with which I disagree so
+</I>&gt;&gt;<i>please don't shout when discussing them&quot; form. Didn't you? ;-)
+</I>&gt;&gt;<i>    
+</I>&gt;&gt;<i>
+</I>&gt;<i>I filed.  It was *you* who neglected to check with the department of
+</I>&gt;<i>archival non-shouting topic storage, wasn't it?
+</I>&gt;<i>  
+</I>&gt;<i>
+</I>Aw, shoot. I forgot to pay the bill on my automatic update service, and 
+it expired! Sorry 'bout that.
+
+&gt;&gt;&gt;<i>If you make cancellations behave sufficiently like an ordinary C++
+</I>&gt;&gt;&gt;<i>exception (either of Nathan's or Jason's models would do that I think)
+</I>&gt;&gt;&gt;<i>then it's neither &quot;IMPOSSIBLE&quot; nor even difficult.  A great deal of
+</I>&gt;&gt;&gt;<i>thread-safe exception-safe C++ library code would behave perfectly
+</I>&gt;&gt;&gt;<i>well under those conditions.
+</I>&gt;&gt;&gt;<i>
+</I>&gt;&gt;<i>Well, it should be no surprise that this discussion has fragmented
+</I>&gt;&gt;<i>into too many different little pathways for anyone to keep track of
+</I>&gt;&gt;<i>them.
+</I>&gt;&gt;<i>
+</I>&gt;&gt;<i>If cancel is implemented completely as a &quot;full stature&quot; C++ exception,
+</I>&gt;&gt;<i>and none of the &quot;exception safe&quot; code does anything silly like
+</I>&gt;&gt;<i>&quot;catch(...)&quot; without a re-throw, then, yes, it's likely to be
+</I>&gt;&gt;<i>reasonably cancel-safe. 
+</I>&gt;&gt;<i>    
+</I>&gt;&gt;<i>
+</I>&gt;<i>Even if only *some* of it does that, Nathan and Jason's models are
+</I>&gt;<i>both likely to result in an eventual cancellation.
+</I>&gt;<i>  
+</I>&gt;<i>
+</I>I need to start keeping a scorecard. Lessee here, Nathan's model I 
+believe could be trivially characterized as &quot;return failure status on 
+any cancellation point until you hit a C++ function allowed to throw&quot;. 
+This would apparently disable any cleanup operations involving 
+cancellation points (they'd fail) at least prior to the first throw 
+point -- and it's not precisely clear how the &quot;pending cancel&quot; state is 
+to be managed even beyond that point. While it might eventually lead to 
+cancellation, it won't reliably perform cleanup. This seems to me to be 
+more complicated, less predictable, less compatible, and less reliable 
+than simply using exceptions integrated with the existing POSIX cleanup 
+mechanism.
+
+Jason's model, putting together the puzzle pieces from various messages 
+here, appears to be basing cancel on an ordinary (&quot;finalizable&quot;) C++ 
+exception, which would be raised by any and all cancellation points; but 
+if the exception object were to be destroyed (by finalization), the 
+&quot;pending cancel&quot; would (might?) be reasserted. I personally feel that it 
+ought to be reasonable to finalize the cancel and continue operation. If 
+that wasn't really what the application intended then it's an 
+application error; but there are cases where it's arguably reasonable, 
+and the capability falls naturally out of the model. Besides, 
+&quot;reasserting cancel&quot; in all the right places and no other places sounds 
+like one of those projects that ends up being a lot more subtle and 
+error-prone than anyone ever expects. ;-)
+
+&gt;&gt;<i>(Though some code might need to be aware that an uncaught cancel
+</I>&gt;&gt;<i>will terminate the thread rather than the process!)
+</I>&gt;&gt;<i>    
+</I>&gt;&gt;<i>
+</I>&gt;<i>Remember, we're talking about library code.  Usually it's only used
+</I>&gt;<i>&quot;on the inside&quot; of threads so it doesn't care whether when it's
+</I>&gt;<i>terminated, it's the process or only a thread.
+</I>&gt;<i>
+</I>&gt;&gt;<i>But I was really responding to the ideas about turning cancel into a
+</I>&gt;&gt;<i>return status
+</I>&gt;&gt;<i>    
+</I>&gt;&gt;<i>
+</I>&gt;<i>...only for 'C' functions which ordinarily have a return status and don't
+</I>&gt;<i>throw...  did you miss that?
+</I>&gt;<i>
+</I>It doesn't matter. There are many problems lurking here, and only one of 
+the more obvious is that this attempt to avoid breaking C code that 
+depends on 'if (error) {cleanup(); return error;}' will still break if 
+'cleanup()' depends on any cancellation points... which in fact is quite 
+likely if 'error' originates from a cancellation point (e.g., I/O). I 
+also don't believe that a sufficient body of library code really follows 
+the simple and direct 'if (error) return error;' pattern to make this 
+strategy particularly useful even without the cleanup issues -- but 
+that's a different matter. (It might actually be better if the pending 
+cancel wasn't &quot;sticky&quot;, since then the cleanup at least might succeed; 
+but then you'll lose cancels all over the place, and that's definitely 
+not acceptable. It's fine for a thread to CHOOSE not to accept a cancel, 
+either by keeping cancellation disabled or by not calling a cancellation 
+point; but it's not OK to lose a delivered cancel. You can declare this 
+to be the application/library developer's job rather than the 
+implementation's job -- but that just means all this &quot;broken&quot; C code 
+that fails to propagate errors needs to be redesigned; and you haven't 
+solved any real problem. That's the basic point: it needs to be analyzed 
+and likely redesigned to be cancel-safe. You simply can't avoid that 
+requirement.)
+
+A) You cannot transparently make non cancel-safe C code cancel-safe, no 
+matter how you try.
+B) Delivering cancellation as a C++ exception will make much (though not 
+all) exception-safe C++ &quot;translucently&quot; cancel-safe.
+C) POSIX C cancel-safe code is already cancel-safe, but for an 
+application containing mixed call stacks to remain cancel-safe, POSIX 
+cleanup and C++ exceptions must be integrated into a single unwind; 
+i.e., (by whatever name) basing both on a common exception library.
+D) There are no useful or interestingly large bodies of rigorously 
+&quot;cancel-safe&quot; C code that are not POSIX cancel-safe.
+
+In other words, cancel-as-exception, and pthread_cleanup_push as a 
+C-based &quot;try&quot; extension, gives you all the cancel-safety you can 
+reasonably expect without recoding (and likely redesign). That's all 
+that's needed. No less will suffice, and any more is needless 
+complication. Non cancel-safe code will continue to work just fine as 
+long as it's NOT cancelled -- which ought to be no terrible restriction 
+since it was clearly written in and for an environment where 
+cancellation either did not exist or wasn't needed.
+
+-- 
+/--------------------[ <A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/c++-pthreads">David.Butenhof at hp.com</A> ]--------------------\
+|<i> Hewlett-Packard Company       Tru64 UNIX &amp; VMS Thread Architect |
+</I>|<i>     My book: <A HREF="http://www.awl.com/cseng/titles/0-201-63392-2/">http://www.awl.com/cseng/titles/0-201-63392-2/</A>     |
+</I>\----[ <A HREF="http://homepage.mac.com/dbutenhof/Threads/Threads.html">http://homepage.mac.com/dbutenhof/Threads/Threads.html</A> ]---/
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000169.html">thread-safety definition
+</A></li>
+	<LI>Next message: <A HREF="000185.html">[c++-pthreads] Re: thread-safety definition
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#181">[ date ]</a>
+              <a href="thread.html#181">[ thread ]</a>
+              <a href="subject.html#181">[ subject ]</a>
+              <a href="author.html#181">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/c++-pthreads">More information about the c++-pthreads
+mailing list</a><br>
+</body></html>

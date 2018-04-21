@@ -1,0 +1,245 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> Explanation of blockAndEvaluate()
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20Explanation%20of%20blockAndEvaluate%28%29&In-Reply-To=%3C20011204124313.A6159%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000868.html">
+   <LINK REL="Next"  HREF="000869.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>Explanation of blockAndEvaluate()</H1>
+    <B>Jeffrey Oldham</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20Explanation%20of%20blockAndEvaluate%28%29&In-Reply-To=%3C20011204124313.A6159%40codesourcery.com%3E"
+       TITLE="Explanation of blockAndEvaluate()">oldham at codesourcery.com
+       </A><BR>
+    <I>Tue Dec  4 20:43:13 UTC 2001</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000868.html">[pooma-dev] Explanation of blockAndEvaluate()
+</A></li>
+        <LI>Next message: <A HREF="000869.html">Patch: Revise Manual Example Codes
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#867">[ date ]</a>
+              <a href="thread.html#867">[ thread ]</a>
+              <a href="subject.html#867">[ subject ]</a>
+              <a href="author.html#867">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Mark requested that Stephen Smith's explanation be posted to the
+pooma-dev mailing list so it is archived for posterity.
+
+Jeffrey's complaint:
+&gt;<i> When I run the attached Pooma program (from examples/Manual/Doof2d/)
+</I>&gt;<i> for one-processor, it works fine, returning 55.0221 for 4 averagings
+</I>&gt;<i> and an array size of 20.  When I run it with Pooma configured with
+</I>&gt;<i> --messaging and use the MM Shared Memory Library, it returns 0.  Just
+</I>&gt;<i> before the blockAndEvaluate() call, the &quot;b&quot; array has the proper value
+</I>&gt;<i> but afterwards it has changed to zero.  Why?  Why is it ever dangerous
+</I>&gt;<i> to call blockAndEvaluate()?  How do I explain when to call
+</I>&gt;<i> blockAndEvaluate()?
+</I>
+The program is attached.
+
+Stephen Smith's (<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">stephens at proximation.com</A>) reply:
+&gt;<i> This code is missing a blockAndEvaluate, it should look
+</I>&gt;<i> like:
+</I>&gt;<i>  
+</I>&gt;<i> a = b = 0;
+</I>&gt;<i> Pooma::blockAndEvaluate();
+</I>&gt;<i> b(n/2,n/2) = 1000.0;
+</I>&gt;<i> 
+</I>&gt;<i> Currently the default is that all code is dangerous, which may
+</I>&gt;<i> not be a good thing.  To ensure correctness you either need
+</I>&gt;<i> to run with --poomaBlockingExpressions or add blockAndEvaluate()
+</I>&gt;<i> all the necessary places.
+</I>&gt;<i> 
+</I>&gt;<i> Here's the basic issue:
+</I>&gt;<i> 
+</I>&gt;<i> 1: a = b;
+</I>&gt;<i> 2: c = a;
+</I>&gt;<i> 3: e = c;
+</I>&gt;<i> 4: c(5) = 7;
+</I>&gt;<i> 5: d = c + e;
+</I>&gt;<i> 6: cout &lt;&lt; d(5) &lt;&lt; d(3) &lt;&lt; endl;
+</I>&gt;<i> 
+</I>&gt;<i> For this code to work correctly, the data-parallel expressions
+</I>&gt;<i> writing to c must be done before statement 4 is run and the
+</I>&gt;<i> data-parallel expression writing to d must be done before the
+</I>&gt;<i> line that prints values from d.  Using blockingExpressions()
+</I>&gt;<i> ensures correctness by inserting blockAndEvaluate() after EVERY
+</I>&gt;<i> data-parallel statement:
+</I>&gt;<i> 
+</I>&gt;<i> 1: a = b;
+</I>&gt;<i>    blockAndEvaluate();
+</I>&gt;<i> 2: c = a;
+</I>&gt;<i>    blockAndEvaluate();
+</I>&gt;<i> 3: e = c;
+</I>&gt;<i>    blockAndEvaluate();
+</I>&gt;<i> 4: c(5) = 7;
+</I>&gt;<i> 5: d = c + e;
+</I>&gt;<i>    blockAndEvaluate();
+</I>&gt;<i> 6: cout &lt;&lt; d(5) &lt;&lt; d(3) &lt;&lt; endl;
+</I>&gt;<i> 
+</I>&gt;<i> This may not be very efficient when the arrays are decomposed
+</I>&gt;<i> into patches, because all the patches in statement 1 must execute
+</I>&gt;<i> before any from statement 2.  It would be a lot more cache efficient
+</I>&gt;<i> to perform (a = b; c = a; e = c;) on one patch, then move to the next
+</I>&gt;<i> patch.
+</I>&gt;<i> 
+</I>&gt;<i> In the past, my recommendation to users was to add blockAndEvaluate
+</I>&gt;<i> immediately before any serial code:
+</I>&gt;<i> 
+</I>&gt;<i> 1: a = b;
+</I>&gt;<i> 2: c = a;
+</I>&gt;<i> 3: e = c;
+</I>&gt;<i>    blockAndEvaluate();
+</I>&gt;<i> 4: c(5) = 7;
+</I>&gt;<i> 5: d = c + e;
+</I>&gt;<i>    blockAndEvaluate();
+</I>&gt;<i> 6: cout &lt;&lt; d(5) &lt;&lt; d(3) &lt;&lt; endl;
+</I>&gt;<i> 
+</I>&gt;<i> This approach is guaranteed to ensure correctness.  There was no
+</I>&gt;<i> way for use to implement this automatically.  We know inside POOMA
+</I>&gt;<i> every time a data-parallel expression occurs, but we don't know what
+</I>&gt;<i> the next statement is going to be.  There's no simple way to check for
+</I>&gt;<i> serial access without slowing the code down incredibly.  All the inner
+</I>&gt;<i> loops which get run by SMARTS also access elements through operator(),
+</I>&gt;<i> so we would have to put an if test for every element access that would
+</I>&gt;<i> say &quot;Are we running inside the evaluator, or back in the users code?&quot;
+</I>&gt;<i> 
+</I>&gt;<i> So the use of blockAndEvaluate is an optimization.  Perhaps it would be
+</I>&gt;<i> better to make --blockingExpressions the default and if users want more
+</I>&gt;<i> efficient code they can add the necessary blockAndEvaluates and run
+</I>&gt;<i> --withoutBlockingExpressions.  Note that if they really understand
+</I>&gt;<i> the parallelism issues, they could get trickier:
+</I>&gt;<i>  
+</I>&gt;<i> 1: a = b;
+</I>&gt;<i> 2: c = a;
+</I>&gt;<i>    blockAndEvaluate();
+</I>&gt;<i> 3: e = c;
+</I>&gt;<i> 4: c(5) = 7;
+</I>&gt;<i> 5: d = c + e;
+</I>&gt;<i>    blockAndEvaluate();
+</I>&gt;<i> 6: cout &lt;&lt; d(5) &lt;&lt; d(3) &lt;&lt; endl;
+</I>&gt;<i> 
+</I>&gt;<i> is also correct because we've guaranteed that c has been computed.  Note
+</I>&gt;<i> that blockAndEvaluate() causes EVERY expression to finally be computed.
+</I>&gt;<i> We had at one point thought about a more specific syntax:
+</I>&gt;<i> 
+</I>&gt;<i> blockOnEvaluation(c);
+</I>&gt;<i> c(5) = 7;
+</I>&gt;<i> 
+</I>&gt;<i> This syntax would ensure that all the expressions relating to a given
+</I>&gt;<i> array are finished.  (That would allow the main branch of the code to
+</I>&gt;<i> continue while some computations are still going.)
+</I>&gt;<i> 
+</I>&gt;<i> This idea is a ways off from even being prototyped, though.
+</I>
+Thanks,
+Jeffrey D. Oldham
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">oldham at codesourcery.com</A>
+-------------- next part --------------
+#include &lt;iostream&gt;		// has std::cout, ...
+#include &lt;stdlib.h&gt;		// has EXIT_SUCCESS
+#include &quot;Pooma/Arrays.h&quot;	// has Pooma's Array
+
+// Doof2d: Pooma Arrays, element-wise implementation
+
+int main(int argc, char *argv[])
+{
+  // Prepare the Pooma library for execution.
+  Pooma::initialize(argc,argv);
+  
+  // Ask the user for the number of averagings.
+  long nuAveragings, nuIterations;
+  std::cout &lt;&lt; &quot;Please enter the number of averagings: &quot;;
+  std::cin &gt;&gt; nuAveragings;
+  nuIterations = (nuAveragings+1)/2; // Each iteration performs two averagings.
+
+  // Ask the user for the number n of elements along one dimension of
+  // the grid.
+  long n;
+  std::cout &lt;&lt; &quot;Please enter the array size: &quot;;
+  std::cin &gt;&gt; n;
+
+  // Specify the arrays' domains [0,n) x [0,n).
+  Interval&lt;1&gt; N(0, n-1);
+  Interval&lt;2&gt; vertDomain(N, N);
+
+  // Create the arrays.
+  // The template parameters indicate 2 dimensions, a 'double' element
+  // type, and ordinary 'Brick' storage.
+  Array&lt;2, double, Brick&gt; a(vertDomain);
+  Array&lt;2, double, Brick&gt; b(vertDomain);
+
+  // Set up the initial conditions.
+  // All grid values should be zero except for the central value.
+  a = b = 0.0;
+  b(n/2,n/2) = 1000.0;
+
+  // In the average, weight element with this value.
+  const double weight = 1.0/9.0;
+
+  // Perform the simulation.
+  for (int k = 0; k &lt; nuIterations; ++k) {
+    // Read from b.  Write to a.
+    for (int j = 1; j &lt; n-1; j++)
+      for (int i = 1; i &lt; n-1; i++)
+        a(i,j) = weight *
+          (b(i+1,j+1) + b(i+1,j  ) + b(i+1,j-1) +
+           b(i  ,j+1) + b(i  ,j  ) + b(i  ,j-1) +
+           b(i-1,j+1) + b(i-1,j  ) + b(i-1,j-1));
+
+    // Read from a.  Write to b.
+    for (int j = 1; j &lt; n-1; j++)
+      for (int i = 1; i &lt; n-1; i++)
+        b(i,j) = weight *
+          (a(i+1,j+1) + a(i+1,j  ) + a(i+1,j-1) +
+           a(i  ,j+1) + a(i  ,j  ) + a(i  ,j-1) +
+           a(i-1,j+1) + a(i-1,j  ) + a(i-1,j-1));
+  }
+
+  // Print out the final central value.
+  std::cout &lt;&lt; &quot;before: &quot; &lt;&lt; (nuAveragings % 2 ? a(n/2,n/2) : b(n/2,n/2)) &lt;&lt; std::endl; // TMP
+  Pooma::blockAndEvaluate();	// Ensure all computation has finished.
+  std::cout &lt;&lt; (nuAveragings % 2 ? a(n/2,n/2) : b(n/2,n/2)) &lt;&lt; std::endl;
+
+  // The arrays are automatically deallocated.
+
+  // Tell the Pooma library execution has finished.
+  Pooma::finalize();
+  return EXIT_SUCCESS;
+}
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000868.html">[pooma-dev] Explanation of blockAndEvaluate()
+</A></li>
+	<LI>Next message: <A HREF="000869.html">Patch: Revise Manual Example Codes
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#867">[ date ]</a>
+              <a href="thread.html#867">[ thread ]</a>
+              <a href="subject.html#867">[ subject ]</a>
+              <a href="author.html#867">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

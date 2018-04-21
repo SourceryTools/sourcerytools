@@ -1,0 +1,154 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [vsipl++] Matlab IO
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20Matlab%20IO&In-Reply-To=%3C44967214.7080801%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000522.html">
+   <LINK REL="Next"  HREF="000530.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[vsipl++] Matlab IO</H1>
+    <B>Assem Salama</B> 
+    <A HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20Matlab%20IO&In-Reply-To=%3C44967214.7080801%40codesourcery.com%3E"
+       TITLE="[vsipl++] Matlab IO">assem at codesourcery.com
+       </A><BR>
+    <I>Mon Jun 19 09:44:52 UTC 2006</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000522.html">[vsipl++] Matlab IO
+</A></li>
+        <LI>Next message: <A HREF="000530.html">[vsipl++] Matlab IO
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#529">[ date ]</a>
+              <a href="thread.html#529">[ thread ]</a>
+              <a href="subject.html#529">[ subject ]</a>
+              <a href="author.html#529">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Stefan Seefeld wrote:
+&gt;<i> Assem,
+</I>&gt;<i>
+</I>&gt;<i> I just checked in my png bits, so your patch may already get a bit smaller.
+</I>&gt;<i>
+</I>&gt;<i> Assem Salama wrote:
+</I>&gt;<i>
+</I>&gt;<i>   
+</I>&gt;&gt;<i> +  // generic reader that allows us to read a generic type and cast to another
+</I>&gt;&gt;<i> +  
+</I>&gt;&gt;<i> +  // the read function for real or complex depending of the view that was
+</I>&gt;&gt;<i> +  // passed in
+</I>&gt;&gt;<i> +  template &lt;typename T1,
+</I>&gt;&gt;<i> +            typename T2,
+</I>&gt;&gt;<i> +	    typename ViewT&gt;
+</I>&gt;&gt;<i> +  void read(std::istream&amp; is,ViewT v)
+</I>&gt;&gt;<i> +  {
+</I>&gt;&gt;<i> +    vsip::dimension_type const View_dim = ViewT::dim;
+</I>&gt;&gt;<i> +    vsip::Index&lt;View_dim&gt; my_index;
+</I>&gt;&gt;<i> +    vsip::impl::Length&lt;View_dim&gt; v_extent = extent(v);
+</I>&gt;&gt;<i> +    T1 data;
+</I>&gt;&gt;<i> +
+</I>&gt;&gt;<i> +    // get num_points
+</I>&gt;&gt;<i> +    vsip::length_type num_points = v.size();
+</I>&gt;&gt;<i> +
+</I>&gt;&gt;<i> +    // read all the points
+</I>&gt;&gt;<i> +    for(vsip::index_type i=0;i&lt;num_points;i++) {
+</I>&gt;&gt;<i> +      is.read(reinterpret_cast&lt;char*&gt;(&amp;data),sizeof(data));
+</I>&gt;&gt;<i> +      put(v,my_index,T2(data));
+</I>&gt;&gt;<i> +
+</I>&gt;&gt;<i> +      // increment index
+</I>&gt;&gt;<i> +      my_index = vsip::impl::next(v_extent,my_index);
+</I>&gt;&gt;<i> +    }
+</I>&gt;&gt;<i> +
+</I>&gt;&gt;<i> +  }
+</I>&gt;&gt;<i>     
+</I>&gt;<i>
+</I>&gt;<i> What's the reason for you using the 'put' function here, instead of
+</I>&gt;<i> some v method ? And, why are you casting to T2 in that call, instead
+</I>&gt;<i> of casting to ViewT::value_type ? As it stands, the above read function
+</I>&gt;<i> takes three distinct type parameters: T1, T2, and ViewT::value_type.
+</I>&gt;<i> I think only two are required (and the first may default to ViewT::value_type,
+</I>&gt;<i> actually).
+</I>&gt;<i>   
+</I>The reason that I am using the put function is because I need to pass 
+index into the function because of arbitrary dimension. I didn't know 
+that ViewT::value_type existed. Thanks for pointing that out to me, I 
+will make use of that.
+&gt;<i> How portable is the above code ? It doesn't appear to care for endianness,
+</I>&gt;<i> i.e. you cast between 'char *' and T2 without any endianness check. If you
+</I>&gt;<i> write on a big-endian machine, and read it back on a little-endian
+</I>&gt;<i> machine, you will thus get different values.
+</I>&gt;<i>   
+</I>You are correct about endianness, I still haven't looked at the endian 
+issue yet.
+
+&gt;<i>   
+</I>&gt;&gt;<i> +  // a write function to output a view to a matlab file.
+</I>&gt;&gt;<i> +  template &lt;typename T,
+</I>&gt;&gt;<i> +	    typename ViewT&gt;
+</I>&gt;&gt;<i> +  void write(std::ostream&amp; os,ViewT v)
+</I>&gt;&gt;<i> +  {
+</I>&gt;&gt;<i> +    vsip::dimension_type const View_dim = ViewT::dim;
+</I>&gt;&gt;<i> +    vsip::Index&lt;View_dim&gt; my_index;
+</I>&gt;&gt;<i> +    vsip::impl::Length&lt;View_dim&gt; v_extent = extent(v);
+</I>&gt;&gt;<i> +    T data;
+</I>&gt;&gt;<i> +
+</I>&gt;&gt;<i> +    // get num_points
+</I>&gt;&gt;<i> +    vsip::length_type num_points = v.size();
+</I>&gt;&gt;<i> +
+</I>&gt;&gt;<i> +    // write all the points
+</I>&gt;&gt;<i> +    for(vsip::index_type i=0;i&lt;num_points;i++) {
+</I>&gt;&gt;<i> +      data = get(v,my_index);
+</I>&gt;&gt;<i> +      os.write(reinterpret_cast&lt;char*&gt;(&amp;data),sizeof(data));
+</I>&gt;&gt;<i>     
+</I>&gt;<i>
+</I>&gt;<i> The same point about endianness applies here.
+</I>&gt;<i>
+</I>&gt;<i>
+</I>&gt;<i>   
+</I>&gt;&gt;<i> +
+</I>&gt;&gt;<i> +      // increment index
+</I>&gt;&gt;<i> +      my_index = vsip::impl::next(v_extent,my_index);
+</I>&gt;&gt;<i> +    }
+</I>&gt;&gt;<i> +
+</I>&gt;&gt;<i> +  }
+</I>&gt;&gt;<i>     
+</I>&gt;<i>
+</I>&gt;<i> Thanks,
+</I>&gt;<i> 		Stefan
+</I>&gt;<i>
+</I>&gt;<i>   
+</I>
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000522.html">[vsipl++] Matlab IO
+</A></li>
+	<LI>Next message: <A HREF="000530.html">[vsipl++] Matlab IO
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#529">[ date ]</a>
+              <a href="thread.html#529">[ thread ]</a>
+              <a href="subject.html#529">[ subject ]</a>
+              <a href="author.html#529">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">More information about the vsipl++
+mailing list</a><br>
+</body></html>

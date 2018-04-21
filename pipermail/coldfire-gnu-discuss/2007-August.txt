@@ -1,0 +1,465 @@
+From bill at codesourcery.com  Mon Aug  6 18:32:15 2007
+From: bill at codesourcery.com (Bill Traynor)
+Date: Mon, 06 Aug 2007 14:32:15 -0400
+Subject: ignore: test
+Message-ID: <46B7692F.3000809@codesourcery.com>
+
+ignore: test
+
+-- 
+Bill Traynor
+CodeSourcery
+bill at codesourcery.com
+(650) 331-3385 x725
+
+
+
+From joshb at sigmaelectronics.com  Tue Aug 14 00:26:17 2007
+From: joshb at sigmaelectronics.com (Joshua Boyd)
+Date: Mon, 13 Aug 2007 20:26:17 -0400
+Subject: FreeRTOS with CodeSourcery G++
+Message-ID: <1187050858.23881.70.camel@jd-mobile.sigma.local>
+
+I've seen one or two references to people using this compiler package
+and FreeRTOS.
+
+At the moment I'm trying to target the 5235evb, but I suspect that where
+I am getting stuck is not all that specific to which coldfire chip I'm
+using.  Also, I am trying to develop from windows 2000.
+
+Anyway, following the getting started guide to create a hello world
+program, which is downloaded via gdb and the sprite utility functions
+just fine.  However, I don't believe that freertos will be able to work
+in the ram-hosted mode.
+
+If I use the sample port to this board included in freertos version 4.4,
+it takes only the modifying the system paths in the makefile to compile
+the demo program.  So far so good.  However, when I download the
+demo.elf file to the board using the same method used for the hello
+world example, things seem to get stuck on startup.
+
+(gdb) target remote | m68k-elf-sprite pe: m5235evb
+Remote debugging using | m68k-elf-sprite pe: m5235evb
+m68k-elf-sprite:Opening P&E USBMultilink port 1 (USB1 : USB-ML-CF Rev C
+(PE6012637))
+m68k-elf-sprite: Target reset
+0x00000000 in __text_start()
+(gdb) load
+Loading section .text, size 0xd770 lma 0x0
+Loading section .data, size 0x840 lma 0xd770
+Start address 0x408, load size 57264
+Transfer rate: 229056 bits/sec, 7158 bytes/write.
+(gdb) continue
+Continuing.
+
+Program received signal SIGTRAP, Trace/breakpoint trap.
+VecDefault () at system/vector.S:293
+293	bra VecDefault
+Current language: auto; currently asm
+(gdb)
+
+So, a few things I wonder is whether the BDM is interfering with this
+running.  Should I instead be using tftp initially, or even s-records?
+I was never able to get a standalone helloworld working using either of
+those methods though.
+
+The freertos people seem to expect me to use a custom compiled
+gdb/insight with a bdm patch added, and to download and run the program
+that way.  I don't know to what extent that would function the same as
+CodeSourcery's GDB using the m68k-elf-sprite bridge. 
+
+FWIW, I'm not attached to FreeRTOS.  I'm only looking at it as a way to
+get TCP/IP going.  If someone wanted to comment about using SourceryG++
+with lwIP or uIP or something similar without an underlying OS, I'd be
+eager to look at it.  Alternatively, if there is another RTOS that can
+be used with SourceryG++ that can run in 32k of ram while using TCP/IP,
+I'd be quite happy to look at that as well, even if it was a commercial
+OS, provided that it was in my price range.
+
+
+From dan at codesourcery.com  Wed Aug 15 18:04:58 2007
+From: dan at codesourcery.com (Daniel Jacobowitz)
+Date: Wed, 15 Aug 2007 14:04:58 -0400
+Subject: [coldfire-gnu-discuss] FreeRTOS with CodeSourcery G++
+In-Reply-To: <1187050858.23881.70.camel@jd-mobile.sigma.local>
+References: <1187050858.23881.70.camel@jd-mobile.sigma.local>
+Message-ID: <20070815180456.GH8683@caradoc.them.org>
+
+On Mon, Aug 13, 2007 at 08:26:17PM -0400, Joshua Boyd wrote:
+> Program received signal SIGTRAP, Trace/breakpoint trap.
+> VecDefault () at system/vector.S:293
+> 293	bra VecDefault
+> Current language: auto; currently asm
+> (gdb)
+
+I think this just means your program took an exception - you might
+want to work out which one it was.  It might be something wrong with
+the board port.
+
+-- 
+Daniel Jacobowitz
+CodeSourcery
+
+
+From sskuce at ati-ia.com  Thu Aug 23 16:50:17 2007
+From: sskuce at ati-ia.com (Sam Skuce)
+Date: Thu, 23 Aug 2007 12:50:17 -0400
+Subject: 'mac.l' Assembler Operands Mismatch on 5282
+Message-ID: <239B6D5911F55C46B248BF2B3BAB1A420242E3A6@atimail.ati-ia.com>
+
+I have some code that compiled with no errors under a 3.3.2 version of
+m68k-elf-gcc, that gives me the error "operands mismatch -- statement
+`mac.l %d0,%d7' ignored" with m68k-elf-gcc-4.2.0.  I have tried
+compiling it with:
+
+$ m68k-elf-gcc-4.2.0 -c -g -mcpu=5282 -Wall -O3 -fno-builtin
+operandmismatch.S -Wa,-acdhlns=../obj/operandmismatch.lst -o
+../obj/operandmismatch.o
+
+And 
+
+$ m68k-elf-gcc-4.2.0 -c -g -m528x -Wall -O3 -fno-builtin
+operandmismatch.S -Wa,-acdhlns=../obj/operandmismatch.lst -o
+../obj/operandmismatch.o
+
+(difference is -m528x versus -mcpu=5282)
+
+Here is a sample file I used to duplicate the problem, all the mac.l
+instructions generate the error:
+
+/* BEGIN SAMPLE FILE */
+
+	.global function
+	.global _function
+
+	.text
+	.align	4
+function:
+_function:
+
+
+    move.l  #0, %acc 
+                            
+    move.l  (%a2)+, %d7     
+    mac.l   %d0, %d7        
+
+    move.l  (%a2)+, %d7     
+    mac.l   %d1, %d7        
+
+    move.l  (%a2)+, %d7     
+    mac.l   %d2, %d7       
+
+    move.l  (%a2)+, %d7     
+    mac.l   %d3, %d7
+
+    move.l  (%a2)+, %d7     
+    mac.l   %d4, %d7
+
+    move.l  (%a2)+, %d7     
+    mac.l   %d5, %d7
+
+    move.l  %acc, %d7       
+    move.l  %d7, (%a0)+
+    
+
+	rts
+
+
+
+    .end
+
+/* END SAMPLE FILE */
+
+What do I need to change to make this work with the new gcc version?
+
+Thanks!
+
+
+From nathan at codesourcery.com  Thu Aug 23 18:04:38 2007
+From: nathan at codesourcery.com (Nathan Sidwell)
+Date: Thu, 23 Aug 2007 19:04:38 +0100
+Subject: [coldfire-gnu-discuss] 'mac.l' Assembler Operands Mismatch on
+ 5282
+In-Reply-To: <239B6D5911F55C46B248BF2B3BAB1A420242E3A6@atimail.ati-ia.com>
+References: <239B6D5911F55C46B248BF2B3BAB1A420242E3A6@atimail.ati-ia.com>
+Message-ID: <46CDCC36.9070806@codesourcery.com>
+
+Sam Skuce wrote:
+> I have some code that compiled with no errors under a 3.3.2 version of
+> m68k-elf-gcc, that gives me the error "operands mismatch -- statement
+> `mac.l %d0,%d7' ignored" with m68k-elf-gcc-4.2.0.  I have tried
+> compiling it with:
+> 
+> $ m68k-elf-gcc-4.2.0 -c -g -mcpu=5282 -Wall -O3 -fno-builtin
+> operandmismatch.S -Wa,-acdhlns=../obj/operandmismatch.lst -o
+> ../obj/operandmismatch.o
+> 
+> And 
+> 
+> $ m68k-elf-gcc-4.2.0 -c -g -m528x -Wall -O3 -fno-builtin
+> operandmismatch.S -Wa,-acdhlns=../obj/operandmismatch.lst -o
+> ../obj/operandmismatch.o
+
+the 5282 has an emac, not a mac.  You need to specify the accumulator too.  for 
+instance
+	mac.l %d0,%d1,%acc0
+
+btw, this is a feature of the assembler, not the compiler.  The versions you 
+name (3.3.2 and 4.2.0) are compiler versions.
+
+nathan
+-- 
+Nathan Sidwell    ::   http://www.codesourcery.com   ::         CodeSourcery
+
+
+
+From rsg at alum.mit.edu  Wed Aug 22 02:29:16 2007
+From: rsg at alum.mit.edu (Robert S. Grimes)
+Date: Tue, 21 Aug 2007 22:29:16 -0400
+Subject: Build uClinux on Linux host using Sourcery G++ Lite Edition
+Message-ID: <46CB9F7C.7050409@alum.mit.edu>
+
+Hi,
+
+So far, I've build uClinux, the kernel, and my applications within the 
+uClinux build system by putting my apps into the user directory.  Up to 
+know, I've been using the uClinux tools to do this.  However, I can't 
+get a C++ program to link in this environment.  Specifically, I get 
+these two errors:
+
+    libsrc/QSPIManager.cc:40: undefined reference to `__cxa_guard_acquire'
+    libsrc/QSPIManager.cc:40: undefined reference to `__cxa_guard_release'
+    collect2: ld returned 1 exit status
+
+Nobody on the uClinux mailing list seems to know how to fix this, but 
+someone suggested I try the CodeSourcery tools.  So I downloaded the 
+ColdFire uClinux tools for Linux hosts, but I don't know how to use them 
+to build uClinux.  This is the package I got:
+
+    freescale-coldfire-4.2-8-m68k-uclinux-i686-pc-linux-gnu.tar.bz2.tar
+
+I can compile a C++ program outside of the uClinux/kernel tree, and it 
+runs on my target!  Yes!  But, this simple program doesn't use any of 
+the uClinux header files.  Specifically, I need to use the mcf_qspi 
+driver to use the ColdFire's QSPI controller for communicating to SPI 
+peripherals.  So I need to include files (for example, mcf_qspi.h) that 
+are provided within the uClinux tree.  Right now, my actual applications 
+won't even compile using CodeSourcery, because of this issue. 
+
+What is the best way to do fix this?
+
+Seems I have four basic options, listed in increasing degrees of pain.
+
+     1. Somehow figure out how to use the uClinux tools to build my 
+applications (resolve the above errors).
+
+     2. Figure out how to use CodeSourcery tools to build the entire 
+uClinux tree.
+
+     3. Build using CodeSourcery tools outside the uClinux build system, 
+and somehow figure out how to point CodeSourcery's tools into the tree 
+at the appropriate places (wherever these are).
+
+     4. Rewrite in C and use uClinux tools
+
+The only one I know how to do myself, right now, is the fourth option, 
+but I'd really, really rather not be forced to do that; I've adapted and 
+written much already.  The first seems the least painful, if someone 
+could just tell me what the missing magic is, as I've been using the 
+tools for some time now, and have had no troubles (only C programs until 
+now).  For CodeSourcery, I'd much prefer option 2 over 3, unless 3 can 
+be done reliably.  I'm much too green in this area (uClinux and Linux 
+kernel development), so both these options scare me.  I have been 
+developing embedded systems for 24 years, so I'm not a novice in general...
+
+Help!
+
+Thanks!
+-Bob
+
+
+From sskuce at ati-ia.com  Thu Aug 23 18:51:17 2007
+From: sskuce at ati-ia.com (Sam Skuce)
+Date: Thu, 23 Aug 2007 14:51:17 -0400
+Subject: [coldfire-gnu-discuss] 'mac.l' Assembler Operands Mismatch on 5282
+In-Reply-To: <46CDCC36.9070806@codesourcery.com>
+Message-ID: <239B6D5911F55C46B248BF2B3BAB1A420242E42A@atimail.ati-ia.com>
+
+That worked, thanks.  The older assembler actually errors out if you
+specify the destination (another reason to upgrade).  My bad about
+mixing up the assembler and compiler version, I was just thinking of
+what I was using at the command line.
+
+-----Original Message-----
+From: Nathan Sidwell [mailto:nathan at codesourcery.com] 
+Sent: Thursday, August 23, 2007 2:05 PM
+To: Sam Skuce
+Cc: coldfire-gnu-discuss at codesourcery.com
+Subject: Re: [coldfire-gnu-discuss] 'mac.l' Assembler Operands Mismatch
+on 5282
+
+Sam Skuce wrote:
+> I have some code that compiled with no errors under a 3.3.2 version of
+> m68k-elf-gcc, that gives me the error "operands mismatch -- statement
+> `mac.l %d0,%d7' ignored" with m68k-elf-gcc-4.2.0.  I have tried
+> compiling it with:
+> 
+> $ m68k-elf-gcc-4.2.0 -c -g -mcpu=5282 -Wall -O3 -fno-builtin
+> operandmismatch.S -Wa,-acdhlns=../obj/operandmismatch.lst -o
+> ../obj/operandmismatch.o
+> 
+> And 
+> 
+> $ m68k-elf-gcc-4.2.0 -c -g -m528x -Wall -O3 -fno-builtin
+> operandmismatch.S -Wa,-acdhlns=../obj/operandmismatch.lst -o
+> ../obj/operandmismatch.o
+
+the 5282 has an emac, not a mac.  You need to specify the accumulator
+too.  for 
+instance
+	mac.l %d0,%d1,%acc0
+
+btw, this is a feature of the assembler, not the compiler.  The versions
+you 
+name (3.3.2 and 4.2.0) are compiler versions.
+
+nathan
+-- 
+Nathan Sidwell    ::   http://www.codesourcery.com   ::
+CodeSourcery
+
+
+
+From braun at stzedn.de  Fri Aug 24 08:47:01 2007
+From: braun at stzedn.de (Nathan Braun)
+Date: Fri, 24 Aug 2007 10:47:01 +0200
+Subject: Free run of program on M52235 not possible
+Message-ID: <LHEBLKFLADNGICDPKELOKECACBAA.braun@stzedn.de>
+
+Hello,
+
+first of all thank you for this great tool-chain that is so easy to use!
+Great work.
+
+I just have one question that I am stuck with a bit. So far it works
+perfectly running the software using the debugger. But for some reason, it
+does not start when I remove the BDM_EN jumper and reset the board. Am I
+missing something here?
+
+I compile the software using:
+m68k-elf-gcc -O0 -g3 -Wall -c -fmessage-length=0 -mcpu=52235 -omain.o main.c
+
+And then link it with:
+m68k-elf-gcc -Tm52235evb-rom.ld -Wl,-Map=m5223demo_embetter.map,--cref -o"ma
+in.elf" main.o
+
+Stepping with the debugger works, my software runs. I assume that the same
+software should also run, when the BDM_EN jumper is off. Or am I wrong?
+
+Best regards
+Nathan Braun
+
+
+
+From nathan at codesourcery.com  Fri Aug 24 09:17:57 2007
+From: nathan at codesourcery.com (Nathan Sidwell)
+Date: Fri, 24 Aug 2007 10:17:57 +0100
+Subject: [coldfire-gnu-discuss] Free run of program on M52235 not possible
+In-Reply-To: <LHEBLKFLADNGICDPKELOKECACBAA.braun@stzedn.de>
+References: <LHEBLKFLADNGICDPKELOKECACBAA.braun@stzedn.de>
+Message-ID: <46CEA245.1070009@codesourcery.com>
+
+Nathan ,
+> first of all thank you for this great tool-chain that is so easy to use!
+> Great work.
+
+thanks :)
+
+> I just have one question that I am stuck with a bit. So far it works
+> perfectly running the software using the debugger. But for some reason, it
+> does not start when I remove the BDM_EN jumper and reset the board. Am I
+> missing something here?
+
+For the current release you'll have to arrange some startup code to initialize 
+some control registers.  You need to set RAMBAR correctly and PST[3:0] signals. 
+  These are initialized by the debugger for you.  The following untested code 
+sequence should do it:
+	move  #0x20000021,%d0
+	movec.l  %d0,%rambar
+	move  #f,%d0
+	move.b %d0,0x40000000+0x100074
+
+You'll need to edit this into crt0.s.
+
+Our Fall release will make this automatic.
+
+nathan
+
+-- 
+Nathan Sidwell    ::   http://www.codesourcery.com   ::         CodeSourcery
+
+
+
+From jsujjavanich at syntech-fuelmaster.com  Thu Aug 30 19:02:31 2007
+From: jsujjavanich at syntech-fuelmaster.com (Jate Sujjavanich)
+Date: Thu, 30 Aug 2007 15:02:31 -0400
+Subject: Usage of shared libraries
+Message-ID: <EC5EE493B6046F45A2DDEC4A828DE52E021DD19B@EXCHSRVR.syntech.org>
+
+I am presently using the Sourcery G++ Lite 4.2-8 toolchain (uclinux). It
+is compatible with my circa 2005 uClinux-dist and most applications work
+well with the shared uClibc.
+
+What I am trying to do now is create a "hello world" shared library.
+Using options as recommended on uCdot.org creates a library of size
+mshared-library-id * 16 MB. I am looking for the new recommended way of
+creating one for this toolchain.
+
+I am also having some issues with an application that is threaded using
+pthreads. It seems that the errno is not being passed from the kernel to
+the uClibc side of the system call. In my case, the mkfifo (mknod) does
+return a -1, but the errno on the application side is always a 0. I have
+a feeling this may be fixed in the latest uClibc. Does anyone know?
+
+- Jate Sujjavanich
+
+
+From carlos at codesourcery.com  Thu Aug 30 20:23:59 2007
+From: carlos at codesourcery.com (Carlos O'Donell)
+Date: Thu, 30 Aug 2007 16:23:59 -0400
+Subject: [coldfire-gnu-discuss] Usage of shared libraries
+In-Reply-To: <EC5EE493B6046F45A2DDEC4A828DE52E021DD19B@EXCHSRVR.syntech.org>
+References: <EC5EE493B6046F45A2DDEC4A828DE52E021DD19B@EXCHSRVR.syntech.org>
+Message-ID: <20070830202358.GK2415@lios>
+
+On Thu, Aug 30, 2007 at 03:02:31PM -0400, Jate Sujjavanich wrote:
+> What I am trying to do now is create a "hello world" shared library.
+> Using options as recommended on uCdot.org creates a library of size
+> mshared-library-id * 16 MB. I am looking for the new recommended way of
+> creating one for this toolchain.
+
+The recommended way to create shared libraries for CodeSourcery's
+Sourcery G++ toolchains is documented in the "Getting Started" guide.
+More specifically Chpater 3, Section 2, "Shared Libraries" page 10.
+ 
+> I am also having some issues with an application that is threaded using
+> pthreads. It seems that the errno is not being passed from the kernel to
+> the uClibc side of the system call. In my case, the mkfifo (mknod) does
+> return a -1, but the errno on the application side is always a 0. I have
+> a feeling this may be fixed in the latest uClibc. Does anyone know?
+
+As far as I know this is not fixed in the latest uClibc. Please see
+Chapter 3, Section 2.4, "Symbol Binding." uClibc doesn't follow normal
+ELF symbol resolution and the threads errno cannot be updated. 
+
+The simplest workaround is not to use shared libraries and pthreads.
+
+Cheers,
+Carlos.
+-- 
+Carlos O'Donell
+CodeSourcery
+carlos at codesourcery.com
+(650) 331-3385 x716
+
+

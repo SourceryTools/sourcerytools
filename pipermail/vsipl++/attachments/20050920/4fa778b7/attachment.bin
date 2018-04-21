@@ -1,0 +1,251 @@
+########################################################################
+#
+# File:   vpp_database.py
+# Author: Stefan Seefeld
+# Date:   2005-04-15
+#
+# Contents:
+#   VPPTest, VPPDatabase
+#
+# Copyright (c) 2005 by CodeSourcery, LLC.  All rights reserved. 
+#
+########################################################################
+
+########################################################################
+# Imports
+########################################################################
+
+import fnmatch
+import os
+import qm
+import qm.test.base
+from   qm.fields import *
+from   qm.executable import RedirectedExecutable
+from   qm.attachment import Attachment, FileAttachmentStore
+from   qm.test.database import *
+from   qm.test.test import Test
+from   qm.test.resource import Resource
+from   dg_test import DGTest
+from   gcc_dg_test import GCCDGTest
+from   compiler import Compiler
+import dircache
+
+########################################################################
+# Classes
+########################################################################
+
+# Do not derive from GPPDGTest as that has the side-effect
+# of requiring undesired variables to be set.
+class VPPTest(GCCDGTest):
+
+    _default_kind = DGTest.KIND_RUN
+    _default_options = []
+    _language = "cxx"
+
+
+# A VPPResource is a GCCDGTest which in its 'Run' method
+# only compiles, but doesn't run, an application.
+class VPPResource(Resource, GCCDGTest):
+
+    _default_kind = DGTest.KIND_LINK
+    _default_options = []
+    _language = "cxx"
+
+    def SetUp(self, context, result):
+
+        self.keep_output = True
+        self.Run(context, result)
+        context['driver'] = self._GetOutputFile(context,
+                                                VPPResource._default_kind,
+                                                self._GetSourcePath())
+        
+
+class VPPCompTest(Test):
+
+    data_file = AttachmentField(title="Data File", description="The input data.")
+
+    def Run(self, context, result):
+
+        driver = context['driver']
+        data = self.data_file.GetDataFile()
+        executable = RedirectedExecutable()
+        status = executable.Run([driver, data])
+        if os.WIFSIGNALED(status):
+            result.Fail('program killed with signal %i'%os.WTERMSIG(status),
+                        {'vpp_command_test.command': '%s %s'%(driver, data)})
+         
+        elif os.WIFEXITED(status) and os.WEXITSTATUS(status) != 0:
+            result.Fail('program exit value : %i'%os.WEXITSTATUS(status),
+                        {'vpp_comp_test.command': '%s %s'%(driver, data)})
+            if test.stderr: result['vpp_comp_test.error'] = driver.stderr
+        
+
+class VPPDatabase(Database):
+    """A 'VPPDatabase' stores the vsipl++ regression tests."""
+
+    srcdir = TextField(title = "Source Directory",
+                       description = "The root of the test suite's source tree.")
+    _is_generic_database = True
+    
+
+    def __init__(self, path, arguments):
+
+        self.label_class = "file_label.FileLabel"
+        self.modifiable = "false"
+        # Initialize the base class.
+        super(VPPDatabase, self).__init__(path, arguments)
+        # Create an attachment store.
+        self.__store = FileAttachmentStore()
+
+        
+    def GetRoot(self):
+
+        return self.srcdir
+
+
+    def GetAttachmentStore(self):
+
+        return self.__store
+
+
+    def GetSubdirectories(self, directory):
+
+        dirname = os.path.join(self.GetRoot(), directory)
+        return [subdir for subdir in dircache.listdir(dirname)
+                if (os.path.isdir(os.path.join(dirname, subdir)) and
+                    subdir not in ('data', 'CVS', 'QMTest'))]
+
+
+    def GetIds(self, kind, directory = "", scan_subdirs = 1):
+
+        dirname = os.path.join(self.GetRoot(), directory)
+        if not os.path.isdir(dirname):
+            raise qm.test.database.NoSuchSuiteError, directory
+
+        if kind == Database.TEST:
+            datadir = os.path.join(dirname, 'data')
+            if os.path.isdir(datadir):
+                ids = [self.JoinLabels(directory, f)
+                       for f in dircache.listdir(datadir)
+                       if os.path.isfile(os.path.join(datadir, f))]
+            else:
+                ids = [self.JoinLabels(directory, f)
+                       for f in dircache.listdir(dirname)
+                       if os.path.splitext(f)[1] == '.cpp'] 
+        elif kind == Database.RESOURCE:
+            datadir = os.path.join(dirname, 'data')
+            if os.path.isdir(datadir):
+                ids = [self.JoinLabels(directory, f)
+                       for f in dircache.listdir(dirname)
+                       if os.path.splitext(f)[1] == '.cpp'] 
+            else:
+                ids = []
+            ids.append('compiler_table')
+            
+        else: # SUITE
+            ids = [self.JoinLabels(directory, d)
+                   for d in self.GetSubdirectories(directory)]
+
+        if scan_subdirs:
+            for subdir in dircache.listdir(dirname):
+                if (subdir != 'data'
+                    and os.path.isdir(os.path.join(dirname, subdir))):
+                    dir = self.JoinLabels(directory, subdir)
+                    ids.extend(self.GetIds(kind, dir, True))
+        return ids
+    
+
+    def GetExtension(self, item_id):
+
+        if not item_id:
+            return DirectorySuite(self, item_id)
+            
+        if item_id == 'compiler_table':
+            resource_class = get_extension_class('compiler_table.CompilerTable',
+                                                 'resource',
+                                                 self)
+            return resource_class({},
+                                  qmtest_id = 'compiler_table',
+                                  qmtest_database = self)
+        
+        id_components = self.GetLabelComponents(item_id)
+        # 'data' subdirectories have special meaning, and so
+        # are not allowed as label components.
+        if 'data' in id_components:
+            return None
+
+        dirname = os.path.join(self.GetRoot(), *id_components[:-1])
+        basename = id_components[-1]
+
+        if os.path.isdir(os.path.join(dirname, basename)):
+            return DirectorySuite(self, item_id)
+
+        # If <dirname>/data is an existing directory...
+        if os.path.isdir(os.path.join(dirname, 'data')):
+            # ...and <basename> ends with '.cpp',...
+            if os.path.splitext(basename)[1] == '.cpp':
+                
+                # ...<dirname>/<basename> is a resource.
+                path = os.path.join(dirname, basename)
+                attachment = Attachment("text/plain", basename,
+                                        basename, path,
+                                        self.GetAttachmentStore())
+                arguments = {}
+                arguments['source_file'] = attachment
+                arguments['resources'] = ['compiler_table']
+                return VPPResource(arguments,
+                                   qmtest_id = item_id,
+                                   qmtest_database = self)
+            else:
+                # ...<dirname>/<basename> is a test.
+                path = os.path.join(dirname, 'data', basename)
+                if not os.path.isfile(path):
+                    return None
+            
+                # Construct the attachment representing the primary source
+                # file.
+                attachment = Attachment("text/plain", basename,
+                                        basename, path,
+                                        self.GetAttachmentStore())
+
+                src = [f for f in dircache.listdir(dirname)
+                       if os.path.splitext(f)[1] == '.cpp']
+                # There must be exactly one source file, which
+                # is our resource.
+                if len(src) > 1:
+                    raise database.DatabaseError,\
+                          'multiple source files found in %s'%dirname
+                resources = [self.JoinLabels(*(id_components[:-1] + src))]
+
+                arguments = {}
+                arguments['data_file'] = attachment
+                arguments['resources'] = resources
+
+                return VPPCompTest(arguments,
+                                   qmtest_id = item_id,
+                                   qmtest_database = self)
+        
+        else:
+            path = os.path.join(dirname, basename)
+            if os.path.isfile(path) and os.path.splitext(path)[1] == '.cpp':
+
+                # <path> is a test.
+            
+                # Construct the attachment representing the primary source
+                # file.
+                attachment = Attachment("text/plain", basename,
+                                        basename, path,
+                                        self.GetAttachmentStore())
+
+                arguments = {}
+                arguments['source_file'] = attachment
+                arguments['resources'] = ['compiler_table']
+
+                return VPPTest(arguments,
+                               qmtest_id = item_id,
+                               qmtest_database = self)
+
+            elif os.path.isdir(path):
+                return DirectorySuite(self, item_id)
+            
+        return None

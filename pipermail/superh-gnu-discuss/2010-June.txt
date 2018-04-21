@@ -1,0 +1,928 @@
+From lethal at linux-sh.org  Mon Jun 21 04:44:55 2010
+From: lethal at linux-sh.org (Paul Mundt)
+Date: Mon, 21 Jun 2010 13:44:55 +0900
+Subject: [uClinux-dev] Userspace command line gcc options troubles
+In-Reply-To: <201006180920.13448.fabio.giovagnini@aurion-tech.com>
+References: <201006171232.56669.fabio.giovagnini@aurion-tech.com> <20100617210346.GA422@minime.bse> <201006180920.13448.fabio.giovagnini@aurion-tech.com>
+Message-ID: <20100621044455.GD29997@linux-sh.org>
+
+(Adding superh-gnu-discuss to the Cc..)
+
+On Fri, Jun 18, 2010 at 09:20:13AM +0200, Fabio Giovagnini wrote:
+> This is the result (i suppose):
+> *asm:
+> %(subtarget_asm_endian_spec) %{mrelax:-relax 
+> %(subtarget_asm_relax_spec)}%(subtarget_asm_isa_spec) %(subtarget_asm_spec) 
+> %{m2a:--isa=sh2a} %{m2a-single:--isa=sh2a} %{m2a-single-only:--isa=sh2a} 
+> %{m2a-nofpu:--isa=sh2a-nofpu} %{m5-compact*:--isa=SHcompact} %{m5-32media*:--
+> isa=SHmedia --abi=32} %{m5-64media*:--isa=SHmedia --abi=64} %{m4al:-dsp} 
+> %{mcut2-workaround:-cut2-workaround}
+> 
+> Nowhere I can see :
+> --fdpic--isa=sh2a
+> 
+> I think it should be 
+> --fdpic --isa=sh2a
+> at most (with a blank space in between)
+> 
+> In data gioved? 17 giugno 2010 23:03:47, Daniel Gl?ckner ha scritto:
+> : > On Thu, Jun 17, 2010 at 12:32:56PM +0200, Fabio Giovagnini wrote:
+> > > uclinux/bin/as: unrecognized option '--fdpic--isa=sh2a'
+> > >
+> > > How could I solve?
+> > 
+> > cd /home/fgiovagnini/sh7203/sh7203-uclinux-4.4-206/build/target/
+> > ./bin/sh-uclinux-gcc -dumpspecs > lib/gcc/sh-uclinux/4.4.1/specs
+> > sed -i 's/subtarget_asm_spec)/& /' lib/gcc/sh-uclinux/4.4.1/specs
+
+
+From ams at codesourcery.com  Tue Jun 22 08:20:21 2010
+From: ams at codesourcery.com (Andrew Stubbs)
+Date: Tue, 22 Jun 2010 09:20:21 +0100
+Subject: Sorry Andrew, but what is this?
+In-Reply-To: <201006171641.17330.fabio.giovagnini@aurion-tech.com>
+References: <201006171641.17330.fabio.giovagnini@aurion-tech.com>
+Message-ID: <4C207245.7070902@codesourcery.com>
+
+Hi Fabio,
+
+Please use the superh-gnu-discuss list for questions like these, thanks.
+
+On 17/06/10 15:41, Fabio Giovagnini wrote:
+> It seems as gcc is passing the options --fdpic and --isa=sh2a without a
+> blank space.
+
+Indeed it does! :(
+
+> How can I solve this?
+
+./install/bin/sh-uclinux-gcc -dumpspecs > specs
+
+Then edit the "*asm:" rule such that there is a space between 
+"%(subtarget_asm_spec)" and "%{m2a:--isa=sh2a}".
+
+Test your new specs file by adding "-specs=specs" to your command line. 
+If it works, copy the file to:
+   <install-dir>/lib/gcc/sh-uclinux/4.4.1/specs
+
+GCC should then pick up the new specs file automatically, instead of 
+using its builtin specs.
+
+I've noted this as a bug to fix for the next release.
+
+Hope that helps.
+
+Andrew
+
+
+From fabio.giovagnini at aurion-tech.com  Tue Jun 22 10:39:07 2010
+From: fabio.giovagnini at aurion-tech.com (Fabio Giovagnini)
+Date: Tue, 22 Jun 2010 12:39:07 +0200
+Subject: Sorry Andrew, but what is this?
+In-Reply-To: <4C207245.7070902@codesourcery.com>
+References: <201006171641.17330.fabio.giovagnini@aurion-tech.com> <4C207245.7070902@codesourcery.com>
+Message-ID: <201006221239.08153.fabio.giovagnini@aurion-tech.com>
+
+Hi Andrew
+
+I followed you tips, and I solved the problem.
+But while I'm tring to build the init user space app I get:
+sh-uclinux-gcc -o init.o -O2 -mfdpic -m2a -mb init.c
+sh-uclinux-gcc -o init -mfdpic -m2a -mb -Wl,-EB -Wl,-isa=sh2a init.o
+/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../lib/gcc/sh-uclinux/4.4.1/../../../../sh-
+uclinux/bin/ld: bad -rpath option
+collect2: ld returned 1 exit status
+
+How can I solve?
+
+Thanks
+
+
+
+
+
+In data marted? 22 giugno 2010 10:20:21, Andrew Stubbs ha scritto:
+: > Hi Fabio,
+> 
+> Please use the superh-gnu-discuss list for questions like these, thanks.
+> 
+> On 17/06/10 15:41, Fabio Giovagnini wrote:
+> > It seems as gcc is passing the options --fdpic and --isa=sh2a without a
+> > blank space.
+> 
+> Indeed it does! :(
+> 
+> > How can I solve this?
+> 
+> ./install/bin/sh-uclinux-gcc -dumpspecs > specs
+> 
+> Then edit the "*asm:" rule such that there is a space between
+> "%(subtarget_asm_spec)" and "%{m2a:--isa=sh2a}".
+> 
+> Test your new specs file by adding "-specs=specs" to your command line.
+> If it works, copy the file to:
+>    <install-dir>/lib/gcc/sh-uclinux/4.4.1/specs
+> 
+> GCC should then pick up the new specs file automatically, instead of
+> using its builtin specs.
+> 
+> I've noted this as a bug to fix for the next release.
+> 
+> Hope that helps.
+> 
+> Andrew
+> 
+
+-- 
+Fabio Giovagnini
+
+Aurion s.r.l.
+P.I e C.F.
+00885711200
+skype: aurion.giovagnini
+Tel. +39.051.594.78.24
+Cell. +39.335.83.50.919
+www.aurion-tech.com
+
+
+From ams at codesourcery.com  Tue Jun 22 11:37:08 2010
+From: ams at codesourcery.com (Andrew Stubbs)
+Date: Tue, 22 Jun 2010 12:37:08 +0100
+Subject: Sorry Andrew, but what is this?
+In-Reply-To: <201006221239.08153.fabio.giovagnini@aurion-tech.com>
+References: <201006171641.17330.fabio.giovagnini@aurion-tech.com> <4C207245.7070902@codesourcery.com> <201006221239.08153.fabio.giovagnini@aurion-tech.com>
+Message-ID: <4C20A064.6050907@codesourcery.com>
+
+On 22/06/10 11:39, Fabio Giovagnini wrote:
+> sh-uclinux-gcc -o init -mfdpic -m2a -mb -Wl,-EB -Wl,-isa=sh2a init.o
+> /home/fgiovagnini/sh7203/sh7203-
+> uclinux-4.4-206/build/target/bin/../lib/gcc/sh-uclinux/4.4.1/../../../../sh-
+> uclinux/bin/ld: bad -rpath option
+> collect2: ld returned 1 exit status
+>
+> How can I solve?
+
+Run the compiler with -v to see what's wrong with the -rpath option. It 
+might be that some further specs modifications solve the problem.
+
+Andrew
+
+
+From fabio.giovagnini at aurion-tech.com  Tue Jun 22 12:44:00 2010
+From: fabio.giovagnini at aurion-tech.com (Fabio Giovagnini)
+Date: Tue, 22 Jun 2010 14:44:00 +0200
+Subject: Sorry Andrew, but what is this?
+In-Reply-To: <4C20A064.6050907@codesourcery.com>
+References: <201006171641.17330.fabio.giovagnini@aurion-tech.com> <201006221239.08153.fabio.giovagnini@aurion-tech.com> <4C20A064.6050907@codesourcery.com>
+Message-ID: <201006221444.01078.fabio.giovagnini@aurion-tech.com>
+
+This is the output with -v onto the command line
+
+sh-uclinux-gcc -o init.o -O2 -v -mfdpic -m2a -mb init.c
+Reading specs from /home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../lib/gcc/sh-uclinux/4.4.1/specs
+Target: sh-uclinux
+Configured with: /scratch/ams/fdpic-10q1/src/gcc-4.4-2010q1/configure --
+build=i686-pc-linux-gnu --host=i686-pc-linux-gnu --target=sh-uclinux --enable-
+threads --disable-libmudflap --disable-libssp --disable-libstdcxx-pch --enable-
+threads=posix --enable-fdpic --with-cpu=sh2a --with-multilib-list= --with-
+endian=big --enable-incomplete-targets --with-gnu-as --with-gnu-ld --with-
+specs='%{O2:%{!fno-remove-local-statics: -fremove-local-statics}} %{O*:%{O|O0|
+O1|O2|Os:;:%{!fno-remove-local-statics: -fremove-local-statics}}}' --enable-
+languages=c,c++ --disable-shared --disable-lto --with-pkgversion='Sourcery G++ 
+Lite 4.4-206' --with-bugurl=https://support.codesourcery.com/GNUToolchain/ --
+disable-nls --prefix=/opt/codesourcery --with-sysroot=/opt/codesourcery/sh-
+uclinux/libc --with-build-sysroot=/scratch/ams/fdpic-10q1/install/sh-
+uclinux/libc --with-gmp=/scratch/ams/fdpic-10q1/obj/host-libs-4.4-206-sh-
+uclinux-i686-pc-linux-gnu/usr --with-mpfr=/scratch/ams/fdpic-10q1/obj/host-
+libs-4.4-206-sh-uclinux-i686-pc-linux-gnu/usr --with-
+ppl=/scratch/ams/fdpic-10q1/obj/host-libs-4.4-206-sh-uclinux-i686-pc-linux-
+gnu/usr --with-host-libstdcxx='-static-libgcc -Wl,-Bstatic,-lstdc++,-Bdynamic 
+-lm' --with-cloog=/scratch/ams/fdpic-10q1/obj/host-libs-4.4-206-sh-uclinux-
+i686-pc-linux-gnu/usr --disable-libgomp --enable-poison-system-directories --
+with-build-time-tools=/scratch/ams/fdpic-10q1/install/sh-uclinux/bin --with-
+build-time-tools=/scratch/ams/fdpic-10q1/install/sh-uclinux/bin
+Thread model: posix
+gcc version 4.4.1 (Sourcery G++ Lite 4.4-206) 
+COLLECT_GCC_OPTIONS='-o' 'init.o' '-O2' '-v' '-mfdpic' '-m2a' '-mb' '-mfdpic' 
+'-fremove-local-statics'
+ /home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../libexec/gcc/sh-uclinux/4.4.1/cc1 -quiet -v 
+-iprefix /home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../lib/gcc/sh-uclinux/4.4.1/ -isysroot 
+/home/fgiovagnini/sh7203/sh7203-uclinux-4.4-206/build/target/bin/../sh-
+uclinux/libc init.c -quiet -dumpbase init.c -mfdpic -m2a -mb -mfdpic -auxbase 
+init -O2 -version -fremove-local-statics -o /tmp/ccYtxURZ.s
+ignoring nonexistent directory "/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../sh-uclinux/libc/usr/local/include"
+ignoring duplicate directory "/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../lib/gcc/../../lib/gcc/sh-
+uclinux/4.4.1/include"
+ignoring duplicate directory "/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../lib/gcc/../../lib/gcc/sh-
+uclinux/4.4.1/include-fixed"
+ignoring duplicate directory "/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../lib/gcc/../../lib/gcc/sh-
+uclinux/4.4.1/../../../../sh-uclinux/include"
+#include "..." search starts here:
+#include <...> search starts here:
+ /home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../lib/gcc/sh-uclinux/4.4.1/include
+ /home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../lib/gcc/sh-uclinux/4.4.1/include-fixed
+ /home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../lib/gcc/sh-uclinux/4.4.1/../../../../sh-
+uclinux/include
+ /home/fgiovagnini/sh7203/sh7203-uclinux-4.4-206/build/target/bin/../sh-
+uclinux/libc/usr/include
+End of search list.
+GNU C (Sourcery G++ Lite 4.4-206) version 4.4.1 (sh-uclinux)
+	compiled by GNU C version 4.3.2, GMP version 4.3.1, MPFR version 2.4.2.
+GGC heuristics: --param ggc-min-expand=98 --param ggc-min-heapsize=128136
+Compiler executable checksum: 7533367304381375eebc3a912e01bf26
+COLLECT_GCC_OPTIONS='-o' 'init.o' '-O2' '-v' '-mfdpic' '-m2a' '-mb' '-mfdpic' 
+'-fremove-local-statics'
+ /home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../lib/gcc/sh-uclinux/4.4.1/../../../../sh-
+uclinux/bin/as -v -big --fdpic --isa=sh2a -o /tmp/ccCLB7xk.o /tmp/ccYtxURZ.s
+GNU assembler version 2.19.51 (sh-uclinux) using BFD version (Sourcery G++ 
+Lite 4.4-206) 2.19.51.20090709
+COMPILER_PATH=/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../libexec/gcc/sh-
+uclinux/4.4.1/:/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../libexec/gcc/:/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../lib/gcc/sh-uclinux/4.4.1/../../../../sh-
+uclinux/bin/
+LIBRARY_PATH=/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../lib/gcc/sh-
+uclinux/4.4.1/:/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../lib/gcc/:/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../lib/gcc/sh-uclinux/4.4.1/../../../../sh-
+uclinux/lib/:/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../sh-
+uclinux/libc/lib/:/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../sh-uclinux/libc/usr/lib/
+COLLECT_GCC_OPTIONS='-o' 'init.o' '-O2' '-v' '-mfdpic' '-m2a' '-mb' '-mfdpic' 
+'-fremove-local-statics'
+ /home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../libexec/gcc/sh-uclinux/4.4.1/collect2 --
+sysroot=/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../sh-uclinux/libc --eh-frame-hdr -m shelf_fd 
+-dynamic-linker /lib/ld-uClibc.so.0 -o init.o /home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../sh-uclinux/libc/usr/lib/crt1.o 
+/home/fgiovagnini/sh7203/sh7203-uclinux-4.4-206/build/target/bin/../sh-
+uclinux/libc/usr/lib/crti.o /home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../lib/gcc/sh-uclinux/4.4.1/crtbegin.o 
+/home/fgiovagnini/sh7203/sh7203-uclinux-4.4-206/build/target/bin/../sh-
+uclinux/libc/usr/lib/crtreloc.o -L/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../lib/gcc/sh-uclinux/4.4.1 -
+L/home/fgiovagnini/sh7203/sh7203-uclinux-4.4-206/build/target/bin/../lib/gcc -
+L/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../lib/gcc/sh-uclinux/4.4.1/../../../../sh-
+uclinux/lib -L/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../sh-uclinux/libc/lib -
+L/home/fgiovagnini/sh7203/sh7203-uclinux-4.4-206/build/target/bin/../sh-
+uclinux/libc/usr/lib /tmp/ccCLB7xk.o -lgcc -lgcc-Os-4-200 -lc -lgcc -lgcc-
+Os-4-200 /home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../lib/gcc/sh-uclinux/4.4.1/crtend.o 
+/home/fgiovagnini/sh7203/sh7203-uclinux-4.4-206/build/target/bin/../sh-
+uclinux/libc/usr/lib/crtn.o
+sh-uclinux-gcc -o init -v -mfdpic -m2a -mb -Wl,-EB -Wl,-isa=sh2a init.o
+Reading specs from /home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../lib/gcc/sh-uclinux/4.4.1/specs
+Target: sh-uclinux
+Configured with: /scratch/ams/fdpic-10q1/src/gcc-4.4-2010q1/configure --
+build=i686-pc-linux-gnu --host=i686-pc-linux-gnu --target=sh-uclinux --enable-
+threads --disable-libmudflap --disable-libssp --disable-libstdcxx-pch --enable-
+threads=posix --enable-fdpic --with-cpu=sh2a --with-multilib-list= --with-
+endian=big --enable-incomplete-targets --with-gnu-as --with-gnu-ld --with-
+specs='%{O2:%{!fno-remove-local-statics: -fremove-local-statics}} %{O*:%{O|O0|
+O1|O2|Os:;:%{!fno-remove-local-statics: -fremove-local-statics}}}' --enable-
+languages=c,c++ --disable-shared --disable-lto --with-pkgversion='Sourcery G++ 
+Lite 4.4-206' --with-bugurl=https://support.codesourcery.com/GNUToolchain/ --
+disable-nls --prefix=/opt/codesourcery --with-sysroot=/opt/codesourcery/sh-
+uclinux/libc --with-build-sysroot=/scratch/ams/fdpic-10q1/install/sh-
+uclinux/libc --with-gmp=/scratch/ams/fdpic-10q1/obj/host-libs-4.4-206-sh-
+uclinux-i686-pc-linux-gnu/usr --with-mpfr=/scratch/ams/fdpic-10q1/obj/host-
+libs-4.4-206-sh-uclinux-i686-pc-linux-gnu/usr --with-
+ppl=/scratch/ams/fdpic-10q1/obj/host-libs-4.4-206-sh-uclinux-i686-pc-linux-
+gnu/usr --with-host-libstdcxx='-static-libgcc -Wl,-Bstatic,-lstdc++,-Bdynamic 
+-lm' --with-cloog=/scratch/ams/fdpic-10q1/obj/host-libs-4.4-206-sh-uclinux-
+i686-pc-linux-gnu/usr --disable-libgomp --enable-poison-system-directories --
+with-build-time-tools=/scratch/ams/fdpic-10q1/install/sh-uclinux/bin --with-
+build-time-tools=/scratch/ams/fdpic-10q1/install/sh-uclinux/bin
+Thread model: posix
+gcc version 4.4.1 (Sourcery G++ Lite 4.4-206) 
+COMPILER_PATH=/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../libexec/gcc/sh-
+uclinux/4.4.1/:/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../libexec/gcc/:/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../lib/gcc/sh-uclinux/4.4.1/../../../../sh-
+uclinux/bin/
+LIBRARY_PATH=/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../lib/gcc/sh-
+uclinux/4.4.1/:/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../lib/gcc/:/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../lib/gcc/sh-uclinux/4.4.1/../../../../sh-
+uclinux/lib/:/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../sh-
+uclinux/libc/lib/:/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../sh-uclinux/libc/usr/lib/
+COLLECT_GCC_OPTIONS='-o' 'init' '-v' '-mfdpic' '-m2a' '-mb' '-mfdpic'
+ /home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../libexec/gcc/sh-uclinux/4.4.1/collect2 --
+sysroot=/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../sh-uclinux/libc --eh-frame-hdr -m shelf_fd 
+-dynamic-linker /lib/ld-uClibc.so.0 -o init /home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../sh-uclinux/libc/usr/lib/crt1.o 
+/home/fgiovagnini/sh7203/sh7203-uclinux-4.4-206/build/target/bin/../sh-
+uclinux/libc/usr/lib/crti.o /home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../lib/gcc/sh-uclinux/4.4.1/crtbegin.o 
+/home/fgiovagnini/sh7203/sh7203-uclinux-4.4-206/build/target/bin/../sh-
+uclinux/libc/usr/lib/crtreloc.o -L/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../lib/gcc/sh-uclinux/4.4.1 -
+L/home/fgiovagnini/sh7203/sh7203-uclinux-4.4-206/build/target/bin/../lib/gcc -
+L/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../lib/gcc/sh-uclinux/4.4.1/../../../../sh-
+uclinux/lib -L/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../sh-uclinux/libc/lib -
+L/home/fgiovagnini/sh7203/sh7203-uclinux-4.4-206/build/target/bin/../sh-
+uclinux/libc/usr/lib -EB -isa=sh2a init.o -lgcc -lgcc-Os-4-200 -lc -lgcc -
+lgcc-Os-4-200 /home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../lib/gcc/sh-uclinux/4.4.1/crtend.o 
+/home/fgiovagnini/sh7203/sh7203-uclinux-4.4-206/build/target/bin/../sh-
+uclinux/libc/usr/lib/crtn.o
+/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../lib/gcc/sh-uclinux/4.4.1/../../../../sh-
+uclinux/bin/ld: bad -rpath option
+collect2: ld returned 1 exit status
+make[1]: *** [init] Errore 1
+make[1]: uscita dalla directory ?/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/init?
+make: *** [build] Errore 2
+fgiovagnini at aurio01:~/sh7203/sh7203-uclinux-4.4-206/build$ 
+
+
+In data marted? 22 giugno 2010 13:37:08, Andrew Stubbs ha scritto:
+: > On 22/06/10 11:39, Fabio Giovagnini wrote:
+> > sh-uclinux-gcc -o init -mfdpic -m2a -mb -Wl,-EB -Wl,-isa=sh2a init.o
+> > /home/fgiovagnini/sh7203/sh7203-
+> > uclinux-4.4-206/build/target/bin/../lib/gcc/sh-uclinux/4.4.1/../../../../
+> >sh- uclinux/bin/ld: bad -rpath option
+> > collect2: ld returned 1 exit status
+> >
+> > How can I solve?
+> 
+> Run the compiler with -v to see what's wrong with the -rpath option. It
+> might be that some further specs modifications solve the problem.
+> 
+> Andrew
+> 
+
+-- 
+Fabio Giovagnini
+
+Aurion s.r.l.
+P.I e C.F.
+00885711200
+skype: aurion.giovagnini
+Tel. +39.051.594.78.24
+Cell. +39.335.83.50.919
+www.aurion-tech.com
+
+
+From ams at codesourcery.com  Tue Jun 22 13:01:57 2010
+From: ams at codesourcery.com (Andrew Stubbs)
+Date: Tue, 22 Jun 2010 14:01:57 +0100
+Subject: Sorry Andrew, but what is this?
+In-Reply-To: <201006221444.01078.fabio.giovagnini@aurion-tech.com>
+References: <201006171641.17330.fabio.giovagnini@aurion-tech.com> <201006221239.08153.fabio.giovagnini@aurion-tech.com> <4C20A064.6050907@codesourcery.com> <201006221444.01078.fabio.giovagnini@aurion-tech.com>
+Message-ID: <4C20B445.8040702@codesourcery.com>
+
+On 22/06/10 13:44, Fabio Giovagnini wrote:
+> This is the output with -v onto the command line
+
+Hmm, that doesn't show an -rpath option, but then "-v" only reveals the 
+collect2 command, which is usually much the same as ld. Just to be sure, 
+try "-Wl,-v" which should reveal the ld command.
+
+I'm not totally sure, but I think the "rpath" error message could be 
+referring to the --sysroot option (which implies -rpath-link, at least). 
+Does that path look ok to you?
+
+If you remove the -m2a option, and --isa=sh2a perhaps also (both are 
+redundant - SH-2A is the default), does that fix anything? What about if 
+you delete your new "specs" file?
+
+Andrew
+
+
+From fabio.giovagnini at aurion-tech.com  Tue Jun 22 13:21:36 2010
+From: fabio.giovagnini at aurion-tech.com (Fabio Giovagnini)
+Date: Tue, 22 Jun 2010 15:21:36 +0200
+Subject: Sorry Andrew, but what is this?
+In-Reply-To: <4C20B445.8040702@codesourcery.com>
+References: <201006171641.17330.fabio.giovagnini@aurion-tech.com> <201006221444.01078.fabio.giovagnini@aurion-tech.com> <4C20B445.8040702@codesourcery.com>
+Message-ID: <201006221521.37081.fabio.giovagnini@aurion-tech.com>
+
+Thios is with -Wl,-v
+
+fgiovagnini at aurio01:~/sh7203/sh7203-uclinux-4.4-206/build$ make -f 
+Makefile.init clean
+make -C /home/fgiovagnini/sh7203/sh7203-uclinux-4.4-206/build/../init clean
+make[1]: ingresso nella directory ?/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/init?
+rm -f init.o
+rm -f init
+make[1]: uscita dalla directory ?/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/init?
+fgiovagnini at aurio01:~/sh7203/sh7203-uclinux-4.4-206/build$ make -f 
+Makefile.init 
+make -C /home/fgiovagnini/sh7203/sh7203-uclinux-4.4-206/build/../init
+make[1]: ingresso nella directory ?/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/init?
+sh-uclinux-gcc -o init.o -O2 -v -mfdpic -mb init.c
+Reading specs from /home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../lib/gcc/sh-uclinux/4.4.1/specs
+Target: sh-uclinux
+Configured with: /scratch/ams/fdpic-10q1/src/gcc-4.4-2010q1/configure --
+build=i686-pc-linux-gnu --host=i686-pc-linux-gnu --target=sh-uclinux --enable-
+threads --disable-libmudflap --disable-libssp --disable-libstdcxx-pch --enable-
+threads=posix --enable-fdpic --with-cpu=sh2a --with-multilib-list= --with-
+endian=big --enable-incomplete-targets --with-gnu-as --with-gnu-ld --with-
+specs='%{O2:%{!fno-remove-local-statics: -fremove-local-statics}} %{O*:%{O|O0|
+O1|O2|Os:;:%{!fno-remove-local-statics: -fremove-local-statics}}}' --enable-
+languages=c,c++ --disable-shared --disable-lto --with-pkgversion='Sourcery G++ 
+Lite 4.4-206' --with-bugurl=https://support.codesourcery.com/GNUToolchain/ --
+disable-nls --prefix=/opt/codesourcery --with-sysroot=/opt/codesourcery/sh-
+uclinux/libc --with-build-sysroot=/scratch/ams/fdpic-10q1/install/sh-
+uclinux/libc --with-gmp=/scratch/ams/fdpic-10q1/obj/host-libs-4.4-206-sh-
+uclinux-i686-pc-linux-gnu/usr --with-mpfr=/scratch/ams/fdpic-10q1/obj/host-
+libs-4.4-206-sh-uclinux-i686-pc-linux-gnu/usr --with-
+ppl=/scratch/ams/fdpic-10q1/obj/host-libs-4.4-206-sh-uclinux-i686-pc-linux-
+gnu/usr --with-host-libstdcxx='-static-libgcc -Wl,-Bstatic,-lstdc++,-Bdynamic 
+-lm' --with-cloog=/scratch/ams/fdpic-10q1/obj/host-libs-4.4-206-sh-uclinux-
+i686-pc-linux-gnu/usr --disable-libgomp --enable-poison-system-directories --
+with-build-time-tools=/scratch/ams/fdpic-10q1/install/sh-uclinux/bin --with-
+build-time-tools=/scratch/ams/fdpic-10q1/install/sh-uclinux/bin
+Thread model: posix
+gcc version 4.4.1 (Sourcery G++ Lite 4.4-206) 
+COLLECT_GCC_OPTIONS='-o' 'init.o' '-O2' '-v' '-mfdpic' '-mb' '-mfdpic' '-
+fremove-local-statics'
+ /home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../libexec/gcc/sh-uclinux/4.4.1/cc1 -quiet -v 
+-iprefix /home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../lib/gcc/sh-uclinux/4.4.1/ -isysroot 
+/home/fgiovagnini/sh7203/sh7203-uclinux-4.4-206/build/target/bin/../sh-
+uclinux/libc init.c -quiet -dumpbase init.c -mfdpic -mb -mfdpic -auxbase init 
+-O2 -version -fremove-local-statics -o /tmp/cc1XPOKA.s
+ignoring nonexistent directory "/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../sh-uclinux/libc/usr/local/include"
+ignoring duplicate directory "/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../lib/gcc/../../lib/gcc/sh-
+uclinux/4.4.1/include"
+ignoring duplicate directory "/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../lib/gcc/../../lib/gcc/sh-
+uclinux/4.4.1/include-fixed"
+ignoring duplicate directory "/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../lib/gcc/../../lib/gcc/sh-
+uclinux/4.4.1/../../../../sh-uclinux/include"
+#include "..." search starts here:
+#include <...> search starts here:
+ /home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../lib/gcc/sh-uclinux/4.4.1/include
+ /home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../lib/gcc/sh-uclinux/4.4.1/include-fixed
+ /home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../lib/gcc/sh-uclinux/4.4.1/../../../../sh-
+uclinux/include
+ /home/fgiovagnini/sh7203/sh7203-uclinux-4.4-206/build/target/bin/../sh-
+uclinux/libc/usr/include
+End of search list.
+GNU C (Sourcery G++ Lite 4.4-206) version 4.4.1 (sh-uclinux)
+	compiled by GNU C version 4.3.2, GMP version 4.3.1, MPFR version 2.4.2.
+GGC heuristics: --param ggc-min-expand=98 --param ggc-min-heapsize=128136
+Compiler executable checksum: 7533367304381375eebc3a912e01bf26
+COLLECT_GCC_OPTIONS='-o' 'init.o' '-O2' '-v' '-mfdpic' '-mb' '-mfdpic' '-
+fremove-local-statics'
+ /home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../lib/gcc/sh-uclinux/4.4.1/../../../../sh-
+uclinux/bin/as -v -big --fdpic -o /tmp/cciXMwQ8.o /tmp/cc1XPOKA.s
+GNU assembler version 2.19.51 (sh-uclinux) using BFD version (Sourcery G++ 
+Lite 4.4-206) 2.19.51.20090709
+COMPILER_PATH=/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../libexec/gcc/sh-
+uclinux/4.4.1/:/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../libexec/gcc/:/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../lib/gcc/sh-uclinux/4.4.1/../../../../sh-
+uclinux/bin/
+LIBRARY_PATH=/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../lib/gcc/sh-
+uclinux/4.4.1/:/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../lib/gcc/:/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../lib/gcc/sh-uclinux/4.4.1/../../../../sh-
+uclinux/lib/:/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../sh-
+uclinux/libc/lib/:/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../sh-uclinux/libc/usr/lib/
+COLLECT_GCC_OPTIONS='-o' 'init.o' '-O2' '-v' '-mfdpic' '-mb' '-mfdpic' '-
+fremove-local-statics'
+ /home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../libexec/gcc/sh-uclinux/4.4.1/collect2 --
+sysroot=/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../sh-uclinux/libc --eh-frame-hdr -m shelf_fd 
+-dynamic-linker /lib/ld-uClibc.so.0 -o init.o /home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../sh-uclinux/libc/usr/lib/crt1.o 
+/home/fgiovagnini/sh7203/sh7203-uclinux-4.4-206/build/target/bin/../sh-
+uclinux/libc/usr/lib/crti.o /home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../lib/gcc/sh-uclinux/4.4.1/crtbegin.o 
+/home/fgiovagnini/sh7203/sh7203-uclinux-4.4-206/build/target/bin/../sh-
+uclinux/libc/usr/lib/crtreloc.o -L/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../lib/gcc/sh-uclinux/4.4.1 -
+L/home/fgiovagnini/sh7203/sh7203-uclinux-4.4-206/build/target/bin/../lib/gcc -
+L/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../lib/gcc/sh-uclinux/4.4.1/../../../../sh-
+uclinux/lib -L/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../sh-uclinux/libc/lib -
+L/home/fgiovagnini/sh7203/sh7203-uclinux-4.4-206/build/target/bin/../sh-
+uclinux/libc/usr/lib /tmp/cciXMwQ8.o -lgcc -lgcc-Os-4-200 -lc -lgcc -lgcc-
+Os-4-200 /home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../lib/gcc/sh-uclinux/4.4.1/crtend.o 
+/home/fgiovagnini/sh7203/sh7203-uclinux-4.4-206/build/target/bin/../sh-
+uclinux/libc/usr/lib/crtn.o
+sh-uclinux-gcc -o init -v -mfdpic -mb -Wl,-EB -Wl,-v init.o
+Reading specs from /home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../lib/gcc/sh-uclinux/4.4.1/specs
+Target: sh-uclinux
+Configured with: /scratch/ams/fdpic-10q1/src/gcc-4.4-2010q1/configure --
+build=i686-pc-linux-gnu --host=i686-pc-linux-gnu --target=sh-uclinux --enable-
+threads --disable-libmudflap --disable-libssp --disable-libstdcxx-pch --enable-
+threads=posix --enable-fdpic --with-cpu=sh2a --with-multilib-list= --with-
+endian=big --enable-incomplete-targets --with-gnu-as --with-gnu-ld --with-
+specs='%{O2:%{!fno-remove-local-statics: -fremove-local-statics}} %{O*:%{O|O0|
+O1|O2|Os:;:%{!fno-remove-local-statics: -fremove-local-statics}}}' --enable-
+languages=c,c++ --disable-shared --disable-lto --with-pkgversion='Sourcery G++ 
+Lite 4.4-206' --with-bugurl=https://support.codesourcery.com/GNUToolchain/ --
+disable-nls --prefix=/opt/codesourcery --with-sysroot=/opt/codesourcery/sh-
+uclinux/libc --with-build-sysroot=/scratch/ams/fdpic-10q1/install/sh-
+uclinux/libc --with-gmp=/scratch/ams/fdpic-10q1/obj/host-libs-4.4-206-sh-
+uclinux-i686-pc-linux-gnu/usr --with-mpfr=/scratch/ams/fdpic-10q1/obj/host-
+libs-4.4-206-sh-uclinux-i686-pc-linux-gnu/usr --with-
+ppl=/scratch/ams/fdpic-10q1/obj/host-libs-4.4-206-sh-uclinux-i686-pc-linux-
+gnu/usr --with-host-libstdcxx='-static-libgcc -Wl,-Bstatic,-lstdc++,-Bdynamic 
+-lm' --with-cloog=/scratch/ams/fdpic-10q1/obj/host-libs-4.4-206-sh-uclinux-
+i686-pc-linux-gnu/usr --disable-libgomp --enable-poison-system-directories --
+with-build-time-tools=/scratch/ams/fdpic-10q1/install/sh-uclinux/bin --with-
+build-time-tools=/scratch/ams/fdpic-10q1/install/sh-uclinux/bin
+Thread model: posix
+gcc version 4.4.1 (Sourcery G++ Lite 4.4-206) 
+COMPILER_PATH=/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../libexec/gcc/sh-
+uclinux/4.4.1/:/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../libexec/gcc/:/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../lib/gcc/sh-uclinux/4.4.1/../../../../sh-
+uclinux/bin/
+LIBRARY_PATH=/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../lib/gcc/sh-
+uclinux/4.4.1/:/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../lib/gcc/:/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../lib/gcc/sh-uclinux/4.4.1/../../../../sh-
+uclinux/lib/:/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../sh-
+uclinux/libc/lib/:/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../sh-uclinux/libc/usr/lib/
+COLLECT_GCC_OPTIONS='-o' 'init' '-v' '-mfdpic' '-mb' '-mfdpic'
+ /home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../libexec/gcc/sh-uclinux/4.4.1/collect2 --
+sysroot=/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../sh-uclinux/libc --eh-frame-hdr -m shelf_fd 
+-dynamic-linker /lib/ld-uClibc.so.0 -o init /home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../sh-uclinux/libc/usr/lib/crt1.o 
+/home/fgiovagnini/sh7203/sh7203-uclinux-4.4-206/build/target/bin/../sh-
+uclinux/libc/usr/lib/crti.o /home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../lib/gcc/sh-uclinux/4.4.1/crtbegin.o 
+/home/fgiovagnini/sh7203/sh7203-uclinux-4.4-206/build/target/bin/../sh-
+uclinux/libc/usr/lib/crtreloc.o -L/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../lib/gcc/sh-uclinux/4.4.1 -
+L/home/fgiovagnini/sh7203/sh7203-uclinux-4.4-206/build/target/bin/../lib/gcc -
+L/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../lib/gcc/sh-uclinux/4.4.1/../../../../sh-
+uclinux/lib -L/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../sh-uclinux/libc/lib -
+L/home/fgiovagnini/sh7203/sh7203-uclinux-4.4-206/build/target/bin/../sh-
+uclinux/libc/usr/lib -EB -v init.o -lgcc -lgcc-Os-4-200 -lc -lgcc -lgcc-
+Os-4-200 /home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../lib/gcc/sh-uclinux/4.4.1/crtend.o 
+/home/fgiovagnini/sh7203/sh7203-uclinux-4.4-206/build/target/bin/../sh-
+uclinux/libc/usr/lib/crtn.o
+collect2 version 4.4.1 (Hitachi SH)
+/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../lib/gcc/sh-uclinux/4.4.1/../../../../sh-
+uclinux/bin/ld --sysroot=/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../sh-uclinux/libc --eh-frame-hdr -m shelf_fd 
+-dynamic-linker /lib/ld-uClibc.so.0 -o init /home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../sh-uclinux/libc/usr/lib/crt1.o 
+/home/fgiovagnini/sh7203/sh7203-uclinux-4.4-206/build/target/bin/../sh-
+uclinux/libc/usr/lib/crti.o /home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../lib/gcc/sh-uclinux/4.4.1/crtbegin.o 
+/home/fgiovagnini/sh7203/sh7203-uclinux-4.4-206/build/target/bin/../sh-
+uclinux/libc/usr/lib/crtreloc.o -L/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../lib/gcc/sh-uclinux/4.4.1 -
+L/home/fgiovagnini/sh7203/sh7203-uclinux-4.4-206/build/target/bin/../lib/gcc -
+L/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../lib/gcc/sh-uclinux/4.4.1/../../../../sh-
+uclinux/lib -L/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../sh-uclinux/libc/lib -
+L/home/fgiovagnini/sh7203/sh7203-uclinux-4.4-206/build/target/bin/../sh-
+uclinux/libc/usr/lib -EB -v init.o -lgcc -lgcc-Os-4-200 -lc -lgcc -lgcc-
+Os-4-200 /home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../lib/gcc/sh-uclinux/4.4.1/crtend.o 
+/home/fgiovagnini/sh7203/sh7203-uclinux-4.4-206/build/target/bin/../sh-
+uclinux/libc/usr/lib/crtn.o
+GNU ld (Sourcery G++ Lite 4.4-206) 2.19.51.20090709
+init.o: In function `__data_start':
+(.data+0x4): multiple definition of `__dso_handle'
+/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../lib/gcc/sh-uclinux/4.4.1/crtbegin.o:
+(.data+0x0): first defined here
+init.o: In function `_init':
+(.init+0x0): multiple definition of `_init'
+/home/fgiovagnini/sh7203/sh7203-uclinux-4.4-206/build/target/bin/../sh-
+uclinux/libc/usr/lib/crti.o:crti.S:(.init+0x0): first defined here
+init.o: In function `_start':
+(.text+0x0): multiple definition of `_start'
+/home/fgiovagnini/sh7203/sh7203-uclinux-4.4-206/build/target/bin/../sh-
+uclinux/libc/usr/lib/crt1.o:(.text+0x0): first defined here
+init.o: In function `__self_reloc':
+(.text+0x1b0): multiple definition of `__self_reloc'
+/home/fgiovagnini/sh7203/sh7203-uclinux-4.4-206/build/target/bin/../sh-
+uclinux/libc/usr/lib/crtreloc.o:crtreloc.c:(.text+0x0): first defined here
+init.o: In function `_fini':
+(.fini+0x0): multiple definition of `_fini'
+/home/fgiovagnini/sh7203/sh7203-uclinux-4.4-206/build/target/bin/../sh-
+uclinux/libc/usr/lib/crti.o:crti.S:(.fini+0x0): first defined here
+init.o: In function `__data_start':
+(.data+0x0): multiple definition of `__data_start'
+/home/fgiovagnini/sh7203/sh7203-uclinux-4.4-206/build/target/bin/../sh-
+uclinux/libc/usr/lib/crt1.o:(.data+0x0): first defined here
+/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/build/target/bin/../lib/gcc/sh-uclinux/4.4.1/crtend.o:
+(.dtors+0x0): multiple definition of `__DTOR_END__'
+init.o:(.dtors+0x4): first defined here
+collect2: ld returned 1 exit status
+make[1]: *** [init] Errore 1
+make[1]: uscita dalla directory ?/home/fgiovagnini/sh7203/sh7203-
+uclinux-4.4-206/init?
+make: *** [build] Errore 2
+
+
+
+In data marted? 22 giugno 2010 15:01:57, Andrew Stubbs ha scritto:
+: > On 22/06/10 13:44, Fabio Giovagnini wrote:
+> > This is the output with -v onto the command line
+> 
+> Hmm, that doesn't show an -rpath option, but then "-v" only reveals the
+> collect2 command, which is usually much the same as ld. Just to be sure,
+> try "-Wl,-v" which should reveal the ld command.
+> 
+> I'm not totally sure, but I think the "rpath" error message could be
+> referring to the --sysroot option (which implies -rpath-link, at least).
+> Does that path look ok to you?
+> 
+> If you remove the -m2a option, and --isa=sh2a perhaps also (both are
+> redundant - SH-2A is the default), does that fix anything? What about if
+> you delete your new "specs" file?
+> 
+> Andrew
+> 
+
+-- 
+Fabio Giovagnini
+
+Aurion s.r.l.
+P.I e C.F.
+00885711200
+skype: aurion.giovagnini
+Tel. +39.051.594.78.24
+Cell. +39.335.83.50.919
+www.aurion-tech.com
+
+
+From ams at codesourcery.com  Tue Jun 22 13:51:52 2010
+From: ams at codesourcery.com (Andrew Stubbs)
+Date: Tue, 22 Jun 2010 14:51:52 +0100
+Subject: Sorry Andrew, but what is this?
+In-Reply-To: <201006221521.37081.fabio.giovagnini@aurion-tech.com>
+References: <201006171641.17330.fabio.giovagnini@aurion-tech.com> <201006221444.01078.fabio.giovagnini@aurion-tech.com> <4C20B445.8040702@codesourcery.com> <201006221521.37081.fabio.giovagnini@aurion-tech.com>
+Message-ID: <4C20BFF8.3030905@codesourcery.com>
+
+On 22/06/10 14:21, Fabio Giovagnini wrote:
+> Thios is with -Wl,-v
+
+So, your -rpath issue has gone away?
+
+I can't reproduce the issue locally, but it seems to be related to the 
+-m2a or --isa=sh2a options. Those ought to be benign, so I don't know 
+what's wrong.
+
+Whatever it is, you seem to have a suitable work-around. :)
+
+Please try comparing the "-v" output and see what's different between 
+the different commands. If you get to the bottom of it, please submit a 
+bug at support.codesourcery.com.
+
+Thanks
+
+Andrew
+
+
+From fabio.giovagnini at aurion-tech.com  Wed Jun 23 05:11:48 2010
+From: fabio.giovagnini at aurion-tech.com (Fabio Giovagnini)
+Date: Wed, 23 Jun 2010 07:11:48 +0200
+Subject: Sorry Andrew, but what is this?
+In-Reply-To: <4C20BFF8.3030905@codesourcery.com>
+References: <201006171641.17330.fabio.giovagnini@aurion-tech.com> <201006221521.37081.fabio.giovagnini@aurion-tech.com> <4C20BFF8.3030905@codesourcery.com>
+Message-ID: <201006230711.48176.fabio.giovagnini@aurion-tech.com>
+
+Yes, it seems.
+I'll go deeper into the analysis and let you know.
+
+Can I send you my example project so you can try the seame build tree of mine?
+
+
+
+
+In data marted? 22 giugno 2010 15:51:52, Andrew Stubbs ha scritto:
+: > On 22/06/10 14:21, Fabio Giovagnini wrote:
+> > Thios is with -Wl,-v
+> 
+> So, your -rpath issue has gone away?
+> 
+> I can't reproduce the issue locally, but it seems to be related to the
+> -m2a or --isa=sh2a options. Those ought to be benign, so I don't know
+> what's wrong.
+> 
+> Whatever it is, you seem to have a suitable work-around. :)
+> 
+> Please try comparing the "-v" output and see what's different between
+> the different commands. If you get to the bottom of it, please submit a
+> bug at support.codesourcery.com.
+> 
+> Thanks
+> 
+> Andrew
+> 
+
+-- 
+Fabio Giovagnini
+
+Aurion s.r.l.
+P.I e C.F.
+00885711200
+skype: aurion.giovagnini
+Tel. +39.051.594.78.24
+Cell. +39.335.83.50.919
+www.aurion-tech.com
+
+
+From ams at codesourcery.com  Wed Jun 23 06:47:15 2010
+From: ams at codesourcery.com (Andrew Stubbs)
+Date: Wed, 23 Jun 2010 07:47:15 +0100
+Subject: Sorry Andrew, but what is this?
+In-Reply-To: <201006230711.48176.fabio.giovagnini@aurion-tech.com>
+References: <201006171641.17330.fabio.giovagnini@aurion-tech.com> <201006221521.37081.fabio.giovagnini@aurion-tech.com> <4C20BFF8.3030905@codesourcery.com> <201006230711.48176.fabio.giovagnini@aurion-tech.com>
+Message-ID: <4C21ADF3.6060500@codesourcery.com>
+
+If you can find one, please submit a minimal example of the bug into a 
+new bug at https://support.codesourcery.com. If your project is only 
+small, then that's probably fine.
+
+Thanks
+
+Andrew
+
+On 23/06/10 06:11, Fabio Giovagnini wrote:
+> Yes, it seems.
+> I'll go deeper into the analysis and let you know.
+>
+> Can I send you my example project so you can try the seame build tree of mine?
+>
+>
+>
+>
+> In data marted? 22 giugno 2010 15:51:52, Andrew Stubbs ha scritto:
+> :>  On 22/06/10 14:21, Fabio Giovagnini wrote:
+>>> Thios is with -Wl,-v
+>>
+>> So, your -rpath issue has gone away?
+>>
+>> I can't reproduce the issue locally, but it seems to be related to the
+>> -m2a or --isa=sh2a options. Those ought to be benign, so I don't know
+>> what's wrong.
+>>
+>> Whatever it is, you seem to have a suitable work-around. :)
+>>
+>> Please try comparing the "-v" output and see what's different between
+>> the different commands. If you get to the bottom of it, please submit a
+>> bug at support.codesourcery.com.
+>>
+>> Thanks
+>>
+>> Andrew
+>>
+>
+
+
+
+From fabio.giovagnini at aurion-tech.com  Wed Jun 30 18:35:27 2010
+From: fabio.giovagnini at aurion-tech.com (Fabio Giovagnini)
+Date: Wed, 30 Jun 2010 20:35:27 +0200
+Subject: Sorry Andrew, but what is this?
+In-Reply-To: <4C21ADF3.6060500@codesourcery.com>
+References: <201006171641.17330.fabio.giovagnini@aurion-tech.com> <201006230711.48176.fabio.giovagnini@aurion-tech.com> <4C21ADF3.6060500@codesourcery.com>
+Message-ID: <201006302035.27484.fabio.giovagnini@aurion-tech.com>
+
+ok Andrew.
+I can build my userspace application successfully.
+So i'm confident the toolchain is nicely working.
+Thanks a lot for your support and feel free to ask me to be a tester for 
+future release if you think this could be usefull to the community
+
+Cheers
+
+
+
+In data mercoled? 23 giugno 2010 08:47:15, Andrew Stubbs ha scritto:
+: > If you can find one, please submit a minimal example of the bug into a
+> new bug at https://support.codesourcery.com. If your project is only
+> small, then that's probably fine.
+> 
+> Thanks
+> 
+> Andrew
+> 
+> On 23/06/10 06:11, Fabio Giovagnini wrote:
+> > Yes, it seems.
+> > I'll go deeper into the analysis and let you know.
+> >
+> > Can I send you my example project so you can try the seame build tree of
+> > mine?
+> >
+> > In data marted? 22 giugno 2010 15:51:52, Andrew Stubbs ha scritto:
+> > :>  On 22/06/10 14:21, Fabio Giovagnini wrote:
+> >>>
+> >>> Thios is with -Wl,-v
+> >>
+> >> So, your -rpath issue has gone away?
+> >>
+> >> I can't reproduce the issue locally, but it seems to be related to the
+> >> -m2a or --isa=sh2a options. Those ought to be benign, so I don't know
+> >> what's wrong.
+> >>
+> >> Whatever it is, you seem to have a suitable work-around. :)
+> >>
+> >> Please try comparing the "-v" output and see what's different between
+> >> the different commands. If you get to the bottom of it, please submit a
+> >> bug at support.codesourcery.com.
+> >>
+> >> Thanks
+> >>
+> >> Andrew
+> 
+
+-- 
+Fabio Giovagnini
+
+Aurion s.r.l.
+P.I e C.F.
+00885711200
+skype: aurion.giovagnini
+Tel. +39.051.594.78.24
+Cell. +39.335.83.50.919
+www.aurion-tech.com
+
+
+From fabio.giovagnini at aurion-tech.com  Wed Jun 30 19:07:33 2010
+From: fabio.giovagnini at aurion-tech.com (Fabio Giovagnini)
+Date: Wed, 30 Jun 2010 21:07:33 +0200
+Subject: hi guys,
+Message-ID: <201006302107.33431.fabio.giovagnini@aurion-tech.com>
+
+Did any of you try to build u-boot-sh using the toolchain
+uclinux-4.4-206/
+
+Thanks a lot
+
+-- 
+Fabio Giovagnini
+
+Aurion s.r.l.
+P.I e C.F.
+00885711200
+skype: aurion.giovagnini
+Tel. +39.051.594.78.24
+Cell. +39.335.83.50.919
+www.aurion-tech.com
+
+

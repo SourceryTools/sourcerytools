@@ -1,0 +1,170 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [vsipl++] Matlab IO Patch
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20Matlab%20IO%20Patch&In-Reply-To=%3C447650E0.60003%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000472.html">
+   <LINK REL="Next"  HREF="000474.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[vsipl++] Matlab IO Patch</H1>
+    <B>Stefan Seefeld</B> 
+    <A HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20Matlab%20IO%20Patch&In-Reply-To=%3C447650E0.60003%40codesourcery.com%3E"
+       TITLE="[vsipl++] Matlab IO Patch">stefan at codesourcery.com
+       </A><BR>
+    <I>Fri May 26 00:50:40 UTC 2006</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000472.html">Matlab IO Patch
+</A></li>
+        <LI>Next message: <A HREF="000474.html">Funny
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#473">[ date ]</a>
+              <a href="thread.html#473">[ thread ]</a>
+              <a href="subject.html#473">[ subject ]</a>
+              <a href="author.html#473">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Assem Salama wrote:
+
+[...]
+
+&gt;<i> +  template &lt;int Dim&gt;
+</I>&gt;<i> +  struct view_header
+</I>&gt;<i> +  {
+</I>&gt;<i> +    data_element header;
+</I>&gt;<i> +    data_element array_flags_header;
+</I>&gt;<i> +    char array_flags[8];
+</I>&gt;<i> +    data_element dim_header;
+</I>&gt;<i> +    int32_t dim[Dim + Dim%2];
+</I>
+It would be good to add a little comment with the rationale for
+this 'Dim + Dim % 2' expression.
+
+&gt;<i> +    data_element array_name_header;
+</I>&gt;<i> +  };
+</I>&gt;<i> +
+</I>&gt;<i> +  // some structures to helps determine if a type is single precision
+</I>&gt;<i> +  template &lt;typename T&gt;
+</I>&gt;<i> +  struct Is_single
+</I>&gt;<i> +  { static bool const value = false; };
+</I>
+By the way, wouldn't it make sense to add these Is_single helpers to
+metaprogramming.hpp ?
+
+
+&gt;<i> +
+</I>&gt;<i> +  template &lt;&gt;
+</I>&gt;<i> +  struct Is_single&lt;float&gt;
+</I>&gt;<i> +  { static bool const value = true; };
+</I>&gt;<i> +
+</I>&gt;<i> +  template &lt;&gt;
+</I>&gt;<i> +  struct Is_single&lt;std::complex&lt;float&gt; &gt;
+</I>&gt;<i> +  { static bool const value = true; };
+</I>&gt;<i> +
+</I>&gt;<i> +  // a generic reader that allows us to read a generic type and cast to another
+</I>&gt;<i> +  template&lt;typename T1,typename T2&gt;
+</I>&gt;<i> +  struct Generic_reader
+</I>&gt;<i> +  {
+</I>&gt;<i> +    // the read function
+</I>&gt;<i> +    template &lt;typename T,
+</I>&gt;<i> +	      typename Block0&gt;
+</I>&gt;<i> +    void read(std::istream&amp; is,vsip::Matrix&lt;T,Block0&gt; m)
+</I>&gt;<i> +    {
+</I>&gt;<i> +      for(int i=0;i&lt;m.size(1);i++) {
+</I>&gt;<i> +        for(int j=0;j&lt;m.size(0);j++) {
+</I>&gt;<i> +          is.read(reinterpret_cast&lt;char*&gt;(&amp;data),sizeof(data));
+</I>&gt;<i> +	  converted_data = data;
+</I>&gt;<i> +	  m.put(j,i,converted_data);
+</I>&gt;<i> +	}
+</I>&gt;<i> +      }
+</I>&gt;<i> +    }
+</I>&gt;<i> +
+</I>&gt;<i> +    T1 data;
+</I>&gt;<i> +    T2 converted_data;
+</I>&gt;<i> +  };
+</I>
+You define three distinct types here (T, T1, and T2). I can see the
+need for two (if you are reading in a record of floats, but want to
+create a block of double, say), what about the third ?
+And a related question: what is the use of 'data' and 'converted_data'
+outside the read() function ? Why do you use a struct, instead of
+simply a function ? (For example:
+
+template &lt;typename T1, typename T2, typename BlockT&gt;
+inline void
+read_matlab_binary(std::istream &amp;is, Matrix&lt;T2, BlockT&gt; m)
+{
+   for(int i=0;i&lt;m.size(1);i++)
+     for(int j=0;j&lt;m.size(0);j++)
+     {
+       T1 data;
+       is.read(reinterpret_cast&lt;char*&gt;(&amp;data),sizeof(data));
+       m.put(j,i,T2(data));
+     }
+}
+
+
+which would be used as
+
+Matrix&lt;double&gt; m(rows, cols);
+read_matlab_binary&lt;float&gt;(input, m);
+
+[...]
+
+&gt;<i> +  template &lt;typename ViewT&gt;
+</I>&gt;<i> +  struct Matlab_bin_formatter
+</I>&gt;<i> +  {
+</I>&gt;<i> +    Matlab_bin_formatter(ViewT v,std::string const&amp; name) :
+</I>&gt;<i> +      v(v), view_name(name)  {}
+</I>&gt;<i> +
+</I>&gt;<i> +    ViewT v;
+</I>&gt;<i> +    std::string view_name;
+</I>
+What about 'view' and 'name' instead of 'v' and 'view_name' ?
+Also, this whole struct could be moved into the 'matlab' namespace,
+may be as 'Binary_formatter'...
+
+&gt;<i> +
+</I>&gt;<i> +  };
+</I>&gt;<i> +
+</I>&gt;<i> +  struct Matlab_bin_hdr
+</I>
+...and this too, as 'Binary_header'.
+
+Regards,
+		Stefan
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000472.html">Matlab IO Patch
+</A></li>
+	<LI>Next message: <A HREF="000474.html">Funny
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#473">[ date ]</a>
+              <a href="thread.html#473">[ thread ]</a>
+              <a href="subject.html#473">[ subject ]</a>
+              <a href="author.html#473">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">More information about the vsipl++
+mailing list</a><br>
+</body></html>

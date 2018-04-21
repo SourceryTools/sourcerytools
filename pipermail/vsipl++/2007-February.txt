@@ -1,0 +1,2369 @@
+From jules at codesourcery.com  Thu Feb  1 15:22:50 2007
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Thu, 01 Feb 2007 10:22:50 -0500
+Subject: [rfc] preview patch for RBO
+Message-ID: <45C205CA.6020309@codesourcery.com>
+
+This preview patch adds support for "return block optimization", for 
+example to allow by-value FFTs to be lazily evaluated.
+
+The patch:
+
+  - adds a new expression block called "Return_block" that encapsulates 
+an operation in a function object.
+
+  - adds a new evaluator for simple Return_block expressions (such as 'A 
+= fft(B)').  The evaluator passes the destination block 'A' to the 
+function object.
+
+  - adds init/fini stage to loop fusion evaluation so that complex 
+Return_block expressions (such as 'A = fft1(B) + fft2(C)') can be 
+evaluated.  Before loop fusion, init is called for each node in the 
+expression tree.  This allows Return_blocks to initialize temporary 
+storage for its result.  After loop fusion, fini is called so storage 
+can be freed.
+
+It is possible that the Fft objects temporary buffers could be used to 
+avoid alloc/free of temporary space, but reuse of the same Fft object 
+('A = fft(B) + fft(C)') would require special handling.
+
+  - modifies by-value Fft to return a Return_block.
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: rbo.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20070201/70585b11/attachment.ksh>
+
+From stefan at codesourcery.com  Wed Feb  7 14:23:37 2007
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Wed, 07 Feb 2007 09:23:37 -0500
+Subject: [vsipl++] [rfc] preview patch for RBO
+In-Reply-To: <45C205CA.6020309@codesourcery.com>
+References: <45C205CA.6020309@codesourcery.com>
+Message-ID: <45C9E0E9.4090908@codesourcery.com>
+
+Jules Bergmann wrote:
+> This preview patch adds support for "return block optimization", for
+> example to allow by-value FFTs to be lazily evaluated.
+
+Jules,
+
+this patch looks great !
+
+
+> diff -rN -uN old-rbo-merge/src/vsip/core/fft.hpp new-rbo-merge/src/vsip/core/fft.hpp
+> --- old-rbo-merge/src/vsip/core/fft.hpp	2007-02-01 10:03:50.000000000 -0500
+> +++ new-rbo-merge/src/vsip/core/fft.hpp	2007-02-01 10:03:54.000000000 -0500
+> @@ -25,6 +25,7 @@
+>  #  include <vsip/opt/fft/workspace.hpp>
+>  #endif
+>  #include <vsip/core/metaprogramming.hpp>
+> +#include <vsip/opt/expr/return_block.hpp>
+>  #include <vsip/core/profile.hpp>
+>  
+>  #ifndef VSIP_IMPL_REF_IMPL
+> @@ -193,16 +194,21 @@
+>    {}
+>  
+>    template <typename ViewT>
+> -  typename fft::result<O, typename ViewT::block_type>::view_type
+> +  typename fft::Result_rbo<D, I, O, ViewT, workspace, axis, exponent>
+> +                          ::view_type
+>    operator()(ViewT in) VSIP_THROW((std::bad_alloc))
+>    {
+>      typename base::Scope scope(*this);
+>      assert(extent(in) == extent(this->input_size()));
+> -    typedef fft::result<O, typename ViewT::block_type> traits;
+> -    typename traits::view_type out(traits::create(this->output_size(),
+> -						  in.block().map()));
+> -    workspace_.by_reference(this->backend_.get(), in, out);
+> -    return out;
+> +    typedef fft::Result_rbo<D, I, O, ViewT, workspace, axis, exponent>
+> +      traits;
+> +    typedef typename traits::functor_type functor_type;
+> +    typedef typename traits::block_type   block_type;
+> +    typedef typename traits::view_type    view_type;
+> +
+> +    functor_type rf(in, *(this->backend_.get()), workspace_);
+> +    block_type block(rf);
+> +    return view_type(block);
+>    }
+>  private:
+>    std::auto_ptr<fft::backend<D, I, O, axis, exponent> > backend_;
+
+I think it would be good to also expose the return type in a way that
+allows expressions to be written out over multiple lines (as we discussed
+in Palm Springs), such as
+
+typedef Fft<...> fwd_fft_type;
+typedef fwd_fft_type::result_type<my_view_type>::type fft_result_type;
+
+...
+fwd_fft_type fwd_fft(1024, 1.);
+fft_result_type result(fwd_fft(my_view));
+view_type C = result * kernel;
+...
+
+
+> diff -rN -uN old-rbo-merge/src/vsip/core/impl_tags.hpp new-rbo-merge/src/vsip/core/impl_tags.hpp
+> --- old-rbo-merge/src/vsip/core/impl_tags.hpp	2007-02-01 10:03:50.000000000 -0500
+> +++ new-rbo-merge/src/vsip/core/impl_tags.hpp	2007-02-01 10:03:54.000000000 -0500
+> @@ -40,6 +40,7 @@
+>  struct Copy_tag {};		// Optimized Copy
+>  struct Op_expr_tag {};		// Special expr handling (vmmul, etc)
+>  struct Simd_loop_fusion_tag {};	// SIMD Loop Fusion.
+> +struct Special_tag;             // Special evaluators.
+>  struct Loop_fusion_tag {};	// Generic Loop Fusion (base case).
+>  struct Cbe_sdk_tag {};          // IBM CBE SDK.
+
+Could we find a somewhat more descriptive tag name ? :-)
+
+
+Thanks,
+		Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+
+
+From jules at codesourcery.com  Wed Feb  7 18:31:13 2007
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Wed, 07 Feb 2007 13:31:13 -0500
+Subject: [patch] Fixes for release
+Message-ID: <45CA1AF1.1000904@codesourcery.com>
+
+This patch fixes several issues:
+
+- For PAS, it reverts to using a separate dynamic xfer object with each 
+assignment, but makes it possible to share a single xfer object as a 
+configure option.  Sharing a single xfer object has higher performance, 
+but this causes test failures when using PAS for Linux (It appears that 
+  state is being incorrectly captured in the dynamic xfer object).
+
+- Fixes a reference counting leak for Map's Map_data.
+
+- Fixes fir to force complex data into interleaved format, since the fir 
+backend API only supports interleaved for the moment.  Also fixes a bug 
+where admit/release were not being called for a block with user-spec 
+storage.
+
+- Fixes tests to work better with PAS for Linux, in particular disables 
+double precision tests, and passes argc/argv vsipl object in the 
+ref-impl tests
+
+I'm running regression tests at the moment before checking in, but so 
+far things look good.
+
+				-- Jules
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: pas.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20070207/9355c33a/attachment.ksh>
+
+From jules at codesourcery.com  Thu Feb  8 13:59:34 2007
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Thu, 08 Feb 2007 08:59:34 -0500
+Subject: [patch] Include distributed_block when PAR_SERVICE == 0
+Message-ID: <45CB2CC6.1020007@codesourcery.com>
+
+Patch applied.
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: db.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20070208/0eceac1b/attachment.ksh>
+
+From don at codesourcery.com  Mon Feb 12 21:46:51 2007
+From: don at codesourcery.com (Don McCoy)
+Date: Mon, 12 Feb 2007 14:46:51 -0700
+Subject: [patch] Support for Cell FFT's up to 4K points.
+Message-ID: <45D0E04B.3080406@codesourcery.com>
+
+The attached patch provides support for 1-D complex-complex FFTs up to 
+4K points in length.  This implementation limits it to 4K to save stack 
+space, even though the underlying SPE library routine (libfft) allows up 
+to 8K points.
+
+Regards,
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: fft1d.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20070212/3fc2eaef/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: fft1d.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20070212/3fc2eaef/attachment-0001.ksh>
+
+From stefan at codesourcery.com  Mon Feb 12 22:22:01 2007
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Mon, 12 Feb 2007 17:22:01 -0500
+Subject: [vsipl++] [patch] Support for Cell FFT's up to 4K points.
+In-Reply-To: <45D0E04B.3080406@codesourcery.com>
+References: <45D0E04B.3080406@codesourcery.com>
+Message-ID: <45D0E889.4000209@codesourcery.com>
+
+Don McCoy wrote:
+> The attached patch provides support for 1-D complex-complex FFTs up to
+> 4K points in length.  This implementation limits it to 4K to save stack
+> space, even though the underlying SPE library routine (libfft) allows up
+> to 8K points.
+> 
+> Regards,
+
+
+> -  Fft_impl(Domain<1> const &dom)
+> +  Fft_impl(Domain<1> const &dom, rtype scale) VSIP_THROW((std::bad_alloc))
+
+Since any throw specifier other than 'throw ()' will lead to worse code, I
+think we should not use it if we can, in particular in non-public-API code.
+
+> +      : scale_(scale),
+> +        W_(alloc_align<ctype>(128, dom.size()/4))
+>    {
+> -    // TBD
+
+I believe it would be good to compute the twiddle factors here, see below.
+
+
+>    }
+> -  virtual void in_place(ctype *inout, stride_type s, length_type l)
+> +  virtual ~Fft_impl()
+>    {
+> -    // TBD
+> +    delete(W_);
+>    }
+> +
+> +  virtual bool supports_scale() { return true;}
+> +  virtual void in_place(ctype *inout, stride_type stride, length_type length)
+> +  {
+> +    assert(stride == 1);
+> +
+> +    compute_twiddle_factors(W_, length);
+
+Since length is known at construction time, why can't we compute the twiddle
+factors only once, as opposed to each time we call operator() ?
+
+> +    fft_8K<T, E>(inout, inout, W_, length, this->scale_);
+> +  }
+>    virtual void in_place(ztype, stride_type, length_type)
+>    {
+>    }
+> @@ -61,13 +113,21 @@
+>  			    ctype *out, stride_type out_stride,
+>  			    length_type length)
+>    {
+> -    // TBD
+> +    assert(in_stride == 1);
+> +    assert(out_stride == 1);
+> +
+> +    compute_twiddle_factors(W_, length);
+> +    fft_8K<T, E>(out, in, W_, length, this->scale_);
+>    }
+>    virtual void by_reference(ztype, stride_type,
+>  			    ztype, stride_type,
+>  			    length_type)
+>    {
+>    }
+> +
+> +private:
+> +  rtype scale_;
+> +  ctype* W_;
+>  };
+
+What's the reason for you using a raw pointer here, instead of aligned_array<> ?
+I believe we should avoid raw pointers if possible, as that's less error-prone.
+(Though this particular use is exception-safe.)
+
+
+> Index: src/vsip/opt/cbe/ppu/alf.hpp
+> ===================================================================
+> --- src/vsip/opt/cbe/ppu/alf.hpp	(revision 163034)
+> +++ src/vsip/opt/cbe/ppu/alf.hpp	(working copy)
+> @@ -64,25 +64,28 @@
+>    template <typename P>
+>    void set_parameters(P const &p) 
+>    {
+> -    alf_wb_add_param(impl_, const_cast<P *>(&p), sizeof(p), ALF_DATA_BYTE, 0);
+> +    assert( alf_wb_add_param(impl_, const_cast<P *>(&p),  
+> +        sizeof(p), ALF_DATA_BYTE, 0) >= 0 );
+
+Don't enclose any function doing actual work into assert(), as that will be removed
+when compiling with -DNDEBUG. Also, let's be careful (and explicit) with possible
+return values: some values may be impossible with correct code (and thus should lead
+to an abort(), while others may not, and thus should result in an exception. So, it
+would be best to explicitely list (named) return values, and possibly even add a comment
+that explains what values we check for and what not. (Who knows, may be ALF's own API
+evolves, so we have to carefully make adjustments...)
+
+
+>    }
+>    template <typename D>
+>    void add_input(D const *d, unsigned int length)
+>    {
+>      // The data size is doubled in the case of complex values, because
+>      // ALF only understands floats and doubles.
+> -    alf_wb_add_io_buffer(impl_, ALF_BUFFER_INPUT, const_cast<D *>(d),
+> -                         length * (Is_complex<D>::value ? 2 : 1),
+> -                         alf_data_type<D>::value);
+> +    assert( alf_wb_add_io_buffer(impl_, ALF_BUFFER_INPUT, 
+> +        const_cast<D *>(d),
+> +        length * (Is_complex<D>::value ? 2 : 1), 
+> +        alf_data_type<D>::value) >= 0 );
+
+Same here.
+
+>    }
+>    template <typename D>
+>    void add_output(D *d, unsigned int length)
+>    {
+>      // The data size is doubled in the case of complex values, because
+>      // ALF only understands floats and doubles.
+> -    alf_wb_add_io_buffer(impl_, ALF_BUFFER_OUTPUT, d,
+> -                         length * (Is_complex<D>::value ? 2 : 1),
+> -                         alf_data_type<D>::value);
+> +    assert( alf_wb_add_io_buffer(impl_, ALF_BUFFER_OUTPUT, 
+> +        d,
+> +        length * (Is_complex<D>::value ? 2 : 1),
+> +        alf_data_type<D>::value) >= 0 );
+
+...and here.
+
+>    }
+>  
+>  private:
+> @@ -148,7 +151,7 @@
+>      alf_task_info_t info;
+>      alf_task_info_t_CBEA spe_tsk;
+>      spe_tsk.spe_task_image = image;
+> -    spe_tsk.max_stack_size = 4096; // compute good value !
+> +    spe_tsk.max_stack_size = 80*1024;
+
+It would be good to add comments explaining where such numbers are coming from,
+so it is easy to understand them in the future.
+
+> Index: src/vsip/opt/cbe/spu/GNUmakefile.inc.in
+> ===================================================================
+> --- src/vsip/opt/cbe/spu/GNUmakefile.inc.in	(revision 163034)
+> +++ src/vsip/opt/cbe/spu/GNUmakefile.inc.in	(working copy)
+> @@ -37,7 +37,7 @@
+>  CC_SPU_FLAGS := 
+>  LD_SPU_FLAGS := -Wl,-N -L$(CBE_SDK_PREFIX)/sysroot/usr/spu/lib
+>  CC_EMBED_SPU := ppu-embedspu -m32
+> -SPU_LIBS := -lalf
+> +SPU_LIBS := -lalf -lfft
+
+Depending on how many other libs we expect to link to, such additions may
+be best to make per target, just for clarity.
+
+> Index: src/vsip/opt/cbe/spu/alf_fft_c.c
+> ===================================================================
+> --- src/vsip/opt/cbe/spu/alf_fft_c.c	(revision 0)
+> +++ src/vsip/opt/cbe/spu/alf_fft_c.c	(revision 0)
+> @@ -0,0 +1,84 @@
+> +/* Copyright (c) 2007 by CodeSourcery.  All rights reserved.
+> +
+> +   This file is available for license from CodeSourcery, Inc. under the terms
+> +   of a commercial license and under the GPL.  It is not part of the VSIPL++
+> +   reference implementation and is not available under the BSD license.
+> +*/
+> +/** @file    vsip/opt/cbe/spu/alf_fft_c.c
+> +    @author  Don McCoy
+> +    @date    2007-02-03
+> +    @brief   VSIPL++ Library: Kernel to compute complex float FFT's.
+> +*/
+> +
+> +#include <stdio.h>
+> +#include <alf_accel.h>
+> +#include <assert.h>
+> +#include <libfft.h>
+> +#include "../common.h"
+
+I'd suggest we avoid such relative paths in include directives. <vsip/opt/cbe/common.h>
+would be safer, I believe. Else we have to be extra careful in our next attempt to
+move things around.
+
+> +  // Perform the FFT, 
+> +  //   -- 'in' may be the same as 'out'
+> +  if (fftp->direction == fwd_fft)
+> +    fft_1d_r2(out, in, W, log2_size);
+> +  else
+> +    fft_1d_r2_inv(out, in,  W, log2_size, fftp->scale);
+
+Out of curiosity: do these two functions really share all the
+essential code ? I'm wondering whether putting them into two
+separate kernels would help us cut down the code / stack size.
+
+
+> +
+> +  return 0;
+> +}
+
+
+Thanks,
+		Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+
+
+From don at codesourcery.com  Mon Feb 12 22:55:27 2007
+From: don at codesourcery.com (Don McCoy)
+Date: Mon, 12 Feb 2007 15:55:27 -0700
+Subject: [vsipl++] [patch] Support for Cell FFT's up to 4K points.
+In-Reply-To: <45D0E889.4000209@codesourcery.com>
+References: <45D0E04B.3080406@codesourcery.com> <45D0E889.4000209@codesourcery.com>
+Message-ID: <45D0F05F.1030609@codesourcery.com>
+
+Stefan Seefeld wrote:
+>> -  Fft_impl(Domain<1> const &dom)
+>> +  Fft_impl(Domain<1> const &dom, rtype scale) VSIP_THROW((std::bad_alloc))
+>>     
+>
+> Since any throw specifier other than 'throw ()' will lead to worse code, I
+> think we should not use it if we can, in particular in non-public-API code.
+>
+>   
+The reason for the above is the the alloc below.  I guess I'm not sure 
+what the right thing to do here is.
+
+>> +      : scale_(scale),
+>> +        W_(alloc_align<ctype>(128, dom.size()/4))
+>>    {
+>> -    // TBD
+>>     
+>
+> I believe it would be good to compute the twiddle factors here, see below.
+>
+>   
+I agree -- or move them into the kernel to save time DMA'ing them.  I 
+will put them in the constructor for now.
+
+>> +
+>> +private:
+>> +  rtype scale_;
+>> +  ctype* W_;
+>>  };
+>>     
+>
+> What's the reason for you using a raw pointer here, instead of aligned_array<> ?
+> I believe we should avoid raw pointers if possible, as that's less error-prone.
+> (Though this particular use is exception-safe.)
+>
+>   
+Probably no other reason than the way the code evolved.
+
+
+> Don't enclose any function doing actual work into assert(), as that will be removed
+> when compiling with -DNDEBUG. Also, let's be careful (and explicit) with possible
+> return values: some values may be impossible with correct code (and thus should lead
+> to an abort(), while others may not, and thus should result in an exception. So, it
+> would be best to explicitely list (named) return values, and possibly even add a comment
+> that explains what values we check for and what not. (Who knows, may be ALF's own API
+> evolves, so we have to carefully make adjustments...)
+>
+>   
+Yes, that's true.  I was trying to get more informative messages out of 
+assert(), but that can better be done by naming the return value 
+something informative.  Is that what you meant?
+
+
+>>    }
+>>  
+>>  private:
+>> @@ -148,7 +151,7 @@
+>>      alf_task_info_t info;
+>>      alf_task_info_t_CBEA spe_tsk;
+>>      spe_tsk.spe_task_image = image;
+>> -    spe_tsk.max_stack_size = 4096; // compute good value !
+>> +    spe_tsk.max_stack_size = 80*1024;
+>>     
+>
+> It would be good to add comments explaining where such numbers are coming from,
+> so it is easy to understand them in the future.
+>
+>   
+I will add a comment.
+
+
+>   
+>> Index: src/vsip/opt/cbe/spu/alf_fft_c.c
+>> ...
+>> +#include "../common.h"
+>>     
+>
+> I'd suggest we avoid such relative paths in include directives. <vsip/opt/cbe/common.h>
+> would be safer, I believe. Else we have to be extra careful in our next attempt to
+> move things around.
+>
+>   
+I knew you'd catch that!
+
+I think we need something in the makefile to specify the path, because 
+<vsip/opt/cbe/common.h> does not work IIRC.  I'll fix it.
+
+
+>> +  // Perform the FFT, 
+>> +  //   -- 'in' may be the same as 'out'
+>> +  if (fftp->direction == fwd_fft)
+>> +    fft_1d_r2(out, in, W, log2_size);
+>> +  else
+>> +    fft_1d_r2_inv(out, in,  W, log2_size, fftp->scale);
+>>     
+>
+> Out of curiosity: do these two functions really share all the
+> essential code ? I'm wondering whether putting them into two
+> separate kernels would help us cut down the code / stack size.
+>
+>
+>   
+fft_1d_r2_inv() does the scaling and reordering needed after calling 
+fft_1d_r2() (that is called directly for the forward cases).  It is very 
+little additional code, and necessary to have for fast convolution in 
+order to avoid reloading the kernel.
+
+That doesn't stop us from putting the individual ones in separate 
+kernels if we choose, but I don't think it will make much of a difference.
+
+
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+
+
+
+From jules at codesourcery.com  Mon Feb 12 23:22:52 2007
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Mon, 12 Feb 2007 18:22:52 -0500
+Subject: [vsipl++] [patch] Support for Cell FFT's up to 4K points.
+In-Reply-To: <45D0E04B.3080406@codesourcery.com>
+References: <45D0E04B.3080406@codesourcery.com>
+Message-ID: <45D0F6CC.1070504@codesourcery.com>
+
+Don McCoy wrote:
+ > The attached patch provides support for 1-D complex-complex FFTs up to
+ > 4K points in length.  This implementation limits it to 4K to save stack
+ > space, even though the underlying SPE library routine (libfft) allows up
+ > to 8K points.
+
+Don,
+
+This looks good.  I have a couple of comments below.  Once those are
+addressed, please check it in.
+
+			thanks,
+			-- Jules
+
+
+ >
+ > Regards,
+ >
+ > ------------------------------------------------------------------------
+ >
+ > Index: src/vsip/opt/cbe/ppu/fft.cpp
+ > ===================================================================
+
+ > +template <typename T,
+ > +          int      E>
+
+[1] It doesn't look like any advantage is being gained by having
+E as a template parameter.  It would reduce code-size to pass
+the FFT direction as a run-time parameter instead.
+
+Also, I'm guessing that 'E' stands for Exponent.  This would be
+good to document, or change to another more verbose name.
+
+(After looking over the rest of the patch, I realize you're being
+consistent with the name, which is good!  However, a comment would
+still be nice.)
+
+ > +void
+ > +fft_8K(std::complex<T>* out, std::complex<T> const* in,
+ > +  std::complex<T> const* W, length_type length, T scale)
+
+[2] 'in' and 'out' are good names.  'W' should probably be
+'twiddle_factors' or something more descriptive.
+
+Also, it would be good to document the expected sizes, since 'in'
+and 'out' are of size 'length', while 'twiddle_factors' is of
+size 'length/4'.
+
+ > +{
+ > +  Fft_params fftp;
+ > +  fftp.direction = (E == -1 ? fwd_fft : inv_fft);
+ > +  fftp.elements = length;
+
+ > +  fftp.scale = (E == -1 ? 1.f : scale);
+
+[3] From VSIPL++ API, it is permissible to scale on both forward and
+inverse FFTs. I suspect this should just pass 'scale' through.
+
+ > +  Task_manager *mgr = Task_manager::instance();
+ > +  Task task = mgr->reserve<Fft_tag, void(complex<T>,complex<T>)>(
+ > +    sizeof(Fft_params), sizeof(complex<T>)*(length*5/4),
+ > +    sizeof(complex<T>)*length);
+ > +  Workblock block = task.create_block();
+ > +  block.set_parameters(fftp);
+ > +  block.add_input(in, length);
+ > +  block.add_input(W, length/4);
+ > +  block.add_output(out, length);
+ > +  task.enqueue(block);
+ > +  task.wait();
+ > +}
+ > +
+ > +template<typename T>
+ > +void
+ > +compute_twiddle_factors(std::complex<T>* W, length_type length)
+ > +{
+ > +  unsigned int i = 0;
+ > +  unsigned int n = length;
+ > +  T* pW = reinterpret_cast<T*>(W);
+ > +  pW[0] = 1.0f;
+ > +  pW[1] = 0.0f;
+ > +  for (i = 1; i < n / 4; ++i)
+ > +  {
+ > +    pW[2*i] = cos(i * 2*M_PI / n);
+ > +    pW[2*(n/4 - i)+1] = -pW[2*i];
+ > +  }
+ > +}
+
+[4] There are other ways to compute twiddle factors iteratively that
+may avoid the 'cos()' call, and hence may be more efficient.
+
+This is definitely a comment for later: functionality is more
+important now, and in terms of the priority of optimizations, twiddle
+factor computation is low on the list, since it is done at object
+creation outside of the compute loop.
+
+ > +
+ > +
+ >  template <dimension_type D, typename I, typename O, int A, int E> 
+class Fft_impl;
+ >
+ >  // 1D complex -> complex FFT
+ > @@ -46,14 +88,24 @@
+ >    typedef std::pair<rtype*, rtype*> ztype;
+ >
+ >  public:
+ > -  Fft_impl(Domain<1> const &dom)
+ > +  Fft_impl(Domain<1> const &dom, rtype scale) 
+VSIP_THROW((std::bad_alloc))
+ > +      : scale_(scale),
+ > +        W_(alloc_align<ctype>(128, dom.size()/4))
+
+[5] 128 is probably a good alignment.  However, it is kind of a magic
+number that should be a macro (VSIP_IMPL_CELL_DMAALIGNMENT, pick a
+good name) to call it out.
+
+Was this the alignment problem that was causing the bad twiddle factors?
+
+ >    {
+ > -    // TBD
+
+[6] Stefan is right on.  This would be a good time to compute the twiddle
+factors.  Early binding!
+
+ >    }
+
+
+ > +
+ > +private:
+ > +  rtype scale_;
+ > +  ctype* W_;
+
+[7] Q for Stefan: how do we handle FFT assignment?  Is there a problem with
+W_ being freed multiple times?
+
+ >  };
+
+
+ >  VSIPL_IMPL_PROVIDE(1, float, std::complex<float>, 0, -1)
+
+[8] Do we really have a real->complex FFT on the SPE?
+
+
+ > Index: src/vsip/opt/cbe/ppu/fft.hpp
+ > ===================================================================
+ > --- src/vsip/opt/cbe/ppu/fft.hpp	(revision 163034)
+ > +++ src/vsip/opt/cbe/ppu/fft.hpp	(working copy)
+ > @@ -25,6 +25,7 @@
+ >  #include <vsip/domain.hpp>
+ >  #include <vsip/core/fft/factory.hpp>
+ >  #include <vsip/core/fft/util.hpp>
+ > +#include <vsip/opt/cbe/common.h>
+ >
+ >  /***********************************************************************
+ >    Declarations
+ > @@ -37,14 +38,14 @@
+ >  namespace cbe
+ >  {
+ >
+ > -template <typename I, dimension_type D>
+ > +template <typename I, dimension_type D, typename S>
+ >  std::auto_ptr<I>
+ > -create(Domain<D> const &dom);
+ > +create(Domain<D> const &dom, S scale);
+ >
+ >  #define VSIP_IMPL_FFT_DECL(D,I,O,A,E)                          \
+ >  template <>                                                    \
+ >  std::auto_ptr<fft::backend<D,I,O,A,E> >                        \
+ > -create(Domain<D> const &);
+ > +create(Domain<D> const &, fft::backend<D, I, O, A, E>::scalar_type);
+ >
+ >  #define VSIP_IMPL_FFT_DECL_T(T)				       \
+ >  VSIP_IMPL_FFT_DECL(1, T, std::complex<T>, 0, -1)               \
+ > @@ -60,7 +61,7 @@
+ >  #define VSIP_IMPL_FFT_DECL(I,O,A,E)                            \
+ >  template <>                                                    \
+ >  std::auto_ptr<fft::fftm<I,O,A,E> >                             \
+ > -create(Domain<2> const &);
+ > +create(Domain<2> const &, fft::backend<2, I, O, A, E>::scalar_type);
+ >
+ >  #define VSIP_IMPL_FFT_DECL_T(T)				       \
+ >  VSIP_IMPL_FFT_DECL(T, std::complex<T>, 0, -1)                  \
+ > @@ -92,16 +93,23 @@
+ >  struct evaluator<D, I, O, S, R, N, Cbe_sdk_tag>
+ >  {
+ >    static bool const ct_valid = true;
+ > -  static bool rt_valid(Domain<D> const &) { return true;}
+ > +  static bool rt_valid(Domain<D> const &dom)
+ > +  {
+ > +    if (dom.size() < MIN_FFT_1D_SIZE)
+ > +      return false;
+ > +    if (dom.size() > MAX_FFT_1D_SIZE)
+ > +      return false;
+ > +    return true;
+
+[9] Should rt_valid also check that the size is a power of 2 (or does
+libfft handle non-power-of-two sizes?)
+
+Also, I don't see how you could check for unit-stride here since there
+is no layout info.  I need to refresh my memory on rt_valid for FFT
+dispatch a bit.
+
+ > +  }
+
+ > Index: src/vsip/opt/cbe/ppu/alf.hpp
+ > ===================================================================
+ > --- src/vsip/opt/cbe/ppu/alf.hpp	(revision 163034)
+ > +++ src/vsip/opt/cbe/ppu/alf.hpp	(working copy)
+ > @@ -64,25 +64,28 @@
+ >    template <typename P>
+ >    void set_parameters(P const &p)
+ >    {
+ > -    alf_wb_add_param(impl_, const_cast<P *>(&p), sizeof(p), 
+ALF_DATA_BYTE, 0);
+ > +    assert( alf_wb_add_param(impl_, const_cast<P *>(&p),
+ > +        sizeof(p), ALF_DATA_BYTE, 0) >= 0 );
+
+Error checking good! :)
+
+
+ > Index: src/vsip/opt/cbe/spu/vmul.cpp
+ > ===================================================================
+ > --- src/vsip/opt/cbe/spu/vmul.cpp	(revision 163034)
+ > +++ src/vsip/opt/cbe/spu/vmul.cpp	(working copy)
+ > @@ -1,155 +0,0 @@
+ > -/* Copyright (c) 2006, 2007 by CodeSourcery.  All rights reserved.
+
+[10] Do we have an ALF implementation of vmul, or was this our only impl?
+
+
+ > Index: src/vsip/opt/cbe/spu/alf_fft_c.c
+ > ===================================================================
+ > --- src/vsip/opt/cbe/spu/alf_fft_c.c	(revision 0)
+ > +++ src/vsip/opt/cbe/spu/alf_fft_c.c	(revision 0)
+ > @@ -0,0 +1,84 @@
+ > +/* Copyright (c) 2007 by CodeSourcery.  All rights reserved.
+ > +
+ > +   This file is available for license from CodeSourcery, Inc. under 
+the terms
+ > +   of a commercial license and under the GPL.  It is not part of the 
+VSIPL++
+ > +   reference implementation and is not available under the BSD license.
+ > +*/
+ > +/** @file    vsip/opt/cbe/spu/alf_fft_c.c
+ > +    @author  Don McCoy
+ > +    @date    2007-02-03
+ > +    @brief   VSIPL++ Library: Kernel to compute complex float FFT's.
+ > +*/
+ > +
+ > +#include <stdio.h>
+ > +#include <alf_accel.h>
+ > +#include <assert.h>
+ > +#include <libfft.h>
+ > +#include "../common.h"
+ > +
+ > +unsigned int log2i(unsigned int size)
+ > +{
+ > +  unsigned int log2_size = 0;
+ > +  while (!(size & 1))
+ > +  {
+ > +    size >>= 1;
+ > +    log2_size++;
+ > +  }
+ > +  return log2_size;
+ > +}
+ > +
+ > +void fft_1d_r2_inv(vector float* out, vector float* in, vector 
+float* W,
+ > +		   unsigned int log2_size, float scale)
+ > +{
+ > +  vector unsigned int mask = (vector unsigned int){-1, -1, 0, 0};
+ > +  vector float *start, *end, s0, s1, e0, e1;
+ > +  unsigned int i;
+ > +  unsigned int n = 1 << log2_size;
+ > +
+ > +  fft_1d_r2(out, in, W, log2_size);
+ > +
+ > +  vector float vscale = spu_splats(scale);
+ > +  vector float s, e;
+ > +  start = out;
+ > +  end = start + 2 * n / 4;  // two complex values for each n, four 
+per vector
+
+[11] While it's not strictly necessary (because this is C, not C++; and
+because the SPEs don't go fast for double), I would put the magic value
+'4' into a const variable (local to the function):
+
+	int const vec_size = 4;
+
+That way, if this code (or a cut-and-paste copy) ever makes the jump
+to C++ and is generalized to work for both float and double, there is only
+one magic value to change.
+
+ > +  s0 = e1 = *start;
+ > +  for (i = 0; i < n / 4; ++i) {
+
+It would also make the code more self-documenting
+
+I.e.
+
+	for (i = 0; i < n / vec_size; ++i) {
+
+
+ > +    s1 = *(start + 1);
+ > +    e0 = *(--end);
+ > +
+ > +    s = spu_sel(s0, s1, mask);
+ > +    e = spu_sel(e0, e1, mask);
+
+[12] Are 's' and 'e' being used?
+
+ > +    *start++ = spu_mul(spu_sel(e0, e1, mask), vscale);
+ > +    *end = spu_mul(spu_sel(s0, s1, mask), vscale);
+
+[13] Can you describe what this loop is doing?  It looks like it is (a)
+scaling by vmul and (b) reversing the vector (which includes using
+spu_sel to swap the two complex values in a SIMD registers).  Looks
+good though!
+
+ > +    s0 = s1;
+ > +    e1 = e0;
+ > +  }
+ > +}
+ > +
+ > +
+ > +int alf_comp_kernel(void volatile *params,
+ > +                    void volatile *input,
+ > +                    void volatile *output,
+ > +                    unsigned int iter,
+ > +                    unsigned int n)
+ > +{
+ > +  int i;
+ > +  Fft_params* fftp = (Fft_params *)params;
+ > +  unsigned int length = fftp->elements;
+ > +
+ > +  vector float* in = (vector float *)input;
+ > +  vector float* W = (vector float *)((float *)in + length * 2);
+ > +  vector float* out = (vector float*)output;
+ > +
+ > +  assert(length <= MAX_FFT_1D_SIZE);
+ > +  unsigned int log2_size = log2i(length);
+ > +
+ > +  // Perform the FFT,
+ > +  //   -- 'in' may be the same as 'out'
+ > +  if (fftp->direction == fwd_fft)
+ > +    fft_1d_r2(out, in, W, log2_size);
+ > +  else
+ > +    fft_1d_r2_inv(out, in,  W, log2_size, fftp->scale);
+
+[14] we need to allow scaling for forward FFTs.
+
+
+ > +
+ > +  return 0;
+ > +}
+ > Index: src/vsip/opt/cbe/common.h
+ > ===================================================================
+
+ > +typedef struct
+ > +{
+ > +  fft_dir_type direction;
+ > +  unsigned int elements;
+ > +  double scale;
+
+[15] why is scale a double?
+
+'float' should be enough for single-precision FFTs.
+
+Also, while it seems reasonable to use a 'double' to scale
+double-precision FFTs (and we may want to actually do it that
+way when implementing), the VSIPL++ spec defines scale to be
+a 'float' regardless of the FFT precision.  I need to check how
+the C-VSIPL spec defines that because IIRC there was some confusion
+between the two specs here.
+
+
+ > +} Fft_params;
+ > +
+ > +#endif // VSIP_OPT_CBE_COMMON_H
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From stefan at codesourcery.com  Mon Feb 12 23:24:42 2007
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Mon, 12 Feb 2007 18:24:42 -0500
+Subject: [vsipl++] [patch] Support for Cell FFT's up to 4K points.
+In-Reply-To: <45D0F05F.1030609@codesourcery.com>
+References: <45D0E04B.3080406@codesourcery.com> <45D0E889.4000209@codesourcery.com> <45D0F05F.1030609@codesourcery.com>
+Message-ID: <45D0F73A.1040801@codesourcery.com>
+
+Don McCoy wrote:
+> Stefan Seefeld wrote:
+>>> -  Fft_impl(Domain<1> const &dom)
+>>> +  Fft_impl(Domain<1> const &dom, rtype scale)
+>>> VSIP_THROW((std::bad_alloc))
+>>>     
+>>
+>> Since any throw specifier other than 'throw ()' will lead to worse
+>> code, I
+>> think we should not use it if we can, in particular in non-public-API
+>> code.
+>>
+>>   
+> The reason for the above is the the alloc below.  I guess I'm not sure
+> what the right thing to do here is.
+
+I understand, this constructor can throw. My point is that expressing that
+in a throw specifier unfortunately isn't really helpful.
+
+>> Don't enclose any function doing actual work into assert(), as that
+>> will be removed
+>> when compiling with -DNDEBUG. Also, let's be careful (and explicit)
+>> with possible
+>> return values: some values may be impossible with correct code (and
+>> thus should lead
+>> to an abort(), while others may not, and thus should result in an
+>> exception. So, it
+>> would be best to explicitely list (named) return values, and possibly
+>> even add a comment
+>> that explains what values we check for and what not. (Who knows, may
+>> be ALF's own API
+>> evolves, so we have to carefully make adjustments...)
+>>
+>>   
+> Yes, that's true.  I was trying to get more informative messages out of
+> assert(), but that can better be done by naming the return value
+> something informative.  Is that what you meant?
+
+Yes. Even if the variable name isn't printed to the user, a developer
+looking at the code will see immediately what values we check for,
+and can compare against the ALF API docs to verify that all possible
+return values are correctly accounted for.
+
+>>  
+>>> Index: src/vsip/opt/cbe/spu/alf_fft_c.c
+>>> ...
+>>> +#include "../common.h"
+>>>     
+>>
+>> I'd suggest we avoid such relative paths in include directives.
+>> <vsip/opt/cbe/common.h>
+>> would be safer, I believe. Else we have to be extra careful in our
+>> next attempt to
+>> move things around.
+>>
+>>   
+> I knew you'd catch that!
+> 
+> I think we need something in the makefile to specify the path, because
+> <vsip/opt/cbe/common.h> does not work IIRC.  I'll fix it.
+
+It may currently not work because the spu/GNUmakefile.inc.in is missing
+an include path like '-I $(srcdir)/src/vsip'. That should be added, then.
+
+
+>>> +  // Perform the FFT, +  //   -- 'in' may be the same as 'out'
+>>> +  if (fftp->direction == fwd_fft)
+>>> +    fft_1d_r2(out, in, W, log2_size);
+>>> +  else
+>>> +    fft_1d_r2_inv(out, in,  W, log2_size, fftp->scale);
+>>>     
+>>
+>> Out of curiosity: do these two functions really share all the
+>> essential code ? I'm wondering whether putting them into two
+>> separate kernels would help us cut down the code / stack size.
+>>
+>>
+>>   
+> fft_1d_r2_inv() does the scaling and reordering needed after calling
+> fft_1d_r2() (that is called directly for the forward cases).  It is very
+> little additional code, and necessary to have for fast convolution in
+> order to avoid reloading the kernel.
+
+Indeed, but fast convolution will be an entirely new kernel anyway, and
+we may be able to have an FFT kernel that can handle larger data blocks
+than the convolution kernel, due to its size.
+
+Thanks,
+		Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+
+
+From jules at codesourcery.com  Mon Feb 12 23:32:09 2007
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Mon, 12 Feb 2007 18:32:09 -0500
+Subject: [vsipl++] [patch] Support for Cell FFT's up to 4K points.
+In-Reply-To: <45D0F05F.1030609@codesourcery.com>
+References: <45D0E04B.3080406@codesourcery.com> <45D0E889.4000209@codesourcery.com> <45D0F05F.1030609@codesourcery.com>
+Message-ID: <45D0F8F9.2030300@codesourcery.com>
+
+Don McCoy wrote:
+> Stefan Seefeld wrote:
+>>> -  Fft_impl(Domain<1> const &dom)
+>>> +  Fft_impl(Domain<1> const &dom, rtype scale) 
+>>> VSIP_THROW((std::bad_alloc))
+>>>     
+>>
+>> Since any throw specifier other than 'throw ()' will lead to worse 
+>> code, I
+>> think we should not use it if we can, in particular in non-public-API 
+>> code.
+>>
+>>   
+> The reason for the above is the the alloc below.  I guess I'm not sure 
+> what the right thing to do here is.
+
+It is OK to leave the VSIP_THROW specifier off.
+
+
+> 
+>> Don't enclose any function doing actual work into assert(), as that 
+>> will be removed
+>> when compiling with -DNDEBUG. Also, let's be careful (and explicit) 
+>> with possible
+>> return values: some values may be impossible with correct code (and 
+>> thus should lead
+>> to an abort(), while others may not, and thus should result in an 
+>> exception. So, it
+>> would be best to explicitely list (named) return values, and possibly 
+>> even add a comment
+>> that explains what values we check for and what not. (Who knows, may 
+>> be ALF's own API
+>> evolves, so we have to carefully make adjustments...)
+>>
+>>   
+> Yes, that's true.  I was trying to get more informative messages out of 
+> assert(), but that can better be done by naming the return value 
+> something informative.  Is that what you meant?
+
+I think Stefan meant that some ALF return codes could be because of 
+design errors in our own code (such as passing a null pointer), which 
+should be assertion failures, while others could be because of external 
+conditions outside of our control (DMA timed out or something), which 
+should potentially be exceptions.
+
+
+
+>>   
+> fft_1d_r2_inv() does the scaling and reordering needed after calling 
+> fft_1d_r2() (that is called directly for the forward cases).  It is very 
+> little additional code, and necessary to have for fast convolution in 
+> order to avoid reloading the kernel.
+> 
+> That doesn't stop us from putting the individual ones in separate 
+> kernels if we choose, but I don't think it will make much of a difference.
+
+I agree.  Forward and inverse do share the bulk of their code, so the 
+code size overhead should be minimal.  And applications that do forward 
+FFT usually do inverse FFT, so putting them in the same kernel may be a 
+net win in some cases.
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From jules at codesourcery.com  Mon Feb 12 23:37:06 2007
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Mon, 12 Feb 2007 18:37:06 -0500
+Subject: [vsipl++] [patch] Support for Cell FFT's up to 4K points.
+In-Reply-To: <45D0F73A.1040801@codesourcery.com>
+References: <45D0E04B.3080406@codesourcery.com> <45D0E889.4000209@codesourcery.com> <45D0F05F.1030609@codesourcery.com> <45D0F73A.1040801@codesourcery.com>
+Message-ID: <45D0FA22.9070705@codesourcery.com>
+
+Stefan Seefeld wrote:
+> Don McCoy wrote:
+>> Stefan Seefeld wrote:
+>>>> -  Fft_impl(Domain<1> const &dom)
+>>>> +  Fft_impl(Domain<1> const &dom, rtype scale)
+>>>> VSIP_THROW((std::bad_alloc))
+>>>>     
+>>> Since any throw specifier other than 'throw ()' will lead to worse
+>>> code, I
+>>> think we should not use it if we can, in particular in non-public-API
+>>> code.
+>>>
+>>>   
+>> The reason for the above is the the alloc below.  I guess I'm not sure
+>> what the right thing to do here is.
+> 
+> I understand, this constructor can throw. My point is that expressing that
+> in a throw specifier unfortunately isn't really helpful.
+
+To elaborate, it isn't helpful for the of performance of generated code.
+
+Putting the specifier there requires the compiler to generate extra code 
+that guarantees the specifier is "obeyed" by catching exceptions other 
+than bad_alloc and converting them to an unexpected exception.
+
+We should use specifiers where the VSIPL++ API requires them, and avoid 
+them elsewhere.
+
+We haven't always done this, so some existing code may have unnecessary 
+specifiers.
+
+
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From stefan at codesourcery.com  Mon Feb 12 23:38:44 2007
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Mon, 12 Feb 2007 18:38:44 -0500
+Subject: [vsipl++] [patch] Support for Cell FFT's up to 4K points.
+In-Reply-To: <45D0F6CC.1070504@codesourcery.com>
+References: <45D0E04B.3080406@codesourcery.com> <45D0F6CC.1070504@codesourcery.com>
+Message-ID: <45D0FA84.4090208@codesourcery.com>
+
+Jules Bergmann wrote:
+
+> [7] Q for Stefan: how do we handle FFT assignment?  Is there a problem with
+> W_ being freed multiple times?
+
+That's a good question. I believe our FFT frontends don't yet provide copy-construction
+and assignment. The plan is to allow multiple FFT frontends to share a single
+backend. In any case, we should definitely put an operator= declaration somewhere,
+if only into the private section to make it clear that this type is non-assignable.
+
+
+> [9] Should rt_valid also check that the size is a power of 2 (or does
+> libfft handle non-power-of-two sizes?)
+> 
+> Also, I don't see how you could check for unit-stride here since there
+> is no layout info.  I need to refresh my memory on rt_valid for FFT
+> dispatch a bit.
+
+Right, we can't check alignment in the evaluator as that doesn't see the block
+objects passed to operator(). Thus, the only place to actually handle it is
+by means of ext_data in the workspace.
+
+Regards,
+		Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+
+
+From don at codesourcery.com  Mon Feb 12 23:54:37 2007
+From: don at codesourcery.com (Don McCoy)
+Date: Mon, 12 Feb 2007 16:54:37 -0700
+Subject: [vsipl++] [patch] Support for Cell FFT's up to 4K points.
+In-Reply-To: <45D0F6CC.1070504@codesourcery.com>
+References: <45D0E04B.3080406@codesourcery.com> <45D0F6CC.1070504@codesourcery.com>
+Message-ID: <45D0FE3D.1000709@codesourcery.com>
+
+Jules Bergmann wrote:
+>
+> [3] From VSIPL++ API, it is permissible to scale on both forward and
+> inverse FFTs. I suspect this should just pass 'scale' through.
+>
+I'm glad you caught this.  IIUC, this will require that I add scaling 
+code to the forward case in the kernel.  At present, it doesn't do this, 
+but I should be able to make it conditional on (scale != 1.f), no?
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+
+
+
+From don at codesourcery.com  Tue Feb 13 07:56:01 2007
+From: don at codesourcery.com (Don McCoy)
+Date: Tue, 13 Feb 2007 00:56:01 -0700
+Subject: [vsipl++] [patch] Support for Cell FFT's up to 4K points.
+In-Reply-To: <45D0F6CC.1070504@codesourcery.com>
+References: <45D0E04B.3080406@codesourcery.com> <45D0F6CC.1070504@codesourcery.com>
+Message-ID: <45D16F11.4010900@codesourcery.com>
+
+Jules Bergmann wrote:
+> This looks good.  I have a couple of comments below.  Once those are
+> addressed, please check it in.
+>
+Checked in as attached.  I may have to make changes, depending on your 
+replies to my questions below...
+
+
+
+> [1] It doesn't look like any advantage is being gained by having
+> E as a template parameter.  It would reduce code-size to pass
+> the FFT direction as a run-time parameter instead.
+>
+I modified this by doing the latter.
+
+
+
+> [2] 'in' and 'out' are good names.  'W' should probably be
+> 'twiddle_factors' or something more descriptive.
+>
+> Also, it would be good to document the expected sizes, since 'in'
+> and 'out' are of size 'length', while 'twiddle_factors' is of
+> size 'length/4'.
+>
+Done.
+
+
+
+> [3] From VSIPL++ API, it is permissible to scale on both forward and
+> inverse FFTs. I suspect this should just pass 'scale' through.
+>
+Done.  Required a change in the kernel to honor the scaling in both 
+cases.  Note the conditional, paraphrased here as 'if (scale == 
+(double)1.f)'.  Elsewhere in the library, almost_equal() is used 
+instead.  Is that really necessary since the scale factor is normally 
+set to that literal value when the user does not desire scaling (as 
+opposed to it being the result of a computation, as in other cases)?
+
+
+> [4] There are other ways to compute twiddle factors iteratively that
+> may avoid the 'cos()' call, and hence may be more efficient.
+>
+Not addressed at this time.
+
+
+
+> [5] 128 is probably a good alignment.  However, it is kind of a magic
+> number that should be a macro (VSIP_IMPL_CELL_DMAALIGNMENT, pick a
+> good name) to call it out.
+>
+Changed to VSIP_IMPL_ALLOC_ALIGNMENT, and am compiling with 
+--with-alignment=128.  I can't think of a compelling reason to make a 
+new macro here, but if someone else can, please identify it.
+
+
+> Was this the alignment problem that was causing the bad twiddle factors?
+>
+Yes.
+
+
+> [6] Stefan is right on.  This would be a good time to compute the twiddle
+> factors.  Early binding!
+>
+Done.
+
+
+> [7] Q for Stefan: how do we handle FFT assignment?  Is there a problem 
+> with
+> W_ being freed multiple times?
+Not addressed at this time. 
+
+
+> [8] Do we really have a real->complex FFT on the SPE?
+>
+No, but we could implement these variations fairly easily by putting in 
+an extra copy in the dispatcher.  I'll address this soon.
+
+
+> [9] Should rt_valid also check that the size is a power of 2 (or does
+> libfft handle non-power-of-two sizes?)
+>
+Added.  Thanks.
+
+
+> Also, I don't see how you could check for unit-stride here since there
+> is no layout info.  I need to refresh my memory on rt_valid for FFT
+> dispatch a bit.
+>
+I was looking at the serial expression dispatch code, which of course is 
+different.  I'd like to understand how this is handled in the FFT code 
+though.
+
+
+> [10] Do we have an ALF implementation of vmul, or was this our only impl?
+>
+We've replaced it with the ALF version.
+
+
+> > +  end = start + 2 * n / 4;  // two complex values for each n, four 
+> per vector
+>
+> [11] While it's not strictly necessary (because this is C, not C++; and
+> because the SPEs don't go fast for double), I would put the magic value
+> '4' into a const variable (local to the function):
+>
+Done.
+
+> [12] Are 's' and 'e' being used?
+>
+Not so far as I can tell.  I removed those statements, they were debug 
+statements I inadvertently left in.  Good catch.
+
+Although this did remind me that we are not passing any flags to the SPU 
+compiler like -Wall.  I changed this to do the following:
+
+    CC_SPU_FLAGS := @CXXFLAGS@
+
+Which passes any PPU flags from the configure line on to the SPU 
+compiler.  Is this ok, at least for now?
+
+
+> > +    *start++ = spu_mul(spu_sel(e0, e1, mask), vscale);
+> > +    *end = spu_mul(spu_sel(s0, s1, mask), vscale);
+>
+> [13] Can you describe what this loop is doing?  It looks like it is (a)
+> scaling by vmul and (b) reversing the vector (which includes using
+> spu_sel to swap the two complex values in a SIMD registers).  Looks
+> good though!
+>
+I added a note describing where I got the code from plus a brief 
+description.
+
+
+> [14] we need to allow scaling for forward FFTs.
+>
+Done.
+
+
+> [15] why is scale a double?
+>
+> 'float' should be enough for single-precision FFTs.
+>
+> Also, while it seems reasonable to use a 'double' to scale
+> double-precision FFTs (and we may want to actually do it that
+> way when implementing), the VSIPL++ spec defines scale to be
+> a 'float' regardless of the FFT precision.  I need to check how
+> the C-VSIPL spec defines that because IIRC there was some confusion
+> between the two specs here.
+>
+The reason is so that the parameter struct is the right size (a multiple 
+of 16 bytes).
+
+My reasoning here was that if we implement double-precision in the 
+future, it would stay the same for both cases.  If the above is true, 
+then I'll change it to float and add 4 bytes of padding.
+
+
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: fft1d_2.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20070213/ff5b2d66/attachment.ksh>
+
+From jules at codesourcery.com  Tue Feb 13 12:52:17 2007
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Tue, 13 Feb 2007 07:52:17 -0500
+Subject: [vsipl++] [patch] Support for Cell FFT's up to 4K points.
+In-Reply-To: <45D0FE3D.1000709@codesourcery.com>
+References: <45D0E04B.3080406@codesourcery.com> <45D0F6CC.1070504@codesourcery.com> <45D0FE3D.1000709@codesourcery.com>
+Message-ID: <45D1B481.1030602@codesourcery.com>
+
+Don McCoy wrote:
+> Jules Bergmann wrote:
+>>
+>> [3] From VSIPL++ API, it is permissible to scale on both forward and
+>> inverse FFTs. I suspect this should just pass 'scale' through.
+>>
+> I'm glad you caught this.  IIUC, this will require that I add scaling 
+> code to the forward case in the kernel.  At present, it doesn't do this, 
+> but I should be able to make it conditional on (scale != 1.f), no?
+> 
+
+Yes, that's correct.
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From stefan at codesourcery.com  Tue Feb 13 13:43:37 2007
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Tue, 13 Feb 2007 08:43:37 -0500
+Subject: [vsipl++] [patch] Support for Cell FFT's up to 4K points.
+In-Reply-To: <45D16F11.4010900@codesourcery.com>
+References: <45D0E04B.3080406@codesourcery.com> <45D0F6CC.1070504@codesourcery.com> <45D16F11.4010900@codesourcery.com>
+Message-ID: <45D1C089.5070709@codesourcery.com>
+
+Don McCoy wrote:
+
+>> [5] 128 is probably a good alignment.  However, it is kind of a magic
+>> number that should be a macro (VSIP_IMPL_CELL_DMAALIGNMENT, pick a
+>> good name) to call it out.
+>>
+> Changed to VSIP_IMPL_ALLOC_ALIGNMENT, and am compiling with
+> --with-alignment=128.  I can't think of a compelling reason to make a
+> new macro here, but if someone else can, please identify it.
+
+I think this is the right thing to do.
+Jules, we quickly talked about this in the past: should we make the implicit
+memory allocation used by Dense<> (i.e. when not using user-storage) use
+alloc_align<> instead of 'new' ?
+
+>> [8] Do we really have a real->complex FFT on the SPE?
+>>
+> No, but we could implement these variations fairly easily by putting in
+> an extra copy in the dispatcher.  I'll address this soon.
+
+Are you referring to dispatching a real FFT to complex FFT ? I don't think
+this is a good idea. Doing a real FFT should be substantially faster than
+a complex FFT, and take much less memory.
+
+>> Also, I don't see how you could check for unit-stride here since there
+>> is no layout info.  I need to refresh my memory on rt_valid for FFT
+>> dispatch a bit.
+>>
+> I was looking at the serial expression dispatch code, which of course is
+> different.  I'd like to understand how this is handled in the FFT code
+> though.
+
+Data layout is checked in the operator() implementation(s). Have a look at
+vsip/opt/workspace.hpp:97. We assume unit-stride is supported by all backends,
+so we have a 'fast path' for it.
+In other cases we first need to query the backend whether it supports the
+given layout, by calling backend->query_layout(), passing in the actual
+layout, and getting back a modified layout that would be accepted.
+Based on this we construct an 'Rt_ext_data' object that will make the
+necessary adjustments (i.e. possibly do a copy internally).
+
+So, as a backend implementer, you should look at the default implementation
+in vsip/core/fft/backend.hpp:51, possibly overriding this from the cbe backends.
+
+> Although this did remind me that we are not passing any flags to the SPU
+> compiler like -Wall.  I changed this to do the following:
+> 
+>    CC_SPU_FLAGS := @CXXFLAGS@
+> 
+> Which passes any PPU flags from the configure line on to the SPU
+> compiler.  Is this ok, at least for now?
+
+This should be
+
+CC_SPU_FLAGS := @CFLAGS@,
+
+since CXXFLAGS may contain C++-specific flags that are not valid when compiling
+C. In the long run we should think of setting CC_SPU_FLAGS from within configure.ac,
+the same way CFLAGS and CXXFLAGS are set, so we can predefine the variable, and then
+only add to that, instead of overwriting it.
+
+Thanks,
+		Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+
+
+From stefan at codesourcery.com  Tue Feb 13 14:25:21 2007
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Tue, 13 Feb 2007 09:25:21 -0500
+Subject: [vsipl++] [patch] Support for Cell FFT's up to 4K points.
+In-Reply-To: <45D1C089.5070709@codesourcery.com>
+References: <45D0E04B.3080406@codesourcery.com> <45D0F6CC.1070504@codesourcery.com> <45D16F11.4010900@codesourcery.com> <45D1C089.5070709@codesourcery.com>
+Message-ID: <45D1CA51.9010508@codesourcery.com>
+
+Stefan Seefeld wrote:
+
+>> Although this did remind me that we are not passing any flags to the SPU
+>> compiler like -Wall.  I changed this to do the following:
+>>
+>>    CC_SPU_FLAGS := @CXXFLAGS@
+>>
+>> Which passes any PPU flags from the configure line on to the SPU
+>> compiler.  Is this ok, at least for now?
+> 
+> This should be
+> 
+> CC_SPU_FLAGS := @CFLAGS@,
+
+Sorry, I take that back. CFLAGS is used now to compile the PPU-side of ALF.
+And, as we may need to pass different flags for PPU and SPU, we can't use
+CFLAGS here. So, this really needs to be spelled out as 'CC_SPU_FLAGS'.
+
+Since we don't add anything, why can't we just leave it out and set
+it as an environment variable only ?
+
+Thanks,
+		Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+
+
+From don at codesourcery.com  Tue Feb 13 17:50:24 2007
+From: don at codesourcery.com (Don McCoy)
+Date: Tue, 13 Feb 2007 10:50:24 -0700
+Subject: [vsipl++] [patch] Support for Cell FFT's up to 4K points.
+In-Reply-To: <45D1CA51.9010508@codesourcery.com>
+References: <45D0E04B.3080406@codesourcery.com> <45D0F6CC.1070504@codesourcery.com> <45D16F11.4010900@codesourcery.com> <45D1C089.5070709@codesourcery.com> <45D1CA51.9010508@codesourcery.com>
+Message-ID: <45D1FA60.90208@codesourcery.com>
+
+Stefan Seefeld wrote:
+>> CC_SPU_FLAGS := @CFLAGS@,
+>>     
+>
+> Sorry, I take that back. CFLAGS is used now to compile the PPU-side of ALF.
+> And, as we may need to pass different flags for PPU and SPU, we can't use
+> CFLAGS here. So, this really needs to be spelled out as 'CC_SPU_FLAGS'.
+>
+>   
+I see making it CFLAGS, but as of now, the SPU and PPU could share these 
+flags until we have a good reason to do otherwise, no?
+
+Overall, I don't feel qualified to suggest how the makefile should be 
+structured.  I do know that I'd like to set *one* thing on the configure 
+line that basically indicates 'debug' or 'release' (i.e. "-O2 -DNDEBUG" 
+or "-g -W -Wall").  Any chance I can get that?  Or do I have to set both 
+CXXFLAGS as well as CFLAGS with the same values?
+
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+
+
+
+From don at codesourcery.com  Tue Feb 13 18:10:59 2007
+From: don at codesourcery.com (Don McCoy)
+Date: Tue, 13 Feb 2007 11:10:59 -0700
+Subject: [vsipl++] [patch] Support for Cell FFT's up to 4K points.
+In-Reply-To: <45D1C089.5070709@codesourcery.com>
+References: <45D0E04B.3080406@codesourcery.com> <45D0F6CC.1070504@codesourcery.com> <45D16F11.4010900@codesourcery.com> <45D1C089.5070709@codesourcery.com>
+Message-ID: <45D1FF33.9090208@codesourcery.com>
+
+Stefan Seefeld wrote:
+> Are you referring to dispatching a real FFT to complex FFT ? I don't think
+> this is a good idea. Doing a real FFT should be substantially faster than
+> a complex FFT, and take much less memory.
+>   
+I was suggesting a short-term fix just to provide this support, but I'm 
+not sure why... as you say, it won't be faster (although I guess it 
+could take advantage of being able to perform multiple simultaneous FFTs).
+
+Since we don't need these right away and can always put them back later, 
+should I rip the r->c and c->r support out for now, just to avoid 
+confusion? 
+
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+
+
+
+From jules at codesourcery.com  Tue Feb 13 18:42:49 2007
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Tue, 13 Feb 2007 13:42:49 -0500
+Subject: [vsipl++] [patch] Support for Cell FFT's up to 4K points.
+In-Reply-To: <45D1FF33.9090208@codesourcery.com>
+References: <45D0E04B.3080406@codesourcery.com> <45D0F6CC.1070504@codesourcery.com> <45D16F11.4010900@codesourcery.com> <45D1C089.5070709@codesourcery.com> <45D1FF33.9090208@codesourcery.com>
+Message-ID: <45D206A9.5050500@codesourcery.com>
+
+
+> I was suggesting a short-term fix just to provide this support, but I'm 
+> not sure why... as you say, it won't be faster (although I guess it 
+> could take advantage of being able to perform multiple simultaneous FFTs).
+> 
+> Since we don't need these right away and can always put them back later, 
+> should I rip the r->c and c->r support out for now, just to avoid 
+> confusion?
+> 
+
+If it works as checked in, go ahead and leave it in for the time being.
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From don at codesourcery.com  Tue Feb 13 18:47:18 2007
+From: don at codesourcery.com (Don McCoy)
+Date: Tue, 13 Feb 2007 11:47:18 -0700
+Subject: [vsipl++] [patch] Support for Cell FFT's up to 4K points.
+In-Reply-To: <45D206A9.5050500@codesourcery.com>
+References: <45D0E04B.3080406@codesourcery.com> <45D0F6CC.1070504@codesourcery.com> <45D16F11.4010900@codesourcery.com> <45D1C089.5070709@codesourcery.com> <45D1FF33.9090208@codesourcery.com> <45D206A9.5050500@codesourcery.com>
+Message-ID: <45D207B6.7090002@codesourcery.com>
+
+Jules Bergmann wrote:
+>>
+>> Since we don't need these right away and can always put them back 
+>> later, should I rip the r->c and c->r support out for now, just to 
+>> avoid confusion?
+>>
+>
+> If it works as checked in, go ahead and leave it in for the time being.
+>
+Those specializations are not complete (i.e. by_value() and 
+by_reference() functions are TBD).
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+
+
+
+From jules at codesourcery.com  Tue Feb 13 18:51:50 2007
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Tue, 13 Feb 2007 13:51:50 -0500
+Subject: [vsipl++] [patch] Support for Cell FFT's up to 4K points.
+In-Reply-To: <45D1C089.5070709@codesourcery.com>
+References: <45D0E04B.3080406@codesourcery.com> <45D0F6CC.1070504@codesourcery.com> <45D16F11.4010900@codesourcery.com> <45D1C089.5070709@codesourcery.com>
+Message-ID: <45D208C6.90400@codesourcery.com>
+
+Stefan Seefeld wrote:
+> Don McCoy wrote:
+> 
+>>> [5] 128 is probably a good alignment.  However, it is kind of a magic
+>>> number that should be a macro (VSIP_IMPL_CELL_DMAALIGNMENT, pick a
+>>> good name) to call it out.
+>>>
+>> Changed to VSIP_IMPL_ALLOC_ALIGNMENT, and am compiling with
+>> --with-alignment=128.  I can't think of a compelling reason to make a
+>> new macro here, but if someone else can, please identify it.
+> 
+> I think this is the right thing to do.
+> Jules, we quickly talked about this in the past: should we make the implicit
+> memory allocation used by Dense<> (i.e. when not using user-storage) use
+> alloc_align<> instead of 'new' ?
+
+Dense uses an allocator (specifically 'Aligned_allocator'), not 'new'.
+
+The intent is that if we want to allow users to specify an allocator 
+(say for example to allocate memory in a certain region that was 
+DMA'able), or if we wanted to export the allocator used by VSIPL++ to 
+the user for allocating their own storage that is compatible with what 
+Dense would otherwise allocate (allocating memory within a DMA'able 
+region again being an example), using an allocator would make this easier.
+
+Of course, we don't have APIs defined for those types of functionality yet.
+
+				-- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From stefan at codesourcery.com  Tue Feb 13 19:12:28 2007
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Tue, 13 Feb 2007 14:12:28 -0500
+Subject: [vsipl++] [patch] Support for Cell FFT's up to 4K points.
+In-Reply-To: <45D208C6.90400@codesourcery.com>
+References: <45D0E04B.3080406@codesourcery.com> <45D0F6CC.1070504@codesourcery.com> <45D16F11.4010900@codesourcery.com> <45D1C089.5070709@codesourcery.com> <45D208C6.90400@codesourcery.com>
+Message-ID: <45D20D9C.5010602@codesourcery.com>
+
+Jules Bergmann wrote:
+> Stefan Seefeld wrote:
+
+>> Jules, we quickly talked about this in the past: should we make the
+>> implicit
+>> memory allocation used by Dense<> (i.e. when not using user-storage) use
+>> alloc_align<> instead of 'new' ?
+> 
+> Dense uses an allocator (specifically 'Aligned_allocator'), not 'new'.
+
+Sorry I missed that ! This means things should 'just work' whenever we
+configure the right default alignment, at least as long as we don't
+pass subblocks for which alignment is off.
+
+Thanks,
+		Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+
+
+From don at codesourcery.com  Wed Feb 14 00:12:26 2007
+From: don at codesourcery.com (Don McCoy)
+Date: Tue, 13 Feb 2007 17:12:26 -0700
+Subject: [vsipl++] [patch] Support for Cell FFT's up to 4K points.
+In-Reply-To: <45D0E889.4000209@codesourcery.com>
+References: <45D0E04B.3080406@codesourcery.com> <45D0E889.4000209@codesourcery.com>
+Message-ID: <45D253EA.1080005@codesourcery.com>
+
+Stefan Seefeld wrote:
+>> Index: src/vsip/opt/cbe/spu/GNUmakefile.inc.in
+>> ===================================================================
+>> --- src/vsip/opt/cbe/spu/GNUmakefile.inc.in	(revision 163034)
+>> +++ src/vsip/opt/cbe/spu/GNUmakefile.inc.in	(working copy)
+>> @@ -37,7 +37,7 @@
+>>  CC_SPU_FLAGS := 
+>>  LD_SPU_FLAGS := -Wl,-N -L$(CBE_SDK_PREFIX)/sysroot/usr/spu/lib
+>>  CC_EMBED_SPU := ppu-embedspu -m32
+>> -SPU_LIBS := -lalf
+>> +SPU_LIBS := -lalf -lfft
+>>     
+>
+> Depending on how many other libs we expect to link to, such additions may
+> be best to make per target, just for clarity.
+>
+>   
+The attached patch conditionally adds libfft and reverts the 
+CC_SPU_FLAGS change from the previous patch.  It also removes the 
+unimplemented FFT cases (real->complex and complex->real).
+
+Ok to commit?
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: makefft.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20070213/764543d1/attachment.ksh>
+
+From jules at codesourcery.com  Wed Feb 14 03:11:07 2007
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Tue, 13 Feb 2007 22:11:07 -0500
+Subject: [vsipl++] [patch] Support for Cell FFT's up to 4K points.
+In-Reply-To: <45D253EA.1080005@codesourcery.com>
+References: <45D0E04B.3080406@codesourcery.com> <45D0E889.4000209@codesourcery.com> <45D253EA.1080005@codesourcery.com>
+Message-ID: <45D27DCB.50206@codesourcery.com>
+
+
+ > The attached patch conditionally adds libfft and reverts the
+ > CC_SPU_FLAGS change from the previous patch.  It also removes the
+ > unimplemented FFT cases (real->complex and complex->real).
+ >
+ > Ok to commit?
+
+Don, this looks good, please check it in.  thanks -- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From jules at codesourcery.com  Wed Feb 14 03:41:23 2007
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Tue, 13 Feb 2007 22:41:23 -0500
+Subject: Sourcery VSIPL++ 1.3 Available
+Message-ID: <45D284E3.70109@codesourcery.com>
+
+CodeSourcery is pleased to announce the availability of Sourcery
+VSIPL++ 1.3.  This new version of Sourcery VSIPL++, a toolkit for
+developing high-performance signal- and image-processing applications
+has a number of improvements and new features.  Highlights include
+support for C-VSIPL libraries as back-ends for computation, including
+matrix-vector products, linear algebra solvers, and signal processing
+objects, and performance optimizations when using the Mercury SAL and
+PAS libraries.
+
+This version of Sourcery VSIPL++ contains the new VSIPL++ reference
+implementation.  It is a full implementation of the serial and
+parallel API, using C-VSIPL and MPI as back-end libraries for
+computation and communication respectively.  Please note that not all
+technology and files in Sourcery VSIPL++ are part of the reference
+implementation.  See the LICENSE file in source package for more
+details.
+
+Sourcery VSIPL++ is a full implementation of the VSIPL++ API, an open
+standard for platform-independent signal- and image-processing
+developed by the DOD High Performance Embedded Computing Software
+Initiative (HPEC-SI) and the VSIPL Forum. Sourcery VSIPL++ provides
+many high-level routines used in SIP computing, such as FFTs, FIR
+filters, SVD and QR decomposition, and linear algebra.
+
+For more information about Sourcery VSIPL++, including information about
+receiving a free 30-day evaluation, please visit our website:
+
+    http://www.codesourcery.com/vsiplplusplus
+
+For more information on the new features in this release, please visit:
+
+    http://www.codesourcery.com/vsiplplusplus/1.3/news.html
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From jules at codesourcery.com  Wed Feb 14 21:10:36 2007
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Wed, 14 Feb 2007 16:10:36 -0500
+Subject: [patch] Diag mode for benchmarks
+Message-ID: <45D37ACC.9070507@codesourcery.com>
+
+This patch has been "rotting" in my directory for a while, and now that
+the release is out, I want to try to get it checked in.
+
+This patch adds a "diag" mode for the benchmarks.  In particular, if
+you run a benchmark program with the '-diag' option, instead of
+running the actual benchmark, it will attempt to display information
+about what is being benchmarked.
+
+For example, if you want to find out what backend is being used for
+complex vector multiply (vmul -2), you would type:
+
+% benchmarks/vmul -2 -diag
+diagnose_eval_list
+   dst expr: 
+N4vsip5DenseILj1ESt7complexIfENS_5tupleILj0ELj1ELj2EEENS_9Local_mapEEE
+   src expr: 
+N4vsip4impl17Binary_expr_blockILj1ENS0_2op4MultENS_5DenseILj1ESt7complexIfENS_5tupleILj0ELj1ELj2EEENS_9Local_mapEEES6_SA_S6_EE
+   -        Intel_ipp_tag  ct:  true  rt:  true  (Expr_IPP_VV-ipp::vmul)
+   -        Transpose_tag  ct: false  rt: false
+   -      Mercury_sal_tag  ct: false  rt: false
+   -              unknown  ct: false  rt: false
+   -     Simd_builtin_tag  ct:  true  rt:  true  (Expr_SIMD_VV-simd::vmul)
+   -       Dense_expr_tag  ct: false  rt: false
+   -             Copy_tag  ct: false  rt: false
+   -          Op_expr_tag  ct: false  rt: false
+   - Simd_loop_fusion_tag  ct: false  rt: false
+   -      Loop_fusion_tag  ct:  true  rt:  true  (Expr_Loop)
+
+This shows the source and destination expression types, and walks
+through the back-ends to show which apply (using the
+diagnose_eval_list_std() function).
+
+In this particular case, the Intel_ipp_tag, Simd_builtin_tag, and
+Loop_fusion_tag backends apply.
+
+Of course, generating this output requires modifying the benchmark
+cases to report something useful.  This patch modifies several benchmarks
+to do this.  Unfortunately, the remaining benchmarks that have not
+been modified will now fail to compile.
+
+To make fixing these benchmarks easier to do, and to make future
+changes like this easier, the patch also includes a new base class for
+benchmarks called Benchmark_base.  This class defines a 'diag()'
+member function, so modifying a benchmark class to derive from it will
+fix the compilation error (but will not generate any useful diag info
+of course!).
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: bm.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20070214/972dc432/attachment.ksh>
+
+From don at codesourcery.com  Thu Feb 15 03:33:41 2007
+From: don at codesourcery.com (Don McCoy)
+Date: Wed, 14 Feb 2007 20:33:41 -0700
+Subject: [patch] CBE Fftm support
+Message-ID: <45D3D495.9040304@codesourcery.com>
+
+Adds support for multiple FFTs, up to 4K points.
+
+Regards,
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: fftm.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20070214/f1b90183/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: fftm.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20070214/f1b90183/attachment-0001.ksh>
+
+From stefan at codesourcery.com  Thu Feb 15 13:10:03 2007
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Thu, 15 Feb 2007 08:10:03 -0500
+Subject: [vsipl++] [patch] CBE Fftm support
+In-Reply-To: <45D3D495.9040304@codesourcery.com>
+References: <45D3D495.9040304@codesourcery.com>
+Message-ID: <45D45BAB.9000609@codesourcery.com>
+
+Don McCoy wrote:
+
+> Index: src/vsip/core/fft.hpp
+> ===================================================================
+> --- src/vsip/core/fft.hpp	(revision 163256)
+> +++ src/vsip/core/fft.hpp	(working copy)
+> @@ -449,10 +449,11 @@
+>  class Fftm : public impl::fftm_facade<I, O, impl::fft::LibraryTagList,
+>  				      1 - A, D, R, N, H> 
+>  {
+> -  // The S template parameter in 2D Fft is '0' for column-first
+> -  // and '1' for row-first transformation. As Fftm's Axis parameter
+> -  // does the inverse, we use '1 - A' here to be able to share the same
+> -  // logic underneath.
+> +  // Fftm and 2D Fft share some of the same underlying logic.  
+> +  // Unfortunately, the latter uses S where '0' stands for column-first 
+> +  // and '1' for row-first transformations.  Fftm uses A where '0' means 
+> +  // by-row and '1' means by-column.  As a result, here we use '1 - A'
+> +  // in order to be consistent in the base class.
+
+What about:
+
+Fftm and 2D Fft share some underlying logic.
+The 'Special dimension' (S) template parameter in 2D Fft uses '0' to
+represent column-first and '1' for a row-first transformation, while
+the Fftm 'Axis' (A) parameter uses '0' to represent row-wise, and
+'1' for column-wise transformation.
+Thus, by using '1 - A' here we can share the implementation, too.
+
+
+
+> Index: src/vsip/opt/cbe/ppu/fft.cpp
+> ===================================================================
+> --- src/vsip/opt/cbe/ppu/fft.cpp	(revision 163256)
+> +++ src/vsip/opt/cbe/ppu/fft.cpp	(working copy)
+
+>  // 1D complex -> complex FFT
+>  
+>  template <typename T, int A, int E>
+>  class Fft_impl<1, std::complex<T>, std::complex<T>, A, E>
+> -  : public fft::backend<1, std::complex<T>, std::complex<T>, A, E>
+> -
+> +    : public fft::backend<1, std::complex<T>, std::complex<T>, A, E>,
+> +      private Fft_base<T>
+>  {
+>    typedef T rtype;
+>    typedef std::complex<rtype> ctype;
+>    typedef std::pair<rtype*, rtype*> ztype;
+>  
+>  public:
+> -  Fft_impl(Domain<1> const &dom, rtype scale) VSIP_THROW((std::bad_alloc))
+> +  Fft_impl(Domain<1> const &dom, rtype scale)
+>        : scale_(scale),
+>          W_(alloc_align<ctype>(VSIP_IMPL_ALLOC_ALIGNMENT, dom.size()/4))
+>    {
+> -    compute_twiddle_factors(W_, dom.size());
+> +    this->compute_twiddle_factors(W_, dom.size());
+
+Since you have now put the definition of 'compute_twiddle_factors' into a
+base class, why don't you store W_ there, too, and then call this function
+from the base class constructor ?
+
+Thus...
+
+>    }
+>    virtual ~Fft_impl()
+>    {
+> @@ -106,7 +164,7 @@
+>    virtual void in_place(ctype *inout, stride_type stride, length_type length)
+>    {
+>      assert(stride == 1);
+> -    fft_8K<T>(inout, inout, W_, length, this->scale_, E);
+> +    this->fft_8K(inout, inout, W_, length, this->scale_, E);
+
+...this would become:
+
+this->fft_8k(inout, inout, this->scale_, E);
+
+
+>    }
+>    virtual void in_place(ztype, stride_type, length_type)
+>    {
+> @@ -117,7 +175,7 @@
+>    {
+>      assert(in_stride == 1);
+>      assert(out_stride == 1);
+> -    fft_8K<T>(out, in, W_, length, this->scale_, E);
+> +    this->fft_8K(out, in, W_, length, this->scale_, E);
+
+Could you exchange 'in' and 'out' here for consistency ? I think everywhere else
+we pass the input first.
+
+
+Thanks,
+		Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+
+
+From jules at codesourcery.com  Thu Feb 15 17:06:03 2007
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Thu, 15 Feb 2007 12:06:03 -0500
+Subject: [vsipl++] [patch] CBE Fftm support
+In-Reply-To: <45D3D495.9040304@codesourcery.com>
+References: <45D3D495.9040304@codesourcery.com>
+Message-ID: <45D492FB.2010309@codesourcery.com>
+
+Don McCoy wrote:
+ > Adds support for multiple FFTs, up to 4K points.
+
+Don,
+
+This looks good.  Please check it in, modulo Stefan's comments.
+
+Also, why are the Fft_base compute functions called fft_8K and
+fftm_8K?  What does the "8K" refer to?
+
+				thanks,
+				-- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From don at codesourcery.com  Thu Feb 15 17:20:16 2007
+From: don at codesourcery.com (Don McCoy)
+Date: Thu, 15 Feb 2007 10:20:16 -0700
+Subject: [vsipl++] [patch] CBE Fftm support
+In-Reply-To: <45D492FB.2010309@codesourcery.com>
+References: <45D3D495.9040304@codesourcery.com> <45D492FB.2010309@codesourcery.com>
+Message-ID: <45D49650.3000507@codesourcery.com>
+
+Jules Bergmann wrote:
+> Also, why are the Fft_base compute functions called fft_8K and
+> fftm_8K?  What does the "8K" refer to?
+>
+Er... well.  It was supposed to refer to the maximum points the 
+underlying 'libfft' could handle.  That didn't turn out to be true (at 
+least not in our circumstances with ALF), so the max is really 4K points.
+
+I suppose renaming is an option.  :P
+
+
+More seriously, Stefan already pointed out a few changes that make this 
+backend more consistent with others.  I think this is a good idea and 
+I'll be happy to take further suggestions re: naming etc...
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+
+
+
+From don at codesourcery.com  Thu Feb 15 18:50:46 2007
+From: don at codesourcery.com (Don McCoy)
+Date: Thu, 15 Feb 2007 11:50:46 -0700
+Subject: [vsipl++] [patch] CBE Fftm support
+In-Reply-To: <45D492FB.2010309@codesourcery.com>
+References: <45D3D495.9040304@codesourcery.com> <45D492FB.2010309@codesourcery.com>
+Message-ID: <45D4AB86.6050609@codesourcery.com>
+
+Jules Bergmann wrote:
+> This looks good.  Please check it in, modulo Stefan's comments.
+>
+Checked in, revised as attached.
+
+Thanks all,
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: fftm2.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20070215/81b8d3a8/attachment.ksh>
+
+From stefan at codesourcery.com  Thu Feb 15 19:03:27 2007
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Thu, 15 Feb 2007 14:03:27 -0500
+Subject: [vsipl++] [patch] CBE Fftm support
+In-Reply-To: <45D4AB86.6050609@codesourcery.com>
+References: <45D3D495.9040304@codesourcery.com> <45D492FB.2010309@codesourcery.com> <45D4AB86.6050609@codesourcery.com>
+Message-ID: <45D4AE7F.1050905@codesourcery.com>
+
+Don,
+
+sorry for the late notice, but something caught my eye just now:
+
+
+Don McCoy wrote:
+> Jules Bergmann wrote:
+>> This looks good.  Please check it in, modulo Stefan's comments.
+>>
+> Checked in, revised as attached.
+
+> Index: src/vsip/opt/cbe/ppu/fft.cpp
+> ===================================================================
+
+> +class Fft_base
+>  {
+
+> +public:
+> +  Fft_base(length_type size) 
+> +    : twiddle_factors_(alloc_align<ctype>(VSIP_IMPL_ALLOC_ALIGNMENT, size / 4))
+>    {
+
+> +    compute_twiddle_factors(size);
+>    }
+
+> +  virtual ~Fft_base() 
+> +  {
+> +    delete(twiddle_factors_);
+> +  }
+
+I don't think it is valid to 'delete' memory allocated via alloc_align<>;
+you have to free it via free_align(). Or, better yet, use an aligned_array<>
+as suggested earlier.
+
+Thanks,
+		Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+
+
+From don at codesourcery.com  Thu Feb 15 19:33:54 2007
+From: don at codesourcery.com (Don McCoy)
+Date: Thu, 15 Feb 2007 12:33:54 -0700
+Subject: [vsipl++] [patch] CBE Fftm support
+In-Reply-To: <45D4AE7F.1050905@codesourcery.com>
+References: <45D3D495.9040304@codesourcery.com> <45D492FB.2010309@codesourcery.com> <45D4AB86.6050609@codesourcery.com> <45D4AE7F.1050905@codesourcery.com>
+Message-ID: <45D4B5A2.4060000@codesourcery.com>
+
+Stefan Seefeld wrote:
+> I don't think it is valid to 'delete' memory allocated via alloc_align<>;
+> you have to free it via free_align(). Or, better yet, use an aligned_array<>
+> as suggested earlier.
+>
+>   
+Thanks for catching that! 
+
+Change committed.
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: fftm3.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20070215/3f80b03b/attachment.ksh>
+
+From jules at codesourcery.com  Sat Feb 24 16:29:05 2007
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Sat, 24 Feb 2007 11:29:05 -0500
+Subject: [patch] command line option to set number of SPEs
+Message-ID: <45E067D1.8080507@codesourcery.com>
+
+Make the number of SPEs controllable from the command line, i.e.
+
+	vmul --svpp-num-spes 8 -1 -ops
+
+Ok to apply?
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: argv.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20070224/0e19ac7a/attachment.ksh>
+
+From stefan at codesourcery.com  Sat Feb 24 16:33:12 2007
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Sat, 24 Feb 2007 11:33:12 -0500
+Subject: [vsipl++] [patch] command line option to set number of SPEs
+In-Reply-To: <45E067D1.8080507@codesourcery.com>
+References: <45E067D1.8080507@codesourcery.com>
+Message-ID: <45E068C8.3030204@codesourcery.com>
+
+Jules Bergmann wrote:
+> Make the number of SPEs controllable from the command line, i.e.
+> 
+>     vmul --svpp-num-spes 8 -1 -ops
+> 
+> Ok to apply?
+
+Looks good !
+
+Thanks,
+		Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+
+
+From don at codesourcery.com  Sat Feb 24 21:40:34 2007
+From: don at codesourcery.com (Don McCoy)
+Date: Sat, 24 Feb 2007 14:40:34 -0700
+Subject: [patch] Fast convolution for Cell BE
+Message-ID: <45E0B0D2.6060801@codesourcery.com>
+
+The attached patch adds a fast convolution object to the 'impl' 
+namespace.  It operates only on vectors of length 32 up to 2048 points, 
+or on matrices with rows having the same lengths.  In either case, views 
+must also be dense.
+
+The application 'examples/fconv.cpp' demonstrates how to use it and 
+validates the results by computing the reference result using the three 
+component operations: forward FFT, element-wise vector multiply and 
+inverse FFT (using the existing SPE kernels for these tasks).
+
+This is an example of a "fused" kernel -- i.e. one that avoids 
+unnecessary I/O overhead by having the SPE's do three operations at 
+once, as opposed to one, thereby gaining a performance advantage. 
+
+Regards,
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: fconv2.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20070224/661c7bee/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: fconv2.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20070224/661c7bee/attachment-0001.ksh>
+
+From don at codesourcery.com  Sun Feb 25 06:51:59 2007
+From: don at codesourcery.com (Don McCoy)
+Date: Sat, 24 Feb 2007 23:51:59 -0700
+Subject: [patch] Fastconv benchmark for Cell
+Message-ID: <45E1320F.2080308@codesourcery.com>
+
+Includes a minor fix for the fast convolution example too.
+
+Regards,
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: fcbm.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20070224/37236d7d/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: fcbm.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20070224/37236d7d/attachment-0001.ksh>
+
+From jules at codesourcery.com  Sun Feb 25 06:54:50 2007
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Sun, 25 Feb 2007 01:54:50 -0500
+Subject: [vsipl++] [patch] Fastconv benchmark for Cell
+In-Reply-To: <45E1320F.2080308@codesourcery.com>
+References: <45E1320F.2080308@codesourcery.com>
+Message-ID: <45E132BA.8070100@codesourcery.com>
+
+Don McCoy wrote:
+> Includes a minor fix for the fast convolution example too.
+
+Don, This looks good, please check it in.  -- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+

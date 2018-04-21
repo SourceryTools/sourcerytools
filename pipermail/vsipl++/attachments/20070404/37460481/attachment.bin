@@ -1,0 +1,186 @@
+Index: ChangeLog
+===================================================================
+--- ChangeLog	(revision 167770)
++++ ChangeLog	(working copy)
+@@ -1,3 +1,15 @@
++2007-04-02  Assem Salama <assem@codesourcery.com>
++	* src/vsip/core/expr/generator_block.hpp: Made Choose_peb of
++	  Generator_expr_block a Peb_remap_tag. Changed apply function to call
++	  apply instead of apply_const.  Removed const from type of 
++	  Combine_return_type<CombineT, Generator_expr_block<Dim,Generator>
++	  const>.
++	* src/vsip/core/parallel/expr.hpp: Added a new implementation of
++	  Par_expr_block that uses the Peb_remap_tag. Also changed return of
++	  get_local_block to local_block_ret_type instead of local_block_type&.
++	  Added a new typedef in Par_expr_block for all tags that wraps
++	  local_block_type in View_block_storage.
++
+ 2007-03-28  Don McCoy  <don@codesourcery.com>
+ 
+ 	* src/vsip/opt/cbe/ppu/fft.cpp: Use new parameters header.
+Index: src/vsip/core/expr/generator_block.hpp
+===================================================================
+--- src/vsip/core/expr/generator_block.hpp	(revision 165174)
++++ src/vsip/core/expr/generator_block.hpp	(working copy)
+@@ -158,23 +158,26 @@
+ }
+ 
+ 
++template <dimension_type Dim, typename Generator>
++struct Choose_peb<Generator_expr_block<Dim, Generator> const>
++{ typedef Peb_remap_tag type; };
+ 
++template <dimension_type Dim, typename Generator>
++struct Choose_peb<Generator_expr_block<Dim, Generator> >
++{ typedef Peb_remap_tag type; };
++
++
+ template <typename       CombineT,
+ 	  dimension_type Dim,
+ 	  typename       Generator>
+ struct Combine_return_type<CombineT,
+ 			   Generator_expr_block<Dim, Generator> const>
+ {
+-#if 1
+-  typedef Generator_expr_block<Dim, Generator> const block_type;
++  typedef Generator_expr_block<Dim, Generator> block_type;
+   typedef typename CombineT::template return_type<block_type>::type
+ 		type;
+   typedef typename CombineT::template tree_type<block_type>::type
+ 		tree_type;
+-#else
+-  typedef Generator_expr_block<Dim, Generator> const tree_type;
+-  typedef tree_type type;
+-#endif
+ };
+ 
+ 
+@@ -184,16 +187,11 @@
+ 	  typename       Generator>
+ struct Combine_return_type<CombineT, Generator_expr_block<Dim, Generator> >
+ {
+-#if 1
+   typedef Generator_expr_block<Dim, Generator> block_type;
+   typedef typename CombineT::template return_type<block_type>::type
+ 		type;
+   typedef typename CombineT::template tree_type<block_type>::type
+ 		tree_type;
+-#else
+-  typedef Generator_expr_block<Dim, Generator> const tree_type;
+-  typedef tree_type type;
+-#endif
+ };
+ 
+ 
+@@ -207,16 +205,7 @@
+   CombineT const&                             combine,
+   Generator_expr_block<Dim, Generator> const& block)
+ {
+-#if 1
+-  return combine.apply_const(block);
+-#else
+-  typedef typename Combine_return_type<
+-    CombineT,
+-    Generator_expr_block<Dim, Generator> const>::type
+-		block_type;
+-
+-  return block;
+-#endif
++  return combine.apply(block);
+ }
+ 
+ 
+Index: src/vsip/core/parallel/expr.hpp
+===================================================================
+--- src/vsip/core/parallel/expr.hpp	(revision 165174)
++++ src/vsip/core/parallel/expr.hpp	(working copy)
+@@ -79,6 +79,8 @@
+   typedef Pas_block<Dim, value_type, order_type, MapT> dst_block_type;
+   typedef typename dst_block_type::local_block_type   local_block_type;
+ #endif
++  typedef typename View_block_storage<local_block_type>::plain_type
++                                                local_block_ret_type;
+ 
+   typedef typename View_of_dim<Dim, value_type, dst_block_type>::type
+ 		dst_view_type;
+@@ -139,6 +141,8 @@
+ 
+ 
+   typedef BlockT const                              local_block_type;
++  typedef typename View_block_storage<local_block_type>::plain_type
++                                                local_block_ret_type;
+   typedef Distributed_block<local_block_type, MapT> dst_block_type;
+ 
+   typedef typename View_of_dim<Dim, value_type, dst_block_type>::type
+@@ -177,8 +181,62 @@
+   typename View_block_storage<BlockT>::expr_type blk_;
+ };
+ 
++template <dimension_type Dim,
++	  typename       MapT,
++	  typename       BlockT>
++class Par_expr_block<Dim, MapT, BlockT, Peb_remap_tag> : Non_copyable
++{
++public:
++  static dimension_type const dim = Dim;
+ 
++  typedef typename BlockT::value_type           value_type;
++  typedef typename BlockT::reference_type       reference_type;
++  typedef typename BlockT::const_reference_type const_reference_type;
++  typedef MapT                                  map_type;
+ 
++
++  typedef Subset_block<BlockT const>            local_block_type;
++  typedef typename View_block_storage<local_block_type>::plain_type
++                                                local_block_ret_type;
++
++public:
++  Par_expr_block(MapT const& map, BlockT const& block)
++    : map_     (map),
++      dom_     (map_.template impl_global_domain<Dim>(map_.subblock(), 0)),
++      blk_     (block),
++      subblock_(dom_,blk_)
++  {}
++
++  ~Par_expr_block() {}
++
++  void exec() {}
++
++  // Accessors.
++public:
++  length_type size() const VSIP_NOTHROW { return blk_.size(); }
++  length_type size(dimension_type blk_dim, dimension_type d) const VSIP_NOTHROW
++  { return blk_.size(blk_dim, d); }
++
++  void increment_count() const VSIP_NOTHROW {}
++  void decrement_count() const VSIP_NOTHROW {}
++
++  // Distributed Accessors
++public:
++  local_block_ret_type get_local_block() const
++  {
++    return subblock_;
++  }
++
++
++  // Member data.
++private:
++  MapT const&                                          map_;
++  Domain<Dim>const                                     dom_;
++  typename View_block_storage<BlockT const>::expr_type blk_;
++  local_block_type                                     subblock_;
++};
++
++
+ /// 'Combine' functor to construct an expression of Par_expr_blocks from an
+ /// expression of distributed blockes.
+ 
+@@ -441,7 +499,7 @@
+ 	  typename       MapT,
+ 	  typename       BlockT,
+ 	  typename       ImplTag>
+-typename Par_expr_block<Dim, MapT, BlockT, ImplTag>::local_block_type&
++typename Par_expr_block<Dim, MapT, BlockT, ImplTag>::local_block_ret_type
+ get_local_block(
+   Par_expr_block<Dim, MapT, BlockT, ImplTag> const& block)
+ {

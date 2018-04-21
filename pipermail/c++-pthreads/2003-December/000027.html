@@ -1,0 +1,106 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [c++-pthreads] cancellation points report failure
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:c%2B%2B-pthreads%40codesourcery.com?Subject=Re%3A%20%5Bc%2B%2B-pthreads%5D%20cancellation%20points%20report%20failure&In-Reply-To=%3COF443194EB.87C09E19-ONC1256E04.0021FEA1-C1256E04.0027A854%40de.ibm.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000026.html">
+   <LINK REL="Next"  HREF="000056.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[c++-pthreads] cancellation points report failure</H1>
+    <B>Alexander Terekhov</B> 
+    <A HREF="mailto:c%2B%2B-pthreads%40codesourcery.com?Subject=Re%3A%20%5Bc%2B%2B-pthreads%5D%20cancellation%20points%20report%20failure&In-Reply-To=%3COF443194EB.87C09E19-ONC1256E04.0021FEA1-C1256E04.0027A854%40de.ibm.com%3E"
+       TITLE="[c++-pthreads] cancellation points report failure">TEREKHOV at de.ibm.com
+       </A><BR>
+    <I>Mon Dec 22 07:13:20 UTC 2003</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000026.html">[c++-pthreads] cancellation points report failure
+</A></li>
+        <LI>Next message: <A HREF="000056.html">[c++-pthreads] cancellation points report failure
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#27">[ date ]</a>
+              <a href="thread.html#27">[ thread ]</a>
+              <a href="subject.html#27">[ subject ]</a>
+              <a href="author.html#27">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Nathan Myers wrote:
+[...]
+&gt;<i> If the model works, ...
+</I>
+int peekc(FILE * f) { 
+  return ungetc(getc_unlocked(f), f); /* &quot;The ungetc()     */
+  /* function is infrequently called relative to the other */
+  /* functions/macros so no unlocked variation is needed.&quot; */
+  /*                                                       */
+  /* How fascinating. Well, __fsetlocking() is my friend.  */
+}
+
+Both getc_unlocked() and ungetc() are cancelation points. This 
+function offers basic exception safety and basic thread safety 
+(and it is thread-cancel-safe, of course). Do you really want 
+me to change it to something like
+
+int peekc(FILE * f) { 
+  int c = ungetc(getc_unlocked(f), f); 
+  if (c == EOF &amp;&amp; !feof(f) &amp;&amp; errno == ECANCELED) {
+    /*... ?re-inject cancel request? ... */
+    /*... ?re-enable cancel state? ... */
+    pthread_testcancel(); /* hurrah! */
+  }
+  return c;
+}
+
+&lt;?&gt;
+
+What if someone[1] has it written as
+
+int peekc(FILE * f) { 
+  int c = getc(f); 
+  if (c != EOF) 
+    ungetc(c, f);
+  return c;
+}
+
+and cancelation hits at &quot;unchecked&quot; ungetc(), in your model?
+
+regards,
+alexander.
+
+[1] google.com/groups?selm=<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/c++-pthreads">slrn8cvkde.mf3.kaz at ashi.FootPrints.net</A>
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000026.html">[c++-pthreads] cancellation points report failure
+</A></li>
+	<LI>Next message: <A HREF="000056.html">[c++-pthreads] cancellation points report failure
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#27">[ date ]</a>
+              <a href="thread.html#27">[ thread ]</a>
+              <a href="subject.html#27">[ subject ]</a>
+              <a href="author.html#27">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/c++-pthreads">More information about the c++-pthreads
+mailing list</a><br>
+</body></html>

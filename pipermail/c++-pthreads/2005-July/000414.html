@@ -1,0 +1,137 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [c++-pthreads]  Re: pthread_cancel and EH: let's try this again
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:c%2B%2B-pthreads%40codesourcery.com?Subject=Re%3A%20%5Bc%2B%2B-pthreads%5D%20%20Re%3A%20pthread_cancel%20and%20EH%3A%20let%27s%20try%20this%20again&In-Reply-To=%3C42DAC219.8050506%40bogo.xs4all.nl%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000415.html">
+   <LINK REL="Next"  HREF="000416.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[c++-pthreads]  Re: pthread_cancel and EH: let's try this again</H1>
+    <B>Wil Evers</B> 
+    <A HREF="mailto:c%2B%2B-pthreads%40codesourcery.com?Subject=Re%3A%20%5Bc%2B%2B-pthreads%5D%20%20Re%3A%20pthread_cancel%20and%20EH%3A%20let%27s%20try%20this%20again&In-Reply-To=%3C42DAC219.8050506%40bogo.xs4all.nl%3E"
+       TITLE="[c++-pthreads]  Re: pthread_cancel and EH: let's try this again">wil at bogo.xs4all.nl
+       </A><BR>
+    <I>Sun Jul 17 20:39:53 UTC 2005</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000415.html">[c++-pthreads]  Re: pthread_cancel and EH: let's try this again
+</A></li>
+        <LI>Next message: <A HREF="000416.html">[c++-pthreads]  Re: pthread_cancel and EH: let's try this again
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#414">[ date ]</a>
+              <a href="thread.html#414">[ thread ]</a>
+              <a href="subject.html#414">[ subject ]</a>
+              <a href="author.html#414">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Peter Dimov wrote:
+
+&gt;<i> Wil Evers wrote:
+</I>&gt;<i> 
+</I>&gt;&gt;<i> It seems to me you may have missed the point I was trying to make at
+</I>&gt;&gt;<i> the end of my previous message, which is that it seems feasible - or
+</I>&gt;&gt;<i> even desirable - to use a model in which the cancellation machinery
+</I>&gt;&gt;<i> doesn't implicitly disable cancellation at all, not even when
+</I>&gt;&gt;<i> unwinding the stack.  Please consider this example:
+</I>&gt;<i> 
+</I>&gt;<i> [...]
+</I>&gt;<i> 
+</I>&gt;&gt;<i>   void *thread_routine(void *)
+</I>&gt;&gt;<i>   {
+</I>&gt;&gt;<i>     cancellation_manager disabler(false);
+</I>&gt;&gt;<i>     std::ofstream outfile(&quot;filename&quot;);
+</I>&gt;&gt;<i>
+</I>&gt;&gt;<i>     // lots of legacy code...
+</I>&gt;&gt;<i>
+</I>&gt;&gt;<i>     outfile &lt;&lt; &quot;some output&quot; &lt;&lt; std::endl;
+</I>&gt;&gt;<i>
+</I>&gt;&gt;<i>     {
+</I>&gt;&gt;<i>       cancellation_manager enabler(true);
+</I>&gt;&gt;<i>       some_cancellation_point();
+</I>&gt;&gt;<i>     }
+</I>&gt;&gt;<i>
+</I>&gt;&gt;<i>     // more legacy code...
+</I>&gt;&gt;<i>
+</I>&gt;&gt;<i>     return 0;
+</I>&gt;&gt;<i>   }
+</I>&gt;&gt;<i>
+</I>&gt;&gt;<i> I believe the code above is immune to the surprises caused by changing
+</I>&gt;&gt;<i> ordinary system calls into functions that can throw cancellation
+</I>&gt;&gt;<i> exceptions.
+</I>&gt;<i>  
+</I>&gt;<i> Whether cancellation is enabled during stack unwinding does not affect 
+</I>&gt;<i> your example at all.
+</I>
+Exactly.  However, there are (under model #1) significant differences 
+between the example above and the code that would result if we removed 
+the cancellation managers.
+
+My objection to model #1 (and, to some extent, #2 as well) is that is 
+breaks some commonly used assumptions such as 'destructors do not throw' 
+(#1) or 'system calls do not throw' (#1 and #2).  Implicitly disabling 
+cancellation during stack unwinding solves some of the problems that are 
+introduced by mapping cancellation requests to C++ exceptions, but not 
+all of them.
+
+It seems to me that a complete solution compatible with #1 - one that 
+preserves existing semantics, except for the places where we are know we 
+are able to deal with cancellation exceptions - requires the use of an 
+idiom like the one I tried to illustrate above.  And - I'm repeating 
+myself here - once the user has put all this in place, there is no need 
+for the cancellation machinery to implicitly disable cancellation at 
+all.  It makes no difference any more - just as you observed.
+
+&gt;<i> Leaving cancellation enabled during stack unwinding has the following 
+</I>&gt;<i> effects:
+</I>&gt;<i> 
+</I>&gt;<i> 1. Cancellation points called from destructors or catch+rethrow blocks 
+</I>&gt;<i> may not complete, but throw;
+</I>&gt;<i> 
+</I>&gt;<i> 2. The exception being propagated may be replaced with a cancellation 
+</I>&gt;<i> exception somewhere along the path.
+</I>&gt;<i> 
+</I>&gt;<i> (1) may or may not be desirable depending on context (it's 75% 
+</I>&gt;<i> undesirable if you ask me), and I can't imagine a case where (2) would 
+</I>&gt;<i> be desirable.
+</I>
+Let's add (3): the program will terminate if (1) occurs while the stack 
+is already unwinding.  Highly undesirable too, so clearly, something 
+must be done to prevent all of this.  What I'm trying to do is present 
+an alternative to the IMO incomplete solution #1 provides.
+
+- Wil
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000415.html">[c++-pthreads]  Re: pthread_cancel and EH: let's try this again
+</A></li>
+	<LI>Next message: <A HREF="000416.html">[c++-pthreads]  Re: pthread_cancel and EH: let's try this again
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#414">[ date ]</a>
+              <a href="thread.html#414">[ thread ]</a>
+              <a href="subject.html#414">[ subject ]</a>
+              <a href="author.html#414">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/c++-pthreads">More information about the c++-pthreads
+mailing list</a><br>
+</body></html>

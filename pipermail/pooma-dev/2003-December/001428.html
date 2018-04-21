@@ -1,0 +1,834 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [PATCH] Track up-to-date faces
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20Track%20up-to-date%20faces&In-Reply-To=%3CPine.LNX.4.58.0312211538370.634%40goofy%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001427.html">
+   <LINK REL="Next"  HREF="001429.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[PATCH] Track up-to-date faces</H1>
+    <B>Richard Guenther</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20Track%20up-to-date%20faces&In-Reply-To=%3CPine.LNX.4.58.0312211538370.634%40goofy%3E"
+       TITLE="[PATCH] Track up-to-date faces">rguenth at tat.physik.uni-tuebingen.de
+       </A><BR>
+    <I>Sun Dec 21 14:53:15 UTC 2003</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001427.html">Cheetah license
+</A></li>
+        <LI>Next message: <A HREF="001429.html">[pooma-dev] [PATCH] Track up-to-date faces
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1428">[ date ]</a>
+              <a href="thread.html#1428">[ thread ]</a>
+              <a href="subject.html#1428">[ subject ]</a>
+              <a href="author.html#1428">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Hi!
+
+This patch moves away from a bool tracking dirtyness of the internal
+guards, but instead track the individual faces.  This allows for updating
+only the needed internal guards and wastly improves performance of (my)
+CFD codes as you can see from the top parts of a flat profile:
+
+before patch (the MultiArgKernels are the actual CFD):
+
+Each sample counts as 0.01 seconds.
+  %   cumulative   self              self     total
+ time   seconds   seconds    calls   s/call   s/call  name
+ 26.19     13.59    13.59                             select
+  4.99     16.18     2.59     2653     0.00     0.00  int EngineBlockSerialize::apply&lt;EngineElemSerialize, Engine&lt;(int)3, double, BrickView&gt;, Interval&lt;(int)3&gt; &gt;(EngineElemSerialize&amp;, Engine&lt;(int)3, double, BrickView&gt; const&amp;, Interval&lt;(int)3&gt; const&amp;)
+  4.82     18.68     2.50                             read
+  3.97     20.74     2.06     2653     0.00     0.00  int EngineBlockSerialize::apply&lt;EngineElemDeSerialize, Engine&lt;(int)3, double, BrickView&gt;, Interval&lt;(int)3&gt; &gt;(EngineElemDeSerialize&amp;, Engine&lt;(int)3, double, BrickView&gt; const&amp;, Interval&lt;(int)3&gt; const&amp;)
+  2.58     22.08     1.34                             write
+  2.51     23.38     1.30                             memcpy
+  2.08     24.46     1.08      762     0.00     0.00  int EngineBlockSerialize::apply&lt;EngineElemSerialize, Engine&lt;(int)3, Vector&lt;(int)3, double, Full&gt;, BrickView&gt;, Interval&lt;(int)3&gt; &gt;(EngineElemSerialize&amp;, Engine&lt;(int)3, Vector&lt;(int)3, double, Full&gt;, BrickView&gt; const&amp;, Interval&lt;(int)3&gt; const&amp;)
+  1.75     25.37     0.91       10     0.09     0.09  MultiArgKernel&lt;MultiArg4&lt;Field&lt;UniformRectilinearMesh&lt;MeshTraits&lt;(int)3, double, UniformRectilinearTag, CartesianTag, (int)3&gt; &gt;, double, CompFwd&lt;Engine&lt;(int)3, Vector&lt;(int)3, double, Full&gt;, BrickView&gt;, Loc&lt;(int)1&gt; &gt; &gt;, Field&lt;UniformRectilinearMesh&lt;MeshTraits&lt;(int)3, double, UniformRectilinearTag, CartesianTag, (int)3&gt; &gt;, double, BrickView&gt;, BrickView, BrickView&gt;, EvaluateLocLoop&lt;Adv5::X::MomentumfluxY&lt;(int)3&gt;, (int)3&gt; &gt;::run()
+  1.73     26.27     0.90       10     0.09     0.09  MultiArgKernel&lt;MultiArg4&lt;Field&lt;UniformRectilinearMesh&lt;MeshTraits&lt;(int)3, double, UniformRectilinearTag, CartesianTag, (int)3&gt; &gt;, double, CompFwd&lt;Engine&lt;(int)3, Vector&lt;(int)3, double, Full&gt;, BrickView&gt;, Loc&lt;(int)1&gt; &gt; &gt;, Field&lt;UniformRectilinearMesh&lt;MeshTraits&lt;(int)3, double, UniformRectilinearTag, CartesianTag, (int)3&gt; &gt;, double, BrickView&gt;, BrickView, BrickView&gt;, EvaluateLocLoop&lt;Adv5::X::MomentumfluxZ&lt;(int)3&gt;, (int)3&gt; &gt;::run()
+  1.73     27.17     0.90       10     0.09     0.09  MultiArgKernel&lt;MultiArg4&lt;Field&lt;UniformRectilinearMesh&lt;MeshTraits&lt;(int)3, double, UniformRectilinearTag, CartesianTag, (int)3&gt; &gt;, double, CompFwd&lt;Engine&lt;(int)3, Vector&lt;(int)3, double, Full&gt;, BrickView&gt;, Loc&lt;(int)1&gt; &gt; &gt;, Field&lt;UniformRectilinearMesh&lt;MeshTraits&lt;(int)3, double, UniformRectilinearTag, CartesianTag, (int)3&gt; &gt;, double, BrickView&gt;, BrickView, BrickView&gt;, EvaluateLocLoop&lt;Adv5::Y::MomentumfluxZ&lt;(int)3&gt;, (int)3&gt; &gt;::run()
+
+after patch:
+
+Each sample counts as 0.01 seconds.
+  %   cumulative   self              self     total
+ time   seconds   seconds    calls   s/call   s/call  name
+ 15.75      4.77     4.77                             select
+  2.97      5.67     0.90       10     0.09     0.09  MultiArgKernel&lt;MultiArg4&lt;Field&lt;UniformRectilinearMesh&lt;MeshTraits&lt;(int)3, double, UniformRectilinearTag, CartesianTag, (int)3&gt; &gt;, double, CompFwd&lt;Engine&lt;(int)3, Vector&lt;(int)3, double, Full&gt;, BrickView&gt;, Loc&lt;(int)1&gt; &gt; &gt;, Field&lt;UniformRectilinearMesh&lt;MeshTraits&lt;(int)3, double, UniformRectilinearTag, CartesianTag, (int)3&gt; &gt;, double, BrickView&gt;, BrickView, BrickView&gt;, EvaluateLocLoop&lt;Adv5::X::MomentumfluxY&lt;(int)3&gt;, (int)3&gt; &gt;::run()
+  2.97      6.57     0.90       10     0.09     0.09  MultiArgKernel&lt;MultiArg4&lt;Field&lt;UniformRectilinearMesh&lt;MeshTraits&lt;(int)3, double, UniformRectilinearTag, CartesianTag, (int)3&gt; &gt;, double, CompFwd&lt;Engine&lt;(int)3, Vector&lt;(int)3, double, Full&gt;, BrickView&gt;, Loc&lt;(int)1&gt; &gt; &gt;, Field&lt;UniformRectilinearMesh&lt;MeshTraits&lt;(int)3, double, UniformRectilinearTag, CartesianTag, (int)3&gt; &gt;, double, BrickView&gt;, BrickView, BrickView&gt;, EvaluateLocLoop&lt;Adv5::X::MomentumfluxZ&lt;(int)3&gt;, (int)3&gt; &gt;::run()
+  2.97      7.47     0.90       10     0.09     0.09  MultiArgKernel&lt;MultiArg4&lt;Field&lt;UniformRectilinearMesh&lt;MeshTraits&lt;(int)3, double, UniformRectilinearTag, CartesianTag, (int)3&gt; &gt;, double, CompFwd&lt;Engine&lt;(int)3, Vector&lt;(int)3, double, Full&gt;, BrickView&gt;, Loc&lt;(int)1&gt; &gt; &gt;, Field&lt;UniformRectilinearMesh&lt;MeshTraits&lt;(int)3, double, UniformRectilinearTag, CartesianTag, (int)3&gt; &gt;, double, BrickView&gt;, BrickView, BrickView&gt;, EvaluateLocLoop&lt;Adv5::Y::MomentumfluxZ&lt;(int)3&gt;, (int)3&gt; &gt;::run()
+  2.91      8.35     0.88       10     0.09     0.09  MultiArgKernel&lt;MultiArg4&lt;Field&lt;UniformRectilinearMesh&lt;MeshTraits&lt;(int)3, double, UniformRectilinearTag, CartesianTag, (int)3&gt; &gt;, double, CompFwd&lt;Engine&lt;(int)3, Vector&lt;(int)3, double, Full&gt;, BrickView&gt;, Loc&lt;(int)1&gt; &gt; &gt;, Field&lt;UniformRectilinearMesh&lt;MeshTraits&lt;(int)3, double, UniformRectilinearTag, CartesianTag, (int)3&gt; &gt;, double, BrickView&gt;, BrickView, BrickView&gt;, EvaluateLocLoop&lt;Adv5::Y::MomentumfluxX&lt;(int)3&gt;, (int)3&gt; &gt;::run()
+  ...
+  ...
+  1.65     20.66     0.50      453     0.00     0.00  int EngineBlockSerialize::apply&lt;EngineElemSerialize, Engine&lt;(int)3, double, BrickView&gt;, Interval&lt;(int)3&gt; &gt;(EngineElemSerialize&amp;, Engine&lt;(int)3, double, BrickView&gt; const&amp;, Interval&lt;(int)3&gt; const&amp;)
+  1.16     26.07     0.35      371     0.00     0.00  int EngineBlockSerialize::apply&lt;EngineElemDeSerialize, Engine&lt;(int)3, double, BrickView&gt;, Interval&lt;(int)3&gt; &gt;(EngineElemDeSerialize&amp;, Engine&lt;(int)3, double, BrickView&gt; const&amp;, Interval&lt;(int)3&gt; const&amp;)
+  0.46     28.58     0.14       80     0.00     0.00  int EngineBlockSerialize::apply&lt;EngineElemSerialize, Engine&lt;(int)3, Vector&lt;(int)3, double, Full&gt;, BrickView&gt;, Interval&lt;(int)3&gt; &gt;(EngineElemSerialize&amp;, Engine&lt;(int)3, Vector&lt;(int)3, double, Full&gt;, BrickView&gt; const&amp;, Interval&lt;(int)3&gt; const&amp;)
+  0.23     29.20     0.07       70     0.00     0.00  int EngineBlockSerialize::apply&lt;EngineElemDeSerialize, Engine&lt;(int)3, Vector&lt;(int)3, double, Full&gt;, BrickView&gt;, Interval&lt;(int)3&gt; &gt;(EngineElemDeSerialize&amp;, Engine&lt;(int)3, Vector&lt;(int)3, double, Full&gt;, BrickView&gt; const&amp;, Interval&lt;(int)3&gt; const&amp;)
+                0.50    0.00     453/453         int EngineBlockSerialize::apply&lt;EngineElemSerialize, Engine&lt;(int)3, double, BrickView&gt;, Interval&lt;(int)3&gt; &gt;(EngineElemSerialize&amp;, Engine&lt;(int)3, double, BrickView&gt; const&amp;, Interval&lt;(int)3&gt; const&amp;) [36]
+
+where the engine serializers are way down the profile (I grepped for them
+and appended the first five).  Notice the drop in the number of
+communications from 2653 down to 453!  Timewise this is an improvement of
+more than 50%.
+
+It passes without regressions (but these codepaths are only sightly tested
+in the testsuite) and looks like it produces identical results for my CFD
+application.  But I notice an asymmetry of the
+Serialization/Deserialization calls after the patch and need to find out
+where this comes from.
+
+But still, is the underlying idea to change bool *pDirty to int *pDirty
+and using it as bitfield ok?  I can even go further and track partial
+updates, but this will cost memory.
+
+Any comments? Further ideas?
+
+Richard.
+
+
+Too lazy to do a ChangeLog at the moment.
+
+===== r2/src/Array/tests/makefile 1.4 vs edited =====
+--- 1.4/r2/src/Array/tests/makefile	Thu Jan 30 22:35:28 2003
++++ edited/r2/src/Array/tests/makefile	Sun Dec 21 15:14:56 2003
+@@ -39,7 +39,7 @@
+ 	array_test12 array_test13 array_test14 array_test15 array_test16 \
+ 	array_test17 array_test18 array_test19 array_test20 array_test21 \
+ 	array_test22 array_test23 array_test24 array_test25 array_test26 \
+-	array_test27 array_test28
++	array_test27 array_test28 array_test29
+
+ default:: build
+
+===== r2/src/Engine/Intersector.h 1.3 vs edited =====
+--- 1.3/r2/src/Engine/Intersector.h	Thu Oct 23 14:41:01 2003
++++ edited/r2/src/Engine/Intersector.h	Sun Dec 21 15:14:56 2003
+@@ -145,9 +145,47 @@
+       // If we've seen this ID before, we're done.
+
+       if (ids_m[i] == layout.ID())
+-      {
+ 	return false;
++
++      // If we've seen the base ID before and the base domain is the same
++      // we're done.
++
++      if (baseIDs_m[i] == layout.baseID()
++	  &amp;&amp; sameBaseDomain(i, layout.baseDomain(), guard))
++      {
++	shared(layout.ID(),ids_m[i]);
++
++	return (!sameBaseDomain(i,layout.baseDomain()));
+       }
++    }
++
++    // current touches operation works on the owned region, so we don't
++    // use the guard cells.  If we start using touchesAlloc, then you
++    // need to return true here, and the bypass calculation above
++    // becomes somewhat more complicated.
++
++    touches(layout);
++    return false;
++  }
++
++  template&lt;class Engine, int Dim2&gt;
++  bool intersect(const Engine &amp;engine, const GuardLayers&lt;Dim2&gt; &amp;guard, GuardLayers&lt;Dim2&gt; &amp;usedGuards)
++  {
++    CTAssert(Engine::dimensions == Dim);
++
++    // First, we need to check through our list of layout IDs and see if we've
++    // either seen this layout or another layout with the same baseID before.
++
++    typedef typename Engine::Layout_t Layout_t;
++    const Layout_t &amp;layout(engine.layout());
++
++    int n = ids_m.size();
++    for (int i = 0; i &lt; n; ++i)
++    {
++      // If we've seen this ID before, we're done.
++
++      if (ids_m[i] == layout.ID())
++	return false;
+
+       // If we've seen the base ID before and the base domain is the same
+       // we're done.
+@@ -157,10 +195,27 @@
+       {
+ 	shared(layout.ID(),ids_m[i]);
+
+-	// In this case we are using the guard cells unless this domain
+-	// is exactly the same as one we've seen before.
++	// was: return (!sameBaseDomain(i,layout.baseDomain()));
+
+-	return (!sameBaseDomain(i,layout.baseDomain()));
++        // We should be able to find out the actual shape of the
++	// used internal guards here, rather than just returning bool.
++	// Something like:
++
++	// But what do, if Dim2 &gt; baseDims_m[i]!?
++	if (baseDims_m[i] &lt; Dim2)
++	  return true;
++
++	bool used = false;
++	for (int j = 0; j &lt; Dim2; j++)
++	{
++	  usedGuards.lower(j) = std::max(0, baseDomains_m[i][j].first() - layout.baseDomain()[j].first());
++	  if (usedGuards.lower(j) != 0)
++	    used = true;
++	  usedGuards.upper(j) = std::max(0, layout.baseDomain()[j].last() - baseDomains_m[i][j].last());
++	  if (usedGuards.upper(j) != 0)
++	    used = true;
++	}
++	return used;
+       }
+     }
+
+@@ -440,6 +495,13 @@
+   bool intersect(const Engine &amp;l, const GuardLayers&lt;Dim2&gt; &amp;guard)
+   {
+     return (data()-&gt;intersect(l,guard));
++  }
++
++  template&lt;class Engine, int Dim2&gt;
++  inline
++  bool intersect(const Engine &amp;l, const GuardLayers&lt;Dim2&gt; &amp;guard, GuardLayers&lt;Dim2&gt; &amp;usedGuards)
++  {
++    return (data()-&gt;intersect(l,guard,usedGuards));
+   }
+
+ private:
+===== r2/src/Engine/MultiPatchEngine.cpp 1.3 vs edited =====
+--- 1.3/r2/src/Engine/MultiPatchEngine.cpp	Wed May 14 09:48:40 2003
++++ edited/r2/src/Engine/MultiPatchEngine.cpp	Sun Dec 21 15:14:56 2003
+@@ -36,6 +36,7 @@
+ #include &quot;Tulip/ReduceOverContexts.h&quot;
+ #include &quot;Threads/PoomaCSem.h&quot;
+ #include &quot;Domain/IteratorPairDomain.h&quot;
++#include &quot;Domain/Shrink.h&quot;
+
+ ///////////////////////////////////////////////////////////////////////////////
+ //
+@@ -77,10 +78,12 @@
+ Engine(const Layout_t &amp;layout)
+   : layout_m(layout),
+     data_m(layout.sizeGlobal()),
+-    pDirty_m(new bool(true))
++    pDirty_m(new int)
+ {
+   typedef typename Layout_t::Value_t Node_t;
+
++  setDirty();
++
+   // check for correct match of PatchTag and the mapper used to make the
+   // layout.
+   // THIS IS A HACK! we test on the context of the first patch, and if it
+@@ -247,7 +250,7 @@
+   PAssert(data_m.isValid());
+   if (data_m.isShared()) {
+     data_m.makeOwnCopy();
+-    pDirty_m = new bool(*pDirty_m);
++    pDirty_m = new int(*pDirty_m);
+   }
+
+   return *this;
+@@ -288,18 +291,89 @@
+       int src  = p-&gt;ownedID_m;
+       int dest = p-&gt;guardID_m;
+
+-      // Create patch arrays that see the entire patch:
++      // Skip face, if not dirty.
++
++      if (isDirty(p-&gt;face_m)) {
++
++        // Create patch arrays that see the entire patch:
+
+-      Array&lt;Dim, T, PatchTag&gt; lhs(data()[dest]), rhs(data()[src]);
++        Array&lt;Dim, T, PatchTag&gt; lhs(data()[dest]), rhs(data()[src]);
+
+-      // Now do assignment from the subdomains.
++        // Now do assignment from the subdomains.
+
+-      lhs(p-&gt;domain_m) = rhs(p-&gt;domain_m);
++        lhs(p-&gt;domain_m) = rhs(p-&gt;domain_m);
+
++      }
++
+       ++p;
+     }
+-
+-  *pDirty_m = false;
++
++  clearDirty();
++}
++
++template &lt;int Dim, class T, class LayoutTag, class PatchTag&gt;
++void Engine&lt;Dim, T, MultiPatch&lt;LayoutTag,PatchTag&gt; &gt;::
++fillGuardsHandler(const GuardLayers&lt;Dim&gt;&amp; g, const WrappedInt&lt;true&gt; &amp;) const
++{
++  if (!isDirty()) return;
++
++  int updated = 0;
++  typename Layout_t::FillIterator_t p = layout_m.beginFillList();
++
++  while (p != layout_m.endFillList())
++    {
++      int src  = p-&gt;ownedID_m;
++      int dest = p-&gt;guardID_m;
++
++      // Skip face, if not dirty.
++
++      if (isDirty(p-&gt;face_m)) {
++
++        // Check, if the p-&gt;domain_m is a guard which matches the
++        // needed guard g.
++
++	int d = p-&gt;face_m/2;
++	int guardSizeNeeded = p-&gt;face_m &amp; 1 ? g.upper(d) : g.lower(d);
++        if (!(p-&gt;face_m != -1
++	      &amp;&amp; guardSizeNeeded == 0)) {
++
++          // Create patch arrays that see the entire patch:
++
++          Array&lt;Dim, T, PatchTag&gt; lhs(data()[dest]), rhs(data()[src]);
++
++	  // Shrink domain, if possible.  Maybe not that useful, as
++	  // we can't record this update.
++
++	  Interval&lt;Dim&gt; domain = p-&gt;domain_m;
++#if POOMA_PARTIAL_GUARDS_UPDATE
++	  int s = domain[d].size();
++	  if (s &gt; guardSizeNeeded) {
++	    if (p-&gt;face_m &amp; 1)
++	      domain[d] = shrinkRight(domain[d], s - guardSizeNeeded);
++	    else
++	      domain[d] = shrinkLeft(domain[d], s - guardSizeNeeded);
++	  }
++#endif
++
++          // Now do assignment from the subdomains.
++
++          lhs(domain) = rhs(domain);
++
++	  // Mark up-to-date, if updated completely.
++
++#if POOMA_PARTIAL_GUARDS_UPDATE
++	  if (s == guardSizeNeeded)
++#endif
++	    updated |= 1&lt;&lt;p-&gt;face_m;
++
++	}
++
++      }
++
++      ++p;
++    }
++
++  *pDirty_m &amp;= ~updated;
+ }
+
+
+@@ -331,7 +405,7 @@
+       ++p;
+     }
+
+-  *pDirty_m = true;
++  setDirty();
+ }
+
+
+@@ -366,7 +440,7 @@
+       ++p;
+     }
+
+-  *pDirty_m = true;
++  setDirty();
+ }
+
+
+===== r2/src/Engine/MultiPatchEngine.h 1.2 vs edited =====
+--- 1.2/r2/src/Engine/MultiPatchEngine.h	Thu Oct 23 14:41:01 2003
++++ edited/r2/src/Engine/MultiPatchEngine.h	Sun Dec 21 15:14:56 2003
+@@ -633,9 +633,17 @@
+     fillGuardsHandler(WrappedInt&lt;Layout_t::supportsGuards&gt;());
+   }
+
++  inline void fillGuards(const GuardLayers&lt;Dim&gt;&amp; g) const
++  {
++    fillGuardsHandler(g, WrappedInt&lt;Layout_t::supportsGuards&gt;());
++  }
++
+   inline void fillGuardsHandler(const WrappedInt&lt;false&gt;&amp;) const { };
+   void fillGuardsHandler(const WrappedInt&lt;true&gt;&amp;) const ;
+
++  inline void fillGuardsHandler(const GuardLayers&lt;Dim&gt;&amp;, const WrappedInt&lt;false&gt;&amp;) const { };
++  void fillGuardsHandler(const GuardLayers&lt;Dim&gt;&amp;, const WrappedInt&lt;true&gt;&amp;) const ;
++
+   //---------------------------------------------------------------------------
+   /// Set the internal guard cells to a particular value.
+
+@@ -650,14 +658,34 @@
+   /// Set and get the dirty flag (fillGuards is a no-op unless the
+   /// dirty flag is true).
+
+-  inline void setDirty() const
++  inline void setDirty(int face = -1) const
+   {
+-    *pDirty_m = true;
++    if (face == -1)
++      *pDirty_m = (1&lt;&lt;(Dim*2))-1;
++    else {
++      PAssert(face &gt;= 0 &amp;&amp; face &lt;= Dim*2-1);
++      *pDirty_m |= (1&lt;&lt;face);
++    }
+   }
+
+-  inline bool isDirty() const
++  inline void clearDirty(int face = -1) const
+   {
+-    return *pDirty_m;
++    if (face == -1)
++      *pDirty_m = 0;
++    else {
++      PAssert(face &gt;= 0 &amp;&amp; face &lt;= Dim*2-1);
++      *pDirty_m &amp;= ~(1&lt;&lt;face);
++    }
++  }
++
++  inline bool isDirty(int face = -1) const
++  {
++    if (face == -1)
++      return *pDirty_m != 0;
++    else {
++      PAssert(face &gt;= 0 &amp;&amp; face &lt;= Dim*2-1);
++      return *pDirty_m &amp; (1&lt;&lt;face);
++    }
+   }
+
+   //============================================================
+@@ -874,7 +902,7 @@
+   /// must share the same flag. We use the reference count in
+   /// data_m to decide whether to clean this up.
+
+-  bool *pDirty_m;
++  int *pDirty_m;
+ };
+
+
+@@ -1193,6 +1221,11 @@
+     baseEngine_m.fillGuards();
+   }
+
++  inline void fillGuards(const GuardLayers&lt;Dim2&gt;&amp; g) const
++  {
++    baseEngine_m.fillGuards(g);
++  }
++
+   //---------------------------------------------------------------------------
+   /// Set the internal guard cells to a particular value (default zero)
+
+@@ -1213,14 +1246,19 @@
+   /// Set and get the dirty flag (fillGuard is a no-op unless the
+   /// dirty flag is true).
+
+-  inline void setDirty() const
++  inline void setDirty(int face=-1) const
++  {
++    baseEngine_m.setDirty(face);
++  }
++
++  inline void clearDirty(int face=-1) const
+   {
+-    baseEngine_m.setDirty();
++    baseEngine_m.clearDirty(face);
+   }
+
+-  inline bool isDirty() const
++  inline bool isDirty(int face=-1) const
+   {
+-    return baseEngine_m.isDirty();
++    return baseEngine_m.isDirty(face);
+   }
+
+   //---------------------------------------------------------------------------
+@@ -1694,12 +1732,13 @@
+   apply(const Engine&lt;Dim,T,MultiPatch&lt;LayoutTag,PatchTag&gt; &gt; &amp;engine,
+ 	const ExpressionApply&lt;IntersectorTag&lt;Intersect&gt; &gt; &amp;tag)
+   {
++    GuardLayers&lt;Dim&gt; usedGuards;
+     bool useGuards =
+       tag.tag().intersector_m.intersect(engine,
+-				  engine.layout().internalGuards());
++				  engine.layout().internalGuards(), usedGuards);
+
+     if (useGuards)
+-      engine.fillGuards();
++      engine.fillGuards(usedGuards);
+
+     return 0;
+   }
+@@ -1725,13 +1764,14 @@
+ 	       const ExpressionApply&lt;IntersectorTag&lt;Intersect&gt; &gt; &amp;tag,
+ 	       const WrappedInt&lt;true&gt; &amp;)
+   {
++    GuardLayers&lt;BD&gt; usedGuards;
+     bool useGuards =
+       tag.tag().intersector_m.
+       intersect(engine,
+-		engine.layout().baseLayout().internalGuards());
++		engine.layout().baseLayout().internalGuards(), usedGuards);
+
+     if (useGuards)
+-      engine.fillGuards();
++      engine.fillGuards(usedGuards);
+
+     return 0;
+   }
+===== r2/src/Engine/Stencil.h 1.5 vs edited =====
+--- 1.5/r2/src/Engine/Stencil.h	Thu Oct 23 14:41:01 2003
++++ edited/r2/src/Engine/Stencil.h	Sun Dec 21 15:14:56 2003
+@@ -752,11 +752,14 @@
+
+   StencilIntersector(const This_t &amp;model)
+     : domain_m(model.domain_m),
++      stencilExtent_m(model.stencilExtent_m),
+       intersector_m(model.intersector_m)
+   { }
+
+-  StencilIntersector(const Interval&lt;Dim&gt; &amp;domain, const Intersect &amp;intersect)
++  StencilIntersector(const Interval&lt;Dim&gt; &amp;domain, const Intersect &amp;intersect,
++		  const GuardLayers&lt;Dim&gt; &amp;stencilExtent)
+     : domain_m(domain),
++      stencilExtent_m(stencilExtent),
+       intersector_m(intersect)
+   { }
+
+@@ -766,6 +769,7 @@
+     {
+       intersector_m = model.intersector_m;
+       domain_m = model.domain_m;
++      stencilExtent_m = model.stencilExtent_m;
+     }
+     return *this;
+   }
+@@ -813,8 +817,21 @@
+     return true;
+   }
+
++  template&lt;class Engine, int Dim2&gt;
++  inline
++  bool intersect(const Engine &amp;engine, const GuardLayers&lt;Dim2&gt; &amp;g,
++		  GuardLayers&lt;Dim&gt; &amp;usedGuards)
++  {
++    intersect(engine);
++    // FIXME: accumulate used guards from intersect above and
++    // stencil extent? I.e. allow  Stencil&lt;&gt;(a(i-1)+a(i+1))?
++    usedGuards = stencilExtent_m;
++    return true;
++  }
++
+ private:
+   Interval&lt;Dim&gt; domain_m;
++  GuardLayers&lt;Dim&gt; stencilExtent_m;
+   Intersect     intersector_m;
+ };
+
+@@ -833,8 +850,14 @@
+ 	       const ExpressionApply&lt;IntersectorTag&lt;Intersect&gt; &gt; &amp;tag)
+   {
+     typedef StencilIntersector&lt;D, Intersect&gt; NewIntersector_t;
++    GuardLayers&lt;D&gt; stencilExtent;
++    for (int i=0; i&lt;D; ++i) {
++      stencilExtent.lower(i) = engine.function().lowerExtent(i);
++      stencilExtent.upper(i) = engine.function().upperExtent(i);
++    }
+     NewIntersector_t newIntersector(engine.intersectDomain(),
+-				    tag.tag().intersector_m);
++				    tag.tag().intersector_m,
++				    stencilExtent);
+
+     expressionApply(engine.expression(),
+ 		    IntersectorTag&lt;NewIntersector_t&gt;(newIntersector));
+===== r2/src/Evaluator/MultiArgEvaluator.h 1.5 vs edited =====
+--- 1.5/r2/src/Evaluator/MultiArgEvaluator.h	Tue Nov 25 16:39:02 2003
++++ edited/r2/src/Evaluator/MultiArgEvaluator.h	Sun Dec 21 15:19:16 2003
+@@ -111,19 +111,16 @@
+   }
+
+   template&lt;class A&gt;
+-  void operator()(const A &amp;a, bool f) const
++  void operator()(const A &amp;a) const
+   {
+-    if (f)
+-    {
+-      // This isn't quite what we want here, because we may want to
+-      // write to a field containing multiple centering engines.
+-      // Need to rewrite notifyEngineWrite as an ExpressionApply,
+-      // and create a version of ExpressionApply that goes through
+-      // all the engines in a field.
++    // This isn't quite what we want here, because we may want to
++    // write to a field containing multiple centering engines.
++    // Need to rewrite notifyEngineWrite as an ExpressionApply,
++    // and create a version of ExpressionApply that goes through
++    // all the engines in a field.
+
+-      notifyEngineWrite(a.engine());
+-      dirtyRelations(a, WrappedInt&lt;A::hasRelations&gt;());
+-    }
++    notifyEngineWrite(a.engine());
++    dirtyRelations(a, WrappedInt&lt;A::hasRelations&gt;());
+   }
+ };
+
+@@ -172,7 +169,7 @@
+     MultiArgEvaluator&lt;Evaluator_t&gt;::evaluate(multiArg, function,
+ 					     domain, info, kernel);
+
+-    applyMultiArg(multiArg, EngineWriteNotifier(), info.writers());
++    applyMultiArgIf(multiArg, EngineWriteNotifier(), info.writers());
+
+     Pooma::endExpression();
+   }
+@@ -265,7 +262,12 @@
+ 	   const Kernel &amp;kernel)
+   {
+     typedef SimpleIntersector&lt;Dim&gt; Inter_t;
+-    Inter_t inter(domain);
++    GuardLayers&lt;Dim&gt; extent;
++    for (int i=0; i&lt;Dim; ++i) {
++      extent.lower(i) = info.lowerExtent(i);
++      extent.upper(i) = info.upperExtent(i);
++    }
++    Inter_t inter(domain, extent);
+
+     applyMultiArg(multiArg, inter, info.useGuards());
+
+@@ -368,7 +370,12 @@
+ 	   const Kernel &amp;kernel)
+   {
+     typedef SimpleIntersector&lt;Dim&gt; Inter_t;
+-    Inter_t inter(domain);
++    GuardLayers&lt;Dim&gt; extent;
++    for (int i=0; i&lt;Dim; ++i) {
++      extent.lower(i) = info.lowerExtent(i);
++      extent.upper(i) = info.upperExtent(i);
++    }
++    Inter_t inter(domain, extent);
+
+     applyMultiArg(multiArg, inter, info.useGuards());
+
+===== r2/src/Evaluator/SimpleIntersector.h 1.4 vs edited =====
+--- 1.4/r2/src/Evaluator/SimpleIntersector.h	Thu Oct 23 14:41:03 2003
++++ edited/r2/src/Evaluator/SimpleIntersector.h	Sun Dec 21 15:14:36 2003
+@@ -91,8 +91,8 @@
+
+   // Default constructor is trival.
+
+-  inline SimpleIntersectorData(const Interval&lt;Dim&gt; &amp;domain)
+-    : seenFirst_m(false), domain_m(domain)
++  inline SimpleIntersectorData(const Interval&lt;Dim&gt; &amp;domain, const GuardLayers&lt;Dim&gt; &amp;extent)
++    : seenFirst_m(false), domain_m(domain), extent_m(extent)
+   {
+   }
+
+@@ -149,6 +149,7 @@
+   INodeContainer_t inodes_m;
+   GlobalIDDataBase gidStore_m;
+   Interval&lt;Dim&gt; domain_m;
++  GuardLayers&lt;Dim&gt; extent_m;
+ };
+
+ /**
+@@ -179,8 +180,8 @@
+
+   enum { dimensions = Dim };
+
+-  SimpleIntersector(const Interval&lt;Dim&gt; &amp;domain)
+-    : pdata_m(new SimpleIntersectorData_t(domain)), useGuards_m(true)
++  SimpleIntersector(const Interval&lt;Dim&gt; &amp;domain, const GuardLayers&lt;Dim&gt; &amp;extent)
++    : pdata_m(new SimpleIntersectorData_t(domain, extent)), useGuards_m(true)
+   { }
+
+   SimpleIntersector(const This_t &amp;model)
+@@ -297,7 +298,7 @@
+     apply.tag().intersect(engine);
+
+     if (apply.tag().useGuards())
+-      engine.fillGuards();
++      engine.fillGuards(apply.tag().data()-&gt;extent_m);
+
+     return 0;
+   }
+@@ -316,7 +317,7 @@
+     apply.tag().intersect(engine);
+
+     if (apply.tag().useGuards())
+-      engine.fillGuards();
++      engine.fillGuards(apply.tag().data()-&gt;extent_m);
+
+     return 0;
+   }
+===== r2/src/Field/DiffOps/FieldStencil.h 1.3 vs edited =====
+--- 1.3/r2/src/Field/DiffOps/FieldStencil.h	Sun Oct 26 14:35:20 2003
++++ edited/r2/src/Field/DiffOps/FieldStencil.h	Sun Dec 21 15:14:57 2003
+@@ -614,11 +614,13 @@
+   // Constructors
+
+   FieldStencilIntersector(const This_t &amp;model)
+-    : domain_m(model.domain_m), intersector_m(model.intersector_m)
++    : domain_m(model.domain_m), stencilExtent_m(model.stencilExtent_m),
++      intersector_m(model.intersector_m)
+   { }
+
+-  FieldStencilIntersector(const Domain_t &amp;dom, const Intersect &amp;intersect)
+-    : domain_m(dom), intersector_m(intersect)
++  FieldStencilIntersector(const Domain_t &amp;dom, const Intersect &amp;intersect,
++		  const GuardLayers&lt;Dim&gt; &amp;stencilExtent)
++    : domain_m(dom), stencilExtent_m(stencilExtent), intersector_m(intersect)
+   { }
+
+   This_t &amp;operator=(const This_t &amp;model)
+@@ -626,6 +628,7 @@
+     if (this != &amp;model)
+     {
+       domain_m = model.domain_m;
++      stencilExtent_m = model.stencilExtent_m;
+       intersector_m = model.intersector_m;
+     }
+     return *this;
+@@ -668,10 +671,22 @@
+     return true;
+   }
+
++  template&lt;class Engine, int Dim2&gt;
++  inline bool intersect(const Engine &amp;engine, const GuardLayers&lt;Dim2&gt; &amp;,
++		        GuardLayers&lt;Dim&gt; &amp;usedGuards)
++  {
++    intersect(engine);
++    // FIXME: accumulate used guards from intersect above and
++    // stencil extent? I.e. allow  Stencil&lt;&gt;(a(i-1)+a(i+1))?
++    usedGuards = stencilExtent_m;
++    return true;
++  }
++
+ private:
+
+
+   Interval&lt;Dim&gt; domain_m;
++  GuardLayers&lt;Dim&gt; stencilExtent_m;
+   Intersect     intersector_m;
+ };
+
+@@ -699,8 +714,14 @@
+     // cells results in an error in the multipatch inode view.)
+
+     typedef FieldStencilIntersector&lt;Dim, Intersect&gt; NewIntersector_t;
++    GuardLayers&lt;Dim&gt; stencilExtent;
++    for (int i=0; i&lt;Dim; ++i) {
++      stencilExtent.lower(i) = engine.functor().lowerExtent(i);
++      stencilExtent.upper(i) = engine.functor().upperExtent(i);
++    }
+     NewIntersector_t newIntersector(engine.intersectDomain(),
+-				    tag.tag().intersector_m);
++				    tag.tag().intersector_m,
++				    stencilExtent);
+
+     expressionApply(engine.field(),
+ 		    IntersectorTag&lt;NewIntersector_t&gt;(newIntersector));
+===== r2/src/Layout/GridLayout.cpp 1.4 vs edited =====
+--- 1.4/r2/src/Layout/GridLayout.cpp	Wed May 14 09:51:04 2003
++++ edited/r2/src/Layout/GridLayout.cpp	Sun Dec 21 15:14:41 2003
+@@ -429,7 +429,7 @@
+
+ 		      // Now, push IDs and source into cache...
+
+-		      this-&gt;gcFillList_m.push_back(GCFillInfo_t(gcdom, sourceID, destID));
++		      this-&gt;gcFillList_m.push_back(GCFillInfo_t(gcdom, sourceID, destID, d*2));
+ 		    }
+ 		}
+ 	    }
+@@ -481,7 +481,7 @@
+
+ 		      // Now, push IDs and source into cache...
+
+-		      this-&gt;gcFillList_m.push_back(GCFillInfo_t(gcdom, sourceID, destID));
++		      this-&gt;gcFillList_m.push_back(GCFillInfo_t(gcdom, sourceID, destID, d*2+1));
+ 		    }
+ 		}
+ 	    }
+===== r2/src/Layout/LayoutBase.h 1.3 vs edited =====
+--- 1.3/r2/src/Layout/LayoutBase.h	Sun Oct 26 14:35:23 2003
++++ edited/r2/src/Layout/LayoutBase.h	Sun Dec 21 15:14:41 2003
+@@ -119,8 +119,8 @@
+
+   struct GCFillInfo
+   {
+-    GCFillInfo(const Domain_t &amp;dom, int ownedID, int guardID)
+-    : domain_m(dom), ownedID_m(ownedID), guardID_m(guardID) { }
++    GCFillInfo(const Domain_t &amp;dom, int ownedID, int guardID, int face=-1)
++    : domain_m(dom), ownedID_m(ownedID), guardID_m(guardID), face_m(face) { }
+
+     // Get a CW warning about this not having a default constructor
+     // when we instantiate the vector&lt;GCFillInfo&gt; below. This never
+@@ -131,6 +131,7 @@
+     Domain_t domain_m;    // guard layer domain
+     int      ownedID_m;   // node ID for which domain_m is owned
+     int      guardID_m;   // node ID for which domain_m is in the guards
++    int      face_m;      // destination face of the guard layer (or -1, if unknown)
+
+     Domain_t &amp; domain() { return domain_m;}
+     int &amp; ownedID() { return ownedID_m;}
+===== r2/src/Layout/UniformGridLayout.cpp 1.4 vs edited =====
+--- 1.4/r2/src/Layout/UniformGridLayout.cpp	Wed May 14 09:51:04 2003
++++ edited/r2/src/Layout/UniformGridLayout.cpp	Sun Dec 21 15:14:41 2003
+@@ -370,7 +370,7 @@
+ 		    this-&gt;all_m[sourceID]-&gt;context() == Pooma::context() ||
+  		    this-&gt;all_m[destID]-&gt;context() == Pooma::context()
+ 		    )
+-                this-&gt;gcFillList_m.push_back(GCFillInfo_t(gcdom,sourceID,destID));
++                this-&gt;gcFillList_m.push_back(GCFillInfo_t(gcdom,sourceID,destID,d*2));
+               }
+           }
+
+@@ -417,7 +417,7 @@
+ 		    this-&gt;all_m[sourceID]-&gt;context() == Pooma::context() ||
+  		    this-&gt;all_m[destID]-&gt;context() == Pooma::context()
+ 		    )
+-		  this-&gt;gcFillList_m.push_back(GCFillInfo_t(gcdom,sourceID,destID));
++		  this-&gt;gcFillList_m.push_back(GCFillInfo_t(gcdom,sourceID,destID,d*2+1));
+               }
+           }
+       }
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001427.html">Cheetah license
+</A></li>
+	<LI>Next message: <A HREF="001429.html">[pooma-dev] [PATCH] Track up-to-date faces
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1428">[ date ]</a>
+              <a href="thread.html#1428">[ thread ]</a>
+              <a href="subject.html#1428">[ subject ]</a>
+              <a href="author.html#1428">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

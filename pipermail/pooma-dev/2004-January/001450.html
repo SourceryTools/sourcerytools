@@ -1,0 +1,193 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [PATCH] Initialize MPI
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20Initialize%20MPI&In-Reply-To=%3CPine.LNX.4.58.0401021324430.572%40goofy%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001472.html">
+   <LINK REL="Next"  HREF="001459.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[PATCH] Initialize MPI</H1>
+    <B>Richard Guenther</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20Initialize%20MPI&In-Reply-To=%3CPine.LNX.4.58.0401021324430.572%40goofy%3E"
+       TITLE="[PATCH] Initialize MPI">rguenth at tat.physik.uni-tuebingen.de
+       </A><BR>
+    <I>Fri Jan  2 12:26:27 UTC 2004</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001472.html">[pooma-dev] [PATCH] MPI support for SerialAsync scheduler
+</A></li>
+        <LI>Next message: <A HREF="001459.html">[PATCH] Initialize MPI
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1450">[ date ]</a>
+              <a href="thread.html#1450">[ thread ]</a>
+              <a href="subject.html#1450">[ subject ]</a>
+              <a href="author.html#1450">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Hi!
+
+This patch adds MPI initialization.
+
+Ok?
+
+Richard.
+
+
+2004Jan02  Richard Guenther &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">richard.guenther at uni-tuebingen.de</A>&gt;
+
+	* src/Pooma/Pooma.cmpl.cpp: add initialization and
+	finalization sequence for MPI. Pooma::blockAndEvaluate() at
+	finalization.
+
+--- /home/richard/src/pooma/cvs/r2/src/Pooma/Pooma.cmpl.cpp	2003-12-25 12:26:04.000000000 +0100
++++ Pooma/Pooma.cmpl.cpp	2004-01-02 00:40:15.000000000 +0100
+@@ -287,10 +287,10 @@
+   // we can do this in the other initialize routine by querying for
+   // the Cheetah options from the Options object.
+
+-#if POOMA_CHEETAH
+-
++#if POOMA_MPI
++  MPI_Init(&amp;argc, &amp;argv);
++#elif POOMA_CHEETAH
+   controller_g = new Cheetah::Controller(argc, argv);
+-
+ #endif
+
+   // Just create an Options object for this argc, argv set, and give that
+@@ -349,12 +349,20 @@
+
+   // Set myContext_s and numContexts_s to the context numbers.
+
+-#if POOMA_CHEETAH
++#if POOMA_MESSAGING
+
++#if POOMA_MPI
++  MPI_Comm_rank(MPI_COMM_WORLD, &amp;myContext_g);
++  MPI_Comm_size(MPI_COMM_WORLD, &amp;numContexts_g);
++  // ugh...
++  for (int i=0; i&lt;sizeof(Smarts::SystemContext::requests_m)/sizeof(MPI_Request); ++i)
++    Smarts::SystemContext::free_requests_m.insert(i);
++#elif POOMA_CHEETAH
+   PAssert(controller_g != 0);
+
+   myContext_g   = controller_g-&gt;mycontext();
+   numContexts_g = controller_g-&gt;ncontexts();
++#endif
+
+   initializeCheetahHelpers(numContexts_g);
+
+@@ -376,14 +384,14 @@
+   warnMessages(opts.printWarnings());
+   errorMessages(opts.printErrors());
+
+-#if POOMA_CHEETAH
+-
+   // This barrier is here so that Pooma is initialized on all contexts
+   // before we continue.  (Another context could invoke a remote member
+   // function on us before we're initialized... which would be bad.)
+
++#if POOMA_MPI
++  MPI_Barrier(MPI_COMM_WORLD);
++#elif POOMA_CHEETAH
+   controller_g-&gt;barrier();
+-
+ #endif
+
+   // Initialize the Inform streams with info on how many contexts we
+@@ -416,6 +424,8 @@
+
+ bool finalize(bool quitRTS, bool quitArch)
+ {
++  Pooma::blockAndEvaluate();
++
+   if (initialized_s)
+   {
+     // Wait for threads to finish.
+@@ -426,7 +436,7 @@
+
+     cleanup_s();
+
+-#if POOMA_CHEETAH
++#if POOMA_MESSAGING
+     // Clean up the Cheetah helpers.
+
+     finalizeCheetahHelpers();
+@@ -436,15 +446,19 @@
+
+     if (quitRTS)
+     {
+-#if POOMA_CHEETAH
++#if POOMA_MESSAGING
+
+       // Deleting the controller shuts down the cross-context communication
+       // if this is the last thing using this controller.  If something
+       // else is using this, Cheetah will not shut down until that item
+       // is destroyed or stops using the controller.
+
++#if POOMA_MPI
++      MPI_Finalize();
++#elif POOMA_CHEETAH
+       if (controller_g != 0)
+ 	delete controller_g;
++#endif
+
+ #endif
+     }
+@@ -784,18 +799,18 @@
+     SystemContext_t::runSomething();
+   }
+
+-#elif POOMA_REORDER_ITERATES
++# elif POOMA_REORDER_ITERATES
+
+   CTAssert(NO_SUPPORT_FOR_THREADS_WITH_MESSAGING);
+
+-#else // we're using the serial scheduler, so we only need to get messages
++# else // we're using the serial scheduler, so we only need to get messages
+
+   while (Pooma::incomingMessages())
+   {
+     controller_g-&gt;poll();
+   }
+
+-#endif // schedulers
++# endif // schedulers
+
+ #else // !POOMA_CHEETAH
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001472.html">[pooma-dev] [PATCH] MPI support for SerialAsync scheduler
+</A></li>
+	<LI>Next message: <A HREF="001459.html">[PATCH] Initialize MPI
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1450">[ date ]</a>
+              <a href="thread.html#1450">[ thread ]</a>
+              <a href="subject.html#1450">[ subject ]</a>
+              <a href="author.html#1450">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

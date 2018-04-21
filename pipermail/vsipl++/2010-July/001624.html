@@ -1,0 +1,163 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [vsipl++] Example of parallel processing
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20Example%20of%20parallel%20processing&In-Reply-To=%3C4C3DD359.4030006%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001623.html">
+   
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[vsipl++] Example of parallel processing</H1>
+    <B>Stefan Seefeld</B> 
+    <A HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20Example%20of%20parallel%20processing&In-Reply-To=%3C4C3DD359.4030006%40codesourcery.com%3E"
+       TITLE="[vsipl++] Example of parallel processing">stefan at codesourcery.com
+       </A><BR>
+    <I>Wed Jul 14 15:10:17 UTC 2010</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001623.html">[vsipl++] Example of parallel processing
+</A></li>
+        
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1624">[ date ]</a>
+              <a href="thread.html#1624">[ thread ]</a>
+              <a href="subject.html#1624">[ subject ]</a>
+              <a href="author.html#1624">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Hi Bill,
+
+On 07/14/2010 10:51 AM, Cassanova, Bill wrote:
+&gt;<i> Your response does help although I need to clarify a few things a bit
+</I>&gt;<i> further if I may.
+</I>&gt;<i>
+</I>&gt;<i> (1) You stated that foreach_vector is not recommended.
+</I>
+I need to correct what I said a little: The foreach_vector function is 
+indeed exposed as part of the vsip:: namespace (and documented as such 
+in the Users Guide).
+
+We need to correct that, since in fact the vsip:: namespace is reserved 
+for functions and types provided by the VSIPL++ specification.
+
+&gt;<i> My presumption
+</I>&gt;<i> is that the recommended way is to code an explicit loop as was done in
+</I>&gt;<i> the 8.2 section of the users-guide.pdf file using local subviews
+</I>&gt;<i> instead.
+</I>
+Not quite. The new API we are working on, and which I alluded to in my 
+mail yesterday, provides a means for implicit parallelism. Instead of 
+writing an explicit loop, you would write things like:
+
+   Matrix&lt;&gt; input = ...;
+   Matrix&lt;&gt; output = ...;
+
+   Iterator&lt;&gt; i;
+   output.row(i) = function(input.row(i));
+
+This should be intuitively clear: The intent is, similar to 
+foreach_vector, to apply &quot;function&quot; to each row of the input.
+Using such a compact notation gives much more latitude to the library to 
+implement this efficiently (for example by evaluating different rows in 
+parallel).
+
+Such &quot;Parallel Iterator&quot; expressions are also much more powerful since 
+there are many more things that can be expressed than with a &quot;foreach&quot; 
+construct.
+
+But, to be clear: this is still in development. It will be included in 
+future Sourcery VSIPL++ releases.
+
+
+&gt;<i> (2) You stated that each process runs the exact same code.  Let's take a
+</I>&gt;<i> distributed scenario where, for example I have 4 individual machines
+</I>&gt;<i> named A,B,C, and D.  Each of these machines has 4 processors.  So...I
+</I>&gt;<i> have 16 processors on which &quot;work&quot; can be done.  However, only Node A
+</I>&gt;<i> has a particular input file on disk that contains the data that must be
+</I>&gt;<i> first read in before being processed.
+</I>&gt;<i>
+</I>&gt;<i>     (A) Is my understanding correct that the actual binary program must
+</I>&gt;<i> physically exist on each and every machine or does VSIPL++/MPI
+</I>&gt;<i>         &quot;take care of&quot; sending the necessary instruction codes from the
+</I>&gt;<i> master Node to the slave nodes...In this case Node A, to each of the
+</I>&gt;<i>          machines.
+</I>
+The binary must exist on all nodes. The program then is started using 
+the standard &quot;mpirun&quot; command, which, suitably configured, will spawn 
+the 16 processes on the 4 machines.
+
+&gt;<i>     (B) Does the input file have to exist on all 4 nodes or is it
+</I>&gt;<i> possible to read the data in on Node A, load the data into an
+</I>&gt;<i> appropriate
+</I>&gt;<i>         data structure and then let VSIPL++ &quot;distribute&quot; the processing
+</I>&gt;<i> using either foreach_vector or using the explicitly coded loop.
+</I>
+File I/O is typically done by only one process (such as you have done 
+using the conditional &quot;if (rank == 0)&quot;), so you only need the input 
+locally to that process.
+
+&gt;<i> (3) Is there a complete example somewhere of running an parallel
+</I>&gt;<i> program?  I found directory ../sourceryvsipl++-2.2/src/tests/parallel
+</I>&gt;<i> and there are good example of coding parallel programs.  At this point,
+</I>&gt;<i> however, I have found scant documentation on actually running these
+</I>&gt;<i> program in a parallel mode.  I had to figure out on my own that a
+</I>&gt;<i> program must be invoked using mpirun and had I no prior knowledge of
+</I>&gt;<i> mpirun I probably wouldn't have even tried it...Just a
+</I>&gt;<i> documentation/example suggestion for those of us who are just starting
+</I>&gt;<i> to learn parallel programming.  I haven't yet delved into the CUDA parts
+</I>&gt;<i> of vsipl++ either so an example runner script would be quite handy and
+</I>&gt;<i> probably cut down on some questions.
+</I>
+We do have plans to improve our documentation on parallelism with 
+Sourcery VSIPL++ (including how to program as well as deploy it). Thank 
+you for reminding us how useful this is. Such feedback definitely helps 
+us assigning the appropriate priorities to such documentation tasks.
+
+&gt;<i> VSIPL++ shows great promise and at this point at least it seems a bit
+</I>&gt;<i> easier than trying to code an MPI program from scratch.
+</I>
+I'm glad to hear that.
+
+Thanks for your interest,
+
+		Stefan
+
+
+
+-- 
+Stefan Seefeld
+CodeSourcery
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">stefan at codesourcery.com</A>
+(650) 331-3385 x718
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001623.html">[vsipl++] Example of parallel processing
+</A></li>
+	
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1624">[ date ]</a>
+              <a href="thread.html#1624">[ thread ]</a>
+              <a href="subject.html#1624">[ subject ]</a>
+              <a href="author.html#1624">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">More information about the vsipl++
+mailing list</a><br>
+</body></html>

@@ -1,0 +1,230 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [PATCH] Re: Two New Array Failures
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20Re%3A%20Two%20New%20Array%20Failures&In-Reply-To=%3CPine.LNX.4.44.0303122210340.4172-100000%40bellatrix.tat.physik.uni-tuebingen.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001222.html">
+   <LINK REL="Next"  HREF="001224.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[PATCH] Re: Two New Array Failures</H1>
+    <B>Richard Guenther</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20Re%3A%20Two%20New%20Array%20Failures&In-Reply-To=%3CPine.LNX.4.44.0303122210340.4172-100000%40bellatrix.tat.physik.uni-tuebingen.de%3E"
+       TITLE="[PATCH] Re: Two New Array Failures">rguenth at tat.physik.uni-tuebingen.de
+       </A><BR>
+    <I>Wed Mar 12 21:54:38 UTC 2003</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001222.html">
+</A></li>
+        <LI>Next message: <A HREF="001224.html">[pooma-dev] [PATCH] Re: Two New Array Failures
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1223">[ date ]</a>
+              <a href="thread.html#1223">[ thread ]</a>
+              <a href="subject.html#1223">[ subject ]</a>
+              <a href="author.html#1223">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Hi!
+
+The attached patch canonicalizes Engine::domain() const to return a
+const reference to its domain. It can do so by adding a domain_m
+member to the expression engine (pls review this part carefully, as
+in some of the constructors we might do things more optimally if I
+had understood what they actually do...).
+
+(We might do something similar to the Engine::layout() const methods,
+though this would affect many more engines to be added a layout_m member)
+
+Testing is still in progress, but the concept sounds reasonable?
+
+Thanks, Richard.
+
+--
+Richard Guenther &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">richard.guenther at uni-tuebingen.de</A>&gt;
+WWW: <A HREF="http://www.tat.physik.uni-tuebingen.de/~rguenth/">http://www.tat.physik.uni-tuebingen.de/~rguenth/</A>
+
+===== DynamicEngine.h 1.1 vs edited =====
+--- 1.1/r2/src/Engine/DynamicEngine.h	Mon May 13 17:47:32 2002
++++ edited/DynamicEngine.h	Wed Mar 12 22:49:39 2003
+@@ -509,7 +509,7 @@
+
+   // Return the domain:
+
+-  const Domain_t &amp;domain() const { return domain_m; }
++  inline const Domain_t &amp;domain() const { return domain_m; }
+
+   // Return a DomainLayout built from our domain
+
+===== ExpressionEngine.h 1.1 vs edited =====
+--- 1.1/r2/src/Engine/ExpressionEngine.h	Mon May 13 17:47:32 2002
++++ edited/ExpressionEngine.h	Wed Mar 12 22:49:05 2003
+@@ -499,12 +499,14 @@
+   //---------------------------------------------------------------------------
+   // Expression constructor. Just stick the expression in local storage.
+
+-  inline Engine(const Expr &amp;expr) : expr_m(expr) { }
++  inline Engine(const Expr &amp;expr) : expr_m(expr),
++    domain_m(forEach(expr_m, DomainFunctorTag(), DomainFunctorTag())) { }
+
+   //---------------------------------------------------------------------------
+   // Copy constructor.
+
+-  inline Engine(const Engine_t &amp;engine) : expr_m(engine.expression()) { }
++  inline Engine(const Engine_t &amp;engine) : expr_m(engine.expression()),
++    domain_m(engine.domain()) { }
+
+   //---------------------------------------------------------------------------
+   // Subsetting Constructor. We build this expression engine, in place, from
+@@ -517,13 +519,15 @@
+   template&lt;int Dim2, class T2, class Expr2, class Initializer&gt;
+   inline Engine(const Engine&lt;Dim2, T2, ExpressionTag&lt;Expr2&gt; &gt; &amp;e,
+     const Initializer &amp;i)
+-  : expr_m(e.expression(), i)
++  : expr_m(e.expression(), i),
++    domain_m(forEach(expr_m, DomainFunctorTag(), DomainFunctorTag()))
+     { }
+
+   template&lt;int Dim2, class T2, class Expr2, class I1, class I2&gt;
+   inline Engine(const Engine&lt;Dim2, T2, ExpressionTag&lt;Expr2&gt; &gt; &amp;e,
+                 const I1 &amp;i1, const I2 &amp;i2)
+-    : expr_m(e.expression(), i1, i2)
++    : expr_m(e.expression(), i1, i2),
++      domain_m(forEach(expr_m, DomainFunctorTag(), DomainFunctorTag()))
+   { }
+
+   //---------------------------------------------------------------------------
+@@ -531,7 +535,9 @@
+
+   template&lt;class Expr2&gt;
+   explicit inline Engine(const Engine&lt;Dim,T,ExpressionTag&lt;Expr2&gt; &gt; &amp;e)
+-    : expr_m(e.expression()) { }
++    : expr_m(e.expression()),
++      domain_m(forEach(expr_m, DomainFunctorTag(), DomainFunctorTag()))
++  { }
+
+   //---------------------------------------------------------------------------
+   // Accessor functions that return the expression.
+@@ -600,12 +606,13 @@
+   // combine the results based on the DomainFunctorTag. The DomainFunctorTag
+   // combiners are above.
+
+-  Domain_t domain() const
++  inline const Domain_t&amp; domain() const
+     {
+-      return forEach(expr_m, DomainFunctorTag(), DomainFunctorTag());
++      return domain_m;
+     }
+
+-  //---------------------------------------------------------------------------   // Return a layout.
++  //---------------------------------------------------------------------------
++  // Return a layout.
+
+   inline Layout_t layout() const { return Layout_t(domain()); }
+
+@@ -638,6 +645,10 @@
+   // The expression is stored here.
+
+   Expr expr_m;
++
++  // The domain of the expression.
++
++  Domain_t domain_m;
+
+ };
+
+===== IndexFunctionEngine.h 1.1 vs edited =====
+--- 1.1/r2/src/Engine/IndexFunctionEngine.h	Mon May 13 17:47:32 2002
++++ edited/IndexFunctionEngine.h	Wed Mar 12 22:48:44 2003
+@@ -228,7 +228,7 @@
+   //---------------------------------------------------------------------------
+   // Return/set the domain. Also, return the base domain.
+
+-  const Domain_t &amp;domain() const { return domain_m; }
++  inline const Domain_t &amp;domain() const { return domain_m; }
+   void setDomain(const Domain_t &amp;dom) { domain_m = dom; }
+
+   //---------------------------------------------------------------------------
+===== IndirectionEngine.h 1.1 vs edited =====
+--- 1.1/r2/src/Engine/IndirectionEngine.h	Mon May 13 17:47:32 2002
++++ edited/IndirectionEngine.h	Wed Mar 12 21:38:21 2003
+@@ -246,7 +246,7 @@
+
+   //---------------------------------------------------------------------------
+
+-  inline Domain_t domain() const
++  inline const Domain_t&amp; domain() const
+   {
+     return array2_m.domain();
+   }
+===== Stencil.h 1.5 vs edited =====
+--- 1.5/r2/src/Engine/Stencil.h	Fri Jan 24 10:35:52 2003
++++ edited/Stencil.h	Wed Mar 12 21:40:46 2003
+@@ -400,7 +401,7 @@
+   // Return the output domain.
+   //============================================================
+
+-  inline Domain_t domain() const { return domain_m; }
++  inline const Domain_t&amp; domain() const { return domain_m; }
+
+   //============================================================
+   // Return the first output index value for the specified direction
+===== UserFunction.h 1.1 vs edited =====
+--- 1.1/r2/src/Engine/UserFunction.h	Mon May 13 17:47:32 2002
++++ edited/UserFunction.h	Wed Mar 12 22:48:05 2003
+@@ -241,7 +241,7 @@
+   // Return the domain.
+   //---------------------------------------------------------------------------
+
+-  Domain_t domain() const { return expression_m.domain(); }
++  inline const Domain_t&amp; domain() const { return expression_m.domain(); }
+
+   //---------------------------------------------------------------------------
+   // Return first index in the specified direction.
+===== ViewEngine.h 1.5 vs edited =====
+--- 1.5/r2/src/Engine/ViewEngine.h	Fri Jan 24 10:35:52 2003
++++ edited/ViewEngine.h	Wed Mar 12 22:47:55 2003
+@@ -263,7 +263,7 @@
+   //---------------------------------------------------------------------------
+   // Return the domain.
+
+-  const Domain_t &amp;domain() const { return indexer_m.domain(); }
++  inline const Domain_t &amp;domain() const { return indexer_m.domain(); }
+
+   //---------------------------------------------------------------------------
+   // Return the first value for the specified direction (always zero since this
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001222.html">
+</A></li>
+	<LI>Next message: <A HREF="001224.html">[pooma-dev] [PATCH] Re: Two New Array Failures
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1223">[ date ]</a>
+              <a href="thread.html#1223">[ thread ]</a>
+              <a href="subject.html#1223">[ subject ]</a>
+              <a href="author.html#1223">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

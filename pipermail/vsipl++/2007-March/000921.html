@@ -1,0 +1,328 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [vsipl++] [patch] support for non-contiguous rows or columns with Cell FFTM
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20%5Bpatch%5D%20support%20for%20non-contiguous%20rows%20or%20columns%0A%20with%20Cell%20FFTM&In-Reply-To=%3C45F5D626.4080609%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000920.html">
+   <LINK REL="Next"  HREF="000927.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[vsipl++] [patch] support for non-contiguous rows or columns with Cell FFTM</H1>
+    <B>Stefan Seefeld</B> 
+    <A HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20%5Bpatch%5D%20support%20for%20non-contiguous%20rows%20or%20columns%0A%20with%20Cell%20FFTM&In-Reply-To=%3C45F5D626.4080609%40codesourcery.com%3E"
+       TITLE="[vsipl++] [patch] support for non-contiguous rows or columns with Cell FFTM">stefan at codesourcery.com
+       </A><BR>
+    <I>Mon Mar 12 22:37:26 UTC 2007</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000920.html">[vsipl++] [patch] support for non-contiguous rows or columns with Cell FFTM
+</A></li>
+        <LI>Next message: <A HREF="000927.html">[vsipl++] [patch] support for non-contiguous rows or columns with Cell FFTM
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#921">[ date ]</a>
+              <a href="thread.html#921">[ thread ]</a>
+              <a href="subject.html#921">[ subject ]</a>
+              <a href="author.html#921">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Don McCoy wrote:
+
+&gt;<i> Index: src/vsip/opt/cbe/ppu/fft.cpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> --- src/vsip/opt/cbe/ppu/fft.cpp	(revision 165340)
+</I>&gt;<i> +++ src/vsip/opt/cbe/ppu/fft.cpp	(working copy)
+</I>&gt;<i> @@ -53,18 +53,16 @@
+</I>&gt;<i>    fft(std::complex&lt;T&gt; const* in, std::complex&lt;T&gt;* out, 
+</I>&gt;<i>      length_type length, T scale, int exponent)
+</I>&gt;<i>    {
+</I>&gt;<i> -    // Note: the twiddle factors require only 1/4 the memory of the input and 
+</I>&gt;<i> -    // output arrays.
+</I>&gt;<i>      Fft_params fftp;
+</I>&gt;<i>      fftp.direction = (exponent == -1 ? fwd_fft : inv_fft);
+</I>&gt;<i>      fftp.elements = length;
+</I>&gt;<i>      fftp.scale = scale;
+</I>&gt;<i>      fftp.ea_twiddle_factors = 
+</I>&gt;<i>        reinterpret_cast&lt;unsigned long long&gt;(twiddle_factors_.get());
+</I>&gt;<i> -    fftp.ea_input_buffer    = 0;
+</I>&gt;<i> -    fftp.ea_output_buffer   = 0;
+</I>&gt;<i> -    fftp.in_blk_stride      = 0;
+</I>&gt;<i> -    fftp.out_blk_stride     = 0;
+</I>&gt;<i> +    fftp.ea_input_buffer    = reinterpret_cast&lt;unsigned long long&gt;(in);
+</I>&gt;<i> +    fftp.ea_output_buffer   = reinterpret_cast&lt;unsigned long long&gt;(out);
+</I>&gt;<i> +    fftp.in_blk_stride      = 1;  // not applicable in the single FFT case
+</I>&gt;<i> +    fftp.out_blk_stride     = 1;
+</I>&gt;<i>  
+</I>&gt;<i>      Task_manager *mgr = Task_manager::instance();
+</I>&gt;<i>      // The stack size is determined by accounting for the *worst case*
+</I>&gt;<i> @@ -76,11 +74,9 @@
+</I>&gt;<i>         sizeof(Fft_params),
+</I>&gt;<i>         sizeof(complex&lt;T&gt;)*length*2, 
+</I>
+Could you please add a comment explaining this factor '2' ? It isn't obvious...
+
+&gt;<i>         sizeof(complex&lt;T&gt;)*length,
+</I>&gt;<i> -       false);
+</I>&gt;<i> -    Workblock block = task.create_block();
+</I>&gt;<i> +       true);
+</I>&gt;<i> +    Workblock block = task.create_multi_block(1);
+</I>&gt;<i>      block.set_parameters(fftp);
+</I>&gt;<i> -    block.add_input(in, length);
+</I>&gt;<i> -    block.add_output(out, length);
+</I>&gt;<i>      task.enqueue(block);
+</I>&gt;<i>      task.sync();
+</I>&gt;<i>    }
+</I>
+[...]
+
+&gt;<i> Index: tests/fft_be.cpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> --- tests/fft_be.cpp	(revision 165340)
+</I>&gt;<i> +++ tests/fft_be.cpp	(working copy)
+</I>
+[...]
+
+&gt;<i> @@ -152,24 +166,33 @@
+</I>&gt;<i>    static Domain&lt;D&gt; out_dom(Domain&lt;D&gt; const &amp;dom) { return dom;}
+</I>&gt;<i>  };
+</I>&gt;<i>  
+</I>&gt;<i> -template &lt;typename T&gt;
+</I>&gt;<i> +template &lt;typename T,
+</I>&gt;<i> +          typename OrderT&gt;
+</I>&gt;<i>  const_Vector&lt;T, impl::Generator_expr_block&lt;1, impl::Ramp_generator&lt;T&gt; &gt; const&gt;
+</I>&gt;<i>  ramp(Domain&lt;1&gt; const &amp;dom) 
+</I>&gt;<i>  { return vsip::ramp(T(0.), T(1.), dom.length() * dom.stride());}
+</I>&gt;<i>  
+</I>&gt;<i> -template &lt;typename T&gt;
+</I>&gt;<i> -Matrix&lt;T&gt;
+</I>&gt;<i> +template &lt;typename T,
+</I>&gt;<i> +          typename OrderT&gt;
+</I>&gt;<i> +Matrix&lt;T, Dense&lt;2, T, OrderT&gt; &gt;
+</I>&gt;<i>  ramp(Domain&lt;2&gt; const &amp;dom) 
+</I>&gt;<i>  {
+</I>&gt;<i> +  typedef OrderT order_type;
+</I>&gt;<i> +  typedef Dense&lt;2, T, order_type&gt; block_type;
+</I>&gt;<i>    length_type rows = dom[0].length() * dom[0].stride();
+</I>&gt;<i>    length_type cols = dom[1].length() * dom[1].stride();
+</I>&gt;<i> -  Matrix&lt;T&gt; m(rows, cols);
+</I>&gt;<i> -  for (size_t r = 0; r != rows; ++r)
+</I>&gt;<i> -    m.row(r) = ramp(T(r), T(1.), m.size(1));
+</I>&gt;<i> +  Matrix&lt;T, block_type&gt; m(rows, cols);
+</I>&gt;<i> +  if (impl::Type_equal&lt;row2_type, order_type&gt;::value)
+</I>&gt;<i> +    for (size_t r = 0; r != rows; ++r)
+</I>&gt;<i> +      m.row(r) = ramp(T(r), T(1.), m.size(1));
+</I>&gt;<i> +  else
+</I>&gt;<i> +    for (size_t c = 0; c != cols; ++c)
+</I>&gt;<i> +      m.col(c) = ramp(T(c), T(1.), m.size(0));
+</I>&gt;<i>    return m;
+</I>&gt;<i>  }
+</I>
+While I like the addition of the dimension-ordering parameter, I think
+the conditional initialization here is a bit misleading: The value of
+matrix(x, y) should be the same, no matter its dimension-ordering.
+
+&gt;<i> -template &lt;typename T&gt;
+</I>&gt;<i> +template &lt;typename T,
+</I>&gt;<i> +          typename OrderT&gt;
+</I>&gt;<i>  Tensor&lt;T&gt;
+</I>&gt;<i>  ramp(Domain&lt;3&gt; const &amp;dom) 
+</I>&gt;<i>  {
+</I>
+
+[...]
+
+&gt;<i> @@ -222,7 +246,7 @@
+</I>&gt;<i>    typedef typename rfft_type&lt;T, F, 1, A&gt;::I I;
+</I>&gt;<i>    static typename impl::View_of_dim&lt;D, I, Dense&lt;D, I&gt; &gt;::type
+</I>&gt;<i>    create(Domain&lt;D&gt; const &amp;dom) 
+</I>&gt;<i> -  { return ramp&lt;I&gt;(rfft_type&lt;T, F, 1, A&gt;::in_dom(dom));}
+</I>&gt;<i> +    { return ramp&lt;I, row1_type&gt;(rfft_type&lt;T, F, 1, A&gt;::in_dom(dom));}
+</I>&gt;<i>  };
+</I>
+I think with the above in place we should go all the way and push the order parameter
+up to the highest level, so all tests get run twice, once for row-major and once for
+col-major. That gives maximum coverage.
+
+&gt;<i>  // Real inverse 2D FFT.
+</I>&gt;<i> @@ -238,7 +262,7 @@
+</I>&gt;<i>      length_type rows2 = rows/2+1;
+</I>&gt;<i>      length_type cols2 = cols/2+1;
+</I>&gt;<i>  
+</I>&gt;<i> -    Matrix&lt;I&gt; input = ramp&lt;I&gt;(rfft_type&lt;T, F, 1, A&gt;::in_dom(dom));
+</I>&gt;<i> +    Matrix&lt;I&gt; input = ramp&lt;I, row1_type&gt;(rfft_type&lt;T, F, 1, A&gt;::in_dom(dom));
+</I>&gt;<i>      if (rfft_type&lt;T, F, 1, A&gt;::axis == 0)
+</I>&gt;<i>      {
+</I>&gt;<i>        // Necessary symmetry:
+</I>&gt;<i> @@ -330,8 +354,8 @@
+</I>&gt;<i>    typedef impl::Fast_block&lt;D, CT, layout_type&gt; block_type;
+</I>&gt;<i>    typedef typename impl::View_of_dim&lt;D, CT, block_type&gt;::type View;
+</I>&gt;<i>  
+</I>&gt;<i> -  View data = ramp&lt;T&gt;(dom);
+</I>&gt;<i> -  View ref = ramp&lt;T&gt;(dom);
+</I>&gt;<i> +  View data = ramp&lt;T, row1_type&gt;(dom);
+</I>&gt;<i> +  View ref = ramp&lt;T, row1_type&gt;(dom);
+</I>&gt;<i>  
+</I>&gt;<i>    typename View::subview_type sub_data = data(dom);
+</I>&gt;<i>  
+</I>&gt;<i> @@ -357,9 +381,10 @@
+</I>&gt;<i>  {
+</I>&gt;<i>    typedef typename T::I I;
+</I>&gt;<i>    typedef typename T::O O;
+</I>&gt;<i> -  typedef typename impl::Layout&lt;2, row1_type,
+</I>&gt;<i> +  typedef typename T::order_type order_type;
+</I>&gt;<i> +  typedef typename impl::Layout&lt;2, order_type,
+</I>&gt;<i>      impl::Stride_unit_dense, typename T::i_format&gt; i_layout_type;
+</I>&gt;<i> -  typedef typename impl::Layout&lt;2, row1_type,
+</I>&gt;<i> +  typedef typename impl::Layout&lt;2, order_type,
+</I>&gt;<i>      impl::Stride_unit_dense, typename T::o_format&gt; o_layout_type;
+</I>&gt;<i>    return_mechanism_type const r = by_reference;
+</I>&gt;<i>  
+</I>&gt;<i> @@ -371,7 +396,7 @@
+</I>&gt;<i>    Domain&lt;2&gt; in_dom = T::in_dom(dom);
+</I>&gt;<i>    Domain&lt;2&gt; out_dom = T::out_dom(dom);
+</I>&gt;<i>  
+</I>&gt;<i> -  Iview input = input_creator&lt;T, 2&gt;::create(dom);
+</I>&gt;<i> +  Iview input = input_creator&lt;T, 2, order_type&gt;::create(dom);
+</I>&gt;<i>    typename Iview::subview_type sub_input = input(in_dom);
+</I>&gt;<i>  
+</I>&gt;<i>    Oview output = empty&lt;O&gt;(out_dom);
+</I>&gt;<i> @@ -408,8 +433,8 @@
+</I>&gt;<i>    typedef impl::Fast_block&lt;2, CT, layout_type&gt; block_type;
+</I>&gt;<i>    typedef Matrix&lt;CT, block_type&gt; View;
+</I>&gt;<i>  
+</I>&gt;<i> -  View data = ramp&lt;T&gt;(dom);
+</I>&gt;<i> -  View ref = ramp&lt;T&gt;(dom);
+</I>&gt;<i> +  View data = ramp&lt;T, row1_type&gt;(dom);
+</I>&gt;<i> +  View ref = ramp&lt;T, row1_type&gt;(dom);
+</I>&gt;<i>  
+</I>&gt;<i>    typename View::subview_type sub_data = data(dom);
+</I>&gt;<i>  
+</I>&gt;<i> @@ -498,6 +523,13 @@
+</I>&gt;<i>    fft_in_place&lt;T, F, 1, cvsip&gt;(Domain&lt;1&gt;(0, 2, 8));
+</I>&gt;<i>  #endif
+</I>&gt;<i>  
+</I>&gt;<i> +#if VSIP_IMPL_CBE_SDK
+</I>&gt;<i> +  std::cout &lt;&lt; &quot;testing fwd in_place cbe...&quot;;
+</I>&gt;<i> +  fft_in_place&lt;T, F, -1, cbe&gt;(Domain&lt;1&gt;(32));
+</I>&gt;<i> +  std::cout &lt;&lt; &quot;testing inv in_place cbe...&quot;;
+</I>&gt;<i> +  fft_in_place&lt;T, F, 1, cbe&gt;(Domain&lt;1&gt;(32));
+</I>&gt;<i> +#endif
+</I>&gt;<i> +
+</I>&gt;<i>  #if VSIP_IMPL_FFTW3
+</I>&gt;<i>    std::cout &lt;&lt; &quot;testing c-&gt;c fwd by_ref fftw...&quot;;
+</I>&gt;<i>    fft_by_ref&lt;cfft_type&lt;T, F, -1&gt;, fftw&gt;(Domain&lt;1&gt;(16));
+</I>&gt;<i> @@ -558,7 +590,14 @@
+</I>&gt;<i>    fft_by_ref&lt;rfft_type&lt;T, F, 1, 0&gt;, cvsip&gt;(Domain&lt;1&gt;(0, 2, 8));
+</I>&gt;<i>  #endif
+</I>&gt;<i>  
+</I>&gt;<i> +#if VSIP_IMPL_CBE_SDK
+</I>&gt;<i> +  std::cout &lt;&lt; &quot;testing c-&gt;c fwd by_ref cbe...&quot;;
+</I>&gt;<i> +  fft_by_ref&lt;cfft_type&lt;T, F, -1&gt;, cbe&gt;(Domain&lt;1&gt;(32));
+</I>&gt;<i> +  std::cout &lt;&lt; &quot;testing c-&gt;c inv by_ref cbe...&quot;;
+</I>&gt;<i> +  fft_by_ref&lt;cfft_type&lt;T, F, 1&gt;, cbe&gt;(Domain&lt;1&gt;(32));
+</I>&gt;<i>  #endif
+</I>&gt;<i> +
+</I>&gt;<i> +#endif
+</I>&gt;<i>  }
+</I>&gt;<i>  
+</I>&gt;<i>  template &lt;typename T, typename F&gt;
+</I>&gt;<i> @@ -902,6 +941,23 @@
+</I>&gt;<i>    fftm_in_place&lt;T, F, 1, 1, cvsip&gt;(Domain&lt;2&gt;(8, 16));
+</I>&gt;<i>  #endif
+</I>&gt;<i>  
+</I>&gt;<i> +#if VSIP_IMPL_CBE_SDK
+</I>&gt;<i> +// Note: column-wise FFTs need to be performed on
+</I>&gt;<i> +// col-major data in this case.  These are commented
+</I>&gt;<i> +// out until fftm_in_place is changed to be like
+</I>&gt;<i> +// fftm_by_ref, where the cfft_type&lt;&gt; template allows
+</I>&gt;<i> +// the dimension order to be specified.
+</I>
+That's OK, though I believe we should fix that as soon as possible,
+such that fft_be.cpp remains as much backend-agnostic as possible,
+i.e. no backend-specific tests creep in.
+
+(I can complete that if you are busy finishing other bits.)
+
+&gt;<i> +
+</I>&gt;<i> +//  std::cout &lt;&lt; &quot;testing fwd on cols in_place cbe...&quot;;
+</I>&gt;<i> +//  fftm_in_place&lt;T, F, -1, 0, cbe&gt;(Domain&lt;2&gt;(64, 32));
+</I>&gt;<i> +  std::cout &lt;&lt; &quot;testing fwd on rows in_place cbe...&quot;;
+</I>&gt;<i> +  fftm_in_place&lt;T, F, -1, 1, cbe&gt;(Domain&lt;2&gt;(32, 64));
+</I>&gt;<i> +//  std::cout &lt;&lt; &quot;testing inv on cols in_place cbe...&quot;;
+</I>&gt;<i> +//  fftm_in_place&lt;T, F, 1, 0, cbe&gt;(Domain&lt;2&gt;(64, 32));
+</I>&gt;<i> +  std::cout &lt;&lt; &quot;testing inv on rows in_place cbe...&quot;;
+</I>&gt;<i> +  fftm_in_place&lt;T, F, 1, 1, cbe&gt;(Domain&lt;2&gt;(32, 64));
+</I>&gt;<i> +#endif
+</I>&gt;<i> +
+</I>&gt;<i>  #if VSIP_IMPL_FFTW3
+</I>&gt;<i>    std::cout &lt;&lt; &quot;testing c-&gt;c fwd 0 by_ref fftw...&quot;;
+</I>&gt;<i>    fftm_by_ref&lt;cfft_type&lt;T, F, -1, 0&gt;, fftw&gt;(Domain&lt;2&gt;(8, 16));
+</I>&gt;<i> @@ -978,7 +1034,24 @@
+</I>&gt;<i>    fftm_by_ref&lt;rfft_type&lt;T, F, 1, 1&gt;, cvsip&gt; (Domain&lt;2&gt;(4, 16));
+</I>&gt;<i>  #endif
+</I>&gt;<i>  
+</I>&gt;<i> +#if VSIP_IMPL_CBE_SDK
+</I>&gt;<i> +  std::cout &lt;&lt; &quot;testing c-&gt;c fwd on cols by_ref cbe...&quot;;
+</I>&gt;<i> +  fftm_by_ref&lt;cfft_type&lt;T, F, -1, 0, col2_type&gt;, cbe&gt;(Domain&lt;2&gt;(32, 64));
+</I>&gt;<i> +  fftm_by_ref&lt;cfft_type&lt;T, F, -1, 0, col2_type&gt;, cbe&gt;(Domain&lt;2&gt;(Domain&lt;1&gt;(32), Domain&lt;1&gt;(0, 2, 32)));
+</I>&gt;<i> +  std::cout &lt;&lt; &quot;testing c-&gt;c fwd on rows by_ref cbe...&quot;;
+</I>&gt;<i> +  fftm_by_ref&lt;cfft_type&lt;T, F, -1, 1, row2_type&gt;, cbe&gt;(Domain&lt;2&gt;(32, 64));
+</I>&gt;<i> +  fftm_by_ref&lt;cfft_type&lt;T, F, -1, 1, row2_type&gt;, cbe&gt;(Domain&lt;2&gt;(Domain&lt;1&gt;(0, 2, 32), Domain&lt;1&gt;(64)));
+</I>&gt;<i> +  std::cout &lt;&lt; &quot;testing c-&gt;c inv 0 by_ref cbe...&quot;;
+</I>&gt;<i> +  fftm_by_ref&lt;cfft_type&lt;T, F, 1, 0, col2_type&gt;, cbe&gt;(Domain&lt;2&gt;(32, 64));
+</I>&gt;<i> +  fftm_by_ref&lt;cfft_type&lt;T, F, 1, 0, col2_type&gt;, cbe&gt;(Domain&lt;2&gt;(Domain&lt;1&gt;(32), Domain&lt;1&gt;(0, 2, 32)));
+</I>&gt;<i> +  std::cout &lt;&lt; &quot;testing c-&gt;c inv 1 by_ref cbe...&quot;;
+</I>&gt;<i> +  fftm_by_ref&lt;cfft_type&lt;T, F, 1, 1, row2_type&gt;, cbe&gt;(Domain&lt;2&gt;(32, 64));
+</I>&gt;<i> +  fftm_by_ref&lt;cfft_type&lt;T, F, 1, 1, row2_type&gt;, cbe&gt;(Domain&lt;2&gt;(Domain&lt;1&gt;(0, 2, 32), Domain&lt;1&gt;(64)));
+</I>&gt;<i>  #endif
+</I>&gt;<i> +
+</I>&gt;<i> +
+</I>&gt;<i> +
+</I>&gt;<i> +#endif
+</I>&gt;<i>  }
+</I>&gt;<i>  
+</I>&gt;<i>  int main(int argc, char **argv)
+</I>
+Same here.
+
+Thanks,
+		Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">stefan at codesourcery.com</A>
+(650) 331-3385 x718
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000920.html">[vsipl++] [patch] support for non-contiguous rows or columns with Cell FFTM
+</A></li>
+	<LI>Next message: <A HREF="000927.html">[vsipl++] [patch] support for non-contiguous rows or columns with Cell FFTM
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#921">[ date ]</a>
+              <a href="thread.html#921">[ thread ]</a>
+              <a href="subject.html#921">[ subject ]</a>
+              <a href="author.html#921">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">More information about the vsipl++
+mailing list</a><br>
+</body></html>

@@ -1,0 +1,623 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> newfield_revision Patch: FieldOffset Code
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20newfield_revision%20Patch%3A%20FieldOffset%20Code&In-Reply-To=%3C20010724125853.C29041%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000592.html">
+   <LINK REL="Next"  HREF="000590.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>newfield_revision Patch: FieldOffset Code</H1>
+    <B>Jeffrey Oldham</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20newfield_revision%20Patch%3A%20FieldOffset%20Code&In-Reply-To=%3C20010724125853.C29041%40codesourcery.com%3E"
+       TITLE="newfield_revision Patch: FieldOffset Code">oldham at codesourcery.com
+       </A><BR>
+    <I>Tue Jul 24 19:58:53 UTC 2001</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000592.html">[pooma-dev] FW: Questions about data in Fields
+</A></li>
+        <LI>Next message: <A HREF="000590.html">RFA: Time Benchmarks
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#589">[ date ]</a>
+              <a href="thread.html#589">[ thread ]</a>
+              <a href="subject.html#589">[ subject ]</a>
+              <a href="author.html#589">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>The following code implements the FieldOffset portion of the NewField
+abstraction revisions proposed by Jeffrey D. Oldham and Stephen Smith.
+A FieldOffset is a pair containing a cell offset and a number
+indicating a centering value within the cell.  Combining with a field
+and a Loc indicating a specific field cell, this yields a field value.
+
+This patch is applied to the newfield_revision development branch,
+which was created so Stephen and I can share code during our
+experimentation and development work.  There is no guarantee the code
+on this branch will compile, much less work.  I post this message to
+let you (and my boss) know that we are working toward a new and
+improved Pooma.
+
+2001-07-24  Jeffrey D. Oldham  &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">oldham at codesourcery.com</A>&gt;
+
+	* Field.h: Added inclusion of FieldOffset.h
+	Added notation that support for FieldOffset&lt;Dim,[01]&gt; with no Loc
+	is needed.
+	View2&lt;Field, FieldOffset&lt;Dim, [01]&gt;, Loc&gt;: New specialization.
+	Fix grammatical error in comment.
+	* FieldOffset.h: New file defining FieldOffest&lt;Dim,[01]&gt;.
+	* tests/FieldOffset.cpp: New file testing FieldOffset.
+	* tests/FieldTour3.cpp: Add explanatory comments.
+	* tests/makefile: Add support for FieldTour3 and FieldOffset.
+
+Applied to	newfield_revision branch
+Tested on	sequential Linux using gcc 3.0 by building library and NewField tests
+Approved by	Stephen Smith
+
+Thanks,
+Jeffrey D. Oldham
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">oldham at codesourcery.com</A>
+-------------- next part --------------
+Index: Field.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/NewField/Field.h,v
+retrieving revision 1.15.2.2
+diff -c -p -r1.15.2.2 Field.h
+*** Field.h	2001/07/17 23:22:39	1.15.2.2
+--- Field.h	2001/07/24 19:48:11
+***************
+*** 67,72 ****
+--- 67,73 ----
+  #include &quot;NewField/VectorFieldOperators.h&quot;
+  #include &quot;NewField/FieldCreateLeaf.h&quot;
+  #include &quot;NewField/FieldCentering.h&quot;
++ #include &quot;NewField/FieldOffset.h&quot;
+  
+  #include &quot;NewField/PrintField.h&quot;
+  
+*************** struct View1&lt;Field&lt;GeometryTag, T, Engin
+*** 576,581 ****
+--- 577,585 ----
+  };
+  
+  
++ // FIXME: Add specializations for FieldOffset&lt;dimensions, 1&gt; and
++ // FIXME: FieldOffset&lt;dimensions, 0&gt;.
++ 
+  //-----------------------------------------------------------------------------
+  // AltView1 avoids an instantiation problem that arises when two
+  // classes use each other.  This class's definition should be exactly
+*************** struct View2&lt;Field&lt;GeometryTag, T, Engin
+*** 736,741 ****
+--- 740,854 ----
+  
+  
+  //-----------------------------------------------------------------------------
++ // View2&lt;Field, FieldOffset&lt;Dim,1&gt;, Loc&lt;Dim&gt; &gt; specialization for
++ // indexing a field with a FieldOffset and a Loc.
++ //-----------------------------------------------------------------------------
++ 
++ template&lt;class GeometryTag, class T, class EngineTag, int Dim&gt;
++ struct View2&lt;Field&lt;GeometryTag, T, EngineTag&gt;,
++              FieldOffset&lt;Dim, 1&gt;,
++              Loc&lt;Dim&gt; &gt;
++ {
++   // Convenience typedef for the thing we're taking a view of.
++   
++   typedef Field&lt;GeometryTag, T, EngineTag&gt; Subject_t;
++ 
++   // The field's dimension (i.e., the number of indices required to select a point).
++   
++   enum { dimensions = Subject_t::dimensions };
++ 
++   // The return types.
++   
++   typedef typename Subject_t::Element_t ReadType_t;
++   typedef typename Subject_t::ElementRef_t Type_t;
++ 
++   // The functions that do the indexing.
++ 
++   inline static
++   Type_t make(const Subject_t &amp;f,
++ 	      const FieldOffset&lt;dimensions, 1&gt; &amp;fo,
++ 	      const Loc&lt;dimensions&gt; &amp;loc)
++     {
++       CTAssert(dimensions == Dim);
++       PAssert(f.numSubFields() &gt; 0);
++       
++ #if POOMA_BOUNDS_CHECK
++       PInsist(contains(f.totalDomain(), loc + fo.cellOffset()),
++ 	      &quot;Field view bounds error.&quot;);
++ #endif
++       return f[fo.subFieldNumber()].engine()(loc + fo.cellOffset());
++     }
++ 
++   inline static
++   ReadType_t makeRead(const Subject_t &amp;f,
++ 		      const FieldOffset&lt;dimensions, 1&gt; &amp;fo,
++ 		      const Loc&lt;dimensions&gt; &amp;loc)
++     {
++       PAssert(f.numSubFields() &gt; 0);
++       
++ #if POOMA_BOUNDS_CHECK
++       PInsist(contains(f.totalDomain(), loc + fo.cellOffset()),
++ 	      &quot;Field view bounds error.&quot;);
++ #endif
++       return f[fo.subFieldNumber()].engine().read(loc + fo.cellOffset());
++     }
++ };
++ 
++ 
++ //-----------------------------------------------------------------------------
++ // View2&lt;Field, FieldOffset&lt;Dim,0&gt;, Loc&lt;Dim&gt; &gt; specialization for
++ // indexing a field with a FieldOffset and a Loc.
++ //-----------------------------------------------------------------------------
++ 
++ template&lt;class GeometryTag, class T, class EngineTag, int Dim&gt;
++ struct View2&lt;Field&lt;GeometryTag, T, EngineTag&gt;,
++              FieldOffset&lt;Dim, 0&gt;,
++              Loc&lt;Dim&gt; &gt;
++ {
++   // Convenience typedef for the thing we're taking a view of.
++   
++   typedef Field&lt;GeometryTag, T, EngineTag&gt; Subject_t;
++ 
++   // The field's dimension (i.e., the number of indices required to select a point).
++   
++   enum { dimensions = Subject_t::dimensions };
++ 
++   // The return types.
++   
++   typedef typename Subject_t::Element_t ReadType_t;
++   typedef typename Subject_t::ElementRef_t Type_t;
++ 
++   // The functions that do the indexing.
++ 
++   inline static
++   Type_t make(const Subject_t &amp;f,
++ 	      const FieldOffset&lt;dimensions, 0&gt; &amp;fo,
++ 	      const Loc&lt;dimensions&gt; &amp;loc)
++     {
++       CTAssert(dimensions == Dim);
++       
++ #if POOMA_BOUNDS_CHECK
++       PInsist(contains(f.totalDomain(), loc + fo.cellOffset()),
++ 	      &quot;Field view bounds error.&quot;);
++ #endif
++       return f.engine()(loc + fo.cellOffset());
++     }
++ 
++   inline static
++   ReadType_t makeRead(const Subject_t &amp;f,
++ 		      const FieldOffset&lt;dimensions, 0&gt; &amp;fo,
++ 		      const Loc&lt;dimensions&gt; &amp;loc)
++     {
++ #if POOMA_BOUNDS_CHECK
++       PInsist(contains(f.totalDomain(), loc + fo.cellOffset()),
++ 	      &quot;Field view bounds error.&quot;);
++ #endif
++       return f.engine().read(loc + fo.cellOffset());
++     }
++ };
++ 
++ 
++ //-----------------------------------------------------------------------------
+  // View3&lt;Field, S1, S2, S3&gt; specialization for indexing a field with three
+  // domains.
+  //-----------------------------------------------------------------------------
+*************** public:
+*** 1249,1256 ****
+  
+  
+    //---------------------------------------------------------------------------
+!   // Component-forwarding functions. These work quite similar to the ones from
+!   // Array except we produce a Field with the same GeometryTag.
+  
+    inline typename ComponentView&lt;Loc&lt;1&gt;, This_t&gt;::Type_t
+    comp(const int &amp;i1) const
+--- 1362,1369 ----
+  
+  
+    //---------------------------------------------------------------------------
+!   // Component-forwarding functions. These work quite similarly to the
+!   // ones from Array except we produce a Field with the same GeometryTag.
+  
+    inline typename ComponentView&lt;Loc&lt;1&gt;, This_t&gt;::Type_t
+    comp(const int &amp;i1) const
+Index: FieldOffset.h
+===================================================================
+RCS file: FieldOffset.h
+diff -N FieldOffset.h
+*** /dev/null	Tue May  5 14:32:27 1998
+--- FieldOffset.h	Tue Jul 24 13:48:11 2001
+***************
+*** 0 ****
+--- 1,153 ----
++ // -*- C++ -*-
++ // ACL:license
++ // ----------------------------------------------------------------------
++ // This software and ancillary information (herein called &quot;SOFTWARE&quot;)
++ // called POOMA (Parallel Object-Oriented Methods and Applications) is
++ // made available under the terms described here.  The SOFTWARE has been
++ // approved for release with associated LA-CC Number LA-CC-98-65.
++ // 
++ // Unless otherwise indicated, this SOFTWARE has been authored by an
++ // employee or employees of the University of California, operator of the
++ // Los Alamos National Laboratory under Contract No. W-7405-ENG-36 with
++ // the U.S. Department of Energy.  The U.S. Government has rights to use,
++ // reproduce, and distribute this SOFTWARE. The public may copy, distribute,
++ // prepare derivative works and publicly display this SOFTWARE without 
++ // charge, provided that this Notice and any statement of authorship are 
++ // reproduced on all copies.  Neither the Government nor the University 
++ // makes any warranty, express or implied, or assumes any liability or 
++ // responsibility for the use of this SOFTWARE.
++ // 
++ // If SOFTWARE is modified to produce derivative works, such modified
++ // SOFTWARE should be clearly marked, so as not to confuse it with the
++ // version available from LANL.
++ // 
++ // For more information about POOMA, send e-mail to <A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">pooma at acl.lanl.gov</A>,
++ // or visit the POOMA web page at <A HREF="http://www.acl.lanl.gov/pooma/.">http://www.acl.lanl.gov/pooma/.</A>
++ // ----------------------------------------------------------------------
++ // ACL:license
++ 
++ //-----------------------------------------------------------------------------
++ // Classes: 
++ //   FieldOffset
++ //-----------------------------------------------------------------------------
++ 
++ #ifndef POOMA_NEWFIELD_OFFSET_H
++ #define POOMA_NEWFIELD_OFFSET_H
++ 
++ //-----------------------------------------------------------------------------
++ // Overview: 
++ // 
++ // FieldOffset
++ //   - specifies a relative cell offset and subfield number
++ //-----------------------------------------------------------------------------
++ 
++ //-----------------------------------------------------------------------------
++ // Includes:
++ //-----------------------------------------------------------------------------
++ 
++ #include &quot;Domain/Loc.h&quot;
++ 
++ //-----------------------------------------------------------------------------
++ // Forward declarations:
++ //-----------------------------------------------------------------------------
++ 
++ template &lt;int Dim, int Type=1&gt;
++ class FieldOffset;
++ 
++ //-----------------------------------------------------------------------------
++ // Full Description of FieldOffset:
++ //
++ // Given a field f, a Loc loc, and a field offset (offset,num), a
++ // field value can be obtained.  Since each value specified by the
++ // field's centering is stored in a separate subfield, the notation
++ // f[num](loc + offset) yields the value.
++ //
++ // Accessing values for fields with exactly one value per cell differs
++ // from accessing fields with multiple subfields.  If a field has
++ // exactly one value per cell, use FieldOffset&lt;Dim, 0&gt;, which does not
++ // store a subfield number.  If a field has multiple subfields, use
++ // FieldOffset&lt;Dim, 1&gt;, which stores a subfield number.
++ //
++ //-----------------------------------------------------------------------------
++ 
++ 
++ //-----------------------------------------------------------------------------
++ // FieldOffset.
++ //-----------------------------------------------------------------------------
++ 
++ template &lt;int Dim&gt;
++ class FieldOffset&lt;Dim, 1&gt; {
++ public:
++ 
++   //---------------------------------------------------------------------------
++   // User-callable constructors. These ctors are meant to be called by users.
++ 
++   FieldOffset(const Loc&lt;Dim&gt; &amp;loc, const int subFieldNumber = 0)
++     : cell_offset_m(loc), subfield_number_m (subFieldNumber)
++   {
++ #if POOMA_BOUNDS_CHECK
++     PInsist(subfield_number_m &gt;= 0, &quot;Erroneous FieldOffset subfield number.&quot;);
++ #endif
++     return;
++   }
++ 
++   //---------------------------------------------------------------------------
++   // Accessors.
++ 
++   inline const Loc&lt;Dim&gt; &amp;cellOffset() const
++     {
++       return cell_offset_m;
++     }
++ 
++   inline int subFieldNumber() const
++     {
++       return subfield_number_m;
++     }
++ 
++ private:
++ 
++   // The cell offset.
++   Loc&lt;Dim&gt; cell_offset_m;
++ 
++   // The subfield number, if appropriate.
++   int subfield_number_m;
++ };
++ 
++ 
++ template &lt;int Dim&gt;
++ class FieldOffset&lt;Dim, 0&gt; {
++ public:
++ 
++   //---------------------------------------------------------------------------
++   // User-callable constructors. These ctors are meant to be called by users.
++ 
++   FieldOffset(const Loc&lt;Dim&gt; &amp;loc, const int subFieldNumber = 0)
++     : cell_offset_m(loc), subfield_number_m (-1)
++   { }
++ 
++   //---------------------------------------------------------------------------
++   // Accessors.
++ 
++   inline const Loc&lt;Dim&gt; &amp;cellOffset() const
++     {
++       return cell_offset_m;
++     }
++ 
++ private:
++ 
++   // The cell offset.
++   Loc&lt;Dim&gt; cell_offset_m;
++ 
++   // The subfield number, if appropriate.
++   int subfield_number_m;
++ };
++ 
++ 
++ #endif // POOMA_NEWFIELD_OFFSET_H
++ 
++ // ACL:rcsinfo
++ // ----------------------------------------------------------------------
++ // $RCSfile: FieldCentering.h,v $   $Author: oldham $
++ // $Revision: 1.1.2.1 $   $Date: 2001/07/16 20:44:59 $
++ // ----------------------------------------------------------------------
++ // ACL:rcsinfo
+Index: tests/FieldOffset.cpp
+===================================================================
+RCS file: FieldOffset.cpp
+diff -N FieldOffset.cpp
+*** /dev/null	Tue May  5 14:32:27 1998
+--- FieldOffset.cpp	Tue Jul 24 13:48:11 2001
+***************
+*** 0 ****
+--- 1,125 ----
++ // -*- C++ -*-
++ // ACL:license
++ // ----------------------------------------------------------------------
++ // This software and ancillary information (herein called &quot;SOFTWARE&quot;)
++ // called POOMA (Parallel Object-Oriented Methods and Applications) is
++ // made available under the terms described here.  The SOFTWARE has been
++ // approved for release with associated LA-CC Number LA-CC-98-65.
++ // 
++ // Unless otherwise indicated, this SOFTWARE has been authored by an
++ // employee or employees of the University of California, operator of the
++ // Los Alamos National Laboratory under Contract No. W-7405-ENG-36 with
++ // the U.S. Department of Energy.  The U.S. Government has rights to use,
++ // reproduce, and distribute this SOFTWARE. The public may copy, distribute,
++ // prepare derivative works and publicly display this SOFTWARE without 
++ // charge, provided that this Notice and any statement of authorship are 
++ // reproduced on all copies.  Neither the Government nor the University 
++ // makes any warranty, express or implied, or assumes any liability or 
++ // responsibility for the use of this SOFTWARE.
++ // 
++ // If SOFTWARE is modified to produce derivative works, such modified
++ // SOFTWARE should be clearly marked, so as not to confuse it with the
++ // version available from LANL.
++ // 
++ // For more information about POOMA, send e-mail to <A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">pooma at acl.lanl.gov</A>,
++ // or visit the POOMA web page at <A HREF="http://www.acl.lanl.gov/pooma/.">http://www.acl.lanl.gov/pooma/.</A>
++ // ----------------------------------------------------------------------
++ // ACL:license
++ //-----------------------------------------------------------------------------
++ // Test of the new Centerings class.
++ //-----------------------------------------------------------------------------
++ 
++ #include &quot;Pooma/NewFields.h&quot;
++ #include &quot;Utilities/Tester.h&quot;
++ 
++ int main(int argc, char *argv[])
++ {
++   Pooma::initialize(argc, argv);
++   Pooma::Tester tester(argc, argv);
++ 
++   const int Dim = 2;
++ 
++   Centering&lt;Dim&gt; edges
++     = canonicalCentering&lt;Dim&gt;(EdgeType, Continuous, XDim | YDim);
++ 
++   Interval&lt;Dim&gt; physicalVertexDomain(4, 4);
++   DomainLayout&lt;Dim&gt; layout(physicalVertexDomain, GuardLayers&lt;Dim&gt;(1));
++   typedef Field&lt;UniformRectilinear&lt;Dim&gt;, double, Brick&gt; Field_t;
++   Field_t f(edges, layout, Vector&lt;Dim&gt;(0.0), Vector&lt;Dim&gt;(1.0, 2.0));
++   Field_t g(3, edges, layout, Vector&lt;Dim&gt;(0.0), Vector&lt;Dim&gt;(1.0, 2.0));
++ 
++   // Set some data in the field.
++   
++   f[0].all() = 2.0; f[0] = -1.0;
++   f[1].all() = 3.0; f[1] = -2.0;
++   
++   // Test a field with subfields.
++ 
++   tester.check(&quot;f[0](0,0)&quot;,
++ 	       f(FieldOffset&lt;Dim,1&gt;(Loc&lt;Dim&gt;(0), 0), Loc&lt;Dim&gt;(0)),
++ 	       -1.0, 1.0e-8);
++   tester.check(&quot;f[0](0,0)&quot;,
++ 	       f(FieldOffset&lt;Dim,1&gt;(Loc&lt;Dim&gt;(2,1), 0), Loc&lt;Dim&gt;(-2,-1)),
++ 	       -1.0, 1.0e-8);
++   tester.check(&quot;f[0](2,1)&quot;,
++ 	       f(FieldOffset&lt;Dim,1&gt;(Loc&lt;Dim&gt;(2,1), 0), Loc&lt;Dim&gt;(0)),
++ 	       -1.0, 1.0e-8);
++   tester.check(&quot;f[1](0,0)&quot;,
++ 	       f(FieldOffset&lt;Dim,1&gt;(Loc&lt;Dim&gt;(0), 1), Loc&lt;Dim&gt;(0)),
++ 	       -2.0, 1.0e-8);
++   tester.check(&quot;f[1](1,2)&quot;,
++ 	       f(FieldOffset&lt;Dim,1&gt;(Loc&lt;Dim&gt;(1,2), 1), Loc&lt;Dim&gt;(0)),
++ 	       -2.0, 1.0e-8);
++   f(FieldOffset&lt;Dim,1&gt;(Loc&lt;Dim&gt;(3,2), 0), Loc&lt;Dim&gt;(-1,-1)) = 1.3;
++   f(FieldOffset&lt;Dim,1&gt;(Loc&lt;Dim&gt;(3,2), 1), Loc&lt;Dim&gt;(-1,-1)) = 10.3;
++   tester.check(&quot;f[0](2,1)&quot;,
++ 	       f(FieldOffset&lt;Dim,1&gt;(Loc&lt;Dim&gt;(2,1), 0), Loc&lt;Dim&gt;(0)),
++ 	       1.3, 1.0e-08);
++   tester.check(&quot;f[1](2,1)&quot;,
++ 	       f(FieldOffset&lt;Dim,1&gt;(Loc&lt;Dim&gt;(2,1), 1), Loc&lt;Dim&gt;(0)),
++ 	       10.3, 1.0e-08);
++   tester.check(&quot;f[0].read(2,1)&quot;,
++ 	       f.read(FieldOffset&lt;Dim,1&gt;(Loc&lt;Dim&gt;(2,1), 0), Loc&lt;Dim&gt;(0)),
++ 	       1.3, 1.0e-08);
++   tester.check(&quot;f[1].read(2,1)&quot;,
++ 	       f.read(FieldOffset&lt;Dim,1&gt;(Loc&lt;Dim&gt;(2,1), 1), Loc&lt;Dim&gt;(0)),
++ 	       10.3, 1.0e-08);
++ 
++   // Test a field with no subfields.
++ 
++   Field_t h(canonicalCentering&lt;Dim&gt;(CellType, Continuous, AllDim),
++ 	    layout, Vector&lt;Dim&gt;(0.0), Vector&lt;Dim&gt;(1.0, 2.0));
++   h(FieldOffset&lt;Dim,0&gt;(Loc&lt;Dim&gt;(0,0)), Loc&lt;Dim&gt;(0,0)) = 1.3;
++   h(FieldOffset&lt;Dim,0&gt;(Loc&lt;Dim&gt;(0,0)), Loc&lt;Dim&gt;(0,1)) = 2.3;
++   h(FieldOffset&lt;Dim,0&gt;(Loc&lt;Dim&gt;(0,0)), Loc&lt;Dim&gt;(1,0)) = 2.8;
++   h(FieldOffset&lt;Dim,0&gt;(Loc&lt;Dim&gt;(1,0)), Loc&lt;Dim&gt;(0,1)) = 3.3;
++   tester.check(&quot;h(0,0)&quot;,
++ 	       h(FieldOffset&lt;Dim,0&gt;(Loc&lt;Dim&gt;(-1,-1)), Loc&lt;Dim&gt;(1,1)),
++ 	       1.3, 1.0e-08);
++   tester.check(&quot;h(0,1)&quot;,
++ 	       h(FieldOffset&lt;Dim,0&gt;(Loc&lt;Dim&gt;(0,1)), Loc&lt;Dim&gt;(0,0)),
++ 	       2.3, 1.0e-08);
++   tester.check(&quot;h(1,0)&quot;,
++ 	       h(FieldOffset&lt;Dim,0&gt;(Loc&lt;Dim&gt;(0,1)), Loc&lt;Dim&gt;(1,-1)),
++ 	       2.8, 1.0e-08);
++   tester.check(&quot;h(1,1)&quot;,
++ 	       h(FieldOffset&lt;Dim,0&gt;(Loc&lt;Dim&gt;(0,0)), Loc&lt;Dim&gt;(1,1)),
++ 	       3.3, 1.0e-08);
++   tester.check(&quot;h.read(1,0)&quot;,
++ 	       h.read(FieldOffset&lt;Dim,0&gt;(Loc&lt;Dim&gt;(0,1)), Loc&lt;Dim&gt;(1,-1)),
++ 	       2.8, 1.0e-08);
++   tester.check(&quot;h.read(1,1)&quot;,
++ 	       h.read(FieldOffset&lt;Dim,0&gt;(Loc&lt;Dim&gt;(0,0)), Loc&lt;Dim&gt;(1,1)),
++ 	       3.3, 1.0e-08);
++ 
++   int ret = tester.results(&quot;FieldOffset&quot;);
++   Pooma::finalize();
++   return ret; 
++ }
++ 
++ // ACL:rcsinfo
++ // ----------------------------------------------------------------------
++ // $RCSfile: FieldTour3.cpp,v $   $Author: sasmith $
++ // $Revision: 1.1.2.1 $   $Date: 2001/07/17 23:22:39 $
++ // ----------------------------------------------------------------------
++ // ACL:rcsinfo
+Index: tests/FieldTour3.cpp
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/NewField/tests/Attic/FieldTour3.cpp,v
+retrieving revision 1.1.2.1
+diff -c -p -r1.1.2.1 FieldTour3.cpp
+*** tests/FieldTour3.cpp	2001/07/17 23:22:39	1.1.2.1
+--- tests/FieldTour3.cpp	2001/07/24 19:48:11
+*************** int main(int argc, char *argv[])
+*** 44,50 ****
+--- 44,55 ----
+    Interval&lt;2&gt; physicalVertexDomain(4, 4);
+    DomainLayout&lt;2&gt; layout(physicalVertexDomain, GuardLayers&lt;2&gt;(1));
+    typedef Field&lt;UniformRectilinear&lt;2&gt;, double, Brick&gt; Field_t;
++ 
++   // Create a field with edge-centered values for the x- and y-directions.
+    Field_t f(edges, layout, Vector&lt;2&gt;(0.0), Vector&lt;2&gt;(1.0, 2.0));
++ 
++   // Create a 3-material field with edge-centered values for the x-
++   // and y-directions.
+    Field_t g(3, edges, layout, Vector&lt;2&gt;(0.0), Vector&lt;2&gt;(1.0, 2.0));
+  
+    // Set some data in the field.
+Index: tests/makefile
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/NewField/tests/makefile,v
+retrieving revision 1.11.2.2
+diff -c -p -r1.11.2.2 makefile
+*** tests/makefile	2001/07/17 23:22:39	1.11.2.2
+--- tests/makefile	2001/07/24 19:48:12
+*************** run_tests: tests
+*** 57,65 ****
+  
+  field_tests:: $(ODIR)/BasicTest1 $(ODIR)/BasicTest2 \
+  	$(ODIR)/FieldTour1 $(ODIR)/FieldTour2 \
+  	$(ODIR)/WhereTest $(ODIR)/VectorTest \
+  	$(ODIR)/ScalarCode $(ODIR)/StencilTests \
+!         $(ODIR)/ExpressionTest
+  
+  
+  ###########################
+--- 57,67 ----
+  
+  field_tests:: $(ODIR)/BasicTest1 $(ODIR)/BasicTest2 \
+  	$(ODIR)/FieldTour1 $(ODIR)/FieldTour2 \
++ 	$(ODIR)/FieldTour3 \
+  	$(ODIR)/WhereTest $(ODIR)/VectorTest \
+  	$(ODIR)/ScalarCode $(ODIR)/StencilTests \
+!         $(ODIR)/ExpressionTest $(ODIR)/Centerings \
+! 	$(ODIR)/FieldOffset
+  
+  
+  ###########################
+*************** $(ODIR)/StencilTests: $(ODIR)/StencilTes
+*** 149,154 ****
+--- 151,163 ----
+  Centerings: $(ODIR)/Centerings
+  
+  $(ODIR)/Centerings: $(ODIR)/Centerings.o
++ 	$(LinkToSuite)
++ 
++ .PHONY: FieldOffset
++ 
++ FieldOffset: $(ODIR)/FieldOffset
++ 
++ $(ODIR)/FieldOffset: $(ODIR)/FieldOffset.o
+  	$(LinkToSuite)
+  
+  .PHONY: FieldTour3
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000592.html">[pooma-dev] FW: Questions about data in Fields
+</A></li>
+	<LI>Next message: <A HREF="000590.html">RFA: Time Benchmarks
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#589">[ date ]</a>
+              <a href="thread.html#589">[ thread ]</a>
+              <a href="subject.html#589">[ subject ]</a>
+              <a href="author.html#589">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

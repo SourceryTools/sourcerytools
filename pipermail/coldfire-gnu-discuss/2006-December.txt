@@ -1,0 +1,1575 @@
+From nathan at codesourcery.com  Fri Dec  1 08:20:15 2006
+From: nathan at codesourcery.com (Nathan Sidwell)
+Date: Fri, 01 Dec 2006 08:20:15 +0000
+Subject: Update release
+Message-ID: <456FE5BF.4050206@codesourcery.com>
+
+People may be wondering why there's been no update and it is now December.  P&E 
+micro have provided an updated driver for their wigglers and we are 
+incorporating that into our toolchains.  It fixes a problem we had encountered, 
+and it is better to wait a few days while we test it.
+
+nathan
+-- 
+Nathan Sidwell    ::   http://www.codesourcery.com   ::         CodeSourcery
+nathan at codesourcery.com    ::     http://www.planetfall.pwp.blueyonder.co.uk
+
+
+
+From fred at aidounix.com  Tue Dec  5 12:45:21 2006
+From: fred at aidounix.com (fred at aidounix.com)
+Date: Tue, 5 Dec 2006 13:45:21 +0100 (CET)
+Subject: Toolchain, asm parameters numbering and optimisation flags
+Message-ID: <50071.82.233.75.208.1165322721.squirrel@mail.aidounix.com>
+
+Hello,
+
+I'm just trying to optimize the speex codec for the coldfire CPU.
+Using the CodeSourcery toolchain, I have strange behaviour (I think)
+of GCC.
+I've attached the C source code, then the results of :
+m68k-uclinux-gcc -Wa,--register-prefix-optional -Wa,-memac -Wa,-mcpu=5208
+-mcpu=5208  -O2 -S -o test.O2.s test.c
+
+and
+
+m68k-uclinux-gcc -Wa,--register-prefix-optional -Wa,-memac -Wa,-mcpu=5208
+-mcpu=5208  -O0 -S -o test.O0.s test.c
+
+For the O2 flag, only the D0 register is used, mixing it as a temporary
+data holder, and as a results holder.
+For the O0 flag, as you can see line 37 of test.O0.s it is used as
+the "len" parameter and as the "sum" result variable.
+
+I'm really lost. I have only ARM inline asm experience. I suspect it's
+a very simple problem, but I can't, after days of search, find a
+solution nor an explication
+
+Does someone hav an hint? please :-)
+
+Thanx in advance
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: test.c
+Type: text/x-csrc
+Size: 1196 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/coldfire-gnu-discuss/attachments/20061205/c909e118/attachment.c>
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: test.O0.s
+Type: application/octet-stream
+Size: 1692 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/coldfire-gnu-discuss/attachments/20061205/c909e118/attachment.obj>
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: test.O2.s
+Type: application/octet-stream
+Size: 1211 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/coldfire-gnu-discuss/attachments/20061205/c909e118/attachment-0001.obj>
+
+From fred at aidounix.com  Tue Dec  5 12:52:44 2006
+From: fred at aidounix.com (fred at aidounix.com)
+Date: Tue, 5 Dec 2006 13:52:44 +0100 (CET)
+Subject: addendum
+Message-ID: <37933.82.233.75.208.1165323164.squirrel@mail.aidounix.com>
+
+Oups, I forgot to write down my gcc version :
+
+m68k-uclinux-gcc (GCC) 4.1.0 (CodeSourcery Freescale 4.1-14)
+
+TIA
+
+
+
+
+From nathan at codesourcery.com  Tue Dec  5 13:18:44 2006
+From: nathan at codesourcery.com (Nathan Sidwell)
+Date: Tue, 05 Dec 2006 13:18:44 +0000
+Subject: [coldfire-gnu-discuss] Toolchain, asm parameters numbering and
+ optimisation flags
+In-Reply-To: <50071.82.233.75.208.1165322721.squirrel@mail.aidounix.com>
+References: <50071.82.233.75.208.1165322721.squirrel@mail.aidounix.com>
+Message-ID: <457571B4.4080009@codesourcery.com>
+
+fred at aidounix.com wrote:
+> Hello,
+> 
+> I'm just trying to optimize the speex codec for the coldfire CPU.
+> Using the CodeSourcery toolchain, I have strange behaviour (I think)
+> of GCC.
+> I've attached the C source code, then the results of :
+> m68k-uclinux-gcc -Wa,--register-prefix-optional -Wa,-memac -Wa,-mcpu=5208
+> -mcpu=5208  -O2 -S -o test.O2.s test.c
+
+>     35	: "=d" (sum)
+>     36	: "a"(x), "a"(y), "d"(len), "d"(t1), "d"(t2), "d"(t3)
+>     37	:"cc"
+
+Here's your problem.  The inline asm semantics are that all the input operands 
+are read before any of the output operands are written.  thus it is safe to 
+allocate the same register(s) for inputs and outputs.  All gcc targets are the 
+same in this regard.  Your assembly breaks that.  you can fix this by telling 
+gcc that 'sum' is an early clobber
+	:"=&d" (sum)
+
+I notice that you are also modifying the input operands.  That's breaking the 
+semantics too.  the compiler will presume the register it placed 'len' into 
+before the asm has the same value after the asm.  IIRC you indicate this 
+altering of input values by making them output operands, but using  a + rather 
+than an =.
+
+oh, you don't need the -Wa,-memac -Wa,-mcpu=5208 flags.  The latter flag implies 
+the former, and the compiler's -mcpu=5208 option is passed through to the 
+assembler anyway (besides telling the compiler that you're targetting a 5208).
+
+nathan
+
+-- 
+Nathan Sidwell    ::   http://www.codesourcery.com   ::         CodeSourcery
+nathan at codesourcery.com    ::     http://www.planetfall.pwp.blueyonder.co.uk
+
+
+
+From fred at aidounix.com  Tue Dec  5 23:14:57 2006
+From: fred at aidounix.com (fred at aidounix.com)
+Date: Wed, 6 Dec 2006 00:14:57 +0100 (CET)
+Subject: [coldfire-gnu-discuss] Toolchain,
+      asm parameters numbering and optimisation flags
+In-Reply-To: <457571B4.4080009@codesourcery.com>
+References: <50071.82.233.75.208.1165322721.squirrel@mail.aidounix.com>
+    <457571B4.4080009@codesourcery.com>
+Message-ID: <57150.82.233.75.208.1165360497.squirrel@mail.aidounix.com>
+
+> Here's your problem.  The inline asm semantics are that all the input
+> operands
+> are read before any of the output operands are written.  thus it is safe
+> to
+> allocate the same register(s) for inputs and outputs.  All gcc targets are
+> the
+> same in this regard.  Your assembly breaks that.  you can fix this by
+> telling
+> gcc that 'sum' is an early clobber
+> 	:"=&d" (sum)
+>
+Hi Nathan, your knowledge is some order of magnitude beyound mine! :)
+
+I've corrected those points, now I can compile with -O0.
+But GCC still scramble the registers (assigning D0 to %2 and %3 for
+example).
+
+for example :
+C source :
+move.l (%[X])+, %[tmp1];
+move.l (%[Y])+, %[tmp2];
+move.w %[tmp1], %[R1];
+move.w %[tmp2], %[R2];
+
+generates, with -O2 :
+move.l (a0)+, d1;
+move.l (a1)+, d1; ouch!
+move.w d1, d2;
+move.w d1, d3;
+
+I really don't understand why it nicelly works with -O0 and not
+with -O2.
+
+Any idea?
+
+Thanx again
+
+
+
+
+From dan at codesourcery.com  Tue Dec  5 23:14:39 2006
+From: dan at codesourcery.com (Daniel Jacobowitz)
+Date: Tue, 5 Dec 2006 18:14:39 -0500
+Subject: [coldfire-gnu-discuss] Toolchain, asm parameters numbering and optimisation flags
+In-Reply-To: <57150.82.233.75.208.1165360497.squirrel@mail.aidounix.com>
+References: <50071.82.233.75.208.1165322721.squirrel@mail.aidounix.com> <457571B4.4080009@codesourcery.com> <57150.82.233.75.208.1165360497.squirrel@mail.aidounix.com>
+Message-ID: <20061205231438.GO30862@caradoc.them.org>
+
+On Wed, Dec 06, 2006 at 12:14:57AM +0100, fred at aidounix.com wrote:
+> for example :
+> C source :
+> move.l (%[X])+, %[tmp1];
+> move.l (%[Y])+, %[tmp2];
+
+What are the constraints for tmp1 and tmp2?
+
+> I really don't understand why it nicelly works with -O0 and not
+> with -O2.
+
+You're probably just getting luckier at -O0.
+
+-- 
+Daniel Jacobowitz
+CodeSourcery
+
+
+From dan at codesourcery.com  Tue Dec  5 23:54:39 2006
+From: dan at codesourcery.com (Daniel Jacobowitz)
+Date: Tue, 5 Dec 2006 18:54:39 -0500
+Subject: [coldfire-gnu-discuss] Toolchain, asm parameters numbering and optimisation flags
+In-Reply-To: <57018.82.233.75.208.1165361042.squirrel@mail.aidounix.com>
+References: <50071.82.233.75.208.1165322721.squirrel@mail.aidounix.com> <457571B4.4080009@codesourcery.com> <57150.82.233.75.208.1165360497.squirrel@mail.aidounix.com> <20061205231438.GO30862@caradoc.them.org> <57018.82.233.75.208.1165361042.squirrel@mail.aidounix.com>
+Message-ID: <20061205235438.GP30862@caradoc.them.org>
+
+This is the same problem as Nathan was talking about.
+
+On Wed, Dec 06, 2006 at 12:24:02AM +0100, fred at aidounix.com wrote:
+> "move.l (%[X])+, %[e1];\n"
+> "move.l (%[Y])+, %[e2];\n"
+> "swap %[e1];"
+> "swap %[e2];"
+> "move.w %[e1], %[t1];"
+> "move.w %[e2], %[t2];"
+
+You are setting these.  Therefore they are not inputs to your asm;
+inputs are only read, not modified.
+
+> : [sum]"=&d" (sum), [len]"+&d"(len)
+> : [X]"a"(x), [Y]"a"(y), [t1]"d"(t1), [t2]"d"(t2), [e1]"d"(e1), [e2]"d"(e2)
+
+But this says that t1 is only an input.
+
+-- 
+Daniel Jacobowitz
+CodeSourcery
+
+
+From fred at aidounix.com  Wed Dec  6 00:58:22 2006
+From: fred at aidounix.com (fred at aidounix.com)
+Date: Wed, 6 Dec 2006 01:58:22 +0100 (CET)
+Subject: [coldfire-gnu-discuss] Toolchain,
+      asm parameters numbering and optimisation flags
+In-Reply-To: <20061205231438.GO30862@caradoc.them.org>
+References: <50071.82.233.75.208.1165322721.squirrel@mail.aidounix.com>
+    <457571B4.4080009@codesourcery.com>
+    <57150.82.233.75.208.1165360497.squirrel@mail.aidounix.com>
+    <20061205231438.GO30862@caradoc.them.org>
+Message-ID: <57015.82.233.75.208.1165366702.squirrel@mail.aidounix.com>
+
+Thanx a lot Daniel & Nathan.
+
+It does compile with -O2 now. So, I can start my part... ColdFire
+optimisations.... :-p
+
+Could you, please, redirect me to a tutorial on the art of writing
+constraints?
+
+Have a nice night
+
+
+
+
+From dan at codesourcery.com  Wed Dec  6 01:18:51 2006
+From: dan at codesourcery.com (Daniel Jacobowitz)
+Date: Tue, 5 Dec 2006 20:18:51 -0500
+Subject: [coldfire-gnu-discuss] Toolchain, asm parameters numbering and optimisation flags
+In-Reply-To: <57015.82.233.75.208.1165366702.squirrel@mail.aidounix.com>
+References: <50071.82.233.75.208.1165322721.squirrel@mail.aidounix.com> <457571B4.4080009@codesourcery.com> <57150.82.233.75.208.1165360497.squirrel@mail.aidounix.com> <20061205231438.GO30862@caradoc.them.org> <57015.82.233.75.208.1165366702.squirrel@mail.aidounix.com>
+Message-ID: <20061206011850.GR30862@caradoc.them.org>
+
+On Wed, Dec 06, 2006 at 01:58:22AM +0100, fred at aidounix.com wrote:
+> Could you, please, redirect me to a tutorial on the art of writing
+> constraints?
+
+I don't know of one, sorry - there's a section in the GCC manual about
+it, but it's not easy to understand.
+
+-- 
+Daniel Jacobowitz
+CodeSourcery
+
+
+From nathan at codesourcery.com  Wed Dec  6 06:58:38 2006
+From: nathan at codesourcery.com (Nathan Sidwell)
+Date: Wed, 06 Dec 2006 06:58:38 +0000
+Subject: [coldfire-gnu-discuss] Toolchain, asm parameters numbering and
+ optimisation flags
+In-Reply-To: <20061206011850.GR30862@caradoc.them.org>
+References: <50071.82.233.75.208.1165322721.squirrel@mail.aidounix.com> <457571B4.4080009@codesourcery.com> <57150.82.233.75.208.1165360497.squirrel@mail.aidounix.com> <20061205231438.GO30862@caradoc.them.org> <57015.82.233.75.208.1165366702.squirrel@mail.aidounix.com> <20061206011850.GR30862@caradoc.them.org>
+Message-ID: <45766A1E.1020303@codesourcery.com>
+
+Daniel Jacobowitz wrote:
+> On Wed, Dec 06, 2006 at 01:58:22AM +0100, fred at aidounix.com wrote:
+>> Could you, please, redirect me to a tutorial on the art of writing
+>> constraints?
+> 
+> I don't know of one, sorry - there's a section in the GCC manual about
+> it, but it's not easy to understand.
+
+Yes, unfortunately there isn't one.  the compiler internals manual does describe 
+it, but that is not really in tutorial form.
+
+nathan
+
+-- 
+Nathan Sidwell    ::   http://www.codesourcery.com   ::         CodeSourcery
+nathan at codesourcery.com    ::     http://www.planetfall.pwp.blueyonder.co.uk
+
+
+
+From mark at codesourcery.com  Fri Dec  8 19:46:47 2006
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Fri, 08 Dec 2006 11:46:47 -0800
+Subject: Sourcery G++ 4.1-30 for ColdFire now available
+Message-ID: <4579C127.6070500@codesourcery.com>
+
+CodeSourcery is pleased to announce a new version of Sourcery G++ for
+ColdFire.
+
+Highlights of this release include:
+
+* Support for Command Converter Server (CCS) debugging
+
+* Improved support for hardware breakpoints when running programs from
+flash memory
+
+* Semihosting no longer uses trap 15, so all interrupt vectors are
+available to the target program
+
+* Newer versions of GDB and Binutils are included.
+
+* P&E hardware drivers are included
+
+* Much more!
+
+Visit:
+
+  http://www.codesourcery.com/gnu_toolchains/coldfire/
+
+to download this new release of Sourcery G++.
+
+Enjoy!
+
+-- 
+Mark Mitchell
+CodeSourcery
+mark at codesourcery.com
+(650) 331-3385 x713
+
+
+From Stephen.Pickering at blueyonder.co.uk  Sat Dec  9 11:22:24 2006
+From: Stephen.Pickering at blueyonder.co.uk (Stephen Pickering)
+Date: Sat, 09 Dec 2006 11:22:24 +0000
+Subject: [coldfire-gnu-discuss] Sourcery G++ 4.1-30 for ColdFire now available
+Message-ID: <457A9C70.9090609@blueyonder.co.uk>
+
+I've installed it on Mandriva 2007.
+
+Now how do I connect to a Coldfire board using the P&E usb bdm ?
+
+Version 4.1.14 had a p&e stub (didn't work), latest version has 
+something called m68k-elf-sprite:
+
+    $ m68k-elf-sprite -v -i
+    m68k-elf-sprite:CodeSourcery ColdFire Debug Sprite (CodeSourcery
+    Sourcery G++ 4.1-30)
+    CodeSourcery ColdFire Debug Sprite (CodeSourcery Sourcery G++ 4.1-30)
+    ccs: [timeout=<n>;speed=<n>] CCS Adaptor
+      ccs://$Host:$Port/$Chainpos - CCS address
+    pe: [speed=<n:0-31>;memory-timeout=<n:0-99>] P&E Adaptor
+    pe:  P&E DLL not present
+
+I have P&E linux driver installed: pe_driver.ver.318.2.802 and bdm is 
+detected:
+
+# lsusb -v
+
+Bus 007 Device 002: ID 1357:0503
+Device Descriptor:
+  bLength                18
+  bDescriptorType         1
+  bcdUSB               2.00
+  bDeviceClass            0 (Defined at Interface level)
+  bDeviceSubClass         0
+  bDeviceProtocol         0
+  bMaxPacketSize0        64
+  idVendor           0x1357
+  idProduct          0x0503
+  bcdDevice            2.00
+  iManufacturer           1
+  iProduct                2 USB-ML-CF Rev C
+  iSerial                 3 PE6011459
+  bNumConfigurations      1
+
+Any help?
+
+-- 
+Steve
+
+  bcdDevice            2.00
+-------------- next part --------------
+An HTML attachment was scrubbed...
+URL: <http://sourcerytools.com/pipermail/coldfire-gnu-discuss/attachments/20061209/b7619e2a/attachment.html>
+
+From claudesylvain at sympatico.ca  Sat Dec  9 14:21:21 2006
+From: claudesylvain at sympatico.ca (Claude Sylvain)
+Date: Sat, 09 Dec 2006 09:21:21 -0500
+Subject: Connecting to a Coldfire target using P&E USB Coldfire
+  Multilink.
+Message-ID: <7.0.1.0.2.20061209090600.0232daf8@sympatico.ca>
+
+Hello Steve,
+
+Maybe the following can help you.
+
+I installed the Coldfire GNU toolchain on a machine that run under 
+Windows XP professionnal SP2.
+
+I can connect to a M52235EVB using P&E USB Coldfire Multilink using 
+the following operations:
+
+
+1) From the command line, execute GDB:
+	m68k-elf-gdb <elf_file>
+
+2) From GDB, type:
+	target remote | m68k-elf-sprite pe://USBMultilink m52235evb
+
+3) From GDB, type:
+	load
+
+
+Remark:
+GDB seems to have a lot of difficulty when executing the "load" 
+command.  Most of the time the command will fail.  It seem that 
+waiting some time before doing a "load" command can help.
+Maybe there are some parameters that can be set in "sprite" that can 
+resolve this issue.
+
+Claude.
+
+
+
+
+
+
+From csylvain at electro-technica.com  Sat Dec  9 19:34:03 2006
+From: csylvain at electro-technica.com (Claude Sylvain)
+Date: Sat, 09 Dec 2006 14:34:03 -0500
+Subject: [coldfire-gnu-discuss] Connecting to a Coldfire target
+  using P&E USB Coldfire  Multilink.
+Message-ID: <7.0.1.0.2.20061209142633.02329ba0@sympatico.ca>
+
+
+ > Linux doesn't use DLL's, does it?
+
+
+No, there is no DLL in Linux.
+
+Read the first paragraph on page 25 of "getting-started.pdf" 
+document.  That document is included with the tool.
+You will find all the step to build the P&E driver (a loadable kernel module).
+
+
+Claude
+
+
+
+
+From csylvain at electro-technica.com  Sat Dec  9 20:15:13 2006
+From: csylvain at electro-technica.com (Claude Sylvain)
+Date: Sat, 09 Dec 2006 15:15:13 -0500
+Subject: GCC -I option seems to not work !?
+Message-ID: <7.0.1.0.2.20061209150513.0231a120@sympatico.ca>
+
+Hello,
+
+I have installed sourcery G++ Lite, ColdFire ELF 4.1-30 on a computer 
+that run under Window XP professionnal SP2.
+
+I am trying to use the -I option when calling GCC (m68k-elf-gcc), but 
+GCC seems to ignore the option.
+
+I have tryed the following, without success:
+
+	-I<include_folder>
+	-I<include_folder>/
+	-I./<include_folder>
+	-I./<include_folder>/
+	-I<include_folder>\
+	-I.\<include_folder>
+	-I.\<include_folder>\
+
+
+Am I missing something ?
+
+Claude.
+
+  
+
+
+
+From dan at codesourcery.com  Sat Dec  9 20:47:16 2006
+From: dan at codesourcery.com (Daniel Jacobowitz)
+Date: Sat, 9 Dec 2006 15:47:16 -0500
+Subject: [coldfire-gnu-discuss] GCC -I option seems to not work !?
+In-Reply-To: <7.0.1.0.2.20061209150513.0231a120@sympatico.ca>
+References: <7.0.1.0.2.20061209150513.0231a120@sympatico.ca>
+Message-ID: <20061209204715.GF30862@caradoc.them.org>
+
+On Sat, Dec 09, 2006 at 03:15:13PM -0500, Claude Sylvain wrote:
+> Hello,
+> 
+> I have installed sourcery G++ Lite, ColdFire ELF 4.1-30 on a computer 
+> that run under Window XP professionnal SP2.
+> 
+> I am trying to use the -I option when calling GCC (m68k-elf-gcc), but 
+> GCC seems to ignore the option.
+> 
+> I have tryed the following, without success:
+> 
+> 	-I<include_folder>
+> 	-I<include_folder>/
+> 	-I./<include_folder>
+> 	-I./<include_folder>/
+> 	-I<include_folder>\
+> 	-I.\<include_folder>
+> 	-I.\<include_folder>\
+> 
+> 
+> Am I missing something ?
+
+I don't know, but we need more information to find out.  What does the
+directory structure look like?  What's the complete command line you
+are using to invoke GCC?  And are you running it from cmd.exe or from a
+Cygwin shell?
+
+-- 
+Daniel Jacobowitz
+CodeSourcery
+
+
+From csylvain at electro-technica.com  Sun Dec 10 03:35:51 2006
+From: csylvain at electro-technica.com (Claude Sylvain)
+Date: Sat, 09 Dec 2006 22:35:51 -0500
+Subject: [coldfire-gnu-discuss] GCC -I option seems to not work
+  !?
+Message-ID: <7.0.1.0.2.20061209223406.02343930@sympatico.ca>
+
+Hello Daniel,
+
+ >
+ > Daniel Jacobowitz wrote:
+ >
+ > I don't know, but we need more information to find out.  What does the
+ > directory structure look like?  What's the complete command line you
+ > are using to invoke GCC?  And are you running it from cmd.exe or from a
+ > Cygwin shell?
+ >
+
+
+Here is the directory structure:
+
+				     -----
+project
+     \---obj
+     \---out
+     \---src
+         \---drivers
+         |   \---ethernet
+         \---startup
+         \---support
+				     -----
+
+
+I use a Makefile to build the project.
+The Makefile is located in "project/" folder, and executed from that folder.
+Here is some revealing part of that Makefile:
+
+				     -----
+CC = m68k-elf-gcc
+
+CFLAGS_COMMON = -mcpu=52235 -Tm52235evb-ram-hosted.ld -I./drivers/ 
+-I./support/ -g -o
+
+PSRC		= ./src/
+PSRC_DRV	= ./src/drivers/
+POBJ		= ./obj/
+POUT		= ./out/
+
+$(POBJ)main.o:								\
+	$(PSRC)main.c $(PSRC)main.h $(PSRC)project.h
+	$(CC) -c $(CFLAGS_COMMON) $(POBJ)main.o $(PSRC)main.c
+
+				     -----
+
+I run the Makefile from a cmd.exe black box, and typing the following command:
+	cs-make
+
+
+
+Claude.
+
+
+
+From mark at codesourcery.com  Sun Dec 10 03:58:29 2006
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Sat, 09 Dec 2006 19:58:29 -0800
+Subject: [coldfire-gnu-discuss] GCC -I option seems to not work  !?
+In-Reply-To: <7.0.1.0.2.20061209223406.02343930@sympatico.ca>
+References: <7.0.1.0.2.20061209223406.02343930@sympatico.ca>
+Message-ID: <457B85E5.1000706@codesourcery.com>
+
+Claude Sylvain wrote:
+
+> CFLAGS_COMMON = -mcpu=52235 -Tm52235evb-ram-hosted.ld -I./drivers/
+> -I./support/ -g -o
+
+The Windows C runtime library does not recognize directory names when
+they are given with a trailing slash.  I think that if you do:
+
+  -I ./drivers -I ./support
+
+it will work.  Does that help?
+
+-- 
+Mark Mitchell
+CodeSourcery
+mark at codesourcery.com
+(650) 331-3385 x713
+
+
+From csylvain at electro-technica.com  Sun Dec 10 04:06:32 2006
+From: csylvain at electro-technica.com (Claude Sylvain)
+Date: Sat, 09 Dec 2006 23:06:32 -0500
+Subject: [coldfire-gnu-discuss] Connecting to a Coldfire target
+  using P&E USB Coldfire Multilink.
+Message-ID: <7.0.1.0.2.20061209225809.02262f30@sympatico.ca>
+
+Replying to myself:
+
+ >
+ > Claude wrote:
+ >
+ > GDB seems to have a lot of difficulty when executing the "load" command.
+ > Most of the time the command will fail. It seem that waiting some time
+ > before doing a "load" command can help. Maybe there are some parameters
+ > that can be set in "sprite" that can resolve this issue.
+ >
+
+After restarting the computer, the GDB load command work correctly now.
+
+Having installed the P&E driver from the disk that come with M52235EVB box, I
+was thinking that it was not necessary to restart the computer.
+
+
+Claude.
+
+
+
+From csylvain at electro-technica.com  Sun Dec 10 04:24:26 2006
+From: csylvain at electro-technica.com (Claude Sylvain)
+Date: Sat, 09 Dec 2006 23:24:26 -0500
+Subject: [coldfire-gnu-discuss] GCC -I option seems to not work
+   !?
+Message-ID: <7.0.1.0.2.20061209232247.0230dd68@sympatico.ca>
+
+Hello Mark,
+
+
+ >>
+ >> Claude Sylvain wrote:
+ >>
+ >>
+ >> CFLAGS_COMMON = -mcpu=52235 -Tm52235evb-ram-hosted.ld -I./drivers/
+ >> -I./support/ -g -o
+ >>
+
+ >
+ > Mark Mitchell wrote:
+ >
+ > The Windows C runtime library does not recognize directory names when
+ > they are given with a trailing slash.  I think that if you do:
+ >
+ >   -I ./drivers -I ./support
+ >
+ > it will work.  Does that help?
+ >
+
+
+I have tryed the following:
+
+	-I./drivers -I./support
+	-I ./drivers -I ./support
+
+The problem is still there.  GCC seems to not include those 
+directories in its search path.
+
+Ok.  The current project is rather large.
+Tomorow, I will start a new basic project that use the -I option.  Maybe
+I will find something.
+
+
+Claude.
+
+
+
+From dan at codesourcery.com  Sun Dec 10 06:10:14 2006
+From: dan at codesourcery.com (Daniel Jacobowitz)
+Date: Sun, 10 Dec 2006 01:10:14 -0500
+Subject: [coldfire-gnu-discuss] GCC -I option seems to not work !?
+In-Reply-To: <7.0.1.0.2.20061209223406.02343930@sympatico.ca>
+References: <7.0.1.0.2.20061209223406.02343930@sympatico.ca>
+Message-ID: <20061210061011.GG30862@caradoc.them.org>
+
+On Sat, Dec 09, 2006 at 10:35:51PM -0500, Claude Sylvain wrote:
+> project
+>     \---obj
+>     \---out
+>     \---src
+>         \---drivers
+>         |   \---ethernet
+>         \---startup
+>         \---support
+
+Paths for -I are not relative to the source file.  They're relative to
+the current directory.  If you need to say "./src/main.c", then you
+need to say "-I./src/drivers".
+
+Try adding the -v option to CFLAGS to see what paths GCC is searching.
+
+-- 
+Daniel Jacobowitz
+CodeSourcery
+
+
+From pop3 at pickering-email.co.uk  Sat Dec  9 18:40:18 2006
+From: pop3 at pickering-email.co.uk (pickering-email)
+Date: Sat, 09 Dec 2006 18:40:18 +0000
+Subject: [coldfire-gnu-discuss] Connecting to a Coldfire target using
+ P&E USB Coldfire  Multilink.
+In-Reply-To: <7.0.1.0.2.20061209090600.0232daf8@sympatico.ca>
+References: <7.0.1.0.2.20061209090600.0232daf8@sympatico.ca>
+Message-ID: <457B0312.6090805@pickering-email.co.uk>
+
+Claude Sylvain wrote:
+> Hello Steve,
+>
+> Maybe the following can help you.
+>
+> I installed the Coldfire GNU toolchain on a machine that run under 
+> Windows XP professionnal SP2.
+I'm using Linux, but here goes...
+> I can connect to a M52235EVB using P&E USB Coldfire Multilink using 
+> the following operations:
+>
+> 1) From the command line, execute GDB:
+>     m68k-elf-gdb <elf_file>
+$  m68k-elf-gdb
+GNU gdb (CodeSourcery Sourcery G++ 4.1-30) 6.5.50.20061105-cvs
+Copyright (C) 2006 Free Software Foundation, Inc.
+GDB is free software, covered by the GNU General Public License, and you are
+welcome to change it and/or distribute copies of it under certain 
+conditions.
+Type "show copying" to see the conditions.
+There is absolutely no warranty for GDB.  Type "show warranty" for details.
+This GDB was configured as "--host=i686-pc-linux-gnu --target=m68k-elf".
+For bug reporting instructions, please see:
+<URL:mailto:coldfire-gnu-discuss at codesourcery.com>.
+(gdb)
+
+So far, so good.
+> 2) From GDB, type:
+>     target remote | m68k-elf-sprite pe://USBMultilink m52235evb
+(gdb)  target remote | m68k-elf-sprite pe://USBMultilink m52235evb
+Remote debugging using | m68k-elf-sprite pe://USBMultilink m52235evb
+m68k-elf-sprite:error:Cannot load P&E DLL
+Remote communication error: Connection reset by peer.
+(gdb)
+
+Linux doesn't use DLL's, does it?
+> 3) From GDB, type:
+>     load
+>
+>
+> Remark:
+> GDB seems to have a lot of difficulty when executing the "load" 
+> command.  Most of the time the command will fail.  It seem that 
+> waiting some time before doing a "load" command can help.
+> Maybe there are some parameters that can be set in "sprite" that can 
+> resolve this issue.
+>
+> Claude.
+>
+>
+>
+>
+>
+
+
+
+
+From csylvain at electro-technica.com  Sun Dec 10 15:46:37 2006
+From: csylvain at electro-technica.com (Claude Sylvain)
+Date: Sun, 10 Dec 2006 10:46:37 -0500
+Subject: [coldfire-gnu-discuss] GCC -I option seems to not
+  work !?
+Message-ID: <7.0.1.0.2.20061210104549.0234adb0@sympatico.ca>
+
+Hello Daniel,
+
+
+ > Daniel Jacobowitz wrote:
+ >
+ > Paths for -I are not relative to the source file.  They're relative to
+ > the current directory.  If you need to say "./src/main.c", then you
+ > need to say "-I./src/drivers".
+ >
+ > Try adding the -v option to CFLAGS to see what paths GCC is searching.
+ >
+
+
+You're absolutly right.
+I made the correction, and all is working fine now.
+
+
+Remark: Yet another stupid error  :-|
+
+
+Thank you for your help.
+
+Claude.
+
+
+
+From Rainer at waggerla.de  Mon Dec 11 00:46:25 2006
+From: Rainer at waggerla.de (Rainer Hauser)
+Date: Mon, 11 Dec 2006 01:46:25 +0100
+Subject: CodeSourcery 4.1-30
+Message-ID: <457CAA61.7030405@waggerla.de>
+
+i got a error when i try to compile this file (spurios.c):
+//---------------------------------------------------------
+
+
+unsigned long spurious = 0;
+unsigned long intc_spurious = 0;
+
+__attribute__ ((interrupt_handler)) void spuriousISR(void)
+{
+   intc_spurious++;
+}
+
+__attribute__ ((interrupt_handler)) void intc_spuriousISR(void)
+{
+   spurious++;
+}
+//---------------------------------------------------------
+
+m68k-elf-gcc -IG:\Projekte\GPP_Test -IG:\Projekte\GPP_Test\include 
+-IG:\Projekte\GPP_Test\sys -O0 -g -Wall -c -fmessage-length=0 -mcpu=5213 
+-fomit-frame-pointer -osys\spurious.o ..\sys\spurious.c
+..\sys\spurious.c: In function 'spuriousISR':
+..\sys\spurious.c:9: error: unable to find a register to spill in class 
+'GENERAL_REGS'
+..\sys\spurious.c:9: error: this is the insn:
+(insn 8 7 9 1 ..\sys\spurious.c:8 (set (reg:SI 31 [ intc_spurious.0 ])
+        (mem/c/i:SI (symbol_ref:SI ("intc_spurious") [flags 0x2] 
+<var_decl 0090E108 intc_spurious>) [0 intc_spurious+0 S4 A16])) 33 
+{*movsi_cf} (nil)
+    (nil))
+..\sys\spurious.c:9: confused by earlier errors, bailing out
+
+
+any ideas?
+
+
+
+From nathan at codesourcery.com  Mon Dec 11 10:12:25 2006
+From: nathan at codesourcery.com (Nathan Sidwell)
+Date: Mon, 11 Dec 2006 10:12:25 +0000
+Subject: [coldfire-gnu-discuss] Sourcery G++ 4.1-30 for ColdFire now available
+In-Reply-To: <457A9C70.9090609@blueyonder.co.uk>
+References: <457A9C70.9090609@blueyonder.co.uk>
+Message-ID: <457D2F09.4070003@codesourcery.com>
+
+Stephen Pickering wrote:
+> I've installed it on Mandriva 2007.
+> 
+> Now how do I connect to a Coldfire board using the P&E usb bdm ?
+> 
+> Version 4.1.14 had a p&e stub (didn't work), latest version has 
+> something called m68k-elf-sprite:
+> 
+>     $ m68k-elf-sprite -v -i
+>     m68k-elf-sprite:CodeSourcery ColdFire Debug Sprite (CodeSourcery
+>     Sourcery G++ 4.1-30)
+>     CodeSourcery ColdFire Debug Sprite (CodeSourcery Sourcery G++ 4.1-30)
+>     ccs: [timeout=<n>;speed=<n>] CCS Adaptor
+>       ccs://$Host:$Port/$Chainpos - CCS address
+>     pe: [speed=<n:0-31>;memory-timeout=<n:0-99>] P&E Adaptor
+>     pe:  P&E DLL not present
+> 
+> I have P&E linux driver installed: pe_driver.ver.318.2.802 and bdm is 
+> detected:
+
+The error message indicates that the PE& library is not installed, or 
+inaccessible.  To track this down, use strace
+	strace m68k-elf-sprite -i
+you should see an open call for libUnit_cfz.so.  This is installed in /usr/lib
+
+open("/usr/lib/libUnit_cfz.so", O_RDONLY) = 3
+
+nathan
+
+-- 
+Nathan Sidwell    ::   http://www.codesourcery.com   ::         CodeSourcery
+nathan at codesourcery.com    ::     http://www.planetfall.pwp.blueyonder.co.uk
+
+
+
+From nathan at codesourcery.com  Mon Dec 11 10:15:00 2006
+From: nathan at codesourcery.com (Nathan Sidwell)
+Date: Mon, 11 Dec 2006 10:15:00 +0000
+Subject: [coldfire-gnu-discuss] Connecting to a Coldfire target using
+ P&E USB Coldfire  Multilink.
+In-Reply-To: <457B0312.6090805@pickering-email.co.uk>
+References: <7.0.1.0.2.20061209090600.0232daf8@sympatico.ca> <457B0312.6090805@pickering-email.co.uk>
+Message-ID: <457D2FA4.2040507@codesourcery.com>
+
+pickering-email wrote:
+
+> Linux doesn't use DLL's, does it?
+
+It has shared objects that can be dlopened, which are the same thing.  The error 
+message is confusing though -- we'll fix that.
+
+nathan
+-- 
+Nathan Sidwell    ::   http://www.codesourcery.com   ::         CodeSourcery
+nathan at codesourcery.com    ::     http://www.planetfall.pwp.blueyonder.co.uk
+
+
+
+From nathan at codesourcery.com  Mon Dec 11 10:19:20 2006
+From: nathan at codesourcery.com (Nathan Sidwell)
+Date: Mon, 11 Dec 2006 10:19:20 +0000
+Subject: [coldfire-gnu-discuss] Connecting to a Coldfire target  using
+ P&E USB Coldfire Multilink.
+In-Reply-To: <7.0.1.0.2.20061209225809.02262f30@sympatico.ca>
+References: <7.0.1.0.2.20061209225809.02262f30@sympatico.ca>
+Message-ID: <457D30A8.9090301@codesourcery.com>
+
+Claude Sylvain wrote:
+
+> After restarting the computer, the GDB load command work correctly now.
+> 
+> Having installed the P&E driver from the disk that come with M52235EVB 
+> box, I
+> was thinking that it was not necessary to restart the computer.
+
+I'm glad you've resolved the issue.  Just to clarify though.
+
+1) you had already installed P&E drivers before installing SourceryG++ Lite?
+2) Did the SourceryG++ install also install P&E drivers (you'd've got a popup 
+window about that, if it did)
+3) Did the P&E driver install (either #1 or #2) request a restart?
+
+nathan
+
+-- 
+Nathan Sidwell    ::   http://www.codesourcery.com   ::         CodeSourcery
+nathan at codesourcery.com    ::     http://www.planetfall.pwp.blueyonder.co.uk
+
+
+
+From nathan at codesourcery.com  Mon Dec 11 10:56:09 2006
+From: nathan at codesourcery.com (Nathan Sidwell)
+Date: Mon, 11 Dec 2006 10:56:09 +0000
+Subject: [coldfire-gnu-discuss] CodeSourcery 4.1-30
+In-Reply-To: <457CAA61.7030405@waggerla.de>
+References: <457CAA61.7030405@waggerla.de>
+Message-ID: <457D3949.6010508@codesourcery.com>
+
+Rainer Hauser wrote:
+> i got a error when i try to compile this file (spurios.c):
+
+> m68k-elf-gcc -IG:\Projekte\GPP_Test -IG:\Projekte\GPP_Test\include 
+> -IG:\Projekte\GPP_Test\sys -O0 -g -Wall -c -fmessage-length=0 -mcpu=5213 
+> -fomit-frame-pointer -osys\spurious.o ..\sys\spurious.c
+> ..\sys\spurious.c: In function 'spuriousISR':
+> ..\sys\spurious.c:9: error: unable to find a register to spill in class 
+> 'GENERAL_REGS'
+> ..\sys\spurious.c:9: error: this is the insn:
+> (insn 8 7 9 1 ..\sys\spurious.c:8 (set (reg:SI 31 [ intc_spurious.0 ])
+>        (mem/c/i:SI (symbol_ref:SI ("intc_spurious") [flags 0x2] 
+> <var_decl 0090E108 intc_spurious>) [0 intc_spurious+0 S4 A16])) 33 
+> {*movsi_cf} (nil)
+>    (nil))
+> ..\sys\spurious.c:9: confused by earlier errors, bailing out
+
+I can reproduce this problem, and have logged it in our tracker.  It'll be fixed 
+in our next public release (date unknown).
+
+nathan
+
+-- 
+Nathan Sidwell    ::   http://www.codesourcery.com   ::         CodeSourcery
+nathan at codesourcery.com    ::     http://www.planetfall.pwp.blueyonder.co.uk
+
+
+
+From csylvain at electro-technica.com  Mon Dec 11 16:57:21 2006
+From: csylvain at electro-technica.com (Claude Sylvain)
+Date: Mon, 11 Dec 2006 11:57:21 -0500
+Subject: [coldfire-gnu-discuss] CodeSourcery 4.1-30
+Message-ID: <7.0.1.0.2.20061211115629.02195db0@electro-technica.com>
+
+Hello Nathan,
+
+
+ >>
+ >> Rainer Hauser wrote:
+ >> i got a error when i try to compile this file (spurios.c):
+ >>
+ >>
+ >> m68k-elf-gcc -IG:\Projekte\GPP_Test -IG:\Projekte\GPP_Test\include
+ >> -IG:\Projekte\GPP_Test\sys -O0 -g -Wall -c -fmessage-length=0 -mcpu=5213
+ >> -fomit-frame-pointer -osys\spurious.o ..\sys\spurious.c
+ >> ..\sys\spurious.c: In function 'spuriousISR':
+ >> ..\sys\spurious.c:9: error: unable to find a register to spill in class
+ >>  'GENERAL_REGS'
+ >> ..\sys\spurious.c:9: error: this is the insn:
+ >> (insn 8 7 9 1 ..\sys\spurious.c:8 (set (reg:SI 31 [ intc_spurious.0 ])
+ >>        (mem/c/i:SI (symbol_ref:SI ("intc_spurious") [flags 0x2]
+ >>  <var_decl 0090E108 intc_spurious>) [0 intc_spurious+0 S4 A16])) 33
+ >>  {*movsi_cf} (nil)
+ >>    (nil))
+ >> ..\sys\spurious.c:9: confused by earlier errors, bailing out
+ >>
+ >>
+
+ >
+ > Nathan wrote:
+ >
+ >
+ > I can reproduce this problem, and have logged it in our tracker.  It'll
+ >  be fixed in our next public release (date unknown).
+ >
+
+- I have the same problem too.
+
+- Is there a way to get rid of that problem, or do I have to use the
+   previous version of Sourcery G++ Lite ?
+
+
+
+Claude.
+
+
+
+
+From csylvain at electro-technica.com  Mon Dec 11 16:47:35 2006
+From: csylvain at electro-technica.com (Claude Sylvain)
+Date: Mon, 11 Dec 2006 11:47:35 -0500
+Subject: [coldfire-gnu-discuss] Connecting to a Coldfire target   using
+  P&E USB Coldfire Multilink.
+Message-ID: <7.0.1.0.2.20061211114322.021c22a0@electro-technica.com>
+
+Hello Nathan,
+
+
+ >
+ > Nathan wrote:
+ >
+ >
+ > 1) you had already installed P&E drivers before installing SourceryG++ Lite?
+ >
+ > 2) Did the SourceryG++ install also install P&E drivers (you'd've got a
+ >    popup window about that, if it did)
+ >
+ > 3) Did the P&E driver install (either #1 or #2) request a restart?
+ >
+
+- I have installed Sourcery G++ Lite first.
+
+- During the installation, I did not see any popup window telling that
+   P&E driver was installed.  Maybe, I was looking away at that moment !?
+
+- There was no request to restart the computer, and I did not restart it.
+
+- Not seeing anything telling that P&E driver was installed, I decide to
+   install it from the supplyed P&E disk that come with the M52235EVB box.
+
+- There was no request to restart the computer, and I did not restart it.
+
+- Once this driver was installed, I connected the USB Multilink for ColdFire
+   to the computer, and have followed the Windows New Hardware Detected
+   wizard.
+
+- There was no request to restart the computer, and I did not restart it.
+
+- From that point, I compiled a little project and connected to the
+   target using GDB.
+   From GDB, when executing a "load" command, there was error(s), and I
+   have to make many "load" to finally have the command work correctly.
+   I tryed also to exit GDB, re-execute GDB.  Also disconnect/re-connect the
+   USB Multilink without success.
+
+- After I have done a Poweroff and Poweron (the following day), all
+   was working like a charm !
+
+
+Remark:
+
+- This morning, I installed Sourcery G++ Lite on another (Windows XP Pro)
+   computer, and I saw a popup window telling that P&E driver was installed.
+   There was no request to restart the computer.
+   I have not the USB Multilink for Coldfire here, so I can not test
+   if the installed driver is functionnal.
+
+
+Regards,
+
+Claude.
+
+
+
+
+
+From carlos at codesourcery.com  Mon Dec 11 18:15:27 2006
+From: carlos at codesourcery.com (Carlos O'Donell)
+Date: Mon, 11 Dec 2006 13:15:27 -0500
+Subject: [coldfire-gnu-discuss] Connecting to a Coldfire target   using P&E USB Coldfire Multilink.
+In-Reply-To: <7.0.1.0.2.20061211114322.021c22a0@electro-technica.com>
+References: <7.0.1.0.2.20061211114322.021c22a0@electro-technica.com>
+Message-ID: <20061211181527.GL14845@lios>
+
+On Mon, Dec 11, 2006 at 11:47:35AM -0500, Claude Sylvain wrote:
+> - From that point, I compiled a little project and connected to the
+>   target using GDB.
+>   From GDB, when executing a "load" command, there was error(s), and I
+>   have to make many "load" to finally have the command work correctly.
+>   I tryed also to exit GDB, re-execute GDB.  Also disconnect/re-connect the
+>   USB Multilink without success.
+> 
+> - After I have done a Poweroff and Poweron (the following day), all
+>   was working like a charm !
+
+Please read the section "Installing P&E Drivers" of the "Getting
+Started" guide. It covers the correct sequence to try if you have
+problems with the P&E drivers.
+
+Cheers,
+Carlos.
+-- 
+Carlos O'Donell
+CodeSourcery
+carlos at codesourcery.com
+(650) 331-3385 x716
+
+
+From nathan at codesourcery.com  Tue Dec 12 11:19:34 2006
+From: nathan at codesourcery.com (Nathan Sidwell)
+Date: Tue, 12 Dec 2006 11:19:34 +0000
+Subject: [coldfire-gnu-discuss] Connecting to a Coldfire target   using
+  P&E USB Coldfire Multilink.
+In-Reply-To: <7.0.1.0.2.20061211114322.021c22a0@electro-technica.com>
+References: <7.0.1.0.2.20061211114322.021c22a0@electro-technica.com>
+Message-ID: <457E9046.8000701@codesourcery.com>
+
+Claude Sylvain wrote:
+
+Thanks for the detailed report.
+
+> - From that point, I compiled a little project and connected to the
+>   target using GDB.
+>   From GDB, when executing a "load" command, there was error(s), and I
+>   have to make many "load" to finally have the command work correctly.
+>   I tryed also to exit GDB, re-execute GDB.  Also disconnect/re-connect the
+>   USB Multilink without success.
+
+What errors did you get at this point?
+
+
+> Remark:
+> 
+> - This morning, I installed Sourcery G++ Lite on another (Windows XP Pro)
+>   computer, and I saw a popup window telling that P&E driver was installed.
+>   There was no request to restart the computer.
+>   I have not the USB Multilink for Coldfire here, so I can not test
+>   if the installed driver is functionnal.
+
+If you can see if that works before rebooting, that would be helpful.
+
+It might be that the P&E install should be requesting a reboot.
+
+nathan
+
+-- 
+Nathan Sidwell    ::   http://www.codesourcery.com   ::         CodeSourcery
+nathan at codesourcery.com    ::     http://www.planetfall.pwp.blueyonder.co.uk
+
+
+
+From nathan at codesourcery.com  Tue Dec 12 11:21:32 2006
+From: nathan at codesourcery.com (Nathan Sidwell)
+Date: Tue, 12 Dec 2006 11:21:32 +0000
+Subject: [coldfire-gnu-discuss] CodeSourcery 4.1-30
+In-Reply-To: <7.0.1.0.2.20061211115629.02195db0@electro-technica.com>
+References: <7.0.1.0.2.20061211115629.02195db0@electro-technica.com>
+Message-ID: <457E90BC.6030006@codesourcery.com>
+
+Claude Sylvain wrote:
+
+> 
+> - I have the same problem too.
+> 
+> - Is there a way to get rid of that problem, or do I have to use the
+>   previous version of Sourcery G++ Lite ?
+
+We have analysed this problem and determined that there is no workaround. 
+Unfortunately the GCC testsuite had no testcase to cover the circumstances of 
+this bug, so we did not detect it in testing.
+
+nathan
+
+-- 
+Nathan Sidwell    ::   http://www.codesourcery.com   ::         CodeSourcery
+nathan at codesourcery.com    ::     http://www.planetfall.pwp.blueyonder.co.uk
+
+
+
+From nathan at codesourcery.com  Tue Dec 12 15:51:26 2006
+From: nathan at codesourcery.com (Nathan Sidwell)
+Date: Tue, 12 Dec 2006 15:51:26 +0000
+Subject: [coldfire-gnu-discuss] Sourcery G++ 4.1-30 for ColdFire now available
+In-Reply-To: <457D2F09.4070003@codesourcery.com>
+References: <457A9C70.9090609@blueyonder.co.uk> <457D2F09.4070003@codesourcery.com>
+Message-ID: <457ECFFE.2060900@codesourcery.com>
+
+Steve,
+> The error message indicates that the PE& library is not installed, or 
+> inaccessible.  To track this down, use strace
+>     strace m68k-elf-sprite -i
+> you should see an open call for libUnit_cfz.so.  This is installed in 
+> /usr/lib
+> 
+> open("/usr/lib/libUnit_cfz.so", O_RDONLY) = 3
+
+have you resolved this issue?
+
+nathan
+
+-- 
+Nathan Sidwell    ::   http://www.codesourcery.com   ::         CodeSourcery
+nathan at codesourcery.com    ::     http://www.planetfall.pwp.blueyonder.co.uk
+
+
+
+From csylvain at electro-technica.com  Tue Dec 12 16:41:27 2006
+From: csylvain at electro-technica.com (Claude Sylvain)
+Date: Tue, 12 Dec 2006 11:41:27 -0500
+Subject: [coldfire-gnu-discuss] Connecting to a Coldfire target  using
+ P&E USB Coldfire Multilink.
+Message-ID: <7.0.1.0.2.20061212114010.022177e0@electro-technica.com>
+
+ >
+ > Nathan Sidwell wrote:
+ >
+
+ >>
+ >> Claude Sylvain wrote:
+ >>
+ >> - From that point, I compiled a little project and connected to the
+ >>  target using GDB.
+ >>  From GDB, when executing a "load" command, there was error(s), and I
+ >>  have to make many "load" to finally have the command work correctly.
+ >>  I tryed also to exit GDB, re-execute GDB.  Also disconnect/re-connect the
+ >>  USB Multilink without success.
+ >>
+
+ >
+ > What errors did you get at this point?
+ >
+
+- Sorry, the displayed error message have a lot of lines, and I can not
+   remember them.
+
+
+ >>
+ >> Remark:
+ >> - This morning, I installed Sourcery G++ Lite on another (Windows XP Pro)
+ >>   computer, and I saw a popup window telling that P&E driver was installed.
+ >>   There was no request to restart the computer.
+ >>   I have not the USB Multilink for Coldfire here, so I can not test
+ >>   if the installed driver is functionnal.
+ >>
+
+ >
+ > If you can see if that works before rebooting, that would be helpful.
+ >
+ > It might be that the P&E install should be requesting a reboot.
+ >
+
+- The GDB load command was not working correctly until I have rebooted
+   the computer.
+
+- After installing the P&E drivers, connecting the USB Multilink,
+   and followed the Windows add new hardware wizard, there was never
+   a request to restart de computer.
+
+- Maybe all this problem is due to the guy that was in front of the
+   computer (that's me).  I explain:
+   When I installed Code Sourcery G++ Lite, I did not notice that P&E driver
+   was installed, and I installed another set of driver from the P&E
+   disk that come with the M52235EVB box.  It was not a good way to go.
+
+
+Regards,
+Claude.
+
+
+
+
+From nathan at codesourcery.com  Tue Dec 12 16:54:57 2006
+From: nathan at codesourcery.com (Nathan Sidwell)
+Date: Tue, 12 Dec 2006 16:54:57 +0000
+Subject: [coldfire-gnu-discuss] Connecting to a Coldfire target  using
+ P&E USB Coldfire Multilink.
+In-Reply-To: <7.0.1.0.2.20061212114010.022177e0@electro-technica.com>
+References: <7.0.1.0.2.20061212114010.022177e0@electro-technica.com>
+Message-ID: <457EDEE1.9060602@codesourcery.com>
+
+Claude Sylvain wrote:
+
+> - The GDB load command was not working correctly until I have rebooted
+>   the computer.
+
+Thanks.  we're checking with P&E as to whether a reboot should be requested 
+during the install process.
+
+nathan
+
+-- 
+Nathan Sidwell    ::   http://www.codesourcery.com   ::         CodeSourcery
+nathan at codesourcery.com    ::     http://www.planetfall.pwp.blueyonder.co.uk
+
+
+
+From csylvain at electro-technica.com  Tue Dec 12 17:19:51 2006
+From: csylvain at electro-technica.com (Claude Sylvain)
+Date: Tue, 12 Dec 2006 12:19:51 -0500
+Subject: [coldfire-gnu-discuss] CodeSourcery 4.1-30
+Message-ID: <7.0.1.0.2.20061212121840.02240078@electro-technica.com>
+
+ >
+ > Nathan Sidwell wrote:
+ >
+
+ >>
+ >> Claude Sylvain wrote:
+ >>
+ >>
+ >> - I have the same problem too.
+ >> - Is there a way to get rid of that problem, or do I have to use the
+ >>   previous version of Sourcery G++ Lite ?
+ >>
+
+ >
+ > We have analysed this problem and determined that there is no workaround.
+ > Unfortunately the GCC testsuite had no testcase to cover the circumstances
+ > of this bug, so we did not detect it in testing.
+ >
+
+- The new version of CodeSourcery G++ Lite support the USB Multilink, but
+   I don't think the previous version support it.
+   I need to connect to the target using the USB Multilink.
+
+   Is it possible to move the USB Multilink functionnalities to the
+   previous version of Code Sourcery G++ Lite ?
+
+
+Claude.
+
+
+
+
+From nathan at codesourcery.com  Tue Dec 12 17:27:09 2006
+From: nathan at codesourcery.com (Nathan Sidwell)
+Date: Tue, 12 Dec 2006 17:27:09 +0000
+Subject: [coldfire-gnu-discuss] CodeSourcery 4.1-30
+In-Reply-To: <7.0.1.0.2.20061212121840.02240078@electro-technica.com>
+References: <7.0.1.0.2.20061212121840.02240078@electro-technica.com>
+Message-ID: <457EE66D.20306@codesourcery.com>
+
+Claude Sylvain wrote:
+
+> - The new version of CodeSourcery G++ Lite support the USB Multilink, but
+>   I don't think the previous version support it.
+>   I need to connect to the target using the USB Multilink.
+> 
+>   Is it possible to move the USB Multilink functionnalities to the
+>   previous version of Code Sourcery G++ Lite ?
+
+The earlier version will support the USB multilink, it just didn't include the 
+P&E libraries or drivers.  If you uninstall the new version, and reinstall the 
+P&E drivers and the old version, you should be all set.
+
+nathan
+
+-- 
+Nathan Sidwell    ::   http://www.codesourcery.com   ::         CodeSourcery
+nathan at codesourcery.com    ::     http://www.planetfall.pwp.blueyonder.co.uk
+
+
+
+From csylvain at electro-technica.com  Tue Dec 12 18:22:59 2006
+From: csylvain at electro-technica.com (Claude Sylvain)
+Date: Tue, 12 Dec 2006 13:22:59 -0500
+Subject: [coldfire-gnu-discuss] CodeSourcery 4.1-30
+Message-ID: <7.0.1.0.2.20061212132216.02246cb8@electro-technica.com>
+
+ >
+ > Nathan Sidwell wrote:
+ >
+ > The earlier version will support the USB multilink, it just didn't
+ > include the P&E libraries or drivers.  If you uninstall the
+ > new version, and reinstall the P&E drivers and the old version, you
+ > should be all set.
+ >
+
+Great!
+
+
+Regards,
+Claude.
+
+
+
+
+From nathan at codesourcery.com  Tue Dec 12 18:34:30 2006
+From: nathan at codesourcery.com (Nathan Sidwell)
+Date: Tue, 12 Dec 2006 18:34:30 +0000
+Subject: interrupt routine bug
+Message-ID: <457EF636.1030805@codesourcery.com>
+
+Because of the internal compiler error caused by interrupt routines, we will be 
+producing an update next week.
+
+nathan
+-- 
+Nathan Sidwell    ::   http://www.codesourcery.com   ::         CodeSourcery
+nathan at codesourcery.com    ::     http://www.planetfall.pwp.blueyonder.co.uk
+
+
+
+From david at westcontrol.com  Tue Dec 12 19:06:52 2006
+From: david at westcontrol.com (David Brown)
+Date: Tue, 12 Dec 2006 20:06:52 +0100
+Subject: Debugging under 64-bit windows
+Message-ID: <457EFDCC.5050301@westcontrol.com>
+
+Is there any sort of support for debugging under 64-bit windows?  The 
+P&E drivers won't install, so I can't get anywhere with either my USB 
+debugger or my parallel port type.
+
+If anyone else is considering 64-bit windows (or even more masochistic, 
+vista) on a PC used for development, I'd recommend against it.  It's a 
+real PITA getting drivers working.
+
+mvh.,
+
+David Brown
+Norway.
+
+
+From carlos at codesourcery.com  Tue Dec 12 19:42:54 2006
+From: carlos at codesourcery.com (Carlos O'Donell)
+Date: Tue, 12 Dec 2006 14:42:54 -0500
+Subject: [coldfire-gnu-discuss] Debugging under 64-bit windows
+In-Reply-To: <457EFDCC.5050301@westcontrol.com>
+References: <457EFDCC.5050301@westcontrol.com>
+Message-ID: <20061212194254.GQ14845@lios>
+
+On Tue, Dec 12, 2006 at 08:06:52PM +0100, David Brown wrote:
+> Is there any sort of support for debugging under 64-bit windows?  The 
+> P&E drivers won't install, so I can't get anywhere with either my USB 
+> debugger or my parallel port type.
+> 
+> If anyone else is considering 64-bit windows (or even more masochistic, 
+> vista) on a PC used for development, I'd recommend against it.  It's a 
+> real PITA getting drivers working.
+> 
+> mvh.,
+> 
+> David Brown
+> Norway.
+
+
+David,
+
+Thanks for commenting on your experience with this particular issue.
+We recommend you use 32-bit Windows for Coldfire development.
+
+Cheers,
+Carlos.
+-- 
+Carlos O'Donell
+CodeSourcery
+carlos at codesourcery.com
+(650) 331-3385 x716
+
+
+From nathan at codesourcery.com  Tue Dec 12 19:43:19 2006
+From: nathan at codesourcery.com (Nathan Sidwell)
+Date: Tue, 12 Dec 2006 19:43:19 +0000
+Subject: [coldfire-gnu-discuss] Debugging under 64-bit windows
+In-Reply-To: <457EFDCC.5050301@westcontrol.com>
+References: <457EFDCC.5050301@westcontrol.com>
+Message-ID: <457F0657.2040505@codesourcery.com>
+
+David Brown wrote:
+> Is there any sort of support for debugging under 64-bit windows?  The 
+> P&E drivers won't install, so I can't get anywhere with either my USB 
+> debugger or my parallel port type.
+
+I will ask P&E if they have 64 bit drivers.
+
+nathan
+
+-- 
+Nathan Sidwell    ::   http://www.codesourcery.com   ::         CodeSourcery
+nathan at codesourcery.com    ::     http://www.planetfall.pwp.blueyonder.co.uk
+
+
+
+From mark at codesourcery.com  Tue Dec 19 18:11:10 2006
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Tue, 19 Dec 2006 10:11:10 -0800
+Subject: Sourcery G++ 4.1-32 for ColdFire now available
+Message-ID: <45882B3E.1050209@codesourcery.com>
+
+CodeSourcery is pleased to announce a new version of Sourcery G++ for
+ColdFire.
+
+This release is an update to the recent 4.1-30 release, with fixes for
+the following critical issues:
+
+* An internal error from the compiler on functions using
+__attribute__((interrupt)) has been eliminated.
+
+* A code-generation problem that affected functions using only
+floating-point registers has been corrected.
+
+* A defect in GLIBC's copying of wide characters has been corrected.
+
+* Additional CCS examples are included.  A confusing error message
+relating to use of P&E drivers has been improved.
+
+Enjoy!
+
+-- 
+Mark Mitchell
+CodeSourcery
+mark at codesourcery.com
+(650) 331-3385 x713
+
+
+

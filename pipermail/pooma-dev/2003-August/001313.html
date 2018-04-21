@@ -1,0 +1,260 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [PATCH] Clean up domain accessors in Engine and Array
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20Clean%20up%20domain%20accessors%20in%20Engine%20and%20Array&In-Reply-To=%3CPine.LNX.4.44.0308042149250.584-100000%40goofy%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001312.html">
+   
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[PATCH] Clean up domain accessors in Engine and Array</H1>
+    <B>Richard Guenther</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20Clean%20up%20domain%20accessors%20in%20Engine%20and%20Array&In-Reply-To=%3CPine.LNX.4.44.0308042149250.584-100000%40goofy%3E"
+       TITLE="[PATCH] Clean up domain accessors in Engine and Array">rguenth at tat.physik.uni-tuebingen.de
+       </A><BR>
+    <I>Mon Aug  4 19:54:14 UTC 2003</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001312.html">[PATCH] Fix Field::makeOwnCopy() (ping)
+</A></li>
+        
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1313">[ date ]</a>
+              <a href="thread.html#1313">[ thread ]</a>
+              <a href="subject.html#1313">[ subject ]</a>
+              <a href="author.html#1313">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>
+This is my last pending change and probably the most controversical. It
+cleans up domain accessors of engines to return const references always.
+This fixes use of these as arguments to function calls which succeeds or
+fails now dependend on the actual engine implementation used. Array is
+changed accordingly and the expression engine needs a new member to
+contain the domain (doesnt affect runtime positively or negatively).
+
+Tested by full build and check on ppc-linux, ia32-linux and parallel
+cheetah-ia32-linux with no regressions.
+
+Ok?
+
+Richard.
+
+
+2003Aug04 Richard Guenther &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">richard.guenther at uni-tuebingen.de</A>&gt;
+
+	src/Array/Array.h: make domain accessors return const reference
+	objects.
+	src/Engine/ExpressionEngine.h: make domain() return const
+	reference object.
+	src/Engine/ForwardingEngine.h: likewise.
+	src/Engine/IndexFunctionEngine.h: likewise.
+	src/Engine/IndirectionEngine.h: likewise.
+	src/Engine/UserFunction.h: likewise.
+
+Index: src/Array/Array.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/Array/Array.h,v
+retrieving revision 1.146
+diff -u -r1.146 Array.h
+--- src/Array/Array.h	20 Feb 2003 16:39:42 -0000	1.146
++++ src/Array/Array.h	4 Aug 2003 19:47:36 -0000
+@@ -1806,17 +1806,17 @@
+   // Assessor functions that return this array's domain, which is obtained
+   // from the engine.
+
+-  inline Domain_t domain() const
++  inline const Domain_t&amp; domain() const
+     {
+       return engine_m.domain();
+     }
+
+-  inline Domain_t physicalDomain() const
++  inline const Domain_t&amp; physicalDomain() const
+     {
+       return engine_m.layout().innerDomain();
+     }
+
+-  inline Domain_t totalDomain() const
++  inline const Domain_t&amp; totalDomain() const
+     {
+       return engine_m.domain();
+     }
+Index: src/Engine/ExpressionEngine.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/Engine/ExpressionEngine.h,v
+retrieving revision 1.76
+diff -u -r1.76 ExpressionEngine.h
+--- src/Engine/ExpressionEngine.h	26 Sep 2001 00:14:40 -0000	1.76
++++ src/Engine/ExpressionEngine.h	4 Aug 2003 19:47:37 -0000
+@@ -499,12 +499,14 @@
+   //---------------------------------------------------------------------------
+   // Expression constructor. Just stick the expression in local storage.
+
+-  inline Engine(const Expr &amp;expr) : expr_m(expr) { }
++  inline Engine(const Expr &amp;expr) : expr_m(expr),
++    domain_m(forEach(expr_m, DomainFunctorTag(), DomainFunctorTag())) { }
+
+   //---------------------------------------------------------------------------
+   // Copy constructor.
+
+-  inline Engine(const Engine_t &amp;engine) : expr_m(engine.expression()) { }
++  inline Engine(const Engine_t &amp;engine) : expr_m(engine.expression()),
++    domain_m(engine.domain()) { }
+
+   //---------------------------------------------------------------------------
+   // Subsetting Constructor. We build this expression engine, in place, from
+@@ -517,13 +519,15 @@
+   template&lt;int Dim2, class T2, class Expr2, class Initializer&gt;
+   inline Engine(const Engine&lt;Dim2, T2, ExpressionTag&lt;Expr2&gt; &gt; &amp;e,
+     const Initializer &amp;i)
+-  : expr_m(e.expression(), i)
++  : expr_m(e.expression(), i),
++    domain_m(forEach(expr_m, DomainFunctorTag(), DomainFunctorTag()))
+     { }
+
+   template&lt;int Dim2, class T2, class Expr2, class I1, class I2&gt;
+   inline Engine(const Engine&lt;Dim2, T2, ExpressionTag&lt;Expr2&gt; &gt; &amp;e,
+                 const I1 &amp;i1, const I2 &amp;i2)
+-    : expr_m(e.expression(), i1, i2)
++    : expr_m(e.expression(), i1, i2),
++      domain_m(forEach(expr_m, DomainFunctorTag(), DomainFunctorTag()))
+   { }
+
+   //---------------------------------------------------------------------------
+@@ -531,7 +535,9 @@
+
+   template&lt;class Expr2&gt;
+   explicit inline Engine(const Engine&lt;Dim,T,ExpressionTag&lt;Expr2&gt; &gt; &amp;e)
+-    : expr_m(e.expression()) { }
++    : expr_m(e.expression()),
++      domain_m(forEach(expr_m, DomainFunctorTag(), DomainFunctorTag()))
++  { }
+
+   //---------------------------------------------------------------------------
+   // Accessor functions that return the expression.
+@@ -600,12 +606,13 @@
+   // combine the results based on the DomainFunctorTag. The DomainFunctorTag
+   // combiners are above.
+
+-  Domain_t domain() const
++  inline const Domain_t&amp; domain() const
+     {
+-      return forEach(expr_m, DomainFunctorTag(), DomainFunctorTag());
++      return domain_m;
+     }
+
+-  //---------------------------------------------------------------------------   // Return a layout.
++  //---------------------------------------------------------------------------
++  // Return a layout.
+
+   inline Layout_t layout() const { return Layout_t(domain()); }
+
+@@ -638,6 +645,10 @@
+   // The expression is stored here.
+
+   Expr expr_m;
++
++  // The domain of the expression.
++
++  Domain_t domain_m;
+
+ };
+
+Index: src/Engine/ForwardingEngine.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/Engine/ForwardingEngine.h,v
+retrieving revision 1.46
+diff -u -r1.46 ForwardingEngine.h
+--- src/Engine/ForwardingEngine.h	12 Mar 2003 21:45:26 -0000	1.46
++++ src/Engine/ForwardingEngine.h	4 Aug 2003 19:47:39 -0000
+@@ -266,7 +266,7 @@
+   //---------------------------------------------------------------------------
+   // Returns the domain, which is acquired from the contained engine.
+
+-  inline Domain_t domain() const { return elemEngine().domain(); }
++  inline const Domain_t&amp; domain() const { return elemEngine().domain(); }
+
+   //---------------------------------------------------------------------------
+   // Return the first value for the specified direction.
+Index: src/Engine/IndexFunctionEngine.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/Engine/IndexFunctionEngine.h,v
+retrieving revision 1.24
+diff -u -r1.24 IndexFunctionEngine.h
+--- src/Engine/IndexFunctionEngine.h	3 Dec 2001 19:38:33 -0000	1.24
++++ src/Engine/IndexFunctionEngine.h	4 Aug 2003 19:47:39 -0000
+@@ -228,7 +228,7 @@
+   //---------------------------------------------------------------------------
+   // Return/set the domain. Also, return the base domain.
+
+-  const Domain_t &amp;domain() const { return domain_m; }
++  inline const Domain_t &amp;domain() const { return domain_m; }
+   void setDomain(const Domain_t &amp;dom) { domain_m = dom; }
+
+   //---------------------------------------------------------------------------
+Index: src/Engine/IndirectionEngine.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/Engine/IndirectionEngine.h,v
+retrieving revision 1.24
+diff -u -r1.24 IndirectionEngine.h
+--- src/Engine/IndirectionEngine.h	12 Oct 2001 18:52:40 -0000	1.24
++++ src/Engine/IndirectionEngine.h	4 Aug 2003 19:47:40 -0000
+@@ -246,7 +246,7 @@
+
+   //---------------------------------------------------------------------------
+
+-  inline Domain_t domain() const
++  inline const Domain_t&amp; domain() const
+   {
+     return array2_m.domain();
+   }
+Index: src/Engine/UserFunction.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/Engine/UserFunction.h,v
+retrieving revision 1.29
+diff -u -r1.29 UserFunction.h
+--- src/Engine/UserFunction.h	3 Dec 2001 19:38:33 -0000	1.29
++++ src/Engine/UserFunction.h	4 Aug 2003 19:47:41 -0000
+@@ -241,7 +241,7 @@
+   // Return the domain.
+   //---------------------------------------------------------------------------
+
+-  Domain_t domain() const { return expression_m.domain(); }
++  inline const Domain_t&amp; domain() const { return expression_m.domain(); }
+
+   //---------------------------------------------------------------------------
+   // Return first index in the specified direction.
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001312.html">[PATCH] Fix Field::makeOwnCopy() (ping)
+</A></li>
+	
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1313">[ date ]</a>
+              <a href="thread.html#1313">[ thread ]</a>
+              <a href="subject.html#1313">[ subject ]</a>
+              <a href="author.html#1313">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

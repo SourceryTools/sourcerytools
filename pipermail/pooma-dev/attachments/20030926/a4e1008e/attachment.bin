@@ -1,0 +1,168 @@
+Richard:
+
+OK. Here goes. The basic idea is that we have a hierarchical field
+structure (built using hierarchical engines similar to the current
+multi-material field abstraction) which has a collection of 1-D
+dynamicFields (for the sparse unstructured storage), a shared Index
+(n-D) integer Array (or Field), and a single (n-D) scalar, vector or
+tensor field which has either the data for a pure cell, or a cell
+average value for mixed-material cell's data. As the problem evolves
+the material interfaces migrate and so the actual position of the
+unstructured cells changes. However, all the indirect indexing is
+still local to the processor (except for normal guard cell
+communications). So this is much simpler than a real unstructured
+problem with all-to-all communications. In the general case, the
+sparse dynamic fields are only used to compute the cell-average
+quantities before a data-parallel computation across the single
+multi-material or cell-average field is performed. We would also like
+to take some views of the field in which all of the data for a
+particular material is gathered/scattered to/from a single spare
+dynamic work Array that is shared in this hierarchical structure.
+
+
+Field<<Mesh_t, Real, MixedCellEngine> would look like this:
+
+<fontfamily><param>Courier</param>___________________
+
+|__________________| Single material Gather/Scatter 1-D Dynamic Work
+Array (both mixed and pure cells)
+
+______
+
+|_____| mat A (1-D Dynamic Array/Field)
+
+_______
+
+|______| mat B (1-D Dynamic Array/Field)
+
+______
+
+|_____| mat C (1-D Dynamic Array/Field)
+
+_______________________________________________________________________
+
+|______________________________________________________________________|
+Cell Average Quantities (n-D)
+
+_______________________________________________________________________
+
+|______________________________________________________________________|
+Integer Index Array (n-D)
+
+Single Index Array is shared by all Sparse Fields (e.g. Density,
+Pressure, etc.). This shares duty between
+
+providing the material index for a pure cell and an offset into a
+collection tracking the unstructured
+
+mixed cell data for a mixed cell.
+
+
+Multi-Patch should still work although the guard cell communications
+might be slightly more complicated.
+
+
+</fontfamily>The number of cells which are indirectly addressed is
+very small (<< 5% of the total) so even using compressible brick we
+are wasting a lot of memory bandwidth and performing numerous
+extraneous computations. A comparison code using this structure is
+running 20 times faster than the equivalent data parallel POOMA R1
+computation for the single processor serial case. We believe we can
+match that performance by building an engine that encapsulates the
+sparse nature reflected in the problem and by making more use of the
+new engines POOMA R2 provides (stencil, etc.).
+
+
+Again, most of the computations are performed on the Cell-Average
+Quantities, so we just take a view, operator[]?, that returns that
+single field.
+
+John and Jean
+
+
+On Friday, September 26, 2003, at 01:11  AM, Richard Guenther wrote:
+
+
+<excerpt>On Fri, 26 Sep 2003, Jean Marshall wrote:
+
+
+<excerpt>Hi guys:
+
+
+John and I are starting to write a sparse engine -- for sparse storage
+of
+
+our material-dependent fields.  We think we have come up with an
+
+optimization for our Eulerian code that should really make it scream. 
+We
+
+have been studying the IndirectionEngine example, which is very
+similar to
+
+what we need.
+
+</excerpt>
+
+Can you elaborate some more on the use and principle of this engine?
+Is it
+
+like compressed brick?
+
+
+Richard.
+
+
+<excerpt>
+
+Unfortunately, the IndirectionEngine example problem,
+indirect_test1.cpp,
+
+only demonstrates how to build the engine, not an array or a field. 
+Could
+
+someone please show us how to move forward with this example to
+building a
+
+complete array and field version?
+
+
+Unlike the IndirectionEngine example, we only need local communications
+
+(not all-to-all) along with the same type of guard cell update found
+in a
+
+normal field.
+
+
+Any help will be greatly appreciated!
+
+
+Jean, John, Don
+
+
+Jean and Don Marshall
+
+
+84250 Indio Springs Dr #291
+
+Indio, CA 92203-3413
+
+
+760-775-1576  home
+
+760-574-0182  Jean's cell
+
+760-574-0192  Don's cell
+
+
+
+</excerpt>
+
+--
+
+Richard Guenther <<richard dot guenther at uni-tuebingen dot de>
+
+WWW: http://www.tat.physik.uni-tuebingen.de/~rguenth/
+
+</excerpt>

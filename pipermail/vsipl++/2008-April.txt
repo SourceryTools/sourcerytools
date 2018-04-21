@@ -1,0 +1,261 @@
+From jules at codesourcery.com  Tue Apr 15 18:08:45 2008
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Tue, 15 Apr 2008 14:08:45 -0400
+Subject: [patch] char/ds script updates
+Message-ID: <4804EF2D.4000103@codesourcery.com>
+
+Minor updates to allow extra arguments to be passed to benchmarks (such 
+as --cml-num-spes) and to pretty print large times per call and times 
+per point.
+
+Patch applied.
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: char-ds.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20080415/65265a38/attachment.ksh>
+
+From pgr at export2u.ro  Thu Apr 17 19:20:02 2008
+From: pgr at export2u.ro (pgr at export2u.ro)
+Date: Thu, 17 Apr 2008 22:20:02 +0300
+Subject: Multilingual Technical Translations
+Message-ID: <eaep.3.0.reg.CorMKN.39555.930399838@10.101.101.13>
+
+A non-text attachment was scrubbed...
+Name: not available
+Type: text/plain charset=us-ascii
+Size: 4498 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20080417/89f2f208/attachment.bin>
+
+From stefan at codesourcery.com  Tue Apr 22 14:14:42 2008
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Tue, 22 Apr 2008 10:14:42 -0400
+Subject: [vsipl++] [patch] Pool allocation
+In-Reply-To: <47A0E8FC.50501@codesourcery.com>
+References: <47A0E8FC.50501@codesourcery.com>
+Message-ID: <480DF2D2.5090504@codesourcery.com>
+
+Jules,
+
+sorry for having dropped the ball here. The patch looks good. I only 
+have the usual nit-picks, but nothing blocking.
+
+A general question concerning the expected usage: By replacing the 
+template parameter by a function parameter you make the choice of a pool 
+a runtime-only thing. Who do you expect will use pools explicitly, and 
+how ? Is this runtime-binding really going to be used by end-users, or 
+is it merely a convenience for us during R&D ?
+(I could think of ways to keep the allocator a compile-time parameter, 
+but allow us to configure in a special allocator that calls into a 
+runtime-polymorphic pool type such as the one you implement here...)
+
+
+Jules Bergmann wrote:
+
+> Index: src/vsip/core/pool.hpp
+> ===================================================================
+> --- src/vsip/core/pool.hpp	(revision 0)
+> +++ src/vsip/core/pool.hpp	(revision 0)
+> @@ -0,0 +1,81 @@
+> +/* Copyright (c) 2007 by CodeSourcery, LLC.  All rights reserved. */
+
+This should be Inc., not LLC., right ?
+
+> +
+> +/** @file    vsip/core/pool.hpp
+> +    @author  Jules Bergmann
+> +    @date    2007-04-11
+
+Is this patch really this old ? :-)
+
+> +    @brief   VSIPL++ Library: Memory allocation pool
+> +*/
+
+I would prefer to name the pool actually Memory_pool, to make it clear 
+that we are talking about memory management here, not threading (say).
+
+> +template <typename T>
+> +inline T*
+> +pool_alloc(
+> +  Pool*       pool,
+> +  length_type size)
+> +{
+> +  return (T*)(pool->allocate(size * sizeof(T)));
+> +}
+
+I understand the need for 'pool_alloc' being a separate function from 
+the virtual Pool::allocate, but I'd still prefer this to become a member 
+function. What about
+
+class Memory_pool
+{
+public:
+   virtual void *allocate(length_type);
+   template <typename T>
+   T * allocate(length_type);
+};
+
+?
+
+Thanks,
+		Stefan
+
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+
+
+From jules at codesourcery.com  Tue Apr 22 20:51:19 2008
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Tue, 22 Apr 2008 16:51:19 -0400
+Subject: [vsipl++] [patch] Pool allocation
+In-Reply-To: <480DF2D2.5090504@codesourcery.com>
+References: <47A0E8FC.50501@codesourcery.com> <480DF2D2.5090504@codesourcery.com>
+Message-ID: <480E4FC7.7020803@codesourcery.com>
+
+Stefan Seefeld wrote:
+ > Jules,
+ >
+ > sorry for having dropped the ball here. The patch looks good. I only
+ > have the usual nit-picks, but nothing blocking.
+ >
+ > A general question concerning the expected usage: By replacing the
+ > template parameter by a function parameter you make the choice of a pool
+ > a runtime-only thing. Who do you expect will use pools explicitly, and
+ > how ? Is this runtime-binding really going to be used by end-users, or
+ > is it merely a convenience for us during R&D ?
+ > (I could think of ways to keep the allocator a compile-time parameter,
+ > but allow us to configure in a special allocator that calls into a
+ > runtime-polymorphic pool type such as the one you implement here...)
+
+I don't think that an allocator choosen at compile time is the best
+choice.  We've had it implemented that way for a long time, and it
+didn't seem that useful.  In particular:
+
+  - The main reason is that I don't think it is a good idea to increase
+    the type diversity for something that doesn't bring a lot of
+    optimization potential.
+
+    Block allocation/deallocation is infrequent, done once per block,
+    and usually done outside of the computation loop.  Each block's
+    allocator will only perform one allocation.  Extra efficiency
+    from a compile-time allocator doesn't buy as much.
+
+    By comparison, stdlib containers use one allocator to allocate
+    entries in the container (sharing a single allocator across
+    multiple allocations).  The allocations/deallocations presumably
+    occur with some frequency, during computations.
+
+  - As implemented, the compile-time allocator was a template
+    parameteter of the Dense_storage implementation, and not accessible
+    from Dense or Dense_impl.  Extending Dense to allow different
+    allocators to be choosen would require extending its type interface,
+    either directly, or through another type (such as Local_map).
+
+
+Allocation pools should be useful in general, beyond just making huge
+page memory easier to allocate for benchmarks.  One "in the wild"
+example would be to allocate memory in a pool that has some special
+memory attribute (such as being part of shared region, or being part
+of memory that can be accessed via DMA).  This type of thing comes up
+often when dealing with I/O devices.
+
+You can achieve a similar effect with admit/release, but some
+kind of block factory with an attached pool would be much easier.
+
+				-- Jules
+
+
+ >
+ >> +
+ >> +/** @file    vsip/core/pool.hpp
+ >> +    @author  Jules Bergmann
+ >> +    @date    2007-04-11
+ >
+ > Is this patch really this old ? :-)
+
+It is old, eh?  It dates back to the VSIPL++ proof of concept we did
+for IBM last year.  This, and the attributes on local maps to set the
+number of SPUs never went into SVN, mostly because I was nervous about
+the local map attributes.
+
+
+ >
+ >> +    @brief   VSIPL++ Library: Memory allocation pool
+ >> +*/
+ >
+ > I would prefer to name the pool actually Memory_pool, to make it clear
+ > that we are talking about memory management here, not threading (say).
+
+Ah yes, good idea.
+
+ >
+ >> +template <typename T>
+ >> +inline T*
+ >> +pool_alloc(
+ >> +  Pool*       pool,
+ >> +  length_type size)
+ >> +{
+ >> +  return (T*)(pool->allocate(size * sizeof(T)));
+ >> +}
+ >
+ > I understand the need for 'pool_alloc' being a separate function from
+ > the virtual Pool::allocate, but I'd still prefer this to become a member
+ > function. What about
+ >
+ > class Memory_pool
+ > {
+ > public:
+ >   virtual void *allocate(length_type);
+ >   template <typename T>
+ >   T * allocate(length_type);
+ > };
+
+Sounds good, I'll give that a try.
+
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From jules at codesourcery.com  Wed Apr 23 14:28:50 2008
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Wed, 23 Apr 2008 10:28:50 -0400
+Subject: [vsipl++] [patch] Pool allocation
+In-Reply-To: <480E4FC7.7020803@codesourcery.com>
+References: <47A0E8FC.50501@codesourcery.com> <480DF2D2.5090504@codesourcery.com> <480E4FC7.7020803@codesourcery.com>
+Message-ID: <480F47A2.2080707@codesourcery.com>
+
+Patch applied, modified patch attached.
+
+Key changes:
+  - rename Pool to Memory_pool
+  - move pool_alloc and pool_dealloc to Memory_pool::allocate and
+    Memory_pool::deallocate (renaming original functions of that name).
+  - Add library initialization to tests missing it.
+
+			-- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: pool-2.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20080423/d083d0c8/attachment.ksh>
+

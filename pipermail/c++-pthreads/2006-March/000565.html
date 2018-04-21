@@ -1,0 +1,142 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [c++-pthreads] Re: FW: RE: Re: I'm Lost
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:c%2B%2B-pthreads%40codesourcery.com?Subject=Re%3A%20%5Bc%2B%2B-pthreads%5D%20Re%3A%20FW%3A%20RE%3A%20Re%3A%20I%27m%20Lost&In-Reply-To=%3COFCB2B2B23.0B9F3674-ONC125712C.002C9175-C125712C.002DE677%40de.ibm.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000570.html">
+   <LINK REL="Next"  HREF="000560.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[c++-pthreads] Re: FW: RE: Re: I'm Lost</H1>
+    <B>Alexander Terekhov</B> 
+    <A HREF="mailto:c%2B%2B-pthreads%40codesourcery.com?Subject=Re%3A%20%5Bc%2B%2B-pthreads%5D%20Re%3A%20FW%3A%20RE%3A%20Re%3A%20I%27m%20Lost&In-Reply-To=%3COFCB2B2B23.0B9F3674-ONC125712C.002C9175-C125712C.002DE677%40de.ibm.com%3E"
+       TITLE="[c++-pthreads] Re: FW: RE: Re: I'm Lost">TEREKHOV at de.ibm.com
+       </A><BR>
+    <I>Thu Mar  9 08:21:24 UTC 2006</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000570.html">[c++-pthreads] Re: [SPAM] - Re: [c++-pthreads]  Re: FW: RE: Re: I'm Lost - Email found in subject
+</A></li>
+        <LI>Next message: <A HREF="000560.html">[SPAM] - Re: [c++-pthreads]  Re: FW: RE: Re: I'm Lost - Email found in subject
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#565">[ date ]</a>
+              <a href="thread.html#565">[ thread ]</a>
+              <a href="subject.html#565">[ subject ]</a>
+              <a href="author.html#565">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>
+Mark Mitchell &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/c++-pthreads">mark at codesourcery.com</A>&gt; wrote:
+[...]
+&gt;<i> It sounds like we really are close to a solution then; I think everyone
+</I>&gt;<i> here would be happy with the re-cancellation thing, and the destructor
+</I>&gt;<i> trick
+</I>
+It would not satisfy me. For one. Cancel unaware code should be made
+cancel aware with &quot;pthread_cancel (pthread_self ())&quot; added only if/when
+it is really needed. I mean stuff like
+
+void oper() throw(int) {
+  /**/
+  fclose(/*..*/); // doesn't throw; cancel is unexpected -- language
+                  // change with mandatory 2-phase EH and intelligent
+                  // cancel delivery is required
+}
+
+transformed to
+
+void oper() throw(int) {
+  /**/
+  try {
+    fclose(/*..*/); // can throw; cancel IS expected -- catch below
+  }
+  catch (std::thread_cancel_request const &amp;) {
+    /**/
+    std::enable_thread_cancel(); // re-enable cancel state
+    std::thread_self().cancel(); // re-inject cancel request
+    /**/
+  }
+}
+
+Well, I guess I could live with
+
+  catch (std::thread_cancel_request &amp; tcr) {
+    tcr.stop_stupid_stickyness();
+  }
+
+but that's somewhat unsatisfying, so to speak.
+
+regards,
+alexander.
+
+
+Mark Mitchell &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/c++-pthreads">mark at codesourcery.com</A>&gt; on 09.03.2006 00:15:37
+
+To:    Jason Merrill &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/c++-pthreads">jason at redhat.com</A>&gt;
+cc:    Wil Evers &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/c++-pthreads">wil at bogo.xs4all.nl</A>&gt;, David Abrahams
+       &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/c++-pthreads">dave at boost-consulting.com</A>&gt;, <A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/c++-pthreads">c++-pthreads at codesourcery.com</A>
+Subject:    Re: [c++-pthreads]  Re: FW: RE: Re: I'm Lost
+
+
+Jason Merrill wrote:
+
+&gt;<i> If you can interrupt cancellation, re-cancellation is implemented
+</I>&gt;<i> trivially simply by just having the cancellation exception destructor
+</I>&gt;<i> call 'pthread_cancel (pthread_self ())'.  The sticking point is being
+</I>&gt;<i> able to abort the cancellation in the first place, which is what Uli has
+</I>&gt;<i> been opposed to.
+</I>
+It sounds like we really are close to a solution then; I think everyone
+here would be happy with the re-cancellation thing, and the destructor
+trick means that there's really no way the thread can permanently
+discard the cancellation request, short of things like longjmp -- and,
+of course, if the thread is really determined not to go away it can just
+hang around anyhow.  So, it seems like this ought to satisfy everyone
+from the user-level perspective.
+
+&gt;<i> I don't think he's opposed to catching it, just to doing anything that
+</I>&gt;<i> would involve backing out of the cancellation once it's started.
+</I>
+Would the above satisfy him?
+
+--
+Mark Mitchell
+CodeSourcery
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/c++-pthreads">mark at codesourcery.com</A>
+(650) 331-3385 x713
+
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000570.html">[c++-pthreads] Re: [SPAM] - Re: [c++-pthreads]  Re: FW: RE: Re: I'm Lost - Email found in subject
+</A></li>
+	<LI>Next message: <A HREF="000560.html">[SPAM] - Re: [c++-pthreads]  Re: FW: RE: Re: I'm Lost - Email found in subject
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#565">[ date ]</a>
+              <a href="thread.html#565">[ thread ]</a>
+              <a href="subject.html#565">[ subject ]</a>
+              <a href="author.html#565">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/c++-pthreads">More information about the c++-pthreads
+mailing list</a><br>
+</body></html>

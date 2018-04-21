@@ -1,0 +1,121 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [c++-pthreads] Re: thread-safety definition
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:c%2B%2B-pthreads%40codesourcery.com?Subject=Re%3A%20%5Bc%2B%2B-pthreads%5D%20Re%3A%20thread-safety%20definition&In-Reply-To=%3C40027836.7B9D03BC%40terekhov.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000200.html">
+   <LINK REL="Next"  HREF="000202.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[c++-pthreads] Re: thread-safety definition</H1>
+    <B>Alexander Terekhov</B> 
+    <A HREF="mailto:c%2B%2B-pthreads%40codesourcery.com?Subject=Re%3A%20%5Bc%2B%2B-pthreads%5D%20Re%3A%20thread-safety%20definition&In-Reply-To=%3C40027836.7B9D03BC%40terekhov.de%3E"
+       TITLE="[c++-pthreads] Re: thread-safety definition">boo at terekhov.de
+       </A><BR>
+    <I>Mon Jan 12 10:34:30 UTC 2004</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000200.html">thread-safety definition
+</A></li>
+        <LI>Next message: <A HREF="000202.html">[c++-pthreads] Re: thread-safety definition
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#201">[ date ]</a>
+              <a href="thread.html#201">[ thread ]</a>
+              <a href="subject.html#201">[ subject ]</a>
+              <a href="author.html#201">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>David Abrahams wrote:
+&gt;<i> 
+</I>&gt;<i> Fergus Henderson &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/c++-pthreads">fjh at cs.mu.oz.au</A>&gt; writes:
+</I>&gt;<i> 
+</I>&gt;<i> &gt; When a thread gets a cancellation request, the first
+</I>&gt;<i> &gt; cancellation point encountered thereafter will act on that request
+</I>&gt;<i> &gt; (by unwinding the stack, or in Nathan's model by returning an error
+</I>&gt;<i> &gt; return status and setting errno = ECANCELLED).  If another
+</I>&gt;<i> &gt; cancellation point is encountered after that, and there has not
+</I>&gt;<i> &gt; been another cancellation request, then the cancellation point
+</I>&gt;<i> &gt; will normally not have any effect.
+</I>&gt;<i> &gt;
+</I>&gt;<i> &gt; With &quot;sticky&quot; cancels, after a cancellation request,
+</I>&gt;<i> &gt; *every* subsequent cancellation point will act on the cancel
+</I>&gt;<i> &gt; (by unwinding the stack, or failing with ECANCELLED).
+</I>&gt;<i> &gt;
+</I>&gt;<i> &gt; &quot;stick&quot; cancels make it difficult/impossible to clean up properly,
+</I>
+In the current POSIX/C++ environment one must disable/restore-old
+cancellation state in the destructors that call POSIX cancellation 
+points anyway (I mean &quot;general cancel-safe library&quot; stuff). That 
+does ensure proper cleanup.
+
+&gt;<i> &gt; since cleaning up may involve doing I/O, and in particular by calling
+</I>&gt;<i> &gt; functions that Posix specifies are cancellation points.  These functions
+</I>&gt;<i> &gt; will fail to do the I/O, because they will instead attempt to act on
+</I>&gt;<i> &gt; the cancellation again (i.e. re-raising the cancellation exception
+</I>&gt;<i> &gt; or failing with ECANCELLED).
+</I>&gt;<i> 
+</I>&gt;<i> OK, thanks for the explanation.  Sounds like an argument for Jason's
+</I>&gt;<i> exceptions that re-assert cancel when they're destroyed.
+</I>
+Making broken code a bit less broken is hardly the right design 
+rationale. Presuming that we'll get a standard named thread cancel 
+request exception, his &quot;fix&quot; (with respect to broken C++ libraries) 
+is nothing but
+
+catch(...) {
+
+  /* ... no re-throw here ... */
+
+  try {
+    throw;
+  }
+  catch(std::thread_cancel_request const &amp;) {
+    std::thread_enable_cancel(); // re-enable cancel
+    std::thread_self().cancel(); // re-inject cancel request
+  }
+  catch(...) { }
+
+}
+
+(unless I'm just missing and/or misunderstanding something).
+
+I don't think that the standard should mandate that. The 
+standard should mandate mandatory 2-phase ES and intelligent
+cancellation points plus async-cancel regions, of course.
+
+regards,
+alexander.
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000200.html">thread-safety definition
+</A></li>
+	<LI>Next message: <A HREF="000202.html">[c++-pthreads] Re: thread-safety definition
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#201">[ date ]</a>
+              <a href="thread.html#201">[ thread ]</a>
+              <a href="subject.html#201">[ subject ]</a>
+              <a href="author.html#201">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/c++-pthreads">More information about the c++-pthreads
+mailing list</a><br>
+</body></html>

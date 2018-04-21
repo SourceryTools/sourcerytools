@@ -1,0 +1,155 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [qmtest] Unicode support
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:qmtest%40codesourcery.com?Subject=Re%3A%20%5Bqmtest%5D%20Unicode%20support&In-Reply-To=%3C41822326.21647.428A5C%40localhost%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000936.html">
+   <LINK REL="Next"  HREF="000937.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[qmtest] Unicode support</H1>
+    <B>Pavel Cisar</B> 
+    <A HREF="mailto:qmtest%40codesourcery.com?Subject=Re%3A%20%5Bqmtest%5D%20Unicode%20support&In-Reply-To=%3C41822326.21647.428A5C%40localhost%3E"
+       TITLE="[qmtest] Unicode support">pcisar at ibphoenix.cz
+       </A><BR>
+    <I>Fri Oct 29 09:01:58 UTC 2004</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000936.html">[qmtest] Unicode support
+</A></li>
+        <LI>Next message: <A HREF="000937.html">CodeSourcery seeking a QMTest developer
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#940">[ date ]</a>
+              <a href="thread.html#940">[ thread ]</a>
+              <a href="subject.html#940">[ subject ]</a>
+              <a href="author.html#940">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Hi,
+
+The issue with unicode annotations was my fault, sorry. After the fix, I 
+can create and run tests with unicode without any change to QMTest code, 
+although special support in extension classes is needed.
+
+On 25 Oct 2004 at 14:55, Mark Mitchell wrote:
+
+&gt;<i> We're definitely interested in supporting Unicode.  If you have concrete 
+</I>&gt;<i> examples of places where we fail to do that, that would help.  For 
+</I>&gt;<i> example, if we can recreate the problem with a simple test using a 
+</I>&gt;<i> built-in QMTest test class, that will help us to solve it.
+</I>
+Next notes apply to latest QMTest stable build.
+
+1. QMtest can flawlessly store and load tests that have unicode in 
+attributes (thanks to unicode support in XML handling).
+
+2. There are two main points of failure:
+
+a) Inadequate charset specification in qm.web.DtmlPage.GenerateHtmlHeader
+It's iso-8859-1 instead utf-8. Next code in our extension module amend 
+it:
+
+_ORIGINAL_IMPL = qm.web.DtmlPage.GenerateHtmlHeader
+
+def GenerateHtmlHeader(self, description, headers=''):
+    header = _ORIGINAL_IMPL(self, description, headers=headers)
+    header = header.replace('charset=iso-8859-1', 'charset=utf-8')
+    return header
+
+qm.web.DtmlPage.GenerateHtmlHeader = GenerateHtmlHeader
+
+b) qm.fields.TextField doesn't support unicode at all (it fails on use of 
+str() function). Next customized UnicodeField fixes that.
+
+class UnicodeField(qm.fields.TextField):
+    &quot;&quot;&quot;
+      A subclass of 'TextField' that supports Unicode.
+    &quot;&quot;&quot;
+
+    def FormatValueAsHtml(self, server, value, style, name=None):
+        # $value is typically unicode rather than str.  In any case, we 
+always
+        # encode the returned HTML code in UTF-8.
+        #
+        # qm.fields.TextField.FormatValueAsHtml can't handle Unicode, so
+        # we replace $value with a flag, call the super-method, convert
+        # the resulting HTML str into a unicode object, replace the flag
+        # with the real $value, then encode $value in UTF-8 for
+        # transmission to the client.
+        flag = '_______REPLACE_THIS_FLAG_______'
+        html = qm.fields.TextField.FormatValueAsHtml(self, server, flag, 
+style,
+            name=name
+          )
+        # Next try-except is necessary for QMTest. When test is loaded 
+for edit,
+        # the value content is ok, but if test editing form contains 
+button
+        # (for example to add/remove substitution definition) and this 
+button is
+        # used, the form reload logic goes in different route, and value 
+has encoding
+        # that replace cannot handle. This case is handled by except 
+part.
+        try:
+          html = unicode(html,'UTF8').replace(flag, value)
+        except UnicodeError:
+          html = unicode(html,'UTF8').replace(flag, 
+unicode(value,'UTF8'))
+            
+        return html.encode('UTF8')
+
+This is only basic text field. Our test class for complex tests that are 
+written in Python is far more complex. Anyone interested can find it 
+(soon) in our CVS at sourceforge.
+
+3. It's necessary to keep all unicode values that are displayed (like 
+annotations) encoded as UTF8.
+
+&gt;<i> (Also, in the usual open-source way, we'll be likely to do things 
+</I>&gt;<i> quickest for our paying customers; if you'd like to hire us to work on 
+</I>&gt;<i> this project, we'd be happy to talk to you about that.)
+</I>
+Huh, because we are an open source project, it's somehow complicated for 
+us to become a paying customer :-)
+
+Best regards
+Pavel Cisar (ICQ: 89017288)
+<A HREF="http://www.ibphoenix.com">http://www.ibphoenix.com</A>
+For all your upto date Firebird and
+InterBase information
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000936.html">[qmtest] Unicode support
+</A></li>
+	<LI>Next message: <A HREF="000937.html">CodeSourcery seeking a QMTest developer
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#940">[ date ]</a>
+              <a href="thread.html#940">[ thread ]</a>
+              <a href="subject.html#940">[ subject ]</a>
+              <a href="author.html#940">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">More information about the qmtest
+mailing list</a><br>
+</body></html>

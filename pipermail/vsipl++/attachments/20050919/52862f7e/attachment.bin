@@ -1,0 +1,541 @@
+
+Index: src/vsip/signal-window.cpp
+===================================================================
+RCS file: src/vsip/signal-window.cpp
+diff -N src/vsip/signal-window.cpp
+*** /dev/null	1 Jan 1970 00:00:00 -0000
+--- src/vsip/signal-window.cpp	20 Sep 2005 05:26:48 -0000
+***************
+*** 0 ****
+--- 1,195 ----
++ /* Copyright (c) 2005 by CodeSourcery, LLC.  All rights reserved. */
++ 
++ /** @file    vsip/impl/signal-window.hpp
++     @author  Don McCoy
++     @date    2005-09-15
++     @brief   VSIPL++ Library: Window functions [signal.windows]
++ */
++ 
++ /***********************************************************************
++   Included Files
++ ***********************************************************************/
++ 
++ #include "impl/signal-fft.hpp"
++ #include "impl/signal-window.hpp"
++ 
++ /***********************************************************************
++   Declarations
++ ***********************************************************************/
++ 
++ namespace vsip
++ {
++ 
++ 
++ /// Creates Blackman window.
++ /// Requires: len > 1.
++ /// Returns: A const_Vector initialized with Blackman window weights 
++ /// and having length len.
++ /// Throws: std::bad_alloc upon memory allocation error.
++ const_Vector<scalar_f>
++ blackman(length_type len) VSIP_THROW((std::bad_alloc))
++ {
++   assert( len > 1 );
++ 
++   Vector<scalar_f> v(len);
++ 
++   length_type n =  0;
++   scalar_f temp1 = 2 * M_PI / (len - 1);
++   scalar_f temp2 = 2 * temp1;
++ 
++   for ( unsigned int n = 0; n < len; ++n )
++     v.put( n, 0.42 - 0.5 * cos(temp1 * n) + 0.08 * cos(temp2 * n) );
++ 
++   return v;
++ }
++ 
++ 
++ /// Creates Chebyshev window with user-specified ripple.
++ /// Requires: len > 1.
++ /// Returns: A const_Vector initialized with Dolph-Chebyshev window 
++ /// weights and having length len.
++ /// Throws: std::bad_alloc upon memory allocation error.
++ const_Vector<scalar_f>
++ cheby(length_type len, scalar_f ripple) VSIP_THROW((std::bad_alloc))
++ {
++   assert( len > 1 );
++ 
++   scalar_f dp = pow( 10.0, -ripple / 20.0 );
++   scalar_f df = acos( 1.0 / 
++     cosh( acosh( (1.0 + dp) / dp) / (len - 1.0) ) ) / M_PI;
++   scalar_f x0 = (3.0 - cos( 2 * M_PI * df )) / (1.0 + cos( 2 * M_PI * df ));
++ 
++   // eq. to f.ramp( 0.0, 1.0 / len );
++   Vector<scalar_f> f(len);
++   for ( index_type i = 0; i < len; ++i )
++     f.put( i, i * 1.0 / len );
++ 
++   scalar_f alpha = (x0 + 1.0) / 2.0;
++   scalar_f beta  = (x0 - 1.0) / 2.0;
++   Vector<scalar_f> x(len);
++   x = alpha * cos( 2.0 * M_PI * f ) + beta;
++ 
++   // tmp = (mag(x) > 1);
++   Vector<scalar_f> tmp(len);
++   for ( index_type i = 0; i < len; ++i )
++     tmp.put( i, (((x.get(i) >= 0) ? x.get(i) : -x.get(i)) > 1) ? 1.0 : 0.0 );
++ 
++ 
++   Vector<std::complex<scalar_f> > wf(len, 0.0);
++   Vector<std::complex<scalar_f> >::realview_type wfR( wf.real() );
++   Vector<std::complex<scalar_f> > Cfoo(len, 0.0);
++ 
++   /* wf = dp*(tmp.*(cosh(((len-1.0)/2).*acosh(x)))+
++      (1-tmp).*cos(((len-1.0)/2).*acos(x)));*/
++   { 
++     // eq. to wfR = x.clip( -1.0, 1.0, -1.0, 1.0 );
++     for ( index_type i = 0; i < len; ++i )
++     {
++       if ( x.get(i) < -1.0 )
++         wfR.put( i, -1.0 );
++       else if ( x.get(i) > 1.0 )
++         wfR.put( i, 1.0 );
++       else
++         wfR.put( i, x.get(i) );
++     }
++ 
++     wfR = (1.0 - tmp) * cos( ((len - 1.0) / 2.0) * acos( wfR ) );
++ 
++     impl::acosh<scalar_f>( x, Cfoo );
++     Cfoo = tmp * cosh( static_cast<scalar_f>((len - 1.0) / 2.0) * Cfoo );
++ 
++     wf = dp * (Cfoo + wf);
++   }
++ 
++   int odd = len % 2;
++   if ( !odd )
++   {
++     /*wf = real(wf).*exp(-j*pi*f);*/ 
++     { 
++       wf = wfR * euler( static_cast<scalar_f>(-1 * M_PI) * f );
++     }
++ 
++     /* wf(n2+1:len) = -wf(n2+1:len); */
++     { 
++       for ( index_type i = len / 2; i < len; ++i )
++         wf.put( i, -wf.get(i) );
++     }
++   }
++ 
++   /* wt = fft(wf); */
++   { 
++     typedef scalar_f val_type;
++     typedef Fft<const_Vector, std::complex<val_type>, std::complex<val_type>, 
++       fft_fwd, by_value, 1, alg_noise> f_fft_type;
++ 
++     f_fft_type f_fft( Domain<1>(len), 1.0 / len );
++     wf = f_fft( wf );
++     
++     std::complex<scalar_f> scale = wf.get(0);
++     scale /= magsq(scale);
++     wf = scale * wf;
++   }
++   
++   Vector<scalar_f> ret(wfR);
++   impl::frequency_swap( ret );
++ 
++   return ret;
++ }
++ 
++ 
++         
++ 
++ 
++ /// Creates Hanning window.
++ /// Requires: len > 1.
++ /// Returns: A const_Vector initialized with Hanning window weights
++ /// and having length len. 
++ /// Throws: std::bad_alloc upon memory allocation error.
++ const_Vector<scalar_f>
++ hanning(length_type len) VSIP_THROW((std::bad_alloc))
++ {
++   assert( len > 1 );
++ 
++   Vector<scalar_f> v(len);
++ 
++   scalar_f temp = 2 * M_PI / (len + 1);
++ 
++   for ( unsigned int n = 0; n < len; ++n )
++     v.put( n, 0.5 * (1 - static_cast<scalar_f>(cos(temp * (n + 1)))) );
++ 
++   return v;
++ }
++ 
++ 
++ 
++ /// Creates Kaiser window.
++ /// Requires: len > 1.
++ /// Returns: A const_Vector initialized with Kaiser window weights 
++ /// with transition width parameter beta and having length len.
++ /// Throws: std::bad_alloc upon memory allocation error.
++ const_Vector<scalar_f>
++ kaiser( length_type len, scalar_f beta ) VSIP_THROW((std::bad_alloc))
++ {
++   assert( len > 1 );
++ 
++   scalar_f Ibeta;
++   scalar_f x = beta;
++   scalar_f c1 = 2.0 / (len -1 );
++ 
++   Ibeta = impl::bessel_I_0(x);
++  
++   Vector<scalar_f> v(len);
++   for ( length_type n = 0; n < len; ++n )
++   {
++     scalar_f c3 = c1 * n - 1;
++     if ( c3 > 1.0 )
++       c3 = 1.0;
++     x = beta * static_cast<scalar_f>( sqrt(1 - (c3 * c3)) );
++     v.put( n, impl::bessel_I_0(x) / Ibeta );
++   }
++ 
++   return v;
++ }
++ 
++ } // namespace vsip
++ 
+Index: src/vsip/signal.hpp
+===================================================================
+RCS file: /home/cvs/Repository/vpp/src/vsip/signal.hpp,v
+retrieving revision 1.8
+diff -c -p -r1.8 signal.hpp
+*** src/vsip/signal.hpp	7 Sep 2005 12:19:30 -0000	1.8
+--- src/vsip/signal.hpp	20 Sep 2005 05:26:48 -0000
+***************
+*** 17,23 ****
+  #include <vsip/impl/signal-types.hpp>
+  #include <vsip/impl/signal-conv.hpp>
+  #include <vsip/impl/signal-fft.hpp>
+! 
+  
+  
+  #endif // VSIP_SIGNAL_HPP
+--- 17,23 ----
+  #include <vsip/impl/signal-types.hpp>
+  #include <vsip/impl/signal-conv.hpp>
+  #include <vsip/impl/signal-fft.hpp>
+! #include <vsip/impl/signal-window.hpp>
+  
+  
+  #endif // VSIP_SIGNAL_HPP
+Index: src/vsip/impl/signal-window.hpp
+===================================================================
+RCS file: src/vsip/impl/signal-window.hpp
+diff -N src/vsip/impl/signal-window.hpp
+*** /dev/null	1 Jan 1970 00:00:00 -0000
+--- src/vsip/impl/signal-window.hpp	20 Sep 2005 05:26:48 -0000
+***************
+*** 0 ****
+--- 1,148 ----
++ /* Copyright (c) 2005 by CodeSourcery, LLC.  All rights reserved. */
++ 
++ /** @file    vsip/impl/signal-window.hpp
++     @author  Don McCoy
++     @date    2005-09-15
++     @brief   VSIPL++ Library: Window functions [signal.windows]
++ */
++ 
++ #ifndef VSIP_IMPL_SIGNAL_WINDOW_HPP
++ #define VSIP_IMPL_SIGNAL_WINDOW_HPP
++ 
++ /***********************************************************************
++   Included Files
++ ***********************************************************************/
++ 
++ #include <vsip/support.hpp>
++ #include <vsip/vector.hpp>
++ #include <vsip/math.hpp>
++ 
++ /***********************************************************************
++   Declarations
++ ***********************************************************************/
++ 
++ namespace vsip
++ {
++ 
++ // Generates Blackman window
++ const_Vector<scalar_f>
++ blackman(length_type len) VSIP_THROW((std::bad_alloc));
++ 
++ // Generates Chebyshev window
++ const_Vector<scalar_f>
++ cheby(length_type len, scalar_f ripple) VSIP_THROW((std::bad_alloc));
++ 
++ // Generates Hanning window
++ const_Vector<scalar_f>
++ hanning(length_type len) VSIP_THROW((std::bad_alloc));
++ 
++ // Generates Kaiser window
++ const_Vector<scalar_f>
++ kaiser( length_type len, scalar_f beta ) VSIP_THROW((std::bad_alloc));
++ 
++ 
++ namespace impl
++ {
++ 
++ template <typename T>
++ void 
++ acosh( Vector<T>& x, Vector<std::complex<T> >& r)
++ {
++   r = sq(x) - 1.0;
++   r = log( x + sqrt(r) );
++ }
++ 
++ 
++ template <typename T>
++ void 
++ frequency_swap( Vector<T>& a )
++ {
++   length_type n = a.size();
++   length_type n2 = n / 2;
++   if ( a.size() % 2 ) 
++   {
++     T tmp = a.get(n2);      // save middle value
++     a.put( n2, a.get(0) );
++ 
++     index_type i = 0;
++     index_type j = n2 + 1;
++     n = n2 - 1;
++     while ( n-- > 0 )       // swap other values
++     {
++       a.put( i++, a.get(j) );
++       a.put( j++, a.get(i) );
++     }
++     a.put( i, a.get(j) );  
++     a.put( j, tmp );        // place middle value at end
++   }
++   else 
++   {
++     index_type i = 0;
++     index_type j = n2;
++     n = n2;
++     while ( n-- > 0 )       // swap pairs of values
++     {
++       T tmp = a.get(j);
++       a.put( j, a.get(i) );
++       a.put( i, tmp );
++       i++;
++       j++;
++     }
++   }
++ }
++ 
++ 
++ template <typename T>
++ T
++ bessel_I_0( T x )
++ {
++   // If -3 <= x < 3, then use polynomial approximation to compute
++   // the I_0(x) (modified bessel function of the first kind).
++   //
++   // This approximation is accurate to withing 1.6 * 10^-7  
++   // [See Abramowitz and Stegun p378, S9.8.1 -- note that
++   //  t = beta * 3 / 3.75, which accounts for the difference
++   //  in the way the constants appear.]
++   //
++   // Otherwise, use iterative method.
++   //
++   const T a1 = 2.2499997;
++   const T a2 = 1.2656208;
++   const T a3 = 0.3163866;
++   const T a4 = 0.0444479;
++   const T a5 = 0.0039444;
++   const T a6 = 0.0002100;
++   T ans;
++ 
++   if ( static_cast<T>( fabs(x) ) <= 3.0 )
++   {
++     x /= 3.0;   
++     x *= x; 
++     ans = 1 + x * (a1 + x * (a2 + x * (a3 + x * (a4 + x * (a5 + x * a6)))));
++   }
++   else
++   {
++     T x1 = x * x * .25;
++     T x0 = x1;
++     T n0 = 1;
++     T diff = 1;
++     ans = 1 + x1;
++     
++     length_type n = 1;
++     while ( diff > .00000001 )
++     {
++       n++;
++       n0 *= static_cast<T>(n);
++       x1 *= x0;
++       diff = x1 / (n0 * n0);
++       ans += diff;
++     }
++   }
++   return ans;
++ }
++ 
++ } // namespace impl
++ 
++ } // namespace vsip
++ 
++ #endif // VSIP_IMPL_SIGNAL_WINDOW_HPP
+Index: tests/window.cpp
+===================================================================
+RCS file: tests/window.cpp
+diff -N tests/window.cpp
+*** /dev/null	1 Jan 1970 00:00:00 -0000
+--- tests/window.cpp	20 Sep 2005 05:26:48 -0000
+***************
+*** 0 ****
+--- 1,146 ----
++ /* Copyright (c) 2005 by CodeSourcery, LLC.  All rights reserved. */
++ 
++ /** @file    tests/window.cpp
++     @author  Don McCoy
++     @date    2005-09-15
++     @brief   VSIPL++ Library: Window unit tests [signal.windows]
++ */
++ 
++ /***********************************************************************
++   Included Files
++ ***********************************************************************/
++ 
++ #include <iomanip>
++ #include <vsip/initfin.hpp>
++ #include <vsip/support.hpp>
++ #include <vsip/signal.hpp>
++ #include <vsip/vector.hpp>
++ #include "test.hpp"
++ 
++ using namespace vsip;
++ 
++ /***********************************************************************
++   Definitions
++ ***********************************************************************/
++ 
++ // The following test vectors were generated with C-VSIPL
++ // with the parameters as shown
++ 
++ // blackman N = 24
++ const scalar_f testvec_blackman[] = 
++ {
++  -0.00000000,  0.00689491,  0.02959550,  0.07326404,
++   0.14383306,  0.24489509,  0.37486633,  0.52538290,
++   0.68154979,  0.82413213,  0.93320990,  0.99237636,
++   0.99237636,  0.93320990,  0.82413213,  0.68154979,
++   0.52538290,  0.37486633,  0.24489509,  0.14383306,
++   0.07326404,  0.02959550,  0.00689491,  -0.00000000
++ };
++ 
++ // chebyshev N = 24, ripple = 60.0
++ const scalar_f testvec_cheby[] =
++ {
++   0.01936452,  0.04531865,  0.09143121,  0.15967714,
++   0.25135020,  0.36450197,  0.49349094,  0.62918443,
++   0.75986841,  0.87276374,  0.95590014,  1.00000000,
++   1.00000000,  0.95590014,  0.87276374,  0.75986841,
++   0.62918443,  0.49349094,  0.36450197,  0.25135020,
++   0.15967714,  0.09143121,  0.04531865,  0.01936452
++ };
++ 
++ // chebyshev N = 33, ripple = 60.0
++ const scalar_f testvec_cheby_odd[] =
++ {
++   0.01891763,  0.03291801,  0.05887285,
++   0.09530187,  0.14344737,  0.20388673,
++   0.27633980,  0.35953825,  0.45118023,
++   0.54798575,  0.64585693,  0.74013547,
++   0.82593681,  0.89853081,  0.95373111,
++   0.98825275,  1.00000000,  0.98825275,
++   0.95373111,  0.89853081,  0.82593681,
++   0.74013547,  0.64585693,  0.54798575,
++   0.45118023,  0.35953825,  0.27633980,
++   0.20388673,  0.14344737,  0.09530187,
++   0.05887285,  0.03291801,  0.01891763
++ };
++ 
++ // hanning N = 24
++ const scalar_f testvec_hanning[] =
++ {
++   0.01570842,  0.06184666,  0.13551569,  0.23208660,
++   0.34549150,  0.46860474,  0.59369066,  0.71288965,
++   0.81871199,  0.90450850,  0.96488824,  0.99605735,
++   0.99605735,  0.96488824,  0.90450850,  0.81871199,
++   0.71288965,  0.59369066,  0.46860474,  0.34549150,
++   0.23208660,  0.13551569,  0.06184666,  0.01570842
++ };
++ 
++ // kaiser N = 24, beta = 3.5
++ const scalar_f testvec_kaiser[] =
++ {
++   0.13553435,  0.21389064,  0.30308711,  0.40028181,
++   0.50195216,  0.60407554,  0.70238150,  0.79249126,
++   0.87030892,  0.93219106,  0.97518679,  0.99722036,
++   0.99722036,  0.97518679,  0.93219106,  0.87030892,
++   0.79249126,  0.70238150,  0.60407554,  0.50195216,
++   0.40028181,  0.30308711,  0.21389064,  0.13553435
++ };
++ 
++ 
++ int
++ main ()
++ {
++   vsipl init;
++ 
++ 
++   // Blackman
++   {
++     const length_type N = 24;
++     const_Vector<scalar_f> v = blackman(N);
++ 
++     for ( unsigned int n = 0; n < N; ++n )
++       assert( equal( v.get(n), testvec_blackman[n] ) );
++   }
++ 
++   // Chebyshev
++   {
++     const length_type N = 24;
++     const scalar_f ripple = 60.0;
++     const_Vector<scalar_f> v = cheby(N, ripple);
++ 
++     for ( unsigned int n = 0; n < N; ++n )
++       assert( equal( v.get(n), testvec_cheby[n] ) );
++   }
++ 
++ 
++   // Chebyshev odd
++   {
++     const length_type N = 33;
++     const scalar_f ripple = 60.0;
++     const_Vector<scalar_f> v = cheby(N, ripple);
++ 
++     for ( unsigned int n = 0; n < N; ++n )
++       assert( equal( v.get(n), testvec_cheby_odd[n] ) );
++   }
++ 
++   // Hanning
++   {
++     const length_type N = 24;
++     const_Vector<scalar_f> v = hanning(N);
++ 
++     for ( unsigned int n = 0; n < N; ++n )
++       assert( equal( v.get(n), testvec_hanning[n] ) );
++   }
++ 
++   // Kaiser
++   {
++     const length_type N = 24;
++     const scalar_f beta = 3.5;
++     const_Vector<scalar_f> v = kaiser(N, beta);
++ 
++     for ( unsigned int n = 0; n < N; ++n )
++       assert( equal( v.get(n), testvec_kaiser[n] ) );
++   }
++ 
++   return EXIT_SUCCESS;
++ }

@@ -1,0 +1,178 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [vsipl++] [patch] FIR Filter bank benchmark
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20%5Bpatch%5D%20FIR%20Filter%20bank%20benchmark&In-Reply-To=%3C44303BA9.3010109%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   
+   <LINK REL="Next"  HREF="000349.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[vsipl++] [patch] FIR Filter bank benchmark</H1>
+    <B>Don McCoy</B> 
+    <A HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20%5Bpatch%5D%20FIR%20Filter%20bank%20benchmark&In-Reply-To=%3C44303BA9.3010109%40codesourcery.com%3E"
+       TITLE="[vsipl++] [patch] FIR Filter bank benchmark">don at codesourcery.com
+       </A><BR>
+    <I>Sun Apr  2 21:01:29 UTC 2006</I>
+    <P><UL>
+        
+        <LI>Next message: <A HREF="000349.html">[vsipl++] [patch] FIR Filter bank benchmark
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#348">[ date ]</a>
+              <a href="thread.html#348">[ thread ]</a>
+              <a href="subject.html#348">[ subject ]</a>
+              <a href="author.html#348">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Jules Bergmann wrote:
+&gt;<i> Don McCoy wrote:
+</I>&gt;<i> 
+</I>&gt;<i> This patch looks good.  The only real change I have is you should put 
+</I>&gt;<i> the output into a global matrix (see below).  Let me know if that makes 
+</I>&gt;<i> sense.  Once that is changed, please check it in.
+</I>&gt;<i> 
+</I>...
+&gt;<i> 
+</I>&gt;<i> Instead of declaring 'test' to be a local matrix, can you instead 
+</I>&gt;<i> declare a global results matrix, use the local view of that matrix here, 
+</I>&gt;<i> and then check the local portion below?
+</I>&gt;<i> 
+</I>
+
+It seemed easiest to pass around yet another matrix and keep all the 
+declarations in one place.  That satisfies the above, but I'm not sure 
+that is what you meant.
+
+The code makes a bit more sense now I think.  The calculation now uses 
+'outputs' and they are compared against 'expected'.  It may be a bit 
+confusing where it reads data in from file in that it refers to those 
+files as outputs, but then puts the data into 'expected'.  It's not too 
+bad as is I hope.
+
+
+&gt;<i> Nice diffs (for the following files)!  You did this manually right?  I 
+</I>&gt;<i> didn't think CVS handled renaming of files.  Thanks!
+</I>&gt;<i> 
+</I>Yes, it made it easier to compare them.
+
+
+ &gt;&gt; Similarly with fast convolution, a temporary is used.  I.e.:
+ &gt;&gt;
+ &gt;&gt;     for (index_type l=0; l&lt;loop; ++l)
+ &gt;&gt;     {
+ &gt;&gt;       // Perform FIR convolutions
+ &gt;&gt;       for ( length_type i = 0; i &lt; local_M; ++i )
+ &gt;&gt;       {
+ &gt;&gt;         Vector&lt;T&gt; tmp(N, T());
+ &gt;&gt;         fwd_fft(l_inputs.row(i), tmp);
+ &gt;&gt;         tmp *= response.row(0);    // assume fft already done on 
+response
+ &gt;&gt;         inv_fft(tmp, test.row(i));
+ &gt;&gt;       }
+ &gt;&gt;     }
+ &gt;
+ &gt;
+ &gt; It should be OK to move the declaration of tmp entirely outside the
+ &gt; loop.  If fwd_fft's size is N, it will completely overwrite the values
+ &gt; in 'tmp'
+ &gt;
+
+I agree.  Done.  Thanks.
+
+ &gt;&gt;
+ &gt;&gt; Moving the declaration and initialization of 'tmp' outside the loop
+ &gt;&gt; has the same effect as with 'state_save' because the contents of tmp
+ &gt;&gt; are not zeroed between rows.  With it inside the loop (as it should
+ &gt;&gt; be), performance does not appear to be affected noticeably, though it
+ &gt;&gt; should have a slight impact.
+
+I believe I had myself confused over what turned out to be problems with 
+comparing near-zero floating-point numbers.  Disregard the above please.
+
+On that note, however, I found that I can construct data sets that will 
+  fail the data comparison.  I.e. when the output data set contains 
+zeroes and the fast convolution algorithm is used, the 'view_equal' 
+check will fail.  The reason for this is the method we use for comparing 
+values looks at the relative error of say a and b, as (a-b)/a.  This 
+works well for most small values, but evaluates to 1 when b == 0 (the 
+relative error check returns false for anything over 1e-4).
+
+The example set that cause this error results from leaving the imaginary 
+portion of the inputs set to zero and setting the filter coefficients to 
+all ones.  Doing this results in outputs where the imaginary portion is 
+exactly zero, but the fast conv algorithm will produce numbers on the 
+order of 1e-6, which are only a few bits off of zero (for floats) but 
+will fail the current comparison check.
+
+In any case, this is a separate topic and I don't think it affects 
+whether or not we check this in at this time.  Sound ok?
+
+
+One other item is worth bringing up though.  There was an error in the 
+previous patch for the not-from-file case where the output (now 
+'expected') vectors were not seeded with the correct answers.  I believe 
+I let this one in by failing to compile and test in debug mode.  Given 
+that assert() does nothing in optimized builds, the data checks will not 
+be run the way the benchmark will normally be configured.
+
+Perhaps it would be nice to insert something that printed a nice warning 
+if the call to view_equal() fails, then passes the result to assert() 
+which will halt execution in the debug case (handy) but allow it to 
+continue in the optimized case (ok since warning printed?).  Better 
+warnings could be printed from within the view_equal() function, e.g. 
+ones that show the location of the error and the values that failed 
+comparison.
+
+In addition, perhaps we always want to check the data.  It is done 
+outside the timing loop, so doesn't affect results, but it does slow the 
+overall execution time.  Suggestions?
+
+
+Ok to check in with these changes?
+
+
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: fb2.changes
+URL: &lt;<A HREF="http://sourcerytools.com/pipermail/vsipl++/attachments/20060402/37c3690c/attachment.ksh">http://sourcerytools.com/pipermail/vsipl++/attachments/20060402/37c3690c/attachment.ksh</A>&gt;
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: fb2.diff
+URL: &lt;<A HREF="http://sourcerytools.com/pipermail/vsipl++/attachments/20060402/37c3690c/attachment-0001.ksh">http://sourcerytools.com/pipermail/vsipl++/attachments/20060402/37c3690c/attachment-0001.ksh</A>&gt;
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	
+	<LI>Next message: <A HREF="000349.html">[vsipl++] [patch] FIR Filter bank benchmark
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#348">[ date ]</a>
+              <a href="thread.html#348">[ thread ]</a>
+              <a href="subject.html#348">[ subject ]</a>
+              <a href="author.html#348">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">More information about the vsipl++
+mailing list</a><br>
+</body></html>

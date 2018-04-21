@@ -1,0 +1,1854 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> PATCH: Add &quot;run -f batch&quot;
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:qmtest%40codesourcery.com?Subject=Re%3A%20PATCH%3A%20Add%20%22run%20-f%20batch%22&In-Reply-To=%3C200305130715.h4D7FDW0004300%40minax.codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000322.html">
+   
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>PATCH: Add &quot;run -f batch&quot;</H1>
+    <B>Mark Mitchell</B> 
+    <A HREF="mailto:qmtest%40codesourcery.com?Subject=Re%3A%20PATCH%3A%20Add%20%22run%20-f%20batch%22&In-Reply-To=%3C200305130715.h4D7FDW0004300%40minax.codesourcery.com%3E"
+       TITLE="PATCH: Add &quot;run -f batch&quot;">mark at codesourcery.com
+       </A><BR>
+    <I>Tue May 13 07:15:13 UTC 2003</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000322.html">PATCH: Misc cleanups
+</A></li>
+        
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#323">[ date ]</a>
+              <a href="thread.html#323">[ thread ]</a>
+              <a href="subject.html#323">[ subject ]</a>
+              <a href="author.html#323">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>
+This patch removes some duplicate code and adds a &quot;batch&quot; format to
+QMTest's textual output format.
+
+--
+Mark Mitchell
+CodeSourcery, LLC
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">mark at codesourcery.com</A>
+
+2003-05-13  Mark Mitchell  &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">mark at codesourcery.com</A>&gt;
+
+	* qm/test/cmdline.py: Import result_stream.
+	(QMTest.summary_formats): Add &quot;batch&quot;.
+	(QMTest.__init__): Set __expected_outcomes to None.
+	(QMTest.__ExecuteSummarize): Simplify.
+	(QMTest.__ExecuteRun): Likewise.
+	(QMTest.__ExecuteGUI): Likewise.
+	(QMTest.__FilterTestsToRun): Remove expectations parameter; use
+	__GetExpectedOutcomes.
+	(QMTest.__GetExpectedOutcomes): Cache results.
+	(QMTest.__GetResultStreams): Create the TextResultStream here.
+	* qm/test/execution_engine.py (ExecutionEngine.__init__): Add
+	expectations parameter.
+	(ExecutionEngine.Run): Return a value.
+	(ExecutionEngine._AddResult): Set any_unexpected_outcomes if
+	appropriate.
+	* qm/test/execution_thread.py (ExecutionThread.__init__): Add
+	expectations parameter.
+	* qm/test/result_stream.py (ResultStream.arguments): New
+	variable.
+	* qm/test/text_result_stream.py (TextResultStream): Inherit from
+	FileResultStream.
+	(TextResultStream.__init__): Remove parameters.
+	* qm/test/web/web.py (QMTestServer.HandleRunTests): Update
+	creation of ExecutionThread.
+	* qm/test/doc/reference.xml: Document &quot;batch&quot; output format.
+	* qm/test/doc/tour.xml: Update sample output.
+
+Index: qm/test/cmdline.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/cmdline.py,v
+retrieving revision 1.84
+diff -c -5 -p -r1.84 cmdline.py
+*** qm/test/cmdline.py	9 May 2003 22:17:44 -0000	1.84
+--- qm/test/cmdline.py	13 May 2003 06:58:12 -0000
+*************** import qm
+*** 25,34 ****
+--- 25,35 ----
+  import qm.attachment
+  import qm.cmdline
+  import qm.platform
+  from   qm.test.context import *
+  from   qm.test.execution_engine import *
++ from   qm.test.result_stream import ResultStream
+  from   qm.test.text_result_stream import *
+  from   qm.trace import *
+  import qm.test.web.web
+  import qm.xmlutil
+  import Queue
+*************** class QMTest:
+*** 94,104 ****
+      &quot;&quot;&quot;A string listing the available extension kinds.&quot;&quot;&quot;
+  
+      db_path_environment_variable = &quot;QMTEST_DB_PATH&quot;
+      &quot;&quot;&quot;The environment variable specifying the test database path.&quot;&quot;&quot;
+  
+!     summary_formats = (&quot;full&quot;, &quot;brief&quot;, &quot;stats&quot;, &quot;none&quot;)
+      &quot;&quot;&quot;Valid formats for result summaries.&quot;&quot;&quot;
+  
+      context_file_name = &quot;context&quot;
+      &quot;&quot;&quot;The default name of a context file.&quot;&quot;&quot;
+      
+--- 95,105 ----
+      &quot;&quot;&quot;A string listing the available extension kinds.&quot;&quot;&quot;
+  
+      db_path_environment_variable = &quot;QMTEST_DB_PATH&quot;
+      &quot;&quot;&quot;The environment variable specifying the test database path.&quot;&quot;&quot;
+  
+!     summary_formats = (&quot;full&quot;, &quot;brief&quot;, &quot;stats&quot;, &quot;batch&quot;, &quot;none&quot;)
+      &quot;&quot;&quot;Valid formats for result summaries.&quot;&quot;&quot;
+  
+      context_file_name = &quot;context&quot;
+      &quot;&quot;&quot;The default name of a context file.&quot;&quot;&quot;
+      
+*************** Valid formats are &quot;full&quot;, &quot;brief&quot; (the d
+*** 552,561 ****
+--- 553,564 ----
+          # verison.
+          self.__file_result_stream_class_name \
+              = &quot;pickle_result_stream.PickleResultStream&quot;
+          # We haven't loaded the actual class yet.
+          self.__file_result_stream_class = None
++         # The expected outcomes have not yet been loaded.
++         self.__expected_outcomes = None
+  
+  
+      def HasGlobalOption(self, option):
+          &quot;&quot;&quot;Return true if 'option' was specified as a global command.
+  
+*************** Valid formats are &quot;full&quot;, &quot;brief&quot; (the d
+*** 1176,1196 ****
+  
+          
+      def __ExecuteSummarize(self):
+          &quot;&quot;&quot;Read in test run results and summarize.&quot;&quot;&quot;
+  
+-         # Look up the specified format.
+-         format = self.GetCommandOption(&quot;format&quot;, &quot;brief&quot;)
+-         if format not in self.summary_formats:
+-             # Invalid format.  Complain.
+-             valid_format_string = string.join(
+-                 map(lambda f: '&quot;%s&quot;' % f, self.summary_formats), &quot;, &quot;)
+-             raise qm.cmdline.CommandError, \
+-                   qm.error(&quot;invalid results format&quot;,
+-                            format=format,
+-                            valid_formats=valid_format_string)
+- 
+          # If no results file is specified, use a default value.
+          if len(self.__arguments) == 0:
+              results_path = &quot;results.qmr&quot;
+          else:
+              results_path = self.__arguments[0]
+--- 1179,1188 ----
+*************** Valid formats are &quot;full&quot;, &quot;brief&quot; (the d
+*** 1205,1217 ****
+              raise QMException, \
+                    qm.error(&quot;invalid results file&quot;,
+                             path=results_path,
+                             problem=str(exception))
+  
+-         # Get the expected outcomes.
+-         outcomes = self.__GetExpectedOutcomes()
+-             
+          # The remaining arguments, if any, are test and suite IDs.
+          id_arguments = self.__arguments[1:]
+          # Are there any?
+          if len(id_arguments) &gt; 0:
+              # Expand arguments into test IDs.
+--- 1197,1206 ----
+*************** Valid formats are &quot;full&quot;, &quot;brief&quot; (the d
+*** 1237,1255 ****
+  
+          any_unexpected_outcomes = 0
+  
+          # Compute the list of result streams to which output should be
+          # written.
+!         streams = []
+!         # Add the streams explicitly specified by the user.
+!         streams.extend(self.__GetResultStreams())
+!         # Add the text output stream.
+!         if format != &quot;none&quot;:
+!             stream = TextResultStream(self._stdout, format, outcomes,
+!                                       self.GetDatabase(), suite_ids)
+!             streams.append(stream)
+          
+          # Simulate the events that would have occurred during an
+          # actual test run.
+          for r in test_results:
+              for s in streams:
+                  s.WriteResult(r)
+--- 1226,1239 ----
+  
+          any_unexpected_outcomes = 0
+  
+          # Compute the list of result streams to which output should be
+          # written.
+!         streams = self.__GetResultStreams(suite_ids)
+          
++         # Get the expected outcomes.
++         outcomes = self.__GetExpectedOutcomes()
+          # Simulate the events that would have occurred during an
+          # actual test run.
+          for r in test_results:
+              for s in streams:
+                  s.WriteResult(r)
+*************** Valid formats are &quot;full&quot;, &quot;brief&quot; (the d
+*** 1322,1345 ****
+      def __ExecuteRun(self):
+          &quot;&quot;&quot;Execute a 'run' command.&quot;&quot;&quot;
+          
+          database = self.GetDatabase()
+  
+-         # Look up the summary format.
+-         format = self.GetCommandOption(&quot;format&quot;, &quot;brief&quot;)
+-         if format not in self.summary_formats:
+-             # Invalid format.  Complain.
+-             valid_format_string = string.join(
+-                 map(lambda f: '&quot;%s&quot;' % f, self.summary_formats), &quot;, &quot;)
+-             raise qm.cmdline.CommandError, \
+-                   qm.error(&quot;invalid results format&quot;,
+-                            format=format,
+-                            valid_formats=valid_format_string)
+- 
+-         # Get the expected outcomes.
+-         expectations = self.__GetExpectedOutcomes()
+- 
+          # Handle the 'seed' option.  First create the random number
+          # generator we will use.
+          seed = self.GetCommandOption(&quot;seed&quot;)
+          if seed:
+              # A seed was specified.  It should be an integer.
+--- 1306,1315 ----
+*************** Valid formats are &quot;full&quot;, &quot;brief&quot; (the d
+*** 1367,1425 ****
+              raise qm.cmdline.CommandError, \
+                    qm.error(&quot;no such ID&quot;, id=str(exception))
+  
+          # Filter the set of tests to be run, eliminating any that should
+          # be skipped.
+!         test_ids = self.__FilterTestsToRun(test_ids, expectations)
+          
+          # Figure out which targets to use.
+          targets = self.GetTargets()
+          # Compute the context in which the tests will be run.
+          context = self.MakeContext()
+  
+-         class UnexpectedOutcomesStream(ResultStream):
+-             &quot;&quot;&quot;An 'UnexpectedOutcomesStream' notices unexpected results.
+- 
+-             An 'UnexpectedOutcomesStream' sets a flag if any unexpected
+-             results occur.&quot;&quot;&quot;
+-             
+-             def __init__(self, expected_outcomes):
+-                 &quot;&quot;&quot;Construct an 'UnexpectedOutcomesStream'.
+- 
+-                 'expected_outcomes' -- A map from test IDs to expected
+-                 outcomes.&quot;&quot;&quot;
+- 
+-                 ResultStream.__init__(self, {})
+- 
+-                 self.__expected_outcomes = expected_outcomes
+-                 self.__any_unexpected_outcomes = 0
+-                 
+- 
+-             def WriteResult(self, result):
+- 
+-                 if (result.GetKind() == result.TEST
+-                     and (result.GetOutcome()
+-                          != self.__expected_outcomes.get(result.GetId(),
+-                                                          Result.PASS))):
+-                     self.__any_unexpected_outcomes = 1
+- 
+- 
+-             def AnyUnexpectedOutcomes(self):
+-                 &quot;&quot;&quot;Returns true if any unexpected outcomes have occurred.
+- 
+-                 returns -- True if any unexpected outcomes have
+-                 occurred.&quot;&quot;&quot;
+- 
+-                 return self.__any_unexpected_outcomes
+-                 
+          # Create ResultStreams for textual output and for generating
+          # a results file.
+          result_streams = []
+-         if format != &quot;none&quot;:
+-             stream = TextResultStream(self._stdout, format, expectations,
+-                                       database, test_suites)
+-             result_streams.append(stream)
+  
+          # Handle the --output option.
+          if self.HasCommandOption(&quot;no-output&quot;):
+              # User specified no output.
+              result_file_name = None
+--- 1337,1356 ----
+              raise qm.cmdline.CommandError, \
+                    qm.error(&quot;no such ID&quot;, id=str(exception))
+  
+          # Filter the set of tests to be run, eliminating any that should
+          # be skipped.
+!         test_ids = self.__FilterTestsToRun(test_ids)
+          
+          # Figure out which targets to use.
+          targets = self.GetTargets()
+          # Compute the context in which the tests will be run.
+          context = self.MakeContext()
+  
+          # Create ResultStreams for textual output and for generating
+          # a results file.
+          result_streams = []
+  
+          # Handle the --output option.
+          if self.HasCommandOption(&quot;no-output&quot;):
+              # User specified no output.
+              result_file_name = None
+*************** Valid formats are &quot;full&quot;, &quot;brief&quot; (the d
+*** 1433,1460 ****
+              rs = (self.GetFileResultStreamClass()
+                    ({ &quot;filename&quot; : result_file_name}))
+              result_streams.append(rs)
+  
+          # Handle the --result-stream options.
+!         result_streams.extend(self.__GetResultStreams())
+!         
+!         # Keep track of whether or not any unexpected outcomes have
+!         # occurred.
+!         unexpected_outcomes_stream = UnexpectedOutcomesStream(expectations)
+!         result_streams.append(unexpected_outcomes_stream)
+          
+          if self.HasCommandOption(&quot;random&quot;):
+              # Randomize the order of the tests.
+              random.shuffle(test_ids)
+          else:
+              test_ids.sort()
+  
+          # Run the tests.
+          engine = ExecutionEngine(database, test_ids, context, targets,
+!                                  result_streams)
+!         engine.Run()
+!         return unexpected_outcomes_stream.AnyUnexpectedOutcomes()
+                                                      
+  
+      def __ExecuteServer(self):
+          &quot;&quot;&quot;Process the server command.&quot;&quot;&quot;
+  
+--- 1364,1386 ----
+              rs = (self.GetFileResultStreamClass()
+                    ({ &quot;filename&quot; : result_file_name}))
+              result_streams.append(rs)
+  
+          # Handle the --result-stream options.
+!         result_streams.extend(self.__GetResultStreams(test_suites))
+          
+          if self.HasCommandOption(&quot;random&quot;):
+              # Randomize the order of the tests.
+              random.shuffle(test_ids)
+          else:
+              test_ids.sort()
+  
+          # Run the tests.
+          engine = ExecutionEngine(database, test_ids, context, targets,
+!                                  result_streams,
+!                                  self.__GetExpectedOutcomes())
+!         return engine.Run()
+                                                      
+  
+      def __ExecuteServer(self):
+          &quot;&quot;&quot;Process the server command.&quot;&quot;&quot;
+  
+*************** Valid formats are &quot;full&quot;, &quot;brief&quot; (the d
+*** 1504,1520 ****
+          # Figure out which targets to use.
+          targets = self.GetTargets()
+          # Compute the context in which the tests will be run.
+          context = self.MakeContext()
+  
+-         # Get the expected outcomes.
+-         expectations = self.__GetExpectedOutcomes()
+-         
+          # Set up the server.
+          server = qm.test.web.web.QMTestServer(database, port_number, address,
+                                                log_file, targets, context,
+!                                               expectations)
+          port_number = server.GetServerAddress()[1]
+          
+          # Construct the URL to the main page on the server.
+          if address == &quot;&quot;:
+              url_address = qm.platform.get_host_name()
+--- 1430,1443 ----
+          # Figure out which targets to use.
+          targets = self.GetTargets()
+          # Compute the context in which the tests will be run.
+          context = self.MakeContext()
+  
+          # Set up the server.
+          server = qm.test.web.web.QMTestServer(database, port_number, address,
+                                                log_file, targets, context,
+!                                               self.__GetExpectedOutcomes())
+          port_number = server.GetServerAddress()[1]
+          
+          # Construct the URL to the main page on the server.
+          if address == &quot;&quot;:
+              url_address = qm.platform.get_host_name()
+*************** Valid formats are &quot;full&quot;, &quot;brief&quot; (the d
+*** 1579,1606 ****
+          returns -- A map from test names to outcomes corresponding to
+          the expected outcome files provided on the command line.  If no
+          expected outcome files are provided, an empty map is
+          returned.&quot;&quot;&quot;
+  
+!         outcomes_file_name = self.GetCommandOption(&quot;outcomes&quot;)
+!         if not outcomes_file_name:
+!             return {}
+  
+!         try:
+!             return base.load_outcomes(open(outcomes_file_name, &quot;rb&quot;))
+!         except IOError, e:
+!             raise qm.cmdline.CommandError, str(e)
+          
+          
+!     def __FilterTestsToRun(self, test_names, expectations):
+          &quot;&quot;&quot;Return those tests from 'test_names' that should be run.
+  
+          'test_names' -- A sequence of test names.
+  
+-         'expectations' -- A map from test names to expected outcomes, or
+-         'None' if there are no expected outcomes.
+-         
+          returns -- Those elements of 'test_names' that are not to be
+          skipped.  If 'a' precedes 'b' in 'test_names', and both 'a' and
+          'b' are present in the result, 'a' will precede 'b' in the
+          result.&quot;&quot;&quot;
+  
+--- 1502,1530 ----
+          returns -- A map from test names to outcomes corresponding to
+          the expected outcome files provided on the command line.  If no
+          expected outcome files are provided, an empty map is
+          returned.&quot;&quot;&quot;
+  
+!         if self.__expected_outcomes is None:
+!             outcomes_file_name = self.GetCommandOption(&quot;outcomes&quot;)
+!             if not outcomes_file_name:
+!                 self.__expected_outcomes = {}
+!             else:
+!                 try:
+!                     self.__expected_outcomes \
+!                          = base.load_outcomes(open(outcomes_file_name, &quot;rb&quot;))
+!                 except IOError, e:
+!                     raise qm.cmdline.CommandError, str(e)
+  
+!         return self.__expected_outcomes
+          
+          
+!     def __FilterTestsToRun(self, test_names):
+          &quot;&quot;&quot;Return those tests from 'test_names' that should be run.
+  
+          'test_names' -- A sequence of test names.
+  
+          returns -- Those elements of 'test_names' that are not to be
+          skipped.  If 'a' precedes 'b' in 'test_names', and both 'a' and
+          'b' are present in the result, 'a' will precede 'b' in the
+          result.&quot;&quot;&quot;
+  
+*************** Valid formats are &quot;full&quot;, &quot;brief&quot; (the d
+*** 1608,1617 ****
+--- 1532,1542 ----
+          # be rerun.
+          rerun_file_name = self.GetCommandOption(&quot;rerun&quot;)
+          if rerun_file_name:
+              # Load the outcomes from the file specified.
+              outcomes = base.load_outcomes(open(rerun_file_name, &quot;rb&quot;))
++             expectations = self.__GetExpectedOutcomes()
+              # We can avoid treating the no-expectation case as special
+              # by creating an empty map.
+              if expectations is None:
+                  expectations = {}
+              # Filter out tests that have unexpected outcomes.
+*************** Valid formats are &quot;full&quot;, &quot;brief&quot; (the d
+*** 1635,1661 ****
+              raise qm.cmdline.CommandError, \
+                    qm.error(&quot;invalid extension kind&quot;,
+                             kind = kind)
+  
+                         
+!     def __GetResultStreams(self):
+          &quot;&quot;&quot;Return the result streams to use.
+  
+          returns -- A list of 'ResultStream' objects, as indicated by the
+          user.&quot;&quot;&quot;
+  
+          result_streams = []
+  
+!         database = self.GetDatabase()
+          f = lambda n: qm.test.base.get_extension_class(n,
+                                                         &quot;result_stream&quot;,
+                                                         database)
+          
+          # Look for all of the &quot;--result-stream&quot; options.
+          for opt, opt_arg in self.__command_options:
+              if opt == &quot;result-stream&quot;:
+                  ec, as = qm.extension.parse_descriptor(opt_arg, f)
+                  result_streams.append(ec(as))
+  
+          return result_streams
+      
+  ########################################################################
+--- 1560,1610 ----
+              raise qm.cmdline.CommandError, \
+                    qm.error(&quot;invalid extension kind&quot;,
+                             kind = kind)
+  
+                         
+!     def __GetResultStreams(self, test_suites):
+          &quot;&quot;&quot;Return the result streams to use.
+  
+          returns -- A list of 'ResultStream' objects, as indicated by the
+          user.&quot;&quot;&quot;
+  
++         database = self.GetDatabase()
++ 
+          result_streams = []
+  
+!         arguments = {
+!             &quot;expected_outcomes&quot; : self.__GetExpectedOutcomes(),
+!             &quot;database&quot; : database,
+!             &quot;suite_ids&quot; : test_suites
+!             }
+!         
+!         # Look up the summary format.
+!         format = self.GetCommandOption(&quot;format&quot;, &quot;&quot;)
+!         if format and format not in self.summary_formats:
+!             # Invalid format.  Complain.
+!             valid_format_string = string.join(
+!                 map(lambda f: '&quot;%s&quot;' % f, self.summary_formats), &quot;, &quot;)
+!             raise qm.cmdline.CommandError, \
+!                   qm.error(&quot;invalid results format&quot;,
+!                            format=format,
+!                            valid_formats=valid_format_string)
+!         if format != &quot;none&quot;:
+!             as = { &quot;format&quot; : format }
+!             as.update(arguments)
+!             stream = TextResultStream(as)
+!             result_streams.append(stream)
+!         
+          f = lambda n: qm.test.base.get_extension_class(n,
+                                                         &quot;result_stream&quot;,
+                                                         database)
+          
+          # Look for all of the &quot;--result-stream&quot; options.
+          for opt, opt_arg in self.__command_options:
+              if opt == &quot;result-stream&quot;:
+                  ec, as = qm.extension.parse_descriptor(opt_arg, f)
++                 as.update(arguments)
+                  result_streams.append(ec(as))
+  
+          return result_streams
+      
+  ########################################################################
+Index: qm/test/execution_engine.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/execution_engine.py,v
+retrieving revision 1.18
+diff -c -5 -p -r1.18 execution_engine.py
+*** qm/test/execution_engine.py	9 May 2003 22:17:44 -0000	1.18
+--- qm/test/execution_engine.py	13 May 2003 06:58:12 -0000
+*************** class ExecutionEngine:
+*** 49,59 ****
+      def __init__(self,
+                   database,
+                   test_ids,
+                   context,
+                   targets,
+!                  result_streams = None):
+          &quot;&quot;&quot;Set up a test run.
+  
+          'database' -- The 'Database' containing the tests that will be
+          run.
+          
+--- 49,60 ----
+      def __init__(self,
+                   database,
+                   test_ids,
+                   context,
+                   targets,
+!                  result_streams = None,
+!                  expectations = None):
+          &quot;&quot;&quot;Set up a test run.
+  
+          'database' -- The 'Database' containing the tests that will be
+          run.
+          
+*************** class ExecutionEngine:
+*** 64,84 ****
+  
+          'targets' -- A sequence of 'Target' objects, representing
+          targets on which tests may be run.
+  
+          'result_streams' -- A sequence of 'ResultStream' objects.  Each
+!         stream will be provided with results as they are available.&quot;&quot;&quot;
+  
+          self.__database = database
+          self.__test_ids = test_ids
+          self.__context = context
+          self.__targets = targets
+          if result_streams is not None:
+              self.__result_streams = result_streams
+          else:
+              self.__result_streams = []
+! 
+          # There are no input handlers.
+          self.__input_handlers = {}
+          
+          # All of the targets are idle at first.
+          self.__idle_targets = targets[:]
+--- 65,92 ----
+  
+          'targets' -- A sequence of 'Target' objects, representing
+          targets on which tests may be run.
+  
+          'result_streams' -- A sequence of 'ResultStream' objects.  Each
+!         stream will be provided with results as they are available.
+! 
+!         'expectations' -- If not 'None', a dictionary mapping test IDs
+!         to expected outcomes.&quot;&quot;&quot;
+  
+          self.__database = database
+          self.__test_ids = test_ids
+          self.__context = context
+          self.__targets = targets
+          if result_streams is not None:
+              self.__result_streams = result_streams
+          else:
+              self.__result_streams = []
+!         if expectations is not None:
+!             self.__expectations = expectations
+!         else:
+!             self.__expectations = {}
+!             
+          # There are no input handlers.
+          self.__input_handlers = {}
+          
+          # All of the targets are idle at first.
+          self.__idle_targets = targets[:]
+*************** class ExecutionEngine:
+*** 94,104 ****
+          self.__descriptor_graph = {}
+          
+          # There are no results yet.
+          self.__test_results = {}
+          self.__resource_results = []
+! 
+          # Termination has not yet been requested.
+          self.__terminated = 0
+          
+  
+      def RequestTermination(self):
+--- 102,113 ----
+          self.__descriptor_graph = {}
+          
+          # There are no results yet.
+          self.__test_results = {}
+          self.__resource_results = []
+!         self.__any_unexpected_outcomes = 0
+!         
+          # Termination has not yet been requested.
+          self.__terminated = 0
+          
+  
+      def RequestTermination(self):
+*************** class ExecutionEngine:
+*** 121,131 ****
+  
+      def Run(self):
+          &quot;&quot;&quot;Run the tests.
+  
+          This method runs the tests specified in the __init__
+!         function.&quot;&quot;&quot;
+  
+          # Start all of the targets.
+          for target in self.__targets:
+              target.Start(self.__response_queue, self)
+  
+--- 130,142 ----
+  
+      def Run(self):
+          &quot;&quot;&quot;Run the tests.
+  
+          This method runs the tests specified in the __init__
+!         function.
+! 
+!         returns -- True if any tests had unexpected outcomes.&quot;&quot;&quot;
+  
+          # Start all of the targets.
+          for target in self.__targets:
+              target.Start(self.__response_queue, self)
+  
+*************** class ExecutionEngine:
+*** 146,155 ****
+--- 157,168 ----
+              # Let all of the result streams know that the test run is
+              # complete.
+              for rs in self.__result_streams:
+                  rs.Summarize()
+  
++         return self.__any_unexpected_outcomes
++ 
+  
+      def AddInputHandler(self, fd, function):
+          &quot;&quot;&quot;Add an input handler for 'fd'.
+  
+          'fd' -- A file descriptor, open for reading.
+*************** class ExecutionEngine:
+*** 430,439 ****
+--- 443,455 ----
+              self._Trace(&quot;No target for %s.&quot; % result.GetId())
+                          
+          # Store the result.
+          if result.GetKind() == Result.TEST:
+              self.__test_results[result.GetId()] = result
++             if (self.__expectations.get(result.GetId(), Result.PASS)
++                 != result.GetOutcome()):
++                 self.__any_unexpected_outcomes = 1
+          else:
+              self.__resource_results.append(result)
+              
+          # This target might now be idle.
+          if (target and target not in self.__idle_targets
+Index: qm/test/execution_thread.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/execution_thread.py,v
+retrieving revision 1.5
+diff -c -5 -p -r1.5 execution_thread.py
+*** qm/test/execution_thread.py	28 May 2002 01:37:55 -0000	1.5
+--- qm/test/execution_thread.py	13 May 2003 06:58:12 -0000
+*************** class ExecutionThread(Thread, ExecutionE
+*** 49,59 ****
+      def __init__(self,
+                   database,
+                   test_ids,
+                   context,
+                   targets,
+!                  result_streams = None):
+          &quot;&quot;&quot;Set up a test run.
+  
+          'database' -- The 'Database' containing the tests that will be
+          run.
+          
+--- 49,60 ----
+      def __init__(self,
+                   database,
+                   test_ids,
+                   context,
+                   targets,
+!                  result_streams = None,
+!                  expectations = None):
+          &quot;&quot;&quot;Set up a test run.
+  
+          'database' -- The 'Database' containing the tests that will be
+          run.
+          
+*************** class ExecutionThread(Thread, ExecutionE
+*** 67,81 ****
+  
+          'result_streams' -- A sequence of 'ResultStream' objects.  Each
+          stream will be provided with results as they are available.
+          This thread will not perform any locking of these streams as
+          they are written to; each stream must provide its own
+!         synchronization if it will be accessed before 'run' returns.&quot;&quot;&quot;
+  
+          Thread.__init__(self, None, None, None)
+          ExecutionEngine.__init__(self, database, test_ids, context,
+!                                  targets, result_streams)
+  
+          # This is a deamon thread; if the main QMTest thread exits,
+          # this thread should not prolong the life of the process.
+          # Because the daemon flag is inherited from the creating thread,
+          # threads created by the targets will automatically be daemon
+--- 68,85 ----
+  
+          'result_streams' -- A sequence of 'ResultStream' objects.  Each
+          stream will be provided with results as they are available.
+          This thread will not perform any locking of these streams as
+          they are written to; each stream must provide its own
+!         synchronization if it will be accessed before 'run' returns.
+! 
+!         'expectations' -- If not 'None', a dictionary mapping test IDs
+!         to expected outcomes.&quot;&quot;&quot;
+  
+          Thread.__init__(self, None, None, None)
+          ExecutionEngine.__init__(self, database, test_ids, context,
+!                                  targets, result_streams, expectations)
+  
+          # This is a deamon thread; if the main QMTest thread exits,
+          # this thread should not prolong the life of the process.
+          # Because the daemon flag is inherited from the creating thread,
+          # threads created by the targets will automatically be daemon
+Index: qm/test/result_stream.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/result_stream.py,v
+retrieving revision 1.5
+diff -c -5 -p -r1.5 result_stream.py
+*** qm/test/result_stream.py	9 May 2003 22:17:44 -0000	1.5
+--- qm/test/result_stream.py	13 May 2003 06:58:12 -0000
+***************
+*** 17,26 ****
+--- 17,27 ----
+  # imports
+  ########################################################################
+  
+  import qm
+  import qm.extension
++ import qm.fields
+  
+  ########################################################################
+  # classes
+  ########################################################################
+  
+*************** class ResultStream(qm.extension.Extensio
+*** 39,48 ****
+--- 40,58 ----
+      define your own 'ResultStream'.  A typical reason to extend
+      'ResultStream' would be to write out test results in alternative
+      file format.&quot;&quot;&quot;
+  
+      kind = &quot;result_stream&quot;
++ 
++     arguments = [
++         qm.fields.PythonField(
++            name = &quot;expected_outcomes&quot;),
++         qm.fields.PythonField(
++            name = &quot;database&quot;),
++         qm.fields.PythonField(
++            name = &quot;suite_ids&quot;),
++         ]
+      
+      def WriteResult(self, result):
+          &quot;&quot;&quot;Output a test result.
+  
+          'result' -- A 'Result'.&quot;&quot;&quot;
+Index: qm/test/text_result_stream.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/text_result_stream.py,v
+retrieving revision 1.13
+diff -c -5 -p -r1.13 text_result_stream.py
+*** qm/test/text_result_stream.py	3 Jan 2003 04:18:21 -0000	1.13
+--- qm/test/text_result_stream.py	13 May 2003 06:58:12 -0000
+***************
+*** 20,72 ****
+  import formatter
+  import htmllib
+  import StringIO
+  from   qm.test.base import *
+  from   qm.test.result import *
+! from   qm.test.result_stream import *
+  
+  ########################################################################
+  # classes
+  ########################################################################
+  
+! class TextResultStream(ResultStream):
+      &quot;&quot;&quot;A 'TextResultStream' displays test results textually.
+  
+      A 'TextResultStream' displays information textually, in human
+      readable form.  This 'ResultStream' is used when QMTest is run
+      without a graphical user interface.&quot;&quot;&quot;
+  
+!     def __init__(self, file, format, expected_outcomes, database,
+!                  suite_ids):
+          &quot;&quot;&quot;Construct a 'TextResultStream'.
+  
+!         'file' -- The file object to which the results should be
+!         written.
+  
+-         'format' -- A string indicating the format to use when
+-         displaying results.
+- 
+-         'expected_outcomes' -- A map from test IDs to expected outcomes,
+-         or 'None' if there are no expected outcomes.
+- 
+-         'database' -- The 'Database' out of which the tests will be
+-         run.
+-         
+          'suite_ids' -- The suites that will be executed during the
+          test run.&quot;&quot;&quot;
+  
+          # Initialize the base class.
+!         ResultStream.__init__(self, {})
+!         
+!         self.__file = file
+!         self.__format = format
+!         self.__expected_outcomes = expected_outcomes
+!         self.__suite_ids = suite_ids
+!         self.__database = database
+          self.__test_results = []
+          self.__resource_results = []
+!         self._DisplayHeading(&quot;TEST RESULTS&quot;)
+          
+          
+      def WriteResult(self, result):
+          &quot;&quot;&quot;Output a test or resource result.
+  
+--- 20,115 ----
+  import formatter
+  import htmllib
+  import StringIO
+  from   qm.test.base import *
+  from   qm.test.result import *
+! from   qm.test.file_result_stream import FileResultStream
+  
+  ########################################################################
+  # classes
+  ########################################################################
+  
+! class TextResultStream(FileResultStream):
+      &quot;&quot;&quot;A 'TextResultStream' displays test results textually.
+  
+      A 'TextResultStream' displays information textually, in human
+      readable form.  This 'ResultStream' is used when QMTest is run
+      without a graphical user interface.&quot;&quot;&quot;
+  
+!     arguments = [
+!         qm.fields.EnumerationField(
+!             name = &quot;format&quot;,
+!             title = &quot;Format&quot;,
+!             description = &quot;&quot;&quot;The output format used by this result stream.
+! 
+!             There are three sections to the output:
+! 
+!             (S) Summary statistics.
+! 
+!             (I) Individual test-by-test results.
+! 
+!             (U) Individual test-by-test results for tests with unexpected
+!                 outcomes.
+! 
+!             For each of the sections of individual test-by-test results, the
+!             results can be shown either in one of three modes:
+! 
+!             (A) Show all annotations.
+! 
+!             (N) Show no annotations.
+! 
+!             (U) Show annotations only if the test has an unexpected outcome.
+! 
+!             In the &quot;brief&quot; format, results for all tests are shown as
+!             they execute, with unexpected results displayed in full
+!             detail, followed by a list of all the tests with
+!             unexpected results in full detail, followed by the summary
+!             information.  This format is useful for interactive use:
+!             the user can see that the tests are running as they go,
+!             can attempt to fix failures while letting the remainder of
+!             the tests run, and can easily see the summary of the
+!             results later if the window in which the run is occurring
+!             is left unattended.
+! 
+!             In the &quot;batch&quot; format, statistics are displayed first
+!             followed by full results for tests with unexpected
+!             outcomes.  The batch format is useful when QMTest is run
+!             in batch mode, such as from an overnight job.  The first
+!             few lines of the results (often presented by email) give
+!             an overview of the results; the remainder of the file
+!             gives details about any tests with unexpected outcomes.
+! 
+!             The &quot;full&quot; format is like &quot;brief&quot; except that all
+!             annotations are shown for tests as they are run.
+! 
+!             The &quot;stats&quot; format is omits the failing tests section is
+!             omitted.&quot;&quot;&quot;),
+!         ]
+!     
+!     def __init__(self, arguments):
+          &quot;&quot;&quot;Construct a 'TextResultStream'.
+  
+!         'arguments' -- The arguments to this result stream.
+  
+          'suite_ids' -- The suites that will be executed during the
+          test run.&quot;&quot;&quot;
+  
+          # Initialize the base class.
+!         super(TextResultStream, self).__init__(arguments)
+! 
+!         # Pick a default format.
+!         if not self.format:
+!             self.format = &quot;batch&quot;
+!             try:
+!                 if self.file.isatty():
+!                     self.format = &quot;brief&quot;
+!             except:
+!                 pass
+!             
+          self.__test_results = []
+          self.__resource_results = []
+!         self.__first_test = 1
+          
+          
+      def WriteResult(self, result):
+          &quot;&quot;&quot;Output a test or resource result.
+  
+*************** class TextResultStream(ResultStream):
+*** 76,91 ****
+          if result.GetKind() == Result.TEST:
+              self.__test_results.append(result)
+          else:
+              self.__resource_results.append(result)
+  
+  	# Display the result.
+! 	self._DisplayResult(result, self.__format)
+  
+          # Display annotations associated with the test.
+!         if (self.__format == &quot;full&quot;
+!             or (self.__format == &quot;brief&quot;
+                  and result.GetOutcome() != Result.PASS)):
+              self._DisplayAnnotations(result)
+  
+  
+      def Summarize(self):
+--- 119,143 ----
+          if result.GetKind() == Result.TEST:
+              self.__test_results.append(result)
+          else:
+              self.__resource_results.append(result)
+  
++         # In batch mode, no results are displayed as tests are run.
++         if self.format == &quot;batch&quot;:
++             return
++         
++         # Display a heading before the first result.
++         if self.__first_test:
++             self._DisplayHeading(&quot;TEST RESULTS&quot;)
++             self.__first_test = 0
++         
+  	# Display the result.
+! 	self._DisplayResult(result, self.format)
+  
+          # Display annotations associated with the test.
+!         if (self.format == &quot;full&quot;
+!             or (self.format == &quot;brief&quot;
+                  and result.GetOutcome() != Result.PASS)):
+              self._DisplayAnnotations(result)
+  
+  
+      def Summarize(self):
+*************** class TextResultStream(ResultStream):
+*** 93,132 ****
+  
+          When this method is called, the test run is complete.  Summary
+          information should be displayed for the user, if appropriate.
+          Any finalization, such as the closing of open files, should
+          also be performed at this point.&quot;&quot;&quot;
+-         
+-         self.__file.write(&quot;\n&quot;)
+-         self._DisplayHeading(&quot;STATISTICS&quot;)
+  
+!         # Summarize the test statistics.
+!         if self.__expected_outcomes:
+!             self._SummarizeRelativeTestStats(self.__test_results)
+!         else:
+!             self._SummarizeTestStats(self.__test_results)
+  
+!         # Summarize test results by test suite.
+!         if self.__format in (&quot;full&quot;, &quot;stats&quot;) \
+!            and len(self.__suite_ids) &gt; 0:
+!             # Print statistics by test suite.
+!             self._DisplayHeading(&quot;STATISTICS BY TEST SUITE&quot;)
+!             self._SummarizeTestSuiteStats()
+! 
+!         if self.__format in (&quot;full&quot;, &quot;brief&quot;):
+              compare_ids = lambda r1, r2: cmp(r1.GetId(), r2.GetId())
+  
+              # Sort test results by ID.
+              self.__test_results.sort(compare_ids)
+              # Print individual test results.
+!             if self.__expected_outcomes:
+                  # Show tests that produced unexpected outcomes.
+                  bad_results = split_results_by_expected_outcome(
+!                     self.__test_results, self.__expected_outcomes)[1]
+                  self._DisplayHeading(&quot;TESTS WITH UNEXPECTED OUTCOMES&quot;)
+                  self._SummarizeResults(bad_results)
+!             if not self.__expected_outcomes or self.__format == &quot;full&quot;:
+                  # No expected outcomes were specified, so show all tests
+                  # that did not pass.
+                  bad_results = filter(
+                      lambda r: r.GetOutcome() != Result.PASS,
+                      self.__test_results)
+--- 145,172 ----
+  
+          When this method is called, the test run is complete.  Summary
+          information should be displayed for the user, if appropriate.
+          Any finalization, such as the closing of open files, should
+          also be performed at this point.&quot;&quot;&quot;
+  
+!         if self.format == &quot;batch&quot;:
+!             self._DisplayStatistics()
+  
+!         # Show results for tests with unexpected outcomes.
+!         if self.format in (&quot;full&quot;, &quot;brief&quot;, &quot;batch&quot;):
+              compare_ids = lambda r1, r2: cmp(r1.GetId(), r2.GetId())
+  
+              # Sort test results by ID.
+              self.__test_results.sort(compare_ids)
+              # Print individual test results.
+!             if self.expected_outcomes:
+                  # Show tests that produced unexpected outcomes.
+                  bad_results = split_results_by_expected_outcome(
+!                     self.__test_results, self.expected_outcomes)[1]
+                  self._DisplayHeading(&quot;TESTS WITH UNEXPECTED OUTCOMES&quot;)
+                  self._SummarizeResults(bad_results)
+!             if not self.expected_outcomes or self.format == &quot;full&quot;:
+                  # No expected outcomes were specified, so show all tests
+                  # that did not pass.
+                  bad_results = filter(
+                      lambda r: r.GetOutcome() != Result.PASS,
+                      self.__test_results)
+*************** class TextResultStream(ResultStream):
+*** 142,209 ****
+              if len(bad_results) &gt; 0:
+                  # Print individual resource results.
+                  self._DisplayHeading(&quot;RESOURCES THAT DID NOT PASS&quot;)
+                  self._SummarizeResults(bad_results)
+  
+          # Invoke the base class method.
+!         ResultStream.Summarize(self)
+  
+  
+      def _SummarizeTestStats(self, results):
+          &quot;&quot;&quot;Generate statistics about the overall results.
+  
+          'results' -- The sequence of 'Result' objects to summarize.&quot;&quot;&quot;
+  
+          num_tests = len(results)
+!         self.__file.write(&quot;  %6d        tests total\n&quot; % num_tests)
+  
+          # If there are no tests, there is no need to go into detail.
+          if num_tests == 0:
+              return
+  
+          counts_by_outcome = self._CountOutcomes(results)
+          for outcome in Result.outcomes:
+              count = counts_by_outcome[outcome]
+              if count &gt; 0:
+!                 self.__file.write(&quot;  %6d (%3.0f%%) tests %s\n&quot;
+!                                   % (count, (100. * count) / num_tests,
+!                                      outcome))
+!         self.__file.write(&quot;\n&quot;)
+  
+          
+      def _SummarizeRelativeTestStats(self, results):
+          &quot;&quot;&quot;Generate statistics showing results relative to expectations.
+  
+          'results' -- The sequence of 'Result' objects to summarize.&quot;&quot;&quot;
+  
+          # Indicate the total number of tests.
+          num_tests = len(results)
+!         self.__file.write(&quot;  %6d        tests total\n&quot; % num_tests)
+  
+          # If there are no tests, there is no need to go into detail.
+          if num_tests == 0:
+              return
+  
+          # Split the results into those that produced expected outcomes, and
+          # those that didn't.
+          expected, unexpected = \
+              split_results_by_expected_outcome(results,
+!                                               self.__expected_outcomes)
+          # Report the number that produced expected outcomes.
+!         self.__file.write(&quot;  %6d (%3.0f%%) tests as expected\n&quot;
+!                           % (len(expected),
+!                              (100. * len(expected)) / num_tests))
+          # For results that produced unexpected outcomes, break them down by
+          # actual outcome.
+          counts_by_outcome = self._CountOutcomes(unexpected)
+          for outcome in Result.outcomes:
+              count = counts_by_outcome[outcome]
+              if count &gt; 0:
+!                 self.__file.write(&quot;  %6d (%3.0f%%) tests unexpected %s\n&quot;
+!                                   % (count, (100. * count) / num_tests,
+!                                      outcome))
+!         self.__file.write(&quot;\n&quot;)
+  
+  
+      def _CountOutcomes(self, results):
+          &quot;&quot;&quot;Count results by outcome.
+  
+--- 182,274 ----
+              if len(bad_results) &gt; 0:
+                  # Print individual resource results.
+                  self._DisplayHeading(&quot;RESOURCES THAT DID NOT PASS&quot;)
+                  self._SummarizeResults(bad_results)
+  
++         if self.format != &quot;batch&quot;:
++             self._DisplayStatistics()
++         
+          # Invoke the base class method.
+!         super(TextResultStream, self).Summarize()
+! 
+! 
+!     def _DisplayStatistics(self):
+!         &quot;&quot;&quot;Write out statistical information about the results.
+! 
+!         Write out statistical information about the results.&quot;&quot;&quot;
+! 
+!         self.file.write(&quot;\n&quot;)
+!         self._DisplayHeading(&quot;STATISTICS&quot;)
+! 
+!         # Summarize the test statistics.
+!         if self.expected_outcomes:
+!             self._SummarizeRelativeTestStats(self.__test_results)
+!         else:
+!             self._SummarizeTestStats(self.__test_results)
+  
++         # Summarize test results by test suite.
++         if self.format in (&quot;full&quot;, &quot;stats&quot;) \
++            and len(self.suite_ids) &gt; 0:
++             # Print statistics by test suite.
++             self._DisplayHeading(&quot;STATISTICS BY TEST SUITE&quot;)
++             self._SummarizeTestSuiteStats()
+  
++         
+      def _SummarizeTestStats(self, results):
+          &quot;&quot;&quot;Generate statistics about the overall results.
+  
+          'results' -- The sequence of 'Result' objects to summarize.&quot;&quot;&quot;
+  
+          num_tests = len(results)
+!         self.file.write(&quot;  %6d        tests total\n&quot; % num_tests)
+  
+          # If there are no tests, there is no need to go into detail.
+          if num_tests == 0:
+              return
+  
+          counts_by_outcome = self._CountOutcomes(results)
+          for outcome in Result.outcomes:
+              count = counts_by_outcome[outcome]
+              if count &gt; 0:
+!                 self.file.write(&quot;  %6d (%3.0f%%) tests %s\n&quot;
+!                                 % (count, (100. * count) / num_tests,
+!                                    outcome))
+!         self.file.write(&quot;\n&quot;)
+  
+          
+      def _SummarizeRelativeTestStats(self, results):
+          &quot;&quot;&quot;Generate statistics showing results relative to expectations.
+  
+          'results' -- The sequence of 'Result' objects to summarize.&quot;&quot;&quot;
+  
+          # Indicate the total number of tests.
+          num_tests = len(results)
+!         self.file.write(&quot;  %6d        tests total\n&quot; % num_tests)
+  
+          # If there are no tests, there is no need to go into detail.
+          if num_tests == 0:
+              return
+  
+          # Split the results into those that produced expected outcomes, and
+          # those that didn't.
+          expected, unexpected = \
+              split_results_by_expected_outcome(results,
+!                                               self.expected_outcomes)
+          # Report the number that produced expected outcomes.
+!         self.file.write(&quot;  %6d (%3.0f%%) tests as expected\n&quot;
+!                         % (len(expected),
+!                            (100. * len(expected)) / num_tests))
+          # For results that produced unexpected outcomes, break them down by
+          # actual outcome.
+          counts_by_outcome = self._CountOutcomes(unexpected)
+          for outcome in Result.outcomes:
+              count = counts_by_outcome[outcome]
+              if count &gt; 0:
+!                 self.file.write(&quot;  %6d (%3.0f%%) tests unexpected %s\n&quot;
+!                                 % (count, (100. * count) / num_tests,
+!                                    outcome))
+!         self.file.write(&quot;\n&quot;)
+  
+  
+      def _CountOutcomes(self, results):
+          &quot;&quot;&quot;Count results by outcome.
+  
+*************** class TextResultStream(ResultStream):
+*** 222,248 ****
+          
+          
+      def _SummarizeTestSuiteStats(self):
+          &quot;&quot;&quot;Generate statistics showing results by test suite.&quot;&quot;&quot;
+  
+!         database = self.__database
+! 
+!         for suite_id in self.__suite_ids:
+              # Expand the contents of the suite.
+!             suite = database.GetSuite(suite_id)
+              ids_in_suite = suite.GetAllTestAndSuiteIds()[0]
+              # Determine the results belonging to tests in the suite.
+              results_in_suite = []
+              for result in self.__test_results:
+                  if result.GetId() in ids_in_suite:
+                      results_in_suite.append(result)
+              # If there aren't any, skip.
+              if len(results_in_suite) == 0:
+                  continue
+  
+!             self.__file.write(&quot;  %s\n&quot; % suite.GetId())
+!             if self.__expected_outcomes is None:
+                  self._SummarizeTestStats(results_in_suite)
+              else:
+                  self._SummarizeRelativeTestStats(results_in_suite)
+  
+          
+--- 287,311 ----
+          
+          
+      def _SummarizeTestSuiteStats(self):
+          &quot;&quot;&quot;Generate statistics showing results by test suite.&quot;&quot;&quot;
+  
+!         for suite_id in self.suite_ids:
+              # Expand the contents of the suite.
+!             suite = self.database.GetSuite(suite_id)
+              ids_in_suite = suite.GetAllTestAndSuiteIds()[0]
+              # Determine the results belonging to tests in the suite.
+              results_in_suite = []
+              for result in self.__test_results:
+                  if result.GetId() in ids_in_suite:
+                      results_in_suite.append(result)
+              # If there aren't any, skip.
+              if len(results_in_suite) == 0:
+                  continue
+  
+!             self.file.write(&quot;  %s\n&quot; % suite.GetId())
+!             if self.expected_outcomes is None:
+                  self._SummarizeTestStats(results_in_suite)
+              else:
+                  self._SummarizeRelativeTestStats(results_in_suite)
+  
+          
+*************** class TextResultStream(ResultStream):
+*** 250,265 ****
+          &quot;&quot;&quot;Summarize each of the results.
+  
+          'results' -- The sequence of 'Result' objects to summarize.&quot;&quot;&quot;
+  
+          if len(results) == 0:
+!             self.__file.write(&quot;  None.\n\n&quot;)
+              return
+  
+          # Generate them.
+  	for result in results:
+!             self._DisplayResult(result, self.__format)
+  
+  
+      def _DisplayResult(self, result, format):
+  	&quot;&quot;&quot;Display 'result'.
+  
+--- 313,328 ----
+          &quot;&quot;&quot;Summarize each of the results.
+  
+          'results' -- The sequence of 'Result' objects to summarize.&quot;&quot;&quot;
+  
+          if len(results) == 0:
+!             self.file.write(&quot;  None.\n\n&quot;)
+              return
+  
+          # Generate them.
+  	for result in results:
+!             self._DisplayResult(result, self.format)
+  
+  
+      def _DisplayResult(self, result, format):
+  	&quot;&quot;&quot;Display 'result'.
+  
+*************** class TextResultStream(ResultStream):
+*** 270,284 ****
+  	id_ = result.GetId()
+          kind = result.GetKind()
+  	outcome = result.GetOutcome()
+  
+  	# Print the ID and outcome.
+! 	if self.__expected_outcomes:
+  	    # If expected outcomes were specified, print the expected
+  	    # outcome too.
+  	    expected_outcome = \
+! 	        self.__expected_outcomes.get(id_, Result.PASS)
+              if (outcome == Result.PASS
+                  and expected_outcome == Result.FAIL):
+                  self._WriteOutcome(id_, kind, &quot;XPASS&quot;)
+              elif (outcome == Result.FAIL
+                    and expected_outcome == Result.FAIL):
+--- 333,347 ----
+  	id_ = result.GetId()
+          kind = result.GetKind()
+  	outcome = result.GetOutcome()
+  
+  	# Print the ID and outcome.
+! 	if self.expected_outcomes:
+  	    # If expected outcomes were specified, print the expected
+  	    # outcome too.
+  	    expected_outcome = \
+! 	        self.expected_outcomes.get(id_, Result.PASS)
+              if (outcome == Result.PASS
+                  and expected_outcome == Result.FAIL):
+                  self._WriteOutcome(id_, kind, &quot;XPASS&quot;)
+              elif (outcome == Result.FAIL
+                    and expected_outcome == Result.FAIL):
+*************** class TextResultStream(ResultStream):
+*** 290,302 ****
+  	else:
+              self._WriteOutcome(id_, kind, outcome)
+  
+          # Print the cause of the failure.
+          if result.has_key(Result.CAUSE):
+!             self.__file.write('    ' + result[Result.CAUSE] + '\n')
+              
+!         self.__file.write('\n')
+  
+  
+      def _DisplayAnnotations(self, result):
+          &quot;&quot;&quot;Display the annotations associated with 'result'.
+  
+--- 353,365 ----
+  	else:
+              self._WriteOutcome(id_, kind, outcome)
+  
+          # Print the cause of the failure.
+          if result.has_key(Result.CAUSE):
+!             self.file.write('    ' + result[Result.CAUSE] + '\n')
+              
+!         self.file.write('\n')
+  
+  
+      def _DisplayAnnotations(self, result):
+          &quot;&quot;&quot;Display the annotations associated with 'result'.
+  
+*************** class TextResultStream(ResultStream):
+*** 307,317 ****
+          for name in keys:
+              # The CAUSE property has already been displayed.&quot;
+              if name == Result.CAUSE:
+                  continue
+              # Add an item to the list
+!             self.__file.write(&quot;    %s:\n&quot; % name)
+  
+              # Convert the HTML to text.
+              s = StringIO.StringIO()
+              w = formatter.DumbWriter(s)
+              f = formatter.AbstractFormatter(w)
+--- 370,380 ----
+          for name in keys:
+              # The CAUSE property has already been displayed.&quot;
+              if name == Result.CAUSE:
+                  continue
+              # Add an item to the list
+!             self.file.write(&quot;    %s:\n&quot; % name)
+  
+              # Convert the HTML to text.
+              s = StringIO.StringIO()
+              w = formatter.DumbWriter(s)
+              f = formatter.AbstractFormatter(w)
+*************** class TextResultStream(ResultStream):
+*** 319,330 ****
+              p.feed(result[name])
+              p.close()
+  
+              # Write out the text.
+              for l in s.getvalue().splitlines():
+!                 self.__file.write(&quot;      &quot; + l + &quot;\n&quot;)
+!             self.__file.write(&quot;\n&quot;)
+          
+  
+      def _WriteOutcome(self, name, kind, outcome, expected_outcome=None):
+          &quot;&quot;&quot;Write a line indicating the outcome of a test or resource.
+  
+--- 382,393 ----
+              p.feed(result[name])
+              p.close()
+  
+              # Write out the text.
+              for l in s.getvalue().splitlines():
+!                 self.file.write(&quot;      &quot; + l + &quot;\n&quot;)
+!             self.file.write(&quot;\n&quot;)
+          
+  
+      def _WriteOutcome(self, name, kind, outcome, expected_outcome=None):
+          &quot;&quot;&quot;Write a line indicating the outcome of a test or resource.
+  
+*************** class TextResultStream(ResultStream):
+*** 340,358 ****
+              name = &quot;Setup &quot; + name
+          elif kind == Result.RESOURCE_CLEANUP:
+              name = &quot;Cleanup &quot; + name
+          
+          if expected_outcome:
+! 	    self.__file.write(&quot;  %-46s: %-8s, expected %-8s\n&quot;
+! 			      % (name, outcome, expected_outcome))
+  	else:
+! 	    self.__file.write(&quot;  %-46s: %-8s\n&quot; % (name, outcome))
+  
+              
+      def _DisplayHeading(self, heading):
+          &quot;&quot;&quot;Display 'heading'.
+  
+          'heading' -- The string to use as a heading for the next
+          section of the report.&quot;&quot;&quot;
+  
+!         self.__file.write(&quot;--- %s %s\n\n&quot; %
+!                           (heading, &quot;-&quot; * (73 - len(heading))))
+--- 403,421 ----
+              name = &quot;Setup &quot; + name
+          elif kind == Result.RESOURCE_CLEANUP:
+              name = &quot;Cleanup &quot; + name
+          
+          if expected_outcome:
+! 	    self.file.write(&quot;  %-46s: %-8s, expected %-8s\n&quot;
+!                             % (name, outcome, expected_outcome))
+  	else:
+! 	    self.file.write(&quot;  %-46s: %-8s\n&quot; % (name, outcome))
+  
+              
+      def _DisplayHeading(self, heading):
+          &quot;&quot;&quot;Display 'heading'.
+  
+          'heading' -- The string to use as a heading for the next
+          section of the report.&quot;&quot;&quot;
+  
+!         self.file.write(&quot;--- %s %s\n\n&quot; %
+!                         (heading, &quot;-&quot; * (73 - len(heading))))
+Index: qm/test/doc/reference.xml
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/doc/reference.xml,v
+retrieving revision 1.21
+diff -c -5 -p -r1.21 reference.xml
+*** qm/test/doc/reference.xml	9 May 2003 22:17:44 -0000	1.21
+--- qm/test/doc/reference.xml	13 May 2003 06:58:13 -0000
+***************
+*** 1214,1235 ****
+         &lt;replaceable&gt;format&lt;/replaceable&gt;
+        &lt;/term&gt;
+        &lt;listitem&gt;
+         &lt;para&gt;Control the format used when displaying results.  The
+         format specified must be one of &lt;literal&gt;full&lt;/literal&gt;,
+!        &lt;literal&gt;brief&lt;/literal&gt;, &lt;literal&gt;stats&lt;/literal&gt;, or
+!        &lt;literal&gt;none&lt;/literal&gt;.  The &lt;literal&gt;brief&lt;/literal&gt; format
+!        is the default.  In the &lt;literal&gt;full&lt;/literal&gt; format,
+         &qmtest; displays any annotations provided in test results.  In
+         the &lt;literal&gt;brief&lt;/literal&gt; mode only the causes of failures
+         are shown; detailed annotations are not shown.  In the
+         &lt;literal&gt;stats&lt;/literal&gt; format, no details about failing tests
+         are displayed; only statistics showing the number of passing
+         and failing tests are displayed.  In the
+!        &lt;literal&gt;none&lt;/literal&gt; mode, no results are displayed, but a
+!        results file is still created, unless the
+!        &lt;option&gt;&dashdash;no-output&lt;/option&gt; option is also provided.&lt;/para&gt;
+        &lt;/listitem&gt;
+       &lt;/varlistentry&gt;
+  
+       &lt;varlistentry&gt;
+        &lt;term&gt;&lt;option&gt;-j&lt;/option&gt; &lt;replaceable&gt;count&lt;/replaceable&gt;&lt;/term&gt;
+--- 1214,1240 ----
+         &lt;replaceable&gt;format&lt;/replaceable&gt;
+        &lt;/term&gt;
+        &lt;listitem&gt;
+         &lt;para&gt;Control the format used when displaying results.  The
+         format specified must be one of &lt;literal&gt;full&lt;/literal&gt;,
+!        &lt;literal&gt;brief&lt;/literal&gt;, &lt;literal&gt;stats&lt;/literal&gt;,
+!        &lt;literal&gt;batch&lt;/literal&gt;, or &lt;literal&gt;none&lt;/literal&gt;.  The
+!        &lt;literal&gt;brief&lt;/literal&gt; format is the default if &qmtest; was
+!        invoked interactively; the &lt;literal&gt;batch&lt;/literal&gt; format is
+!        the default otherwise.  In the &lt;literal&gt;full&lt;/literal&gt; format,
+         &qmtest; displays any annotations provided in test results.  In
+         the &lt;literal&gt;brief&lt;/literal&gt; mode only the causes of failures
+         are shown; detailed annotations are not shown.  In the
+         &lt;literal&gt;stats&lt;/literal&gt; format, no details about failing tests
+         are displayed; only statistics showing the number of passing
+         and failing tests are displayed.  In the
+!        &lt;literal&gt;batch&lt;/literal&gt; mode, the summary is displayed first,
+!        followed by detailed results for tests with unexpected
+!        outcomes.  In the &lt;literal&gt;none&lt;/literal&gt; mode, no results are
+!        displayed, but a results file is still created, unless the
+!        &lt;option&gt;&dashdash;no-output&lt;/option&gt; option is also
+!        provided.&lt;/para&gt;
+        &lt;/listitem&gt;
+       &lt;/varlistentry&gt;
+  
+       &lt;varlistentry&gt;
+        &lt;term&gt;&lt;option&gt;-j&lt;/option&gt; &lt;replaceable&gt;count&lt;/replaceable&gt;&lt;/term&gt;
+Index: qm/test/doc/tour.xml
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/doc/tour.xml,v
+retrieving revision 1.5
+diff -c -5 -p -r1.5 tour.xml
+*** qm/test/doc/tour.xml	2 Dec 2002 01:49:15 -0000	1.5
+--- qm/test/doc/tour.xml	13 May 2003 06:58:13 -0000
+***************
+*** 6,16 ****
+    Date:   2000-11-01
+  
+    Contents:
+      Grand tour/tutorial of QMTest.
+  
+!   Copyright (C) 2001, 2002 CodeSourcery LLC.  This material may
+    be distributed only subject to the terms and conditions set forth in
+    the Software Carpentry Open Publication License, which is available at:
+  
+      <A HREF="http://www.software-carpentry.com/openpub-license.html">http://www.software-carpentry.com/openpub-license.html</A>
+  
+--- 6,16 ----
+    Date:   2000-11-01
+  
+    Contents:
+      Grand tour/tutorial of QMTest.
+  
+!   Copyright (C) 2001, 2002, 2003 CodeSourcery LLC.  This material may
+    be distributed only subject to the terms and conditions set forth in
+    the Software Carpentry Open Publication License, which is available at:
+  
+      <A HREF="http://www.software-carpentry.com/openpub-license.html">http://www.software-carpentry.com/openpub-license.html</A>
+  
+*************** QMTest running at <A HREF="http://127.0.0.1:1158/">http://127.0.0.1:1158/</A>
+*** 390,413 ****
+        x + x == 5
+  
+      ExecTest.value:
+        0
+  
+    exec2                                         : PASS    
+  
+  
+  --- STATISTICS ---------------------------------------------------------------
+  
+         3        tests total
+         1 ( 33%) tests FAIL
+         2 ( 67%) tests PASS
+  
+- --- TESTS THAT DID NOT PASS --------------------------------------------------
+- 
+-   exec1                                         : FAIL    
+-     Expression evaluates to false.
+- 
+  ]]&gt;&lt;/computeroutput&gt;&lt;/screen&gt;
+  
+     &lt;para&gt;&qmtest; shows you the result of the tests as they execute.
+     Then, there is a summary description containing statistics similar
+     to those shown in the graphical user interface.  Finally, &qmtest;
+--- 390,416 ----
+        x + x == 5
+  
+      ExecTest.value:
+        0
+  
++     qmtest.target:
++       local
++ 
+    exec2                                         : PASS    
+  
++ --- TESTS THAT DID NOT PASS --------------------------------------------------
++ 
++   exec1                                         : FAIL    
++     Expression evaluates to false.
++ 
+  
+  --- STATISTICS ---------------------------------------------------------------
+  
+         3        tests total
+         1 ( 33%) tests FAIL
+         2 ( 67%) tests PASS
+  
+  ]]&gt;&lt;/computeroutput&gt;&lt;/screen&gt;
+  
+     &lt;para&gt;&qmtest; shows you the result of the tests as they execute.
+     Then, there is a summary description containing statistics similar
+     to those shown in the graphical user interface.  Finally, &qmtest;
+*************** QMTest running at <A HREF="http://127.0.0.1:1158/">http://127.0.0.1:1158/</A>
+*** 457,478 ****
+        x + x == 5
+  
+      ExecTest.value:
+        0
+  
+    exec2                                         : PASS    
+  
+  
+  --- STATISTICS ---------------------------------------------------------------
+  
+         3        tests total
+         3 (100%) tests as expected
+  
+- --- TESTS WITH UNEXPECTED OUTCOMES -------------------------------------------
+- 
+-   None.
+- 
+  ]]&gt;&lt;/computeroutput&gt;&lt;/screen&gt;
+  
+     Note that &qmtest; indicates that there were no tests with
+     unexpected outcomes, even though &lt;filename&gt;exec1&lt;/filename&gt; still
+     fails.  The &lt;literal&gt;XFAIL&lt;/literal&gt; notation indicates that the
+--- 460,484 ----
+        x + x == 5
+  
+      ExecTest.value:
+        0
+  
++     qmtest.target:
++       local
++ 
+    exec2                                         : PASS    
+  
++ --- TESTS WITH UNEXPECTED OUTCOMES -------------------------------------------
++ 
++   None.
++ 
+  
+  --- STATISTICS ---------------------------------------------------------------
+  
+         3        tests total
+         3 (100%) tests as expected
+  
+  ]]&gt;&lt;/computeroutput&gt;&lt;/screen&gt;
+  
+     Note that &qmtest; indicates that there were no tests with
+     unexpected outcomes, even though &lt;filename&gt;exec1&lt;/filename&gt; still
+     fails.  The &lt;literal&gt;XFAIL&lt;/literal&gt; notation indicates that the
+*************** QMTest running at <A HREF="http://127.0.0.1:1158/">http://127.0.0.1:1158/</A>
+*** 503,534 ****
+     &lt;screen&gt;&lt;computeroutput&gt;&lt;![CDATA[
+  --- TEST RESULTS -------------------------------------------------------------
+  
+    exec0                                         : PASS    
+  
+    exec1                                         : FAIL    
+      Expression evaluates to false.
+  
+      ExecTest.expr:
+        x + x == 5
+  
+      ExecTest.value:
+        0
+  
+    exec2                                         : PASS    
+  
+  
+  --- STATISTICS ---------------------------------------------------------------
+  
+         3        tests total
+         1 ( 33%) tests FAIL
+         2 ( 67%) tests PASS
+- 
+- --- TESTS THAT DID NOT PASS --------------------------------------------------
+- 
+-   exec1                                         : FAIL    
+-     Expression evaluates to false.
+  
+  ]]&gt;&lt;/computeroutput&gt;&lt;/screen&gt;
+  
+     &lt;/para&gt;
+  
+--- 509,549 ----
+     &lt;screen&gt;&lt;computeroutput&gt;&lt;![CDATA[
+  --- TEST RESULTS -------------------------------------------------------------
+  
+    exec0                                         : PASS    
+  
++     qmtest.target:
++       local
++ 
+    exec1                                         : FAIL    
+      Expression evaluates to false.
+  
+      ExecTest.expr:
+        x + x == 5
+  
+      ExecTest.value:
+        0
+  
++     qmtest.target:
++       local
++ 
+    exec2                                         : PASS    
+  
++     qmtest.target:
++       local
++ 
++ --- TESTS THAT DID NOT PASS --------------------------------------------------
++ 
++   exec1                                         : FAIL    
++     Expression evaluates to false.
++ 
+  
+  --- STATISTICS ---------------------------------------------------------------
+  
+         3        tests total
+         1 ( 33%) tests FAIL
+         2 ( 67%) tests PASS
+  
+  ]]&gt;&lt;/computeroutput&gt;&lt;/screen&gt;
+  
+     &lt;/para&gt;
+  
+Index: qm/test/web/web.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/web/web.py,v
+retrieving revision 1.62
+diff -c -5 -p -r1.62 web.py
+*** qm/test/web/web.py	9 May 2003 22:17:44 -0000	1.62
+--- qm/test/web/web.py	13 May 2003 06:58:14 -0000
+*************** class QMTestServer(qm.web.WebServer):
+*** 1829,1839 ****
+          # Create the thread that will run all of the tests.
+          del self.__execution_thread
+          test_ids.sort()
+          self.__execution_thread = \
+            ExecutionThread(self.__database, test_ids, self.__context,
+!                           self.__targets, [self.__results_stream])
+          # Start the thread.
+          self.__execution_thread.start()
+  
+          # Sleep for a few seconds so that if we're only running one
+          # test there's a good chance that it will finish before we
+--- 1829,1840 ----
+          # Create the thread that will run all of the tests.
+          del self.__execution_thread
+          test_ids.sort()
+          self.__execution_thread = \
+            ExecutionThread(self.__database, test_ids, self.__context,
+!                           self.__targets, [self.__results_stream],
+!                           self.__expected_outcomes)
+          # Start the thread.
+          self.__execution_thread.start()
+  
+          # Sleep for a few seconds so that if we're only running one
+          # test there's a good chance that it will finish before we
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000322.html">PATCH: Misc cleanups
+</A></li>
+	
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#323">[ date ]</a>
+              <a href="thread.html#323">[ thread ]</a>
+              <a href="subject.html#323">[ subject ]</a>
+              <a href="author.html#323">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">More information about the qmtest
+mailing list</a><br>
+</body></html>

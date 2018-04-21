@@ -1,0 +1,147 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [arm-gnu] Placing variable at absolute address in RAM
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:arm-gnu%40codesourcery.com?Subject=Re%3A%20%5Barm-gnu%5D%20Placing%20variable%20at%20absolute%20address%20in%20RAM&In-Reply-To=%3C002501cd12fd%2427b23a30%247716ae90%24%40uniserve.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000057.html">
+   <LINK REL="Next"  HREF="000061.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[arm-gnu] Placing variable at absolute address in RAM</H1>
+    <B>Alexander Zakharov</B> 
+    <A HREF="mailto:arm-gnu%40codesourcery.com?Subject=Re%3A%20%5Barm-gnu%5D%20Placing%20variable%20at%20absolute%20address%20in%20RAM&In-Reply-To=%3C002501cd12fd%2427b23a30%247716ae90%24%40uniserve.com%3E"
+       TITLE="[arm-gnu] Placing variable at absolute address in RAM">azakharov at uniserve.com
+       </A><BR>
+    <I>Thu Apr  5 07:24:34 UTC 2012</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000057.html">[arm-gnu] Placing variable at absolute address in RAM
+</A></li>
+        <LI>Next message: <A HREF="000061.html">[arm-gnu] Placing variable at absolute address in RAM
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#73">[ date ]</a>
+              <a href="thread.html#73">[ thread ]</a>
+              <a href="subject.html#73">[ subject ]</a>
+              <a href="author.html#73">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>This is what I used in a past:
+
+In linker  'helper' file hwmap.ld
+
+............
+.dmaRegisters			0X70000000		(NOLOAD): {
+*(.dmaRegisters)			} &gt; HWMAP
+............
+
+In source file hwmap.c
+
+.......
+DMA_REGISTERS			dmaRegisters
+__attribute__ ((used,section(&quot;.dmaRegisters&quot;)));
+.......
+
+In header file dmaRegisters.h
+
+.......
+typedef struct
+{
+  /* Something */   
+ 
+} DMA_REGISTERS;
+
+
+extern DMA_REGISTERS	dmaRegisters;
+.........
+
+And finally, in a main linker file my_board.ld
+
+......
+MEMORY
+{
+  RAM      (rwx)  : ORIGIN = 0x00000000, LENGTH = 16M
+  ROM      (rwx)  : ORIGIN = 0xFFFFFFFF, LENGTH = 0
+  ALIASMEM (rwx)  : ORIGIN = 0x10000000, LENGTH = 16M
+  HWMAP    (rw )  : ORIGIN = 0x20000000, LENGTH = 3584M
+}
+......
+/* Include hardware registers maps */
+
+	INCLUDE hwmap.ld
+.....
+
+Then you just use dmaRegisters in your code like &quot; dmaRegisters.field = X; &quot;
+
+Hope it helps. This way you can 'stick' your variable in any place in a
+memory - this is how I implemented my hardware registers access in a past,
+but should work like a charm for your cause.
+
+Cheers,
+Alex 
+
+-----Original Message-----
+From: <A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/arm-gnu">arm-gnu-bounces at codesourcery.com</A>
+[mailto:<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/arm-gnu">arm-gnu-bounces at codesourcery.com</A>] On Behalf Of Tom Evans
+Sent: Thursday, April 05, 2012 1:24 AM
+To: JM
+Cc: <A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/arm-gnu">arm-gnu at codesourcery.com</A>
+Subject: Re: [arm-gnu] Placing variable at absolute address in RAM
+
+JM wrote:
+&gt;<i> Hello
+</I>&gt;<i> 
+</I>&gt;<i> I've researched this, asked on other forums, and so far I'm no closer.  
+</I>&gt;<i> 
+</I>&gt;<i> I'm trying to place a variable at a specific address in RAM on a TI 
+</I>&gt;<i> ARM Cortex-M3.  I have good reason for doing so, which I can explain
+</I>briefly:
+
+How about just calling malloc() in a loop until you get an allocation that
+matches all of your addressing requirements, and then free all the ones that
+didn't. Brutal, but it should work if called very early on in your startup
+before anything else has got to malloc().
+
+If you don't have &quot;malloc&quot; then you should have something similar managing
+your heap that could be abused to do this for you.
+
+Tom
+
+_______________________________________________
+arm-gnu mailing list
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/arm-gnu">arm-gnu at codesourcery.com</A>
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/arm-gnu">http://sourcerytools.com/cgi-bin/mailman/listinfo/arm-gnu</A>
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000057.html">[arm-gnu] Placing variable at absolute address in RAM
+</A></li>
+	<LI>Next message: <A HREF="000061.html">[arm-gnu] Placing variable at absolute address in RAM
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#73">[ date ]</a>
+              <a href="thread.html#73">[ thread ]</a>
+              <a href="subject.html#73">[ subject ]</a>
+              <a href="author.html#73">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/arm-gnu">More information about the arm-gnu
+mailing list</a><br>
+</body></html>

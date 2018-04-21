@@ -1,0 +1,502 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> Question about how to do something with Pooma 2
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20Question%20about%20how%20to%20do%20something%20with%20Pooma%202&In-Reply-To=%3C15088.35420.690070.279694%40mutley.lanl.gov%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000297.html">
+   <LINK REL="Next"  HREF="000300.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>Question about how to do something with Pooma 2</H1>
+    <B>Dave Nystrom</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20Question%20about%20how%20to%20do%20something%20with%20Pooma%202&In-Reply-To=%3C15088.35420.690070.279694%40mutley.lanl.gov%3E"
+       TITLE="Question about how to do something with Pooma 2">wdn at lanl.gov
+       </A><BR>
+    <I>Wed May  2 23:08:54 UTC 2001</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000297.html">[pooma-dev] signed == signed - sizeof(...), and other warning	s... (non-POOMA C++ questions)
+</A></li>
+        <LI>Next message: <A HREF="000300.html">Explicit Instantiation Problem with Pooma 2 using KCC on RH 6.2 Linux
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#299">[ date ]</a>
+              <a href="thread.html#299">[ thread ]</a>
+              <a href="subject.html#299">[ subject ]</a>
+              <a href="author.html#299">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>I have a question which I hope someone can help me with.  I posed this
+question to Scott Haney 2-3 years ago in the context of Pooma 1 and he said
+that what I wanted to do would be trivial to do with Pooma 2.  Below, I have
+included a couple of files, PCG_Ctrl.hh and PCG_Ctrl.cc, which I wrote awhile 
+back to interface to a Fortran 77 linear solver package.  One of the key
+methods of the PCG_Ctrl class is the pcg_fe method which has the following
+signature.
+
+    void pcg_fe( Mat1&lt;T&gt;&amp; x, Mat1&lt;T&gt;&amp; b,
+		 SP&lt; PCG_MatVec&lt;T&gt; &gt;&amp; pcg_matvec,
+		 SP&lt; PCG_PreCond&lt;T&gt; &gt;&amp; pcg_precond );
+
+The Mat1 class is a data container class that Geoff Furnish wrote and it is
+templated on numeric precision type - such as double.  It is a one
+dimensional array class and it had a constructor which he called an aliasing
+constructor.  The aliasing constructor took a reference to a point in memory
+and an integer value that told how many elements of data you were dealing
+with.  For a distributed field quantity, the Mat1s were pointing to the first 
+element of data that was local to the processor it was on.  The pcg package
+has a large work array called fwk which is also a Mat1 but has space
+allocated for lots of chunks of data equal to the amount of data which a
+field has on a given processor as well as other needed workspace.  For the
+way in which I was using the pcg package, it required the user to supply his
+own function to perform a matrix-vector multiply operation and a
+preconditioning operation.  To do this, the pcg package returns to the
+calling function and depending on the value of a flag, it gives you the
+offset into the 1D fwk array from a fortran perspective that identifies the
+location of the first element of the vector that it wants you to perform some 
+operation on and the offset into the 1D fwk array that identifies the first
+element where the result vector goes.
+
+I would like to change the signature of the pcg_fe method and other methods
+to use Pooma 2 fields i.e. I would like the signature of pcg_fe to become:
+
+    void pcg_fe( Field&lt;...&gt;&amp; x, Field&lt;...&gt;&amp; b,
+		 SP&lt; PCG_MatVec&lt;T&gt; &gt;&amp; pcg_matvec,
+		 SP&lt; PCG_PreCond&lt;T&gt; &gt;&amp; pcg_precond );
+
+and, I would like fwk to be a 1D Pooma Field and be able to set up views into 
+the fwk array that are similar to the way I am doing with the Mat1 class.
+Scott thought it would be easy to do this with the Pooma 2 View capability.
+I've discussed this with John Hall and he is not sure how to do this off the
+top of his head.  One thing we need to do is make sure the guard cell data is 
+not in the Field I am using with pcg because pcg does not know anything about 
+guard cell data.  However, I will need guard cell data in the matvec function 
+and also possibly in the preconditioner functions.  This probably means that
+I need at some point to copy from a Field with guard cells to one without and 
+vice versa.
+
+Can anyone offer suggestions about how to do what I want using Pooma 2?  Is
+my explanation of what I want to do clear enough?  Looking at the pcg_fe
+function might also help to clarify things.
+
+Thanks for any advice you can offer.  This will be my first real attempt to
+use Pooma 2.
+
+-- 
+Dave Nystrom			email: <A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">wdn at lanl.gov</A>
+LANL X-3			phone: 505-667-7913	fax: 505-665-3046
+
+//----------------------------------*-C++-*----------------------------------//
+// PCG_Ctrl.hh
+// Dave Nystrom
+// Mon Jan 13 17:40:28 1997
+//---------------------------------------------------------------------------//
+// @&gt; 
+//---------------------------------------------------------------------------//
+
+#ifndef __fldeqns_PCG_Ctrl_hh__
+#define __fldeqns_PCG_Ctrl_hh__
+
+#include &quot;Mat.hh&quot;
+#include &quot;SP.hh&quot;
+
+#include &quot;fldeqns/pcg_DB.hh&quot;
+#include &quot;fldeqns/PCG_MatVec.hh&quot;
+#include &quot;fldeqns/PCG_PreCond.hh&quot;
+
+//===========================================================================//
+// class PCG_Ctrl - 
+
+// 
+//===========================================================================//
+
+template&lt;class T&gt;
+class PCG_Ctrl : public pcg_DB {
+    Mat1&lt;int&gt;            iparm;
+    Mat1&lt;T&gt;              fparm;
+    Mat1&lt;int&gt;            iwk;
+    Mat1&lt;T&gt;              fwk;
+    Mat1&lt;T&gt;              xex;
+    int                  nru;
+    int                  ijob, ireq, iva, ivql, ivqr, ier;
+    int                  itmeth, imatvec;
+
+  public:
+// Constructor.
+    PCG_Ctrl( pcg_DB&amp; _pcg_db, int _nru );
+
+// Destructor.
+    ~PCG_Ctrl();
+
+// Public Methods
+  public:
+    void pcg_fe( Mat1&lt;T&gt;&amp; x, Mat1&lt;T&gt;&amp; b,
+		 SP&lt; PCG_MatVec&lt;T&gt; &gt;&amp; pcg_matvec,
+		 SP&lt; PCG_PreCond&lt;T&gt; &gt;&amp; pcg_precond );
+
+// Private Methods
+  private:
+    void set_default();
+    void set_nwi();
+    void set_nwf();
+    void it_method( Mat1&lt;T&gt;&amp; x, Mat1&lt;T&gt;&amp; b, Mat1&lt;T&gt;&amp; xex );
+    void print_params();
+};
+
+#endif                          // __fldeqns_PCG_Ctrl_hh__
+
+//---------------------------------------------------------------------------//
+//                              end of fldeqns/PCG_Ctrl.hh
+//---------------------------------------------------------------------------//
+//----------------------------------*-C++-*----------------------------------//
+// PCG_Ctrl.cc
+// Dave Nystrom
+// Mon Jan 13 17:40:29 1997
+//---------------------------------------------------------------------------//
+// @&gt; 
+//---------------------------------------------------------------------------//
+
+#include &quot;fldeqns/PCG_Ctrl.hh&quot;
+#include &quot;fldeqns/PCG_Subroutines.hh&quot;
+
+//---------------------------------------------------------------------------//
+// Destructor.
+//---------------------------------------------------------------------------//
+
+template&lt;class T&gt;
+PCG_Ctrl&lt;T&gt;::~PCG_Ctrl() {}
+
+//---------------------------------------------------------------------------//
+// Constructor.
+//---------------------------------------------------------------------------//
+
+template&lt;class T&gt;
+PCG_Ctrl&lt;T&gt;::PCG_Ctrl( pcg_DB&amp; pcg_db, int _nru )
+    : pcg_DB(pcg_db),
+      iparm(Bounds(1,50)), fparm(Bounds(1,30)),
+      iwk(pcg_db.nwi), fwk(pcg_db.nwf),
+      xex(1), nru(_nru)
+{
+// Test print.
+    cout &lt;&lt; &quot;Entering PCG_Ctrl::PCG_Ctrl.&quot; &lt;&lt; endl;
+
+// Initialize some stuff from pcg_DB.
+    itmeth = pcg_db.itmeth;
+
+// Compute required size of iwk and fwk and resize them.
+    set_nwi();
+    set_nwf();
+
+    iwk.redim( nwi );
+    fwk.redim( nwf );
+
+// Initialize iparm and fparm arrays.
+    set_default();
+
+    iparm(pcg::NOUT)   = nout;
+    iparm(pcg::LEVOUT) = levout;
+    iparm(pcg::NRU)    = nru;
+    iparm(pcg::ITSMAX) = itsmax;
+    iparm(pcg::MALLOC) = malloc;
+    iparm(pcg::NWI)    = nwi;
+    iparm(pcg::NWF)    = nwf;
+    iparm(pcg::NTEST)  = ntest;
+    iparm(pcg::IQSIDE) = iqside;
+    iparm(pcg::IUINIT) = iuinit;
+    iparm(pcg::NEEDRC) = needrc;
+    iparm(pcg::NS1)    = ns1;
+    iparm(pcg::NS2)    = ns2;
+    iparm(pcg::ICKSTG) = ickstg;
+    iparm(pcg::IUEXAC) = iuexac;
+    iparm(pcg::IDOT)   = idot;
+    iparm(pcg::ISTATS) = istats;
+
+    fparm(pcg::CTIMER) = ctimer;
+    fparm(pcg::RTIMER) = rtimer;
+    fparm(pcg::FLOPSR) = flopsr;
+    fparm(pcg::ZETA)   = zeta;
+    fparm(pcg::ALPHA)  = alpha;
+
+// Print control parameters.
+    print_params();
+
+    cout &lt;&lt; &quot;Done with PCG_Ctrl::PCG_Ctrl.&quot; &lt;&lt; endl &lt;&lt; flush;
+}
+
+//---------------------------------------------------------------------------//
+// Main controller method.
+//---------------------------------------------------------------------------//
+
+template&lt;class T&gt;
+void PCG_Ctrl&lt;T&gt;::pcg_fe( Mat1&lt;T&gt;&amp; x, Mat1&lt;T&gt;&amp; b,
+			  SP&lt; PCG_MatVec&lt;T&gt; &gt;&amp; pcg_matvec,
+			  SP&lt; PCG_PreCond&lt;T&gt; &gt;&amp; pcg_precond )
+{
+// Test print.
+    cout &lt;&lt; &quot;Entering PCG_Ctrl::pcg_fe.&quot; &lt;&lt; endl;
+
+// Initialize ijob.
+    ijob = pcg::JINIT;
+
+// Call an iterative method.
+    int done=0;
+    while (!done) {
+	it_method( x, b, xex );
+
+	ijob = pcg::JRUN;
+
+	if( ireq == pcg::JTERM ) {
+	    done = 1;
+	}
+	else if( ireq == pcg::JAV ) {
+	    cout &lt;&lt; &quot;Preparing for MatVec.&quot; &lt;&lt; endl &lt;&lt; flush;
+	    Mat1&lt;T&gt; xmatvec(&amp;fwk(ivqr-1),nru);
+	    Mat1&lt;T&gt; bmatvec(&amp;fwk(iva-1), nru);
+	    pcg_matvec-&gt;MatVec(bmatvec,xmatvec);
+	    cout &lt;&lt; &quot;Done with     MatVec.&quot; &lt;&lt; endl &lt;&lt; flush;
+	}
+	else if( ireq == pcg::JQLV ) {
+	    cout &lt;&lt; &quot;Preparing for Left_PreCond.&quot; &lt;&lt; endl &lt;&lt; flush;
+	    Mat1&lt;T&gt; xprecond(&amp;fwk(ivql-1),nru);
+	    Mat1&lt;T&gt; bprecond(&amp;fwk(iva-1), nru);
+	    pcg_precond-&gt;Left_PreCond(xprecond,bprecond);
+	    cout &lt;&lt; &quot;Done with     Left_PreCond.&quot; &lt;&lt; endl &lt;&lt; flush;
+	}
+	else if( ireq == pcg::JQRV ) {
+	    Mat1&lt;T&gt; xprecond(&amp;fwk(ivqr-1),nru);
+	    Mat1&lt;T&gt; bprecond(&amp;fwk(ivql-1),nru);
+	    pcg_precond-&gt;Right_PreCond(xprecond,bprecond);
+	}
+	else if( ireq == pcg::JTEST ) {
+	}
+	else if( ireq == pcg::JATV ) {
+	}
+	else if( ireq == pcg::JQLTV ) {
+	}
+	else if( ireq == pcg::JQRTV ) {
+	}
+    }
+}
+
+//---------------------------------------------------------------------------//
+// Set default values for PCG iparm and fparm arrays.
+//---------------------------------------------------------------------------//
+
+template&lt;class T&gt;
+void PCG_Ctrl&lt;T&gt;::set_default()
+{
+    pcg::xdfalt( &amp;iparm(1), &amp;fparm(1) );
+}
+
+//---------------------------------------------------------------------------//
+// Call a pcg iterative method.
+//---------------------------------------------------------------------------//
+
+template&lt;class T&gt;
+void PCG_Ctrl&lt;T&gt;::it_method( Mat1&lt;T&gt;&amp; x, Mat1&lt;T&gt;&amp; b, Mat1&lt;T&gt;&amp; xex )
+{
+    if( itmeth == pcg::BASIC ) {
+	pcg::xbasr( ijob, ireq, &amp;x(0), &amp;xex(0), &amp;b(0), iva, ivql, ivqr,
+		    &amp;iwk(0), &amp;fwk(0), &amp;iparm(1), &amp;fparm(1), ier );
+	imatvec = pcg::TRUE;
+    }
+    else if( itmeth == pcg::GMRES ) {
+	pcg::xgmrsr( ijob, ireq, &amp;x(0), &amp;xex(0), &amp;b(0), iva, ivql, ivqr,
+		     &amp;iwk(0), &amp;fwk(0), &amp;iparm(1), &amp;fparm(1), ier );
+	imatvec = pcg::TRUE;
+    }
+    else {
+	throw(&quot;Need to choose a valid pcg iterative method.&quot;);
+    }
+}
+
+//---------------------------------------------------------------------------//
+// Set nwi.
+//---------------------------------------------------------------------------//
+
+template&lt;class T&gt;
+void PCG_Ctrl&lt;T&gt;::set_nwi()
+{
+    if( itmeth == pcg::BASIC    ) nwi = 100;
+    if( itmeth == pcg::BCGSTAB  ) nwi = 100;
+    if( itmeth == pcg::BCGSTAB2 ) nwi = 100;
+    if( itmeth == pcg::BCGSTABL ) nwi = 100;
+    if( itmeth == pcg::CGS      ) nwi = 100;
+    if( itmeth == pcg::TFQMR    ) nwi = 100;
+    if( itmeth == pcg::GMRES    ) nwi = 100;
+    if( itmeth == pcg::GMRES_H  ) nwi = 100;
+    if( itmeth == pcg::OMIN     ) nwi = 100;
+    if( itmeth == pcg::ORES     ) nwi = 100;
+    if( itmeth == pcg::IOM      ) nwi = 100;
+    if( itmeth == pcg::CG       ) nwi = 100;
+    if( itmeth == pcg::BCG      ) nwi = 100;
+    if( itmeth == 91            ) nwi = 100;
+    if( itmeth == 92            ) nwi = 100;
+    if( itmeth == 96            ) nwi = 100;
+
+    if( malloc == pcg::TRUE     ) nwi = 1;
+
+    cout &lt;&lt; &quot;------------------------------------------&quot; &lt;&lt; endl;
+    cout &lt;&lt; &quot;Test print from PCG_Ctrl&lt;T&gt;::set_nwi.&quot;      &lt;&lt; endl;
+    cout &lt;&lt; &quot;------------------------------------------&quot; &lt;&lt; endl;
+    cout &lt;&lt; &quot;     itmeth = &quot; &lt;&lt; itmeth &lt;&lt; endl;
+    cout &lt;&lt; &quot;     nwi    = &quot; &lt;&lt; nwi    &lt;&lt; endl;
+}
+
+//---------------------------------------------------------------------------//
+// Set nwf.
+//---------------------------------------------------------------------------//
+
+template&lt;class T&gt;
+void PCG_Ctrl&lt;T&gt;::set_nwf()
+{
+    int nrup2   = nru + 2;
+    int nwfgenl = 31 + nrup2*2;
+    int nwfit   = 0;
+    int nwfstat = 0;
+    int nwftst  = 0;
+
+    if( itmeth == pcg::BASIC    ) nwfit =  7 + nrup2*5;
+    if( itmeth == pcg::BCGSTAB  ) nwfit = 15 + nrup2*13;
+    if( itmeth == pcg::BCGSTAB2 ) nwfit = 15 + nrup2*25;
+    if( itmeth == pcg::BCGSTABL ) nwfit = 31 + nrup2*(2*ns2+8) + ns2*9
+				        + ns2*ns2;
+    if( itmeth == pcg::CGS      ) nwfit = 12 + nrup2*11;
+    if( itmeth == pcg::TFQMR    ) nwfit = 16 + nrup2*18;
+    if( itmeth == pcg::CG       ) nwfit = 12 + nrup2*5;
+    if( itmeth == pcg::BCG      ) nwfit = 12 + nrup2*9;
+    if( itmeth == 91            ) nwfit =  7 + nrup2*5;
+    if( itmeth == 92            ) nwfit = 15 + nrup2*13;
+    if( iqside &gt;= pcg::QRIGHT ) {
+	if( itmeth == pcg::GMRES   ) nwfit = 31 + nrup2*(2*ns2+8) + ns2*9
+					   + ns2*ns2;
+	if( itmeth == pcg::GMRES_H ) nwfit = 26 + nrup2*(2*ns2+7) + ns2*7
+					   + ns2*ns2;
+	if( itmeth == pcg::OMIN    ) nwfit = 13 + nrup2*(3*ns1+5) + ns1;
+	if( itmeth == pcg::ORES    ) nwfit = 12 + nrup2*(4*ns1+6) + ns1;
+	if( itmeth == pcg::IOM     ) nwfit = 31 + nrup2*(3*ns1+9) + ns1*5;
+	if( itmeth == 96           ) nwfit = 31 + nrup2*(2*ns2+8) + ns2*9
+					   + ns2*ns2;
+    }        
+    else {
+	if( itmeth == pcg::GMRES   ) nwfit = 31 + nrup2*(1*ns2+4) + ns2*9
+					   + ns2*ns2;
+	if( itmeth == pcg::GMRES_H ) nwfit = 26 + nrup2*(2*ns2+7) + ns2*7
+					   + ns2*ns2;
+	if( itmeth == pcg::OMIN    ) nwfit = 13 + nrup2*(2*ns1+3) + ns1;
+	if( itmeth == pcg::ORES    ) nwfit = 12 + nrup2*(2*ns1+4) + ns1;
+	if( itmeth == pcg::IOM     ) nwfit = 31 + nrup2*(2*ns1+7) + ns1*5;
+	if( itmeth == 96           ) nwfit = 31 + nrup2*(1*ns2+4) + ns2*9
+					   + ns2*ns2;
+    }
+
+    if( istats == 1 ) nwfstat = 20 + nrup2*4;
+
+    if( ntest != pcg::TST0 &amp;&amp; ntest != pcg::TSTDFA ) {
+	nwftst = nrup2*2;
+    }
+
+    if( malloc == pcg::TRUE ) {
+	nwf = 1;
+    }
+    else {
+	nwf = nwfgenl + nwfstat + nwftst + nwfit;
+    }
+
+    cout &lt;&lt; &quot;------------------------------------------&quot; &lt;&lt; endl;
+    cout &lt;&lt; &quot;Test print from PCG_Ctrl&lt;T&gt;::set_nwf.&quot;      &lt;&lt; endl;
+    cout &lt;&lt; &quot;------------------------------------------&quot; &lt;&lt; endl;
+    cout &lt;&lt; &quot;     itmeth = &quot; &lt;&lt; itmeth &lt;&lt; endl;
+    cout &lt;&lt; &quot;     nwf    = &quot; &lt;&lt; nwf    &lt;&lt; endl;
+
+//    nwf = 1000000;
+}
+
+//---------------------------------------------------------------------------//
+// Print values for PCG iparm and fparm arrays.
+//---------------------------------------------------------------------------//
+
+template&lt;class T&gt;
+void PCG_Ctrl&lt;T&gt;::print_params()
+{
+// Test print.
+    cout &lt;&lt; &quot;Entering PCG_Ctrl::print_params.&quot; &lt;&lt; endl;
+
+// Revcom level parameters.
+    cout &lt;&lt; &quot;----------------------------------------------&quot; &lt;&lt; endl;
+    cout &lt;&lt; &quot;Revcom level parameters.&quot;                       &lt;&lt; endl;
+    cout &lt;&lt; &quot;----------------------------------------------&quot; &lt;&lt; endl;
+    cout &lt;&lt; &quot;     nout   = &quot; &lt;&lt; iparm(pcg::NOUT)   &lt;&lt; endl;
+    cout &lt;&lt; &quot;     levout = &quot; &lt;&lt; iparm(pcg::LEVOUT) &lt;&lt; endl;
+    cout &lt;&lt; &quot;     nru    = &quot; &lt;&lt; iparm(pcg::NRU)    &lt;&lt; endl;
+    cout &lt;&lt; &quot;     itsmax = &quot; &lt;&lt; iparm(pcg::ITSMAX) &lt;&lt; endl;
+    cout &lt;&lt; &quot;     its    = &quot; &lt;&lt; iparm(pcg::ITS)    &lt;&lt; endl;
+    cout &lt;&lt; &quot;     malloc = &quot; &lt;&lt; iparm(pcg::MALLOC) &lt;&lt; endl;
+    cout &lt;&lt; &quot;     nwi    = &quot; &lt;&lt; iparm(pcg::NWI)    &lt;&lt; endl;
+    cout &lt;&lt; &quot;     nwf    = &quot; &lt;&lt; iparm(pcg::NWF)    &lt;&lt; endl;
+    cout &lt;&lt; &quot;     nwiusd = &quot; &lt;&lt; iparm(pcg::NWIUSD) &lt;&lt; endl;
+    cout &lt;&lt; &quot;     nwfusd = &quot; &lt;&lt; iparm(pcg::NWFUSD) &lt;&lt; endl;
+    cout &lt;&lt; &quot;     iptr   = &quot; &lt;&lt; iparm(pcg::IPTR)   &lt;&lt; endl;
+    cout &lt;&lt; &quot;     ntest  = &quot; &lt;&lt; iparm(pcg::NTEST)  &lt;&lt; endl;
+    cout &lt;&lt; &quot;     iqside = &quot; &lt;&lt; iparm(pcg::IQSIDE) &lt;&lt; endl;
+    cout &lt;&lt; &quot;     iuinit = &quot; &lt;&lt; iparm(pcg::IUINIT) &lt;&lt; endl;
+    cout &lt;&lt; &quot;     needrc = &quot; &lt;&lt; iparm(pcg::NEEDRC) &lt;&lt; endl;
+    cout &lt;&lt; &quot;     ns1    = &quot; &lt;&lt; iparm(pcg::NS1)    &lt;&lt; endl;
+    cout &lt;&lt; &quot;     ns2    = &quot; &lt;&lt; iparm(pcg::NS2)    &lt;&lt; endl;
+    cout &lt;&lt; &quot;     ickstg = &quot; &lt;&lt; iparm(pcg::ICKSTG) &lt;&lt; endl;
+    cout &lt;&lt; &quot;     iuexac = &quot; &lt;&lt; iparm(pcg::IUEXAC) &lt;&lt; endl;
+    cout &lt;&lt; &quot;     idot   = &quot; &lt;&lt; iparm(pcg::IDOT)   &lt;&lt; endl;
+    cout &lt;&lt; &quot;     istats = &quot; &lt;&lt; iparm(pcg::ISTATS) &lt;&lt; endl;
+    cout &lt;&lt; &quot;     itimer = &quot; &lt;&lt; iparm(pcg::ITIMER) &lt;&lt; endl;
+    cout &lt;&lt; &quot;     icomm  = &quot; &lt;&lt; iparm(pcg::ICOMM)  &lt;&lt; endl;
+    cout &lt;&lt; &quot;     msgmin = &quot; &lt;&lt; iparm(pcg::MSGMIN) &lt;&lt; endl;
+    cout &lt;&lt; &quot;     msgmax = &quot; &lt;&lt; iparm(pcg::MSGMAX) &lt;&lt; endl;
+    cout &lt;&lt; &quot;     msgtyp = &quot; &lt;&lt; iparm(pcg::MSGTYP) &lt;&lt; endl;
+    cout &lt;&lt; &quot;     iclev  = &quot; &lt;&lt; iparm(pcg::ICLEV)  &lt;&lt; endl;
+    cout &lt;&lt; &quot; &quot;                                    &lt;&lt; endl;
+    cout &lt;&lt; &quot;     ctimer = &quot; &lt;&lt; fparm(pcg::CTIMER) &lt;&lt; endl;
+    cout &lt;&lt; &quot;     rtimer = &quot; &lt;&lt; fparm(pcg::RTIMER) &lt;&lt; endl;
+    cout &lt;&lt; &quot;     flopsr = &quot; &lt;&lt; fparm(pcg::FLOPSR) &lt;&lt; endl;
+    cout &lt;&lt; &quot;     zeta   = &quot; &lt;&lt; fparm(pcg::ZETA)   &lt;&lt; endl;
+    cout &lt;&lt; &quot;     stptst = &quot; &lt;&lt; fparm(pcg::STPTST) &lt;&lt; endl;
+    cout &lt;&lt; &quot;     alpha  = &quot; &lt;&lt; fparm(pcg::ALPHA)  &lt;&lt; endl;
+    cout &lt;&lt; &quot;     relrsd = &quot; &lt;&lt; fparm(pcg::RELRSD) &lt;&lt; endl;
+    cout &lt;&lt; &quot;     relerr = &quot; &lt;&lt; fparm(pcg::RELERR) &lt;&lt; endl;
+}
+
+//---------------------------------------------------------------------------//
+//                              end of PCG_Ctrl.cc
+//---------------------------------------------------------------------------//
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000297.html">[pooma-dev] signed == signed - sizeof(...), and other warning	s... (non-POOMA C++ questions)
+</A></li>
+	<LI>Next message: <A HREF="000300.html">Explicit Instantiation Problem with Pooma 2 using KCC on RH 6.2 Linux
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#299">[ date ]</a>
+              <a href="thread.html#299">[ thread ]</a>
+              <a href="subject.html#299">[ subject ]</a>
+              <a href="author.html#299">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

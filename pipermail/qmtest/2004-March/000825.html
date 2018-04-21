@@ -1,0 +1,873 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [PATCH] qmtest updates
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:qmtest%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20qmtest%20updates&In-Reply-To=%3C20040330183338.GB21725%40njs.ddts.net%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000824.html">
+   <LINK REL="Next"  HREF="000826.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[PATCH] qmtest updates</H1>
+    <B>Nathaniel Smith</B> 
+    <A HREF="mailto:qmtest%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20qmtest%20updates&In-Reply-To=%3C20040330183338.GB21725%40njs.ddts.net%3E"
+       TITLE="[PATCH] qmtest updates">njs at pobox.com
+       </A><BR>
+    <I>Tue Mar 30 18:33:38 UTC 2004</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000824.html">[PATCH] qmtest_gcc updates
+</A></li>
+        <LI>Next message: <A HREF="000826.html">[qmtest] [PATCH] qmtest updates
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#825">[ date ]</a>
+              <a href="thread.html#825">[ thread ]</a>
+              <a href="subject.html#825">[ subject ]</a>
+              <a href="author.html#825">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>- Rationalize quoting of result annotations.  New method Result.Quote,
+  new function qm.common.html_to_text, used uniformly to convert pure
+  text to and from the HTML used by result annotations.
+- Update TET stream to fix many bugs.
+- Refactor DGTest to allow finer-grained overriding of behavior in
+  subclasses.
+- Have the PickleResultStream check the types on run annotations; this
+  bit me...
+- Add more run annotations containing the command line and userid of
+  the person invoking qmtest.
+
+-- Nathaniel
+
+-- 
+The Universe may  /  Be as large as they say
+But it wouldn't be missed  /  If it didn't exist.
+  -- Piet Hein
+-------------- next part --------------
+? results.qmr
+? qm/external/__init__.pyc
+? qm/test/classes/csl-notes
+? tests/regress/QMTest/regression_database.pyc
+? tests/regress/QMTest/selftest.pyc
+? tests/regress/tuple1/QMTest/tuple_test.pyc
+? tests/results_files/QMTest/results_file_database.pyc
+? tests/results_files/QMTest/results_file_test.pyc
+Index: ChangeLog
+===================================================================
+RCS file: /home/qm/Repository/qm/ChangeLog,v
+retrieving revision 1.615
+diff -u -r1.615 ChangeLog
+--- ChangeLog	16 Mar 2004 05:10:55 -0000	1.615
++++ ChangeLog	30 Mar 2004 18:27:05 -0000
+@@ -1,3 +1,49 @@
++2004-03-30  Nathaniel Smith  &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">njs at codesourcery.com</A>&gt;
++
++	* qm/common.py (htmllib): Import it.
++	(StringIO): Likewise.
++	(formatter): Likewise.
++	(html_to_text): New function.
++	* qm/test/classes/text_result_stream.py
++	(TextResultStream._DisplayAnnotations): Use it.
++	(formatter): Don't import it.
++	(htmllib): Likewise.
++	(StringIO): Likewise.
++	(qm.common): Import it.
++	(qm.fields): Likewise.
++	
++	* qm/test/result.py (cgi): Import it.
++	(Result.Quote): New function.
++	(Result.NoteException): Use it.
++	* qm/test/classes/dg_test.py (DGTest._RunDGTest): Likewise.
++	* qm/test/classes/command.py (ExecTestBase.RunProgram):
++	Likewise.
++	* qm/test/classes/dejagnu_base.py
++	(DejaGNUBase._RecordCommandOutput): Likewise.
++	(DejaGNUBase._RecordCommand): Likewise.
++	* tests/regress/QMTest/selftest.py (RegTest.Run): Likewise.
++	* tests/results_files/QMTest/results_file_test.py
++	(ResultsFileTest.Run): Likewise.
++
++	* qm/test/classes/tet_stream.py (TETStream): Many output
++	enhancements.
++
++	* qm/test/classes/dg_test.py (DGTest._RunDGTest): Refactor,
++	(DGTest._RunDGToolPortion): ...creating this.
++	(DGTest._RunDGExecutePortion): ...and this.
++
++	* qm/test/classes/pickle_result_stream.py (types): Import it.
++	(PickleResultStream.WriteAnnotation): Check that annotations are
++	strings.
++
++	* qm/common.py (get_username): Expand docstring.
++	(get_userid): New function.
++	* qm/test/execution_engine.py
++	(ExecutionEngine._WriteInitialAnnotations): Use it.
++	Disambiguate old &quot;qmtest.run.user&quot; annotation by renaming to
++	&quot;qmtest.run.username&quot;.
++	Add &quot;qmtest.run.command_line&quot; annotation.
++	
+ 2004-03-15  Nathaniel Smith  &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">njs at codesourcery.com</A>&gt;
+ 	
+ 	* qm/test/target.py (Target._SetUpResource): Fix typo from
+Index: qm/common.py
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/common.py,v
+retrieving revision 1.86
+diff -u -r1.86 common.py
+--- qm/common.py	20 Feb 2004 10:08:51 -0000	1.86
++++ qm/common.py	30 Mar 2004 18:27:05 -0000
+@@ -32,6 +32,9 @@
+ import traceback
+ import types
+ import getpass
++import StringIO
++import htmllib
++import formatter
+ if sys.platform != &quot;win32&quot;:
+     import fcntl
+     
+@@ -780,6 +783,10 @@
+ def get_username():
+     &quot;&quot;&quot;Returns the current username as a string.
+ 
++    This is our best guess as to the username of the user who is
++    actually logged in, as opposed to the effective user id used for
++    running tests.
++
+     If the username cannot be found, raises a 'QMException'.&quot;&quot;&quot;
+ 
+     # First try using the 'getpass' module.
+@@ -803,6 +810,41 @@
+ 
+     # And if none of that worked, give up.
+     raise QMException, &quot;Cannot determine user name.&quot;
++
++
++def get_userid():
++    &quot;&quot;&quot;Returns the current user id as an integer.
++
++    This is the real user id, not the effective user id, to better track
++    who is actually running the tests.
++
++    If the user id cannot be found or is not defined, raises a
++    'QMException'.&quot;&quot;&quot;
++
++    try:
++        uid = os.getuid()
++    except AttributeError:
++        raise QMException, &quot;User ids not supported on this system.&quot;
++    return uid
++    
++
++def html_to_text(html, width=72):
++    &quot;&quot;&quot;Renders HTML to text in a simple way.
++
++    'html' -- A string containing the HTML code to be rendered.
++
++    'width' -- Column at which to word-wrap.  Default 72.
++
++    returns -- A string containing a plain text rendering of the
++    HTML.&quot;&quot;&quot;
++
++    s = StringIO.StringIO()
++    w = formatter.DumbWriter(s, width)
++    f = formatter.AbstractFormatter(w)
++    p = htmllib.HTMLParser(f)
++    p.feed(html)
++    p.close()
++    return s.getvalue()
+ 
+ 
+ ########################################################################
+Index: qm/test/execution_engine.py
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/test/execution_engine.py,v
+retrieving revision 1.27
+diff -u -r1.27 execution_engine.py
+--- qm/test/execution_engine.py	20 Feb 2004 10:08:52 -0000	1.27
++++ qm/test/execution_engine.py	30 Mar 2004 18:27:05 -0000
+@@ -825,15 +825,24 @@
+             uname = &quot; &quot;.join(os.uname())
+         except:
+             uname = None
++        try:
++            userid = str(qm.common.get_userid())
++        except:
++            userid = None
++
++        args_str = &quot; &quot;.join(sys.argv)
+ 
+         # Write them.
+         for rs in self.__result_streams:
+             rs.WriteAllAnnotations(self.__context)
+             rs.WriteAnnotation(&quot;qmtest.run.start_time&quot;, start_time_str)
+             if username is not None:
+-                rs.WriteAnnotation(&quot;qmtest.run.user&quot;, username)
++                rs.WriteAnnotation(&quot;qmtest.run.username&quot;, username)
++            if userid is not None:
++                rs.WriteAnnotation(&quot;qmtest.run.userid&quot;, userid)
+             rs.WriteAnnotation(&quot;qmtest.run.version&quot;, qm.version)
+             rs.WriteAnnotation(&quot;qmtest.run.uname&quot;, uname)
++            rs.WriteAnnotation(&quot;qmtest.run.command_line&quot;, args_str)
+ 
+ 
+ ########################################################################
+Index: qm/test/result.py
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/test/result.py,v
+retrieving revision 1.25
+diff -u -r1.25 result.py
+--- qm/test/result.py	20 Feb 2004 10:08:52 -0000	1.25
++++ qm/test/result.py	30 Mar 2004 18:27:05 -0000
+@@ -21,6 +21,7 @@
+ from   qm.test.context import ContextException
+ import sys
+ import types
++import cgi
+ 
+ ########################################################################
+ # Classes
+@@ -261,6 +262,20 @@
+             return &quot;&quot;
+     
+         
++    def Quote(self, string):
++        &quot;&quot;&quot;Return a version of string suitable for an annotation value.
++
++        Performs appropriate quoting for a string that should be taken
++        verbatim; this includes HTML entity escaping, and addition of
++        &lt;pre&gt; tags.
++
++        'string' -- The verbatim string to be quoted.
++
++        returns -- The quoted string.&quot;&quot;&quot;
++
++        return &quot;&lt;pre&gt;%s&lt;/pre&gt;&quot; % cgi.escape(string)
++
++
+     def NoteException(self,
+                       exc_info = None,
+                       cause = None,
+@@ -301,7 +316,7 @@
+         self[Result.CAUSE] = cause
+         self[Result.EXCEPTION] = &quot;%s: %s&quot; % exc_info[:2]
+         self[Result.TRACEBACK] \
+-            = &quot;&lt;pre&gt;&quot; + qm.format_traceback(exc_info) + &quot;&lt;/pre&gt;&quot;
++            = self.Quote(qm.format_traceback(exc_info))
+ 
+         
+     def MakeDomNode(self, document):
+Index: qm/test/classes/command.py
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/test/classes/command.py,v
+retrieving revision 1.44
+diff -u -r1.44 command.py
+--- qm/test/classes/command.py	16 Feb 2004 01:23:59 -0000	1.44
++++ qm/test/classes/command.py	30 Mar 2004 18:27:05 -0000
+@@ -203,8 +203,8 @@
+             stderr = e.stderr
+             # Record the results.
+             result[&quot;ExecTest.exit_code&quot;] = str(exit_code)
+-            result[&quot;ExecTest.stdout&quot;] = &quot;&lt;pre&gt;&quot; + stdout + &quot;&lt;/pre&gt;&quot;
+-            result[&quot;ExecTest.stderr&quot;] = &quot;&lt;pre&gt;&quot; + stderr + &quot;&lt;/pre&gt;&quot;
++            result[&quot;ExecTest.stdout&quot;] = result.Quote(stdout)
++            result[&quot;ExecTest.stderr&quot;] = result.Quote(stderr)
+             # Check to see if the exit code matches.
+             if exit_code != self.exit_code:
+                 causes.append(&quot;exit_code&quot;)
+@@ -214,12 +214,12 @@
+             if not self.__CompareText(stdout, self.stdout):
+                 causes.append(&quot;standard output&quot;)
+                 result[&quot;ExecTest.expected_stdout&quot;] \
+-                    = &quot;&lt;pre&gt;&quot; + self.stdout + &quot;&lt;/pre&gt;&quot;
++                    = result.Quote(self.stdout)
+             # Check to see that the standard error matches.
+             if not self.__CompareText(stderr, self.stderr):
+                 causes.append(&quot;standard error&quot;)
+                 result[&quot;ExecTest.expected_stderr&quot;] \
+-                    = &quot;&lt;pre&gt;&quot; + self.stderr + &quot;&lt;/pre&gt;&quot;
++                    = result.Quote(self.stderr)
+             # If anything went wrong, the test failed.
+             if causes:
+                 result.Fail(&quot;Unexpected %s.&quot; % string.join(causes, &quot;, &quot;)) 
+Index: qm/test/classes/dejagnu_base.py
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/test/classes/dejagnu_base.py,v
+retrieving revision 1.1
+diff -u -r1.1 dejagnu_base.py
+--- qm/test/classes/dejagnu_base.py	2 Jun 2003 15:56:13 -0000	1.1
++++ qm/test/classes/dejagnu_base.py	30 Mar 2004 18:27:05 -0000
+@@ -32,7 +32,7 @@
+ 
+         index = self.__next_command
+         key = &quot;DejaGNUTest.command_%d&quot; % index
+-        result[key] = &quot;&lt;tt&gt;&lt;pre&gt;&quot; + &quot; &quot;.join(command) + &quot;&lt;/tt&gt;&lt;/pre&gt;&quot;
++        result[key] = result.Quote(&quot; &quot;.join(command))
+         self.__next_command += 1
+ 
+         return index
+@@ -57,7 +57,7 @@
+             result[&quot;DejaGNUTest.command_status_%d&quot; % index] = str(status)
+         if output:
+             result[&quot;DejaGNUTest.command_output_%d&quot; % index] \
+-              = &quot;&lt;tt&gt;&lt;pre&gt;&quot; + output + &quot;&lt;/pre&gt;&lt;/tt&gt;&quot;
++              = result.Quote(output)
+ 
+ 
+     def _SetUp(self, context):
+Index: qm/test/classes/dg_test.py
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/test/classes/dg_test.py,v
+retrieving revision 1.5
+diff -u -r1.5 dg_test.py
+--- qm/test/classes/dg_test.py	15 Mar 2004 23:31:36 -0000	1.5
++++ qm/test/classes/dg_test.py	30 Mar 2004 18:27:05 -0000
+@@ -146,6 +146,31 @@
+                                        self._name)
+             return
+ 
++        # Run the tool being tested and process its output.
++        file = self._RunDGToolPortion(path, tool_flags, context, result)
++
++        # Run the executable generated (if applicable).
++        self._RunDGExecutePortion(file, context, result)
++
++        # Run dg-final tests.
++        for c, a in self._final_commands:
++            self._ExecuteFinalCommand(c, a, context, result)
++
++        # Remove the output file.
++        if not keep_output:
++            try:
++                os.remove(file)
++            except:
++                pass
++                
++
++    def _RunDGToolPortion(self, path, tool_flags, context, result):
++        &quot;&quot;&quot;Perform the tool-running portions of a DG test.
++
++        Calls '_RunTool' and processes its output.
++
++        returns -- The filename of the generated file.&quot;&quot;&quot;
++
+         # Run the tool being tested.
+         output, file = self._RunTool(path, self._kind,
+                                      tool_flags + self._options,
+@@ -199,11 +224,20 @@
+         if output != &quot;&quot;:
+             self._RecordDejaGNUOutcome(result, self.FAIL,
+                                        message, expected)
+-            result[&quot;DGTest.excess_errors&quot;] = &quot;&lt;pre&gt;&quot; + output + &quot;&lt;/pre&gt;&quot;
++            result[&quot;DGTest.excess_errors&quot;] = result.Quote(output)
+         else:
+             self._RecordDejaGNUOutcome(result, self.PASS,
+                                        message, expected)
+ 
++        return file
++
++
++    def _RunDGExecutePortion(self, file, context, result):
++        &quot;&quot;&quot;Perform the executable-running portions of a DG test.
++
++        If this is a &quot;run&quot; test, runs the executable generated by the
++        tool and checks its output.&quot;&quot;&quot;
++
+         # Run the generated program.
+         if self._kind == &quot;run&quot;:
+             if not os.path.exists(file):
+@@ -217,17 +251,6 @@
+                 self._RecordDejaGNUOutcome(result, outcome, message,
+                                            self._expectation)
+ 
+-        # Run dg-final tests.
+-        for c, a in self._final_commands:
+-            self._ExecuteFinalCommand(c, a, context, result)
+-
+-        # Remove the output file.
+-        if not keep_output:
+-            try:
+-                os.remove(file)
+-            except:
+-                pass
+-                
+ 
+     def _ExecuteFinalCommand(self, command, args, context, result):
+         &quot;&quot;&quot;Run a command specified with 'dg-final'.
+Index: qm/test/classes/pickle_result_stream.py
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/test/classes/pickle_result_stream.py,v
+retrieving revision 1.7
+diff -u -r1.7 pickle_result_stream.py
+--- qm/test/classes/pickle_result_stream.py	24 Nov 2003 06:35:01 -0000	1.7
++++ qm/test/classes/pickle_result_stream.py	30 Mar 2004 18:27:05 -0000
+@@ -15,6 +15,7 @@
+ # Imports
+ ########################################################################
+ 
++import types
+ import cPickle
+ import struct
+ import qm.fields
+@@ -152,6 +153,8 @@
+ 
+     def WriteAnnotation(self, key, value):
+ 
++        assert isinstance(key, types.StringTypes)
++        assert isinstance(value, types.StringTypes)
+         self.__pickler.dump(_annotation_sentinel)
+         self._WriteAnnotationPtr()
+         self.__pickler.dump((&quot;annotation&quot;, key, value))
+Index: qm/test/classes/tet_stream.py
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/test/classes/tet_stream.py,v
+retrieving revision 1.3
+diff -u -r1.3 tet_stream.py
+--- qm/test/classes/tet_stream.py	15 Mar 2004 23:31:36 -0000	1.3
++++ qm/test/classes/tet_stream.py	30 Mar 2004 18:27:08 -0000
+@@ -135,9 +135,11 @@
+         self._start_time = &quot;&lt;unknown_start_time&gt;&quot;
+         self._finish_time = &quot;&lt;unknown_finish_time&gt;&quot;
+         self._aborted = False
+-        self._user = &quot;&lt;unknown_user&gt;&quot;
++        self._username = &quot;&lt;unknown_user&gt;&quot;
++        self._userid = &quot;&lt;unknown_user&gt;&quot;
+         self._version = &quot;&lt;unknown_version&gt;&quot;
+         self._uname = &quot;&lt;unknown_uname&gt;&quot;
++        self._cmdline = &quot;&lt;unknown_command_line&gt;&quot;
+         self._settings = {}
+ 
+         self._tcc_number = 0
+@@ -190,12 +192,16 @@
+                                = self._TETFormatTime(value)
+         elif key == &quot;qmtest.run.aborted&quot; and value == &quot;true&quot;:
+             self._aborted = True
+-        elif key == &quot;qmtest.run.user&quot;:
+-            self._user = value
++        elif key == &quot;qmtest.run.username&quot;:
++            self._username = value
++        elif key == &quot;qmtest.run.userid&quot;:
++            self._userid = value
+         elif key == &quot;qmtest.run.version&quot;:
+             self._version = &quot;qmtest-&quot; + value
+         elif key == &quot;qmtest.run.uname&quot;:
+             self._uname = value
++        elif key == &quot;qmtest.run.command_line&quot;:
++            self._cmdline = value
+         else:
+             self._settings[key] = value
+ 
+@@ -210,11 +216,15 @@
+ 
+         # Test case controller start
+         # 0 | version time date | who
+-        self._WriteLine(0,
+-                        &quot;%s %s %s&quot; % (self._version,
+-                                      self._start_time,
+-                                      self._start_date),
+-                        &quot;User: &quot; + qm.common.get_username())
++        # who is
++        # &quot;User: &lt;username&gt; (&lt;numeric-id&gt;) TCC Start, Command line: &lt;cmdline&gt;&quot;
++        data = &quot;%s %s %s&quot; % (self._version,
++                             self._start_time,
++                             self._start_date)
++        who = &quot;User: %s (%s) TCC Start, Command line: %s&quot; \
++              % (self._username, self._userid, self._cmdline)
++
++        self._WriteLine(0, data, who)
+         # Local system information
+         # 5 | sysname nodename release version machine | text
+         self._WriteLine(5, self._uname, &quot;&quot;)
+@@ -252,11 +262,14 @@
+         # Test case start
+         # 10 | activity_number testcase_path time | invocable_components
+         started = self._ExtractTime(result, Result.START_TIME)
+-        data = &quot;%i %s %s&quot; % (self._tcc_number, result.GetId(), started)
+-        self._WriteLine(10, data, &quot;&quot;)
++        data = &quot;%i %s %s&quot; % (self._tcc_number,
++                             &quot;/&quot; + result.GetId(),
++                             started)
++        self._WriteLine(10, data, &quot;TC Start&quot;)
+ 
+ 
+-    def _WriteResultAnnotations(self, result, seq_start=1):
++    def _WriteResultAnnotations(self, result, purpose,
++                                num_restrict=None, seq_start=1):
+         &quot;&quot;&quot;Writes out annotations for a 'result' in TET format.
+ 
+         Annotations are represented as (sequences of) &quot;test case
+@@ -264,12 +277,28 @@
+ 
+         'result' -- The 'Result' whose annotations should be written.
+ 
++        'num_restrict' -- Only write out annotations that end with this
++        number.  If the number is '1', also writes out all results that
++        don't end in any number, with &quot;INFO: &quot; prefixed.  If 'None',
++        writes out all annotations.
++
+         'seq_start' -- The TET test case information sequence number to
+         start with.&quot;&quot;&quot;
+ 
+         seqnum = seq_start
+-        for key, value in result.items():
+-            for line in value.split(&quot;\n&quot;):
++        keys = result.keys()
++        keys.sort()
++        for key in keys:
++            value = result[key]
++            prefix = &quot;&quot;
++            if num_restrict is not None:
++                if num_restrict == 1 and key[-1] not in &quot;0123456789&quot;:
++                    prefix = &quot;INFO: &quot;
++                elif not key.endswith(&quot;_%i&quot; % num_restrict):
++                    continue
++                    
++            text = qm.common.html_to_text(value)
++            for line in text.split(&quot;\n&quot;):
+                 # Test case information
+                 # 520 | activity_num tp_num context block sequence | text
+                 #
+@@ -285,8 +314,10 @@
+                 # 'sequence' appears to be incremented for each line
+                 #   within a single test purpose and context.
+                 self._WriteLine(520,
+-                                &quot;%i 0 0 1 %i&quot; % (self._tcc_number, seqnum),
+-                                &quot;%s: %s&quot; % (key, line))
++                                &quot;%i %i 0 1 %i&quot; % (self._tcc_number,
++                                                  purpose,
++                                                  seqnum),
++                                &quot;%s%s: %s&quot; % (prefix, key, line))
+                 seqnum += 1
+ 
+ 
+@@ -301,8 +332,6 @@
+         keys.sort(lambda k1, k2: cmp(int(k1[len(DejaGNUTest.RESULT_PREFIX):]),
+                                      int(k2[len(DejaGNUTest.RESULT_PREFIX):])))
+ 
+-        self._WriteResultAnnotations(result)
+-                
+         start_time = self._ExtractTime(result, Result.START_TIME)
+         end_time = self._ExtractTime(result, Result.END_TIME)
+ 
+@@ -315,46 +344,40 @@
+             self._WriteLine(200,
+                             &quot;%i %i %s&quot;
+                             % (self._tcc_number, purpose, start_time),
+-                            &quot;&quot;)
+-            if outcome == DejaGNUTest.WARNING:
+-                # Test case information
+-                # 520 | activity_num tp_num context block sequence | text
+-                # (see _WriteResultAnnotations for details)
+-                self._WriteLine(520,
+-                                &quot;%i %i 0 1 1&quot; % (self._tcc_number,
+-                                                 purpose),
+-                                &quot;WARNING&quot;)
+-            elif outcome == DejaGNUTest.ERROR:
+-                # Test case information
+-                # 520 | activity_num tp_num context block sequence | text
+-                # (see _WriteResultAnnotations for details)
+-                self._WriteLine(520,
+-                                &quot;%i %i 0 1 1&quot; % (self._tcc_number,
+-                                                 purpose),
+-                                &quot;ERROR&quot;)
+-            else:
+-                outcome_num, outcome_name \
+-                    = { DejaGNUTest.PASS: self.PASS,
+-                        DejaGNUTest.XPASS: self.PASS,
+-                        DejaGNUTest.FAIL: self.FAIL,
+-                        DejaGNUTest.XFAIL: self.FAIL,
+-                        DejaGNUTest.UNTESTED: self.UNTESTED,
+-                        DejaGNUTest.UNRESOLVED: self.UNRESOLVED,
+-                        # TET's UNSUPPORTED is like a FAIL for tests
+-                        # that check for optional features; UNTESTED is
+-                        # the correct correspondent for DejaGNU's
+-                        # UNSUPPORTED.
+-                        DejaGNUTest.UNSUPPORTED: self.UNTESTED,
+-                        }[outcome]
+-                # Test purpose result
+-                # 220 | activity_number tp_number result time | result-name
+-                data = &quot;%i %i %i %s&quot; % (self._tcc_number,
+-                                        purpose,
+-                                        outcome_num,
+-                                        end_time)
+-                self._WriteLine(220, data, outcome_name)
++                            &quot;TP Start&quot;)
++
++            outcome_num, outcome_name \
++                = { DejaGNUTest.PASS: self.PASS,
++                    DejaGNUTest.XPASS: self.PASS,
++                    DejaGNUTest.FAIL: self.FAIL,
++                    DejaGNUTest.XFAIL: self.FAIL,
++                    DejaGNUTest.UNTESTED: self.UNTESTED,
++                    DejaGNUTest.UNRESOLVED: self.UNRESOLVED,
++                    DejaGNUTest.ERROR: self.UNRESOLVED,
++                    DejaGNUTest.WARNING: self.WARNING,
++                    # TET's UNSUPPORTED is like a FAIL for tests
++                    # that check for optional features; UNTESTED is
++                    # the correct correspondent for DejaGNU's
++                    # UNSUPPORTED.
++                    DejaGNUTest.UNSUPPORTED: self.UNTESTED,
++                    }[outcome]
++            # As a special case, check for magic annotation.
++            if result.has_key(&quot;test_not_relevant_to_testing_mode&quot;):
++                outcome_num, outcome_name = self.NOTINUSE
++
++            # Write per-purpose annotations:
++            self._WriteResultAnnotations(result, purpose,
++                                         num_restrict=purpose)
++
++            # Test purpose result
++            # 220 | activity_number tp_number result time | result-name
++            data = &quot;%i %i %i %s&quot; % (self._tcc_number,
++                                    purpose,
++                                    outcome_num,
++                                    end_time)
++            self._WriteLine(220, data, outcome_name)
+ 
+-                purpose += 1
++            purpose += 1
+             
+         # Test case end
+         # 80 | activity_number completion_status time | text
+@@ -362,7 +385,7 @@
+         # the documented examples.
+         self._WriteLine(80,
+                         &quot;%i 0 %s&quot; % (self._tcc_number, end_time),
+-                        &quot;&quot;)
++                        &quot;TC End&quot;)
+ 
+             
+     def _WriteTestResult(self, result):
+@@ -372,30 +395,30 @@
+         # Test purpose start
+         # 200 | activity_number test_purpose_number time | text
+         start_time = self._ExtractTime(result, Result.START_TIME)
+-        data = &quot;%i 0 %s&quot; % (self._tcc_number, start_time)
+-        self._WriteLine(200, data, &quot;&quot;)
++        data = &quot;%i 1 %s&quot; % (self._tcc_number, start_time)
++        self._WriteLine(200, data, &quot;TP Start&quot;)
+ 
+         outcome_num, outcome_name = { Result.FAIL: self.FAIL,
+                                       Result.PASS: self.PASS,
+                                       Result.UNTESTED: self.UNINITIATED,
+                                       Result.ERROR: self.UNREPORTED,
+                                     }[result.GetOutcome()]
+-        # Test purpose result
+-        # 220 | activity_number tp_number result time | result-name
+-        end_time = self._ExtractTime(result, Result.END_TIME)
+-        data = &quot;%i 0 %i %s&quot; % (self._tcc_number, outcome_num, end_time)
+-        self._WriteLine(220, data, outcome_name)
+-
+         if result.GetOutcome() == Result.ERROR:
+             # Test case information
+             # 520 | activity_num tp_num context block sequence | text
+             # (see _WriteResultAnnotations for details)
+             self._WriteLine(520,
+-                            &quot;%i 0 0 1 1&quot; % self._tcc_number,
+-                            &quot;ERROR in test &quot; + result.GetId())
+-            self._WriteResultAnnotations(result, 2)
++                            &quot;%i 1 0 1 1&quot; % self._tcc_number,
++                            &quot;QMTest ERROR in test &quot; + result.GetId())
++            self._WriteResultAnnotations(result, 1, seq_start=2)
+         else:
+-            self._WriteResultAnnotations(result)
++            self._WriteResultAnnotations(result, 1)
++
++        # Test purpose result
++        # 220 | activity_number tp_number result time | result-name
++        end_time = self._ExtractTime(result, Result.END_TIME)
++        data = &quot;%i 1 %i %s&quot; % (self._tcc_number, outcome_num, end_time)
++        self._WriteLine(220, data, outcome_name)
+ 
+         # Test case end
+         # 80 | activity_number completion_status time | text
+@@ -403,7 +426,7 @@
+         # the documented examples.
+         self._WriteLine(80,
+                         &quot;%i 0 %s&quot; % (self._tcc_number, end_time),
+-                        &quot;&quot;)
++                        &quot;TC End&quot;)
+ 
+ 
+     def _WriteResourceResult(self, result):
+Index: qm/test/classes/text_result_stream.py
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/test/classes/text_result_stream.py,v
+retrieving revision 1.7
+diff -u -r1.7 text_result_stream.py
+--- qm/test/classes/text_result_stream.py	10 Nov 2003 22:33:42 -0000	1.7
++++ qm/test/classes/text_result_stream.py	30 Mar 2004 18:27:09 -0000
+@@ -17,9 +17,8 @@
+ # imports
+ ########################################################################
+ 
+-import formatter
+-import htmllib
+-import StringIO
++import qm.common
++import qm.fields
+ from   qm.test.base import *
+ from   qm.test.result import *
+ from   qm.test.file_result_stream import FileResultStream
+@@ -190,8 +189,8 @@
+             self._DisplayHeading(&quot;TEST RESULTS&quot;)
+             self.__first_test = 0
+         
+-	# Display the result.
+-	self._DisplayResult(result, self.format)
++        # Display the result.
++        self._DisplayResult(result, self.format)
+ 
+         # Display annotations associated with the test.
+         if (self.format == &quot;full&quot;
+@@ -350,27 +349,27 @@
+             return
+ 
+         # Generate them.
+-	for result in results:
++        for result in results:
+             self._DisplayResult(result, self.format)
+ 
+ 
+     def _DisplayResult(self, result, format):
+-	&quot;&quot;&quot;Display 'result'.
++        &quot;&quot;&quot;Display 'result'.
+ 
+-	'result' -- The 'Result' of a test or resource execution.
++        'result' -- The 'Result' of a test or resource execution.
+ 
+         'format' -- The format to use when displaying results.&quot;&quot;&quot;
+ 
+-	id_ = result.GetId()
++        id_ = result.GetId()
+         kind = result.GetKind()
+-	outcome = result.GetOutcome()
++        outcome = result.GetOutcome()
+ 
+-	# Print the ID and outcome.
+-	if self.expected_outcomes:
+-	    # If expected outcomes were specified, print the expected
+-	    # outcome too.
+-	    expected_outcome = \
+-	        self.expected_outcomes.get(id_, Result.PASS)
++        # Print the ID and outcome.
++        if self.expected_outcomes:
++            # If expected outcomes were specified, print the expected
++            # outcome too.
++            expected_outcome = \
++                self.expected_outcomes.get(id_, Result.PASS)
+             if (outcome == Result.PASS
+                 and expected_outcome == Result.FAIL):
+                 self._WriteOutcome(id_, kind, &quot;XPASS&quot;)
+@@ -381,7 +380,7 @@
+                 self._WriteOutcome(id_, kind, outcome, expected_outcome)
+             else:
+                 self._WriteOutcome(id_, kind, outcome)
+-	else:
++        else:
+             self._WriteOutcome(id_, kind, outcome)
+ 
+         # Print the cause of the failure.
+@@ -406,15 +405,10 @@
+             self.file.write(&quot;    %s:\n&quot; % name)
+ 
+             # Convert the HTML to text.
+-            s = StringIO.StringIO()
+-            w = formatter.DumbWriter(s)
+-            f = formatter.AbstractFormatter(w)
+-            p = htmllib.HTMLParser(f)
+-            p.feed(result[name])
+-            p.close()
++            text = qm.common.html_to_text(result[name])
+ 
+             # Write out the text.
+-            for l in s.getvalue().splitlines():
++            for l in text.splitlines():
+                 self.file.write(&quot;      &quot; + l + &quot;\n&quot;)
+             self.file.write(&quot;\n&quot;)
+         
+@@ -436,10 +430,10 @@
+             name = &quot;Cleanup &quot; + name
+         
+         if expected_outcome:
+-	    self.file.write(&quot;  %-46s: %-8s, expected %-8s\n&quot;
++            self.file.write(&quot;  %-46s: %-8s, expected %-8s\n&quot;
+                             % (name, outcome, expected_outcome))
+-	else:
+-	    self.file.write(&quot;  %-46s: %-8s\n&quot; % (name, outcome))
++        else:
++            self.file.write(&quot;  %-46s: %-8s\n&quot; % (name, outcome))
+ 
+             
+     def _DisplayHeading(self, heading):
+Index: tests/regress/QMTest/selftest.py
+===================================================================
+RCS file: /home/qm/Repository/qm/tests/regress/QMTest/selftest.py,v
+retrieving revision 1.3
+diff -u -r1.3 selftest.py
+--- tests/regress/QMTest/selftest.py	11 Aug 2003 20:04:11 -0000	1.3
++++ tests/regress/QMTest/selftest.py	30 Mar 2004 18:27:09 -0000
+@@ -93,10 +93,10 @@
+         stderr = e.stderr
+ 
+         result.Annotate({
+-            &quot;selftest.RegTest.cmdline&quot;  : ' '.join(argv),
++            &quot;selftest.RegTest.cmdline&quot;  : result.Quote(' '.join(argv)),
+             &quot;selftest.RegTest.exitcode&quot; : (&quot;%d&quot; % status),
+-            &quot;selftest.RegTest.stdout&quot;   : '&lt;pre&gt;' + stdout + '&lt;/pre&gt;',
+-            &quot;selftest.RegTest.stderr&quot;   : '&lt;pre&gt;' + stderr + '&lt;/pre&gt;'
++            &quot;selftest.RegTest.stdout&quot;   : result.Quote(stdout),
++            &quot;selftest.RegTest.stderr&quot;   : result.Quote(stderr),
+             })
+ 
+         if stderr != '':
+Index: tests/results_files/QMTest/results_file_test.py
+===================================================================
+RCS file: /home/qm/Repository/qm/tests/results_files/QMTest/results_file_test.py,v
+retrieving revision 1.1
+diff -u -r1.1 results_file_test.py
+--- tests/results_files/QMTest/results_file_test.py	9 Aug 2003 05:15:02 -0000	1.1
++++ tests/results_files/QMTest/results_file_test.py	30 Mar 2004 18:27:09 -0000
+@@ -69,8 +69,8 @@
+         result.Annotate({
+             &quot;selftest.RegTest.cmdline&quot;  : ' '.join(argv),
+             &quot;selftest.RegTest.exitcode&quot; : (&quot;%d&quot; % status),
+-            &quot;selftest.RegTest.stdout&quot;   : '&lt;pre&gt;' + e.stdout + '&lt;/pre&gt;',
+-            &quot;selftest.RegTest.stderr&quot;   : '&lt;pre&gt;' + e.stderr + '&lt;/pre&gt;',
++            &quot;selftest.RegTest.stdout&quot;   : result.Quote(e.stdout),
++            &quot;selftest.RegTest.stderr&quot;   : result.Quote(e.stderr),
+             })
+ 
+         if e.stderr != '':
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000824.html">[PATCH] qmtest_gcc updates
+</A></li>
+	<LI>Next message: <A HREF="000826.html">[qmtest] [PATCH] qmtest updates
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#825">[ date ]</a>
+              <a href="thread.html#825">[ thread ]</a>
+              <a href="subject.html#825">[ subject ]</a>
+              <a href="author.html#825">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">More information about the qmtest
+mailing list</a><br>
+</body></html>

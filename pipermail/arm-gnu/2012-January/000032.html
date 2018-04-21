@@ -1,0 +1,115 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [arm-gnu] Static template member in assigned section -- section type conflict
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:arm-gnu%40codesourcery.com?Subject=Re%3A%20%5Barm-gnu%5D%20Static%20template%20member%20in%20assigned%20section%20--%20section%0A%20type%20conflict&In-Reply-To=%3C4F2186ED.2080202%40mentor.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000031.html">
+   <LINK REL="Next"  HREF="000033.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[arm-gnu] Static template member in assigned section -- section type conflict</H1>
+    <B>Carlos O'Donell</B> 
+    <A HREF="mailto:arm-gnu%40codesourcery.com?Subject=Re%3A%20%5Barm-gnu%5D%20Static%20template%20member%20in%20assigned%20section%20--%20section%0A%20type%20conflict&In-Reply-To=%3C4F2186ED.2080202%40mentor.com%3E"
+       TITLE="[arm-gnu] Static template member in assigned section -- section type conflict">carlos_odonell at mentor.com
+       </A><BR>
+    <I>Thu Jan 26 17:01:33 UTC 2012</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000031.html">[arm-gnu] Static template member in assigned section -- section type conflict
+</A></li>
+        <LI>Next message: <A HREF="000033.html">[arm-gnu] Static template member in assigned section -- section type conflict
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#32">[ date ]</a>
+              <a href="thread.html#32">[ thread ]</a>
+              <a href="subject.html#32">[ subject ]</a>
+              <a href="author.html#32">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>On 1/22/2012 8:36 PM, Gene Smith wrote:
+&gt;<i> //@!    test: g++ bad2.cpp
+</I>&gt;<i> //      bad2.cpp:18:25: error: priv causes a section type conflict
+</I>&gt;<i> 
+</I>&gt;<i> template&lt;class t1, class t2&gt;
+</I>&gt;<i> class outer
+</I>&gt;<i> {
+</I>&gt;<i> public:
+</I>&gt;<i>     t1        a;
+</I>&gt;<i>     static t2    b;
+</I>&gt;<i> };
+</I>&gt;<i> 
+</I>&gt;<i> template&lt;class t1, class t2&gt;
+</I>&gt;<i> t2 outer&lt;t1, t2&gt;::b
+</I>&gt;<i>         __attribute__((section(&quot;.s1&quot;)));
+</I>&gt;<i> 
+</I>&gt;<i> int main (void)
+</I>&gt;<i> {
+</I>&gt;<i>     static outer&lt;int, int&gt; priv __attribute__((section(&quot;.s1&quot;)));
+</I>
+You can't place common data and non-common data in the same section.
+
+The conflict is as follows:
+
+* The variable t2 in outer-&gt;t2 is static and therefore common data,
+  there must only be one instance of t2 at all times.
+
+* Moving t2 into .s1 causes section .s1 to be marked as common data,
+  this is a flag that the linker must honour and it will bind other
+  references to t2 to the common location in .s1 (that's how static
+  is implemented in this case).
+
+* In main you say you want to store the *entire* contents of the
+  instantiated template into .s1, but .s1 is common data, and the
+  object is not common data, and that is a conflict.
+ 
+&gt;<i>     priv.a = 10;
+</I>&gt;<i>     priv.b = 10;
+</I>&gt;<i> }
+</I>&gt;<i> //@! end of file
+</I>
+The solution is to place priv into some *other* section.
+
+You will never have *all* of priv in the same place because
+the `static' clause makes that impossible for &gt; 1 instances
+of the object (given the current implementation for static).
+
+Cheers,
+Carlos.
+-- 
+Carlos O'Donell
+Mentor Graphics / CodeSourcery
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/arm-gnu">carlos at codesourcery.com</A>
++1 (613) 963 1026
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000031.html">[arm-gnu] Static template member in assigned section -- section type conflict
+</A></li>
+	<LI>Next message: <A HREF="000033.html">[arm-gnu] Static template member in assigned section -- section type conflict
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#32">[ date ]</a>
+              <a href="thread.html#32">[ thread ]</a>
+              <a href="subject.html#32">[ subject ]</a>
+              <a href="author.html#32">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/arm-gnu">More information about the arm-gnu
+mailing list</a><br>
+</body></html>

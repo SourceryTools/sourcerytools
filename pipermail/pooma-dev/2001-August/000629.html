@@ -1,0 +1,625 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [newfield_revision Patch] Support Field Replication
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bnewfield_revision%20Patch%5D%20Support%20Field%20Replication&In-Reply-To=%3C20010816112602.A15850%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000628.html">
+   <LINK REL="Next"  HREF="000630.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[newfield_revision Patch] Support Field Replication</H1>
+    <B>Jeffrey Oldham</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bnewfield_revision%20Patch%5D%20Support%20Field%20Replication&In-Reply-To=%3C20010816112602.A15850%40codesourcery.com%3E"
+       TITLE="[newfield_revision Patch] Support Field Replication">oldham at codesourcery.com
+       </A><BR>
+    <I>Thu Aug 16 18:26:02 UTC 2001</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000628.html">[newfield_revision Patch] Add typename to NearestNeighbors.*
+</A></li>
+        <LI>Next message: <A HREF="000630.html">[newfield_revision Patch] Fix nearestNeighbors()
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#629">[ date ]</a>
+              <a href="thread.html#629">[ thread ]</a>
+              <a href="subject.html#629">[ subject ]</a>
+              <a href="author.html#629">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Specifying one field's values by copying values in another field is a
+frequent operation supported by this patch.  To support it, we
+implement the resulting field as an engine based on the input field
+rather than performing the computation when replicate() is called.
+
+2001-08-16  Jeffrey D. Oldham  &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">oldham at codesourcery.com</A>&gt;
+
+        * FieldOffset.h: Remove unnecessary header files.
+        (replicate): New function.
+        * DiffOps/FieldShiftEngine.h (FieldShiftSimple::make): Revise
+        parameters.  Move error checking from View2&lt;Field, FieldOffset,
+        Centering&gt;.
+        (FieldShiftSimple::make(Expression, vector&lt;FieldOffsetList&gt;,
+        Centering&gt;)): New function analogous to above make() but
+        supporting a vector of FieldOffsetList's.
+        (View2&lt;Field,FieldOffset,Centering&gt;): Fix initial comment.
+        (View2&lt;Field,FieldOffset,Centering&gt;::make): Move error checking to
+        FieldShiftSimple::make.
+        (View2&lt;Field,FieldOffset,Centering&gt;::makeRead): Likewise.
+        (View2&lt;Field,vector&lt;FieldOffset&gt;,Centering&gt;): New class supporting
+        a vector of FieldOffsetList's.
+        * tests/makefile (run_tests): Add Replicate.
+        (field_tests): Likewise.
+        Add PHONY Replicate rule.
+	* tests/Replicate.cpp: New file to test replicate().
+
+Applied to      newfield_revision branch
+Approved by	Stephen Smith
+Tested on       sequential Linux using gcc 3.0.1 by compiling Pooma library and NewField tests
+
+Thanks,
+Jeffrey D. Oldham
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">oldham at codesourcery.com</A>
+-------------- next part --------------
+Index: FieldOffset.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/NewField/Attic/FieldOffset.h,v
+retrieving revision 1.1.2.4
+diff -c -p -r1.1.2.4 FieldOffset.h
+*** FieldOffset.h	2001/08/15 18:09:45	1.1.2.4
+--- FieldOffset.h	2001/08/16 17:18:00
+***************
+*** 65,73 ****
+  #include &quot;Domain/Loc.h&quot;
+  #include &lt;iostream&gt;
+  #include &lt;vector&gt;
+- #include &lt;functional&gt;
+- #include &lt;algorithm&gt;
+- #include &lt;iterator&gt;
+  
+  
+  //-----------------------------------------------------------------------------
+--- 65,70 ----
+*************** class FieldOffsetList;
+*** 129,134 ****
+--- 126,145 ----
+  //-----------------------------------------------------------------------------
+  
+  //-----------------------------------------------------------------------------
++ // Full Description of replicate:
++ //
++ // Copy field values to the specified locations.  The first field
++ // parameter specifies the field supplying the values to replicate.
++ // The second std::vector&lt;FieldOffsetList&gt; parameter specifies, for
++ // each value in the returned field, which input field value to use.
++ // The vector's length must match the number of values in each output
++ // field's cell.  For example, the output field's first value is
++ // copied from the location specified by the vector's first list.  The
++ // third parameter indicates the returned field's centering.
++ //
++ //-----------------------------------------------------------------------------
++ 
++ //-----------------------------------------------------------------------------
+  // Full Description of findFieldOffsetList():
+  //
+  // Given an input centering and an output centering,
+*************** max(const Field&lt;GeometryTag, T, Expr&gt;&amp; f
+*** 438,443 ****
+--- 449,483 ----
+    typedef typename Field&lt;GeometryTag, T, Expr&gt;::T_t T_t;
+    CTAssert((Field&lt;GeometryTag, T, Expr&gt;::dimensions == Dim));
+    return accumulate(fomax&lt;T_t&gt;(), field, lst, loc);
++ }
++ 
++ 
++ //-----------------------------------------------------------------------------
++ // replicate.
++ //-----------------------------------------------------------------------------
++ 
++ template &lt;class GeometryTag, class T, class Expr, int Dim&gt;
++ inline
++ typename
++ View2&lt;Field&lt;GeometryTag, T, Expr&gt;, std::vector&lt;FieldOffset&lt;Dim&gt; &gt;,
++       Centering&lt;Dim&gt; &gt;::Type_t
++ replicate(const Field&lt;GeometryTag, T, Expr&gt;&amp; field,
++           const std::vector&lt;FieldOffsetList&lt;Dim&gt; &gt; &amp;vec,
++           const Centering&lt;Dim&gt; &amp;centering)
++ {
++   CTAssert((Field&lt;GeometryTag, T, Expr&gt;::dimensions == Dim));
++   typedef typename std::vector&lt;FieldOffsetList&lt;Dim&gt; &gt;::size_type vsize_type;
++   PInsist(vec.size() &gt; 0, &quot;Cannot replicate no values.&quot;);
++   PInsist(vec.size() == centering.size(),
++ 	  &quot;Vector and output centering sizes must match.&quot;);
++ 
++   std::vector&lt;FieldOffset&lt;Dim&gt; &gt; vecFO(vec.size());
++   for (vsize_type i = 0; i &lt; vec.size(); ++i) {
++     PInsist(vec[i].size() == 1, &quot;Can replicate only one value.&quot;);
++     vecFO[i] = vec[i][0];
++   }
++ 
++   return field(vecFO, centering);
+  }
+  
+  
+Index: DiffOps/FieldShiftEngine.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/NewField/DiffOps/Attic/FieldShiftEngine.h,v
+retrieving revision 1.1.2.2
+diff -c -p -r1.1.2.2 FieldShiftEngine.h
+*** DiffOps/FieldShiftEngine.h	2001/08/13 21:14:30	1.1.2.2
+--- DiffOps/FieldShiftEngine.h	2001/08/16 18:07:48
+*************** struct FieldShiftSimple
+*** 372,378 ****
+    typedef Engine&lt;outputDim, OutputElement_t, OutputEngineTag_t&gt; SEngine_t;
+  
+    static inline
+!   Type_t make(const Expression &amp;f, const Loc&lt;outputDim&gt; &amp;offset,
+                const Centering&lt;outputDim&gt; &amp;centering)
+    {
+      // This should be h(centering, f.mesh(), f.layout())
+--- 372,379 ----
+    typedef Engine&lt;outputDim, OutputElement_t, OutputEngineTag_t&gt; SEngine_t;
+  
+    static inline
+!   Type_t make(const Expression &amp;f,
+! 	      const FieldOffset&lt;outputDim&gt; &amp;s1,
+                const Centering&lt;outputDim&gt; &amp;centering)
+    {
+      // This should be h(centering, f.mesh(), f.layout())
+*************** struct FieldShiftSimple
+*** 382,400 ****
+  
+      // Could change this to loop over centerings.
+  
+!     GuardLayers&lt;outputDim&gt; og(f.fieldEngine().guardLayers());
+      for (int d = 0; d &lt; outputDim; d++)
+!     {
+!       og.lower(d) += offset[d].first();
+!       og.upper(d) -= offset[d].first();
+!     }
+  
+      // need to set domain???
+      h.fieldEngine().guardLayers() = og;
+!     h.fieldEngine().engine() = SEngine_t(f.engine(), offset, f.domain());
+  
+      return h;
+    }
+  };
+  
+  //-----------------------------------------------------------------------------
+--- 383,488 ----
+  
+      // Could change this to loop over centerings.
+  
+! #   if POOMA_BOUNDS_CHECK
+!     if (f.numSubFields() &gt; 0)
+!       {
+! 	PInsist((s1.subFieldNumber() &lt; f.numSubFields()) &amp;&amp;
+! 		(s1.subFieldNumber() &gt;= 0),
+! 		&quot;subField bounds error&quot;);
+! 	PInsist(contains(f[s1.subFieldNumber()].totalDomain(),
+! 			 f[s1.subFieldNumber()].domain() + s1.cellOffset()),
+! 		&quot;Field operator()(FieldOffset) bounds error&quot;);
+!       }
+!     else
+!       {
+! 	PInsist(s1.subFieldNumber() == 0,
+! 		&quot;subField bounds error&quot;);
+! 	PInsist(contains(f.totalDomain(), f.domain() + s1.cellOffset()),
+! 		&quot;Field operator()(FieldOffset) bounds error&quot;);
+!       }
+! #   endif   
+! 
+!     Expression fld = 
+!       (f.numSubFields() &gt; 0) ? f[s1.subFieldNumber()] : f;
+!     const Loc&lt;outputDim&gt; &amp;offset = s1.cellOffset();
+! 
+!     GuardLayers&lt;outputDim&gt; og(fld.fieldEngine().guardLayers());
+      for (int d = 0; d &lt; outputDim; d++)
+!       {
+! 	og.lower(d) += offset[d].first();
+! 	og.upper(d) -= offset[d].first();
+!       }
+  
+      // need to set domain???
+      h.fieldEngine().guardLayers() = og;
+!     h.fieldEngine().engine() = SEngine_t(fld.engine(), offset, fld.domain());
+! 
+!     return h;
+!   }
+! 
+!   static inline
+!   Type_t make(const Expression &amp;f,
+! 	      const std::vector&lt;FieldOffset&lt;outputDim&gt; &gt; &amp;vs1,
+!               const Centering&lt;outputDim&gt; &amp;centering)
+!   {
+!     typedef std::vector&lt;FieldOffset&lt;outputDim&gt; &gt;::size_type size_type;
+! 
+!     // This should be h(centering, f.mesh(), f.layout())
+!     // (Ideally centering would come out of offset.)
+! 
+!     Type_t h(f, centering);
+! 
+!     // Could change this to loop over centerings.
+! 
+!     PInsist(vs1.size() == centering.size(),
+! 	    &quot;The FieldOffset vector's length must match the centering's size.&quot;);
+! 
+!     // This code should simplify when unified access to fields with
+!     // one or more subfields is possible.
+  
++     for (size_type s1Index = 0; s1Index &lt; vs1.size(); ++s1Index) {
++       const FieldOffset&lt;outputDim&gt; s1 = vs1[s1Index];
++       Type_t hField = (h.numSubFields() &gt; 0) ? h[s1Index] : h;
++ 
++ #   if POOMA_BOUNDS_CHECK
++       if (f.numSubFields() &gt; 0)
++ 	{
++ 	  PInsist((s1.subFieldNumber() &lt; f.numSubFields()) &amp;&amp;
++ 		  (s1.subFieldNumber() &gt;= 0),
++ 		  &quot;subField bounds error&quot;);
++ 	  PInsist(contains(f[s1.subFieldNumber()].totalDomain(),
++ 			   f[s1.subFieldNumber()].domain() + s1.cellOffset()),
++ 		  &quot;Field operator()(FieldOffset) bounds error&quot;);
++ 	}
++       else
++ 	{
++ 	  PInsist(s1.subFieldNumber() == 0,
++ 		  &quot;subField bounds error&quot;);
++ 	  PInsist(contains(f.totalDomain(), f.domain() + s1.cellOffset()),
++ 		  &quot;Field operator()(FieldOffset) bounds error&quot;);
++ 	}
++ #   endif   
++ 
++       Expression fld = 
++ 	(f.numSubFields() &gt; 0) ? f[s1.subFieldNumber()] : f;
++       const Loc&lt;outputDim&gt; &amp;offset = s1.cellOffset();
++ 
++       GuardLayers&lt;outputDim&gt; og(fld.fieldEngine().guardLayers());
++       for (int d = 0; d &lt; outputDim; d++)
++ 	{
++ 	  og.lower(d) += offset[d].first();
++ 	  og.upper(d) -= offset[d].first();
++ 	}
++ 
++       // need to set domain???
++       hField.fieldEngine().guardLayers() = og;
++       hField.fieldEngine().engine() =
++ 	SEngine_t(fld.engine(), offset, fld.domain());
++     }
++ 
+      return h;
+    }
++ 
+  };
+  
+  //-----------------------------------------------------------------------------
+*************** struct LeafFunctor&lt;Engine&lt;Dim, T, FieldS
+*** 597,608 ****
+  };
+  
+  //-----------------------------------------------------------------------------
+! // View1&lt;Field, FieldOffset&gt; specialization for indexing a field with a
+! // FieldOffset.
+  //-----------------------------------------------------------------------------
+  
+  template&lt;class GeometryTag, class T, class EngineTag, int Dim&gt;
+! struct View2&lt;Field&lt;GeometryTag, T, EngineTag&gt;, FieldOffset&lt;Dim&gt;, Centering&lt;Dim&gt; &gt;
+  {
+    // Convenience typedef for the thing we're taking a view of.
+    
+--- 685,697 ----
+  };
+  
+  //-----------------------------------------------------------------------------
+! // View2&lt;Field, FieldOffset, Centering&gt; specialization for indexing a
+! // field with a FieldOffset.
+  //-----------------------------------------------------------------------------
+  
+  template&lt;class GeometryTag, class T, class EngineTag, int Dim&gt;
+! struct View2&lt;Field&lt;GeometryTag, T, EngineTag&gt;, FieldOffset&lt;Dim&gt;,
+!              Centering&lt;Dim&gt; &gt;
+  {
+    // Convenience typedef for the thing we're taking a view of.
+    
+*************** struct View2&lt;Field&lt;GeometryTag, T, Engin
+*** 621,650 ****
+                const Centering&lt;Dim&gt; &amp;c)
+    {
+      CTAssert(Dim == Subject_t::dimensions);
+! 
+!     if (f.numSubFields() &gt; 0)
+!     {
+! #   if POOMA_BOUNDS_CHECK
+!       PInsist((s1.subFieldNumber() &lt; f.numSubFields()) &amp;&amp;
+!               (s1.subFieldNumber() &gt;= 0),
+!               &quot;subField bounds error&quot;);
+!       PInsist(contains(f[s1.subFieldNumber()].totalDomain(),
+!                        f[s1.subFieldNumber()].domain() + s1.cellOffset()),
+!               &quot;Field operator()(FieldOffset) bounds error&quot;);
+! #   endif
+!       return FieldShiftSimple&lt;Subject_t&gt;::make(f[s1.subFieldNumber()],
+!                                                s1.cellOffset(), c);
+!     }
+!     else
+!     {
+! #   if POOMA_BOUNDS_CHECK
+!       PInsist(s1.subFieldNumber() == 0,
+!               &quot;subField bounds error&quot;);
+!       PInsist(contains(f.totalDomain(), f.domain() + s1.cellOffset()),
+!               &quot;Field operator()(FieldOffset) bounds error&quot;);
+! #   endif
+!       return FieldShiftSimple&lt;Subject_t&gt;::make(f, s1.cellOffset(), c);
+!     }
+    }
+  
+    inline static
+--- 710,716 ----
+                const Centering&lt;Dim&gt; &amp;c)
+    {
+      CTAssert(Dim == Subject_t::dimensions);
+!     return FieldShiftSimple&lt;Subject_t&gt;::make(f, s1, c);
+    }
+  
+    inline static
+*************** struct View2&lt;Field&lt;GeometryTag, T, Engin
+*** 652,681 ****
+                        const Centering&lt;Dim&gt; &amp;c)
+    {
+      CTAssert(Dim == Subject_t::dimensions);
+  
+!     if (f.numSubFields() &gt; 0)
+!     {
+! #   if POOMA_BOUNDS_CHECK
+!       PInsist((s1.subFieldNumber() &lt; f.numSubFields()) &amp;&amp;
+!               (s1.subFieldNumber() &gt;= 0),
+!               &quot;subField bounds error&quot;);
+!       PInsist(contains(f[s1.subFieldNumber()].totalDomain(),
+!                        f[s1.subFieldNumber()].domain() + s1.cellOffset()),
+!               &quot;Field operator()(FieldOffset) bounds error&quot;);
+! #   endif
+!       return FieldShiftSimple&lt;Subject_t&gt;::make(f[s1.subFieldNumber()],
+!                                                s1.cellOffset(), c);
+!     }
+!     else
+!     {
+! #   if POOMA_BOUNDS_CHECK
+!       PInsist(s1.subFieldNumber() == 0,
+!               &quot;subField bounds error&quot;);
+!       PInsist(contains(f.totalDomain(), f.domain() + s1.cellOffset()),
+!               &quot;Field operator()(FieldOffset) bounds error&quot;);
+! #   endif
+!       return FieldShiftSimple&lt;Subject_t&gt;::make(f, s1.cellOffset(), c);
+!     }
+    }
+  };
+  
+--- 718,764 ----
+                        const Centering&lt;Dim&gt; &amp;c)
+    {
+      CTAssert(Dim == Subject_t::dimensions);
++     return FieldShiftSimple&lt;Subject_t&gt;::make(f, s1, c);
++   }
++ };
++ 
++ //-----------------------------------------------------------------------------
++ // View2&lt;Field, vector&lt;FieldOffset&gt;, Centering&gt; specialization for indexing a
++ // field with a vector&lt;FieldOffset&gt;.
++ //-----------------------------------------------------------------------------
++ 
++ template&lt;class GeometryTag, class T, class EngineTag, int Dim&gt;
++ struct View2&lt;Field&lt;GeometryTag, T, EngineTag&gt;, std::vector&lt;FieldOffset&lt;Dim&gt; &gt;,
++              Centering&lt;Dim&gt; &gt;
++ {
++   // Convenience typedef for the thing we're taking a view of.
++   
++   typedef Field&lt;GeometryTag, T, EngineTag&gt; Subject_t;
++   typedef typename Subject_t::Engine_t Engine_t;
++ 
++   // The return types.
++ 
++   typedef Field&lt;GeometryTag, T, FieldShift&lt;Engine_t&gt; &gt; ReadType_t;
++   typedef Field&lt;GeometryTag, T, FieldShift&lt;Engine_t&gt; &gt; Type_t;
++ 
++   // The functions that do the indexing.
++ 
++   inline static
++   Type_t make(const Subject_t &amp;f,
++ 	      const std::vector&lt;FieldOffset&lt;Dim&gt; &gt; &amp;s1,
++               const Centering&lt;Dim&gt; &amp;c)
++   {
++     CTAssert(Dim == Subject_t::dimensions);
++     return FieldShiftSimple&lt;Subject_t&gt;::make(f, s1, c);
++   }
+  
+!   inline static
+!   ReadType_t makeRead(const Subject_t &amp;f,
+! 		      const std::vector&lt;FieldOffset&lt;Dim&gt; &gt; &amp;s1,
+!                       const Centering&lt;Dim&gt; &amp;c)
+!   {
+!     CTAssert(Dim == Subject_t::dimensions);
+!     return FieldShiftSimple&lt;Subject_t&gt;::make(f, s1, c);
+    }
+  };
+  
+Index: tests/Replicate.cpp
+===================================================================
+RCS file: Replicate.cpp
+diff -N Replicate.cpp
+*** /dev/null	Tue May  5 14:32:27 1998
+--- Replicate.cpp	Thu Aug 16 11:18:00 2001
+***************
+*** 0 ****
+--- 1,98 ----
++ // -*- C++ -*-
++ // ACL:license
++ // ----------------------------------------------------------------------
++ // This software and ancillary information (herein called &quot;SOFTWARE&quot;)
++ // called POOMA (Parallel Object-Oriented Methods and Applications) is
++ // made available under the terms described here.  The SOFTWARE has been
++ // approved for release with associated LA-CC Number LA-CC-98-65.
++ // 
++ // Unless otherwise indicated, this SOFTWARE has been authored by an
++ // employee or employees of the University of California, operator of the
++ // Los Alamos National Laboratory under Contract No. W-7405-ENG-36 with
++ // the U.S. Department of Energy.  The U.S. Government has rights to use,
++ // reproduce, and distribute this SOFTWARE. The public may copy, distribute,
++ // prepare derivative works and publicly display this SOFTWARE without 
++ // charge, provided that this Notice and any statement of authorship are 
++ // reproduced on all copies.  Neither the Government nor the University 
++ // makes any warranty, express or implied, or assumes any liability or 
++ // responsibility for the use of this SOFTWARE.
++ // 
++ // If SOFTWARE is modified to produce derivative works, such modified
++ // SOFTWARE should be clearly marked, so as not to confuse it with the
++ // version available from LANL.
++ // 
++ // For more information about POOMA, send e-mail to <A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">pooma at acl.lanl.gov</A>,
++ // or visit the POOMA web page at <A HREF="http://www.acl.lanl.gov/pooma/.">http://www.acl.lanl.gov/pooma/.</A>
++ // ----------------------------------------------------------------------
++ // ACL:license
++ //-----------------------------------------------------------------------------
++ // Test replicating field values.
++ //-----------------------------------------------------------------------------
++ 
++ #include &quot;Pooma/NewFields.h&quot;
++ #include &quot;Utilities/Tester.h&quot;
++ #include &lt;vector&gt;
++ 
++ 
++ int main(int argc, char *argv[])
++ {
++   Pooma::initialize(argc, argv);
++   Pooma::Tester tester(argc, argv);
++ 
++   const double epsilon = 1.0e-08;
++   const int Dim = 2;
++   Centering&lt;Dim&gt; inputCenteringTwo, outputCenteringTwo;
++   Interval&lt;Dim&gt; physicalVertexDomain(4, 4);
++   DomainLayout&lt;Dim&gt; layout(physicalVertexDomain, GuardLayers&lt;Dim&gt;(1));
++   typedef Field&lt;UniformRectilinear&lt;Dim&gt;, double, Brick&gt; Field_t;
++ 
++   // Test 2D Continuous Cell -&gt; Discontinuous Edge.
++ 
++   inputCenteringTwo = canonicalCentering&lt;Dim&gt;(CellType, Continuous, AllDim);
++   outputCenteringTwo = canonicalCentering&lt;Dim&gt;(EdgeType, Discontinuous, AllDim);
++   Field_t g(outputCenteringTwo, layout,
++ 	    Vector&lt;Dim&gt;(0.0), Vector&lt;Dim&gt;(1.0, 2.0));
++   Field_t f(inputCenteringTwo, layout,
++ 	    Vector&lt;Dim&gt;(0.0), Vector&lt;Dim&gt;(1.0, 2.0));
++   f.all() = 2.0;
++   g.all() = 1.0;
++ 
++   g = replicate(f, nearestNeighbors(inputCenteringTwo,
++ 				    outputCenteringTwo, true),
++ 		outputCenteringTwo);
++ 
++   tester.check(&quot;cell-&gt;discontinuous edge&quot;,
++ 	       g(FieldOffset&lt;Dim&gt;(Loc&lt;Dim&gt;(0), 0), Loc&lt;Dim&gt;(0)),
++ 	       2.0, epsilon);
++ 
++   // Test 2D Continuous Vertex -&gt; Discontinuous Vertex.
++ 
++   inputCenteringTwo =
++     canonicalCentering&lt;Dim&gt;(VertexType, Continuous, AllDim);
++   outputCenteringTwo =
++     canonicalCentering&lt;Dim&gt;(VertexType, Discontinuous, AllDim);
++ 
++   Field_t g2(outputCenteringTwo, layout,
++ 	     Vector&lt;Dim&gt;(0.0), Vector&lt;Dim&gt;(1.0, 2.0));
++   Field_t f2(inputCenteringTwo, layout,
++ 	     Vector&lt;Dim&gt;(0.0), Vector&lt;Dim&gt;(1.0, 2.0));
++   f2.all() = 2.0;
++   g2.all() = 1.0;
++ 
++   g2 = replicate(f2, nearestNeighbors(inputCenteringTwo, outputCenteringTwo),
++ 		 outputCenteringTwo);
++   tester.check(&quot;vertex-&gt;discontinuous vertex&quot;,
++ 	       g2(FieldOffset&lt;Dim&gt;(Loc&lt;Dim&gt;(0), 0), Loc&lt;Dim&gt;(0)),
++ 	       2.0, epsilon);
++ 
++   int ret = tester.results(&quot;Replicate&quot;);
++   Pooma::finalize();
++   return ret; 
++ }
++ 
++ // ACL:rcsinfo
++ // ----------------------------------------------------------------------
++ // $RCSfile: Replicate.cpp,v $   $Author: oldham $
++ // $Revision: 1.1.2.2 $   $Date: 2001/08/14 20:24:18 $
++ // ----------------------------------------------------------------------
++ // ACL:rcsinfo
+Index: tests/makefile
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/NewField/tests/makefile,v
+retrieving revision 1.11.2.8
+diff -c -p -r1.11.2.8 makefile
+*** tests/makefile	2001/08/14 20:24:18	1.11.2.8
+--- tests/makefile	2001/08/16 17:18:00
+*************** run_tests: tests
+*** 57,62 ****
+--- 57,63 ----
+  	$(ODIR)/Gradient $(TSTOPTS) 1&gt;Gradient.out 2&gt;&amp;1
+  	$(ODIR)/MeshTest1 $(TSTOPTS) 1&gt;MeshTest1.out 2&gt;&amp;1
+  	$(ODIR)/NearestNeighbors $(TSTOPTS) 1&gt;NearestNeighbors.out 2&gt;&amp;1
++ 	$(ODIR)/Replicate $(TSTOPTS) 1&gt;Replicate.out 2&gt;&amp;1
+  	$(ODIR)/ScalarCode $(TSTOPTS) 1&gt;ScalarCode.out 2&gt;&amp;1
+  	$(ODIR)/StencilTests $(TSTOPTS) 1&gt;StencilTests.out 2&gt;&amp;1
+  	$(ODIR)/VectorTest $(TSTOPTS) 1&gt;VectorTest.out 2&gt;&amp;1
+*************** field_tests:: $(ODIR)/BasicTest1 $(ODIR)
+*** 68,73 ****
+--- 69,75 ----
+  	$(ODIR)/FieldTour1 $(ODIR)/FieldTour2 \
+  	$(ODIR)/FieldTour3 $(ODIR)/Gradient\
+  	$(ODIR)/MeshTest1 $(ODIR)/NearestNeighbors \
++ 	$(ODIR)/Replicate \
+  	$(ODIR)/ScalarCode $(ODIR)/StencilTests \
+  	$(ODIR)/VectorTest $(ODIR)/WhereTest
+  
+*************** $(ODIR)/NearestNeighbors: $(ODIR)/Neares
+*** 169,174 ****
+--- 171,183 ----
+  Positions: $(ODIR)/Positions
+  
+  $(ODIR)/Positions: $(ODIR)/Positions.o
++ 	$(LinkToSuite)
++ 
++ .PHONY: Replicate
++ 
++ Replicate: $(ODIR)/Replicate
++ 
++ $(ODIR)/Replicate: $(ODIR)/Replicate.o
+  	$(LinkToSuite)
+  
+  .PHONY: ScalarCode
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000628.html">[newfield_revision Patch] Add typename to NearestNeighbors.*
+</A></li>
+	<LI>Next message: <A HREF="000630.html">[newfield_revision Patch] Fix nearestNeighbors()
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#629">[ date ]</a>
+              <a href="thread.html#629">[ thread ]</a>
+              <a href="subject.html#629">[ subject ]</a>
+              <a href="author.html#629">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

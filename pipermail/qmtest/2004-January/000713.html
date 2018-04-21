@@ -1,0 +1,201 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [qmtest] Bug with editing attachments
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:qmtest%40codesourcery.com?Subject=Re%3A%20%5Bqmtest%5D%20Bug%20with%20editing%20attachments&In-Reply-To=%3C1074312355.3501.35.camel%40minax.codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000699.html">
+   <LINK REL="Next"  HREF="000700.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[qmtest] Bug with editing attachments</H1>
+    <B>Mark Mitchell</B> 
+    <A HREF="mailto:qmtest%40codesourcery.com?Subject=Re%3A%20%5Bqmtest%5D%20Bug%20with%20editing%20attachments&In-Reply-To=%3C1074312355.3501.35.camel%40minax.codesourcery.com%3E"
+       TITLE="[qmtest] Bug with editing attachments">mark at codesourcery.com
+       </A><BR>
+    <I>Sat Jan 17 04:05:55 UTC 2004</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000699.html">[qmtest] Bug with editing attachments
+</A></li>
+        <LI>Next message: <A HREF="000700.html">Accessing &quot;global&quot; context
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#713">[ date ]</a>
+              <a href="thread.html#713">[ thread ]</a>
+              <a href="subject.html#713">[ subject ]</a>
+              <a href="author.html#713">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>
+&gt;<i> The problems with editing test that has an attachment are now gone. 
+</I>
+Yay!
+
+&gt;<i> However, the other problem is still there. If I create a new test with 
+</I>&gt;<i> attachment, the location is like this:
+</I>&gt;<i> 
+</I>&gt;<i>    &lt;location&gt;/home/ghost/Work/Module/nm_model/tdb/history.qms/nightly.sh&lt;/location&gt;
+</I>
+Oh, now I understand what you were saying!
+
+&gt;<i> tests are run on a different machine. I'd still say that the 
+</I>&gt;<i> __MakeDataFilePath in xml_database is not right.
+</I>
+I think I agree in theory.  But, in practice, we can fix the bug with
+this patch, so I've checked this in.
+
+Thanks,
+
+-- 
+Mark Mitchell &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">mark at codesourcery.com</A>&gt;
+CodeSourcery, LLC
+-------------- next part --------------
+2004-01-15  Mark Mitchell  &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">mark at codesourcery.com</A>&gt;
+
+	* qm/test/classes/xml_database.py
+	(XMLDatabase.__MakeDataFilePath): Use a relative, rather than
+	absolute, path for the file location.
+
+Index: qm/attachment.py
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/attachment.py,v
+retrieving revision 1.21
+diff -c -5 -p -r1.21 attachment.py
+*** qm/attachment.py	15 Jan 2004 06:11:46 -0000	1.21
+--- qm/attachment.py	17 Jan 2004 04:03:15 -0000
+*************** class FileAttachmentStore(AttachmentStor
+*** 293,302 ****
+--- 293,307 ----
+  
+  
+      def GetDataFile(self, location):
+  
+          if self.__root is not None:
++             # It might seem sensible to assert that the location be a
++             # relative path, but that would break backwards
++             # compatibility with older versions fo QMTest.  In those
++             # older versions, the XMLDatabase sometimes used an absolute
++             # path for attachment locations.
+              return os.path.join(self.__root, location)
+          else:
+              return location
+  
+  
+Index: qm/test/classes/xml_database.py
+===================================================================
+RCS file: /home/qm/Repository/qm/qm/test/classes/xml_database.py,v
+retrieving revision 1.18
+diff -c -5 -p -r1.18 xml_database.py
+*** qm/test/classes/xml_database.py	15 Jan 2004 06:11:46 -0000	1.18
+--- qm/test/classes/xml_database.py	17 Jan 2004 04:03:15 -0000
+*************** class XMLDatabase(ExtensionDatabase):
+*** 127,164 ****
+          'file_name' -- The file name specified for the attachment.&quot;&quot;&quot;
+          
+          # Convert the item's containing suite to a path.
+          parent_suite_path \
+              = os.path.dirname(self._GetPathFromLabel(item_id))
+          
+          # Construct a file name free of suspicious characters.
+          base, extension = os.path.splitext(file_name)
+          safe_file_name = qm.label.thunk(base) + extension
+  
+          data_file_path = os.path.join(parent_suite_path, safe_file_name)
+-         full_data_file_path = os.path.join(self.GetRoot(), data_file_path)
+          # Is the file name by itself OK in this directory?  It must not
+          # have a file extension used by the XML database itself, and
+          # there must be no other file with the same name there.
+          if extension not in [self.GetTestExtension(),
+                               self.GetSuiteExtension(),
+                               self.GetResourceExtension()] \
+!            and not os.path.exists(full_data_file_path):
+!             return data_file_path
+  
+          # No good.  Construct alternate names by appending numbers
+          # incrementally.
+          index = 0
+          while 1:
+!             data_file_path = os.path.join(parent_suite_path, safe_file_name) \
+!                              + &quot;.%d&quot; % index
+!             full_data_file_path = os.path.join(self.GetRoot(), data_file_path)
+!             if os.path.exists(full_data_file_path):
+!                 index = index + 1
+!                 continue
+!             else:
+!                 return data_file_path
+  
+  
+      def __LoadItem(self, item_id, path, document_parser):
+          &quot;&quot;&quot;Load an item (a test or resource) from an XML file.
+  
+--- 127,164 ----
+          'file_name' -- The file name specified for the attachment.&quot;&quot;&quot;
+          
+          # Convert the item's containing suite to a path.
+          parent_suite_path \
+              = os.path.dirname(self._GetPathFromLabel(item_id))
++         # The relative part of the eventual full file name will be
++         # the part after the parent_suite_path and the directory
++         # name separator character(s).
++         abs_len = len(parent_suite_path) + len(os.sep)
+          
+          # Construct a file name free of suspicious characters.
+          base, extension = os.path.splitext(file_name)
+          safe_file_name = qm.label.thunk(base) + extension
+  
+          data_file_path = os.path.join(parent_suite_path, safe_file_name)
+          # Is the file name by itself OK in this directory?  It must not
+          # have a file extension used by the XML database itself, and
+          # there must be no other file with the same name there.
+          if extension not in [self.GetTestExtension(),
+                               self.GetSuiteExtension(),
+                               self.GetResourceExtension()] \
+!            and not os.path.exists(data_file_path):
+!             return data_file_path[abs_len:]
+  
+          # No good.  Construct alternate names by appending numbers
+          # incrementally.
+          index = 0
+          while 1:
+!             data_file_path = os.path.join(parent_suite_path,
+!                                           safe_file_name + &quot;.%d&quot; % index)
+!             if not os.path.exists(data_file_path):
+!                 return data_file_path[abs_len:]
+!             index = index + 1
+  
+  
+      def __LoadItem(self, item_id, path, document_parser):
+          &quot;&quot;&quot;Load an item (a test or resource) from an XML file.
+  
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000699.html">[qmtest] Bug with editing attachments
+</A></li>
+	<LI>Next message: <A HREF="000700.html">Accessing &quot;global&quot; context
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#713">[ date ]</a>
+              <a href="thread.html#713">[ thread ]</a>
+              <a href="subject.html#713">[ subject ]</a>
+              <a href="author.html#713">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">More information about the qmtest
+mailing list</a><br>
+</body></html>

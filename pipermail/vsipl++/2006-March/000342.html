@@ -1,0 +1,1202 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [vsipl++] Index and Length
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20Index%20and%20Length&In-Reply-To=%3C442C1CF4.3090305%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000340.html">
+   <LINK REL="Next"  HREF="000341.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[vsipl++] Index and Length</H1>
+    <B>Jules Bergmann</B> 
+    <A HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20Index%20and%20Length&In-Reply-To=%3C442C1CF4.3090305%40codesourcery.com%3E"
+       TITLE="[vsipl++] Index and Length">jules at codesourcery.com
+       </A><BR>
+    <I>Thu Mar 30 18:01:24 UTC 2006</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000340.html">Index and Length
+</A></li>
+        <LI>Next message: <A HREF="000341.html">Index and Length
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#342">[ date ]</a>
+              <a href="thread.html#342">[ thread ]</a>
+              <a href="subject.html#342">[ subject ]</a>
+              <a href="author.html#342">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Assem,
+
+The code changes look good, but some of the comments appear unnecessary. 
+  In particular, we don't need the comments about how some piece of code 
+used to use &quot;Point&quot; but now uses &quot;Length/Index&quot;.  Once &quot;Point&quot; is gone 
+from a particular section of code, there is no general need to mention 
+how it used to be implemented.  We can get that history from the 
+changelog and from cvs.  Moreover, once we've removed Point from the 
+library altogether, mentioning it will be confusing.
+
+I don't see any substantive changes to length.hpp.  You should revert 
+your local changes to this file and not commit it.
+
+Some comments misspell 'deprecated&quot;.
+
+
+Finally, I've given some thought to where these functions should go.
+
+The reason that the Point stuff was split out into separate files 
+point.hpp and point-fcn.hpp was to keep the Point class definition 
+relatively lightweight so that it could be included without pulling in 
+the rest of the library.  Some of the functions in point-fcn require the 
+definition of the views (i.e. the extent functions).  Including 
+vector.hpp ends up including quite a bit.
+
+On the surface, worrying about whether point.hpp includes ve,ctor.hpp 
+might seem silly, since any reasonable VSIPL++ program will end up 
+including vector.hpp anyway.  However, keeping the header dependencies 
+simple helps improve maintainability.  Every so often we make a change 
+that creates a  circular requirement that take some effort to sort out.
+
+Here's what I'd like to do:
+
+  - move the view get/put functions from point-fcn.hpp to the respecive
+    view headers.  I.e. get(const_Vector, Index) should go into
+    vector.hpp.  This makes sense becuase if you're going to use get
+    on a view, you will have to include that view's header.  The
+    view headers should already include domain.hpp, so this doesn't
+    create a new dependency.
+
+  - Move everything else from point.hpp (next, valid, block get/put)
+    and point-fcn (domain_nth, first, domain constructor helper)
+    into domain-utils.
+
+How does that sound?
+
+				-- Jules
+
+
+
+Assem Salama wrote:
+&gt;<i> Everyone,
+</I>&gt;<i>  This patch takes out the use of Point and replaces it with Index and 
+</I>&gt;<i> Length.
+</I>&gt;<i> 
+</I>&gt;<i> Thanks,
+</I>&gt;<i> Assem Salama
+</I>&gt;<i> 
+</I>&gt;<i> 
+</I>&gt;<i> ------------------------------------------------------------------------
+</I>&gt;<i> 
+</I>&gt;<i> 2006-03-30  Assem Salama &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">assem at codesourcery.com</A>&gt;
+</I>&gt;<i> 	* src/vsip/impl/length.hpp: Changed the extent function in this file
+</I>&gt;<i> 	  to return Length instead of point. This extent takes a Block.
+</I>&gt;<i> 	* src/vsip/impl/par-util.hpp: Changed the foreach_point function to
+</I>&gt;<i> 	  work on Index instead of Point.
+</I>&gt;<i> 	* src/vsip/impl/point-fcn.hpp: Added new extent functions to return
+</I>&gt;<i> 	  Length instead of Point.
+</I>&gt;<i> 	* src/vsip/impl/point.hpp: Added new functions to make Index and
+</I>&gt;<i> 	  Length work correctly. The new functions are get,put,next,valid,
+</I>&gt;<i> 	  and domain_nth.
+</I>&gt;<i> 	* tests/appmap.cpp: Converted this test to use Length and Index.
+</I>&gt;<i> 	* tests/fast-block.cpp: Same as appmap.cpp
+</I>&gt;<i> 	* tests/us-block.cpp: Same as above.
+</I>&gt;<i> 	* tests/user_storage.cpp: Same as above.
+</I>&gt;<i> 	* tests/util-par.hpp: Same as above.
+</I>&gt;<i> 	* tests/view.cpp: Same as above.
+</I>&gt;<i> 	* tests/vmmul.cpp: Same as above.
+</I>&gt;<i> 
+</I>&gt;<i> 	
+</I>&gt;<i> 
+</I>&gt;<i> 
+</I>
+&gt;<i> Index: src/vsip/impl/length.hpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: /home/cvs/Repository/vpp/src/vsip/impl/length.hpp,v
+</I>&gt;<i> retrieving revision 1.3
+</I>&gt;<i> diff -u -r1.3 length.hpp
+</I>&gt;<i> --- src/vsip/impl/length.hpp	15 Sep 2005 14:49:25 -0000	1.3
+</I>&gt;<i> +++ src/vsip/impl/length.hpp	30 Mar 2006 17:00:12 -0000
+</I>&gt;<i> @@ -15,8 +15,10 @@
+</I>&gt;<i>  ***********************************************************************/
+</I>&gt;<i>  
+</I>&gt;<i>  #include &lt;vsip/support.hpp&gt;
+</I>&gt;<i> +#include &lt;vsip/domain.hpp&gt;
+</I>
+Why is it necessary to include domain.hpp from length.hpp?  Domain 
+doesn't appear to be used in any of the changes to length.
+
+&gt;<i>  #include &lt;vsip/impl/vertex.hpp&gt;
+</I>&gt;<i>  
+</I>&gt;<i> +
+</I>&gt;<i>  namespace vsip
+</I>&gt;<i>  {
+</I>&gt;<i>  namespace impl
+</I>&gt;<i> @@ -47,6 +49,9 @@
+</I>&gt;<i>    : Vertex&lt;length_type, 3&gt;(x, y, z) {}
+</I>&gt;<i>  };
+</I>&gt;<i>  
+</I>&gt;<i> +// This function used to return a Point. Now it returns a Length. The use of
+</I>&gt;<i> +// Point is depricated.
+</I>&gt;<i> +
+</I>
+This comment doesn't really add any value.  Once we've removed Point, 
+talking about it will create confusion.  This kind of history can be 
+extracted from the ChangeLog and cvs if necessary.
+
+&gt;<i>  template &lt;dimension_type Dim,
+</I>&gt;<i>  	  typename       B&gt;
+</I>&gt;<i>  inline Length&lt;Dim&gt;
+</I>&gt;<i> @@ -69,7 +74,6 @@
+</I>&gt;<i>    return size;
+</I>&gt;<i>  }
+</I>&gt;<i>  
+</I>&gt;<i> -
+</I>&gt;<i>  } // namespace vsip::impl
+</I>&gt;<i>  } // namespace vsip
+</I>&gt;<i>  
+</I>&gt;<i> Index: src/vsip/impl/par-util.hpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: /home/cvs/Repository/vpp/src/vsip/impl/par-util.hpp,v
+</I>&gt;<i> retrieving revision 1.8
+</I>&gt;<i> diff -u -r1.8 par-util.hpp
+</I>&gt;<i> --- src/vsip/impl/par-util.hpp	27 Mar 2006 23:19:34 -0000	1.8
+</I>&gt;<i> +++ src/vsip/impl/par-util.hpp	30 Mar 2006 17:00:12 -0000
+</I>&gt;<i> @@ -21,6 +21,7 @@
+</I>&gt;<i>  #include &lt;vsip/impl/distributed-block.hpp&gt;
+</I>&gt;<i>  #include &lt;vsip/impl/point.hpp&gt;
+</I>&gt;<i>  #include &lt;vsip/impl/point-fcn.hpp&gt;
+</I>&gt;<i> +#include &lt;vsip/domain.hpp&gt;
+</I>&gt;<i>  
+</I>&gt;<i>  
+</I>&gt;<i>  
+</I>&gt;<i> @@ -113,10 +114,11 @@
+</I>&gt;<i>        Domain&lt;dim&gt; ldom = local_domain(view, sb, p);
+</I>&gt;<i>        Domain&lt;dim&gt; gdom = global_domain(view, sb, p);
+</I>&gt;<i>  
+</I>&gt;<i> -      for (Point&lt;dim&gt; idx; valid(extent_old(ldom), idx); next(extent_old(ldom), idx))
+</I>&gt;<i> +      Length&lt;dim&gt; ext = extent(ldom);
+</I>&gt;<i> +      for (Index&lt;dim&gt; idx; valid(ext,idx); next(ext, idx))
+</I>&gt;<i>        {
+</I>&gt;<i> -	Point&lt;dim&gt; l_idx = domain_nth(ldom, idx);
+</I>&gt;<i> -	Point&lt;dim&gt; g_idx = domain_nth(gdom, idx);
+</I>&gt;<i> +	Index&lt;dim&gt; l_idx = domain_nth(ldom, idx);
+</I>&gt;<i> +	Index&lt;dim&gt; g_idx = domain_nth(gdom, idx);
+</I>&gt;<i>  
+</I>&gt;<i>  	put(local_view, l_idx, fcn(get(local_view, l_idx), l_idx, g_idx));
+</I>&gt;<i>        }
+</I>&gt;<i> Index: src/vsip/impl/point-fcn.hpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: /home/cvs/Repository/vpp/src/vsip/impl/point-fcn.hpp,v
+</I>&gt;<i> retrieving revision 1.3
+</I>&gt;<i> diff -u -r1.3 point-fcn.hpp
+</I>&gt;<i> --- src/vsip/impl/point-fcn.hpp	9 Sep 2005 11:55:00 -0000	1.3
+</I>&gt;<i> +++ src/vsip/impl/point-fcn.hpp	30 Mar 2006 17:00:12 -0000
+</I>&gt;<i> @@ -53,6 +53,24 @@
+</I>&gt;<i>  }
+</I>&gt;<i>  
+</I>&gt;<i>  
+</I>&gt;<i> +// This function is like domain_nth function above but returns an Index
+</I>&gt;<i> +// instead of a point
+</I>
+This comment should stand on its own.  That way we can remove the above 
+function.
+
+&gt;<i> +template &lt;dimension_type Dim&gt;
+</I>&gt;<i> +Index&lt;Dim&gt;
+</I>&gt;<i> +domain_nth(
+</I>&gt;<i> +  Domain&lt;Dim&gt; const&amp; dom,
+</I>&gt;<i> +  Index&lt;Dim&gt; const&amp;  idx)
+</I>&gt;<i> +{
+</I>&gt;<i> +  Index&lt;Dim&gt; res;
+</I>&gt;<i> +
+</I>&gt;<i> +  for (dimension_type d=0; d&lt;Dim; ++d)
+</I>&gt;<i> +    res[d] = dom[d].impl_nth(idx[d]);
+</I>&gt;<i> +
+</I>&gt;<i> +  return res;
+</I>&gt;<i> +}
+</I>&gt;<i> +
+</I>&gt;<i> +
+</I>&gt;<i> +
+</I>&gt;<i>  
+</I>&gt;<i>  /// Get the first index of a domain.
+</I>&gt;<i>  
+</I>&gt;<i> @@ -69,7 +87,8 @@
+</I>&gt;<i>  
+</I>&gt;<i>  
+</I>&gt;<i>  
+</I>&gt;<i> -/// Get the extent of a domain, as a point.
+</I>&gt;<i> +/// Get the extent of a domain, as a point. This function is now depricated.
+</I>&gt;<i> +/// We should use Length now instead.
+</I>&gt;<i>  
+</I>&gt;<i>  template &lt;dimension_type Dim&gt;
+</I>&gt;<i>  Point&lt;Dim&gt;
+</I>&gt;<i> @@ -84,9 +103,24 @@
+</I>&gt;<i>    return res;
+</I>&gt;<i>  }
+</I>&gt;<i>  
+</I>&gt;<i> +/// Get the extent of a domain as a Length.
+</I>&gt;<i>  
+</I>&gt;<i> +template &lt;dimension_type Dim&gt;
+</I>&gt;<i> +Length&lt;Dim&gt;
+</I>&gt;<i> +extent(
+</I>&gt;<i> +  Domain&lt;Dim&gt; const&amp; dom)
+</I>&gt;<i> +{
+</I>&gt;<i> +  Length&lt;Dim&gt; res;
+</I>&gt;<i>  
+</I>&gt;<i> -/// Get the extent of a vector view, as a point.
+</I>&gt;<i> +  for (dimension_type d=0; d&lt;Dim; ++d)
+</I>&gt;<i> +    res[d] = dom[d].length();
+</I>&gt;<i> +
+</I>&gt;<i> +  return res;
+</I>&gt;<i> +}
+</I>&gt;<i> +
+</I>&gt;<i> +
+</I>&gt;<i> +/// Get the extent of a vector view, as a point. This function is depricated.
+</I>&gt;<i> +/// We should use Length now instead.
+</I>&gt;<i>  
+</I>&gt;<i>  template &lt;typename T,
+</I>&gt;<i>  	  typename Block&gt;
+</I>&gt;<i> @@ -96,9 +130,21 @@
+</I>&gt;<i>    return Point&lt;1&gt;(v.size(0));
+</I>&gt;<i>  }
+</I>&gt;<i>  
+</I>&gt;<i> +/// Get the extent of a vector view, as a Length. 
+</I>&gt;<i> +
+</I>&gt;<i> +template &lt;typename T,
+</I>&gt;<i> +	  typename Block&gt;
+</I>&gt;<i> +Length&lt;1&gt;
+</I>&gt;<i> +extent(const_Vector&lt;T, Block&gt; v)
+</I>&gt;<i> +{
+</I>&gt;<i> +  return Length&lt;1&gt;(v.size(0));
+</I>&gt;<i> +}
+</I>&gt;<i> +
+</I>&gt;<i> +
+</I>&gt;<i>  
+</I>&gt;<i>  
+</I>&gt;<i> -/// Get the extent of a matrix view, as a point.
+</I>&gt;<i> +/// Get the extent of a matrix view, as a point. This function is depricated.
+</I>&gt;<i> +/// We should use Length now instead of point.
+</I>&gt;<i>  
+</I>&gt;<i>  template &lt;typename T,
+</I>&gt;<i>  	  typename Block&gt;
+</I>&gt;<i> @@ -109,6 +155,16 @@
+</I>&gt;<i>  }
+</I>&gt;<i>  
+</I>&gt;<i>  
+</I>&gt;<i> +/// Get the extent of a matrix view, as a Length.
+</I>&gt;<i> +
+</I>&gt;<i> +template &lt;typename T,
+</I>&gt;<i> +	  typename Block&gt;
+</I>&gt;<i> +Length&lt;2&gt;
+</I>&gt;<i> +extent(const_Matrix&lt;T, Block&gt; v)
+</I>&gt;<i> +{
+</I>&gt;<i> +  return Length&lt;2&gt;(v.size(0), v.size(1));
+</I>&gt;<i> +}
+</I>&gt;<i> +
+</I>&gt;<i>  
+</I>&gt;<i>  /// Construct a 1-dim domain with an offset and a size (implicit
+</I>&gt;<i>  /// stride of 1)
+</I>&gt;<i> Index: src/vsip/impl/point.hpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: /home/cvs/Repository/vpp/src/vsip/impl/point.hpp,v
+</I>&gt;<i> retrieving revision 1.8
+</I>&gt;<i> diff -u -r1.8 point.hpp
+</I>&gt;<i> --- src/vsip/impl/point.hpp	7 Mar 2006 02:15:22 -0000	1.8
+</I>&gt;<i> +++ src/vsip/impl/point.hpp	30 Mar 2006 17:00:12 -0000
+</I>&gt;<i> @@ -15,6 +15,7 @@
+</I>&gt;<i>  ***********************************************************************/
+</I>&gt;<i>  
+</I>&gt;<i>  #include &lt;vsip/support.hpp&gt;
+</I>&gt;<i> +#include &lt;vsip/impl/length.hpp&gt;
+</I>&gt;<i>  
+</I>&gt;<i>  
+</I>&gt;<i>  /***********************************************************************
+</I>&gt;<i> @@ -193,6 +194,58 @@
+</I>&gt;<i>    return idx;
+</I>&gt;<i>  }
+</I>&gt;<i>  
+</I>&gt;<i> +/* Now let's make the &quot;next&quot; functions that work Index. This function is the
+</I>&gt;<i> + * same as the Point one but it operates on an Index
+</I>&gt;<i> + */
+</I>
+This comment should stand on its own.
+
+Also, for comments like this that preceed a function and describe its 
+operation, you should use either C++ style comments '//', or preferably 
+C++ style comments with an extra '/' -&gt; '///'.  These comments get 
+recognized by synopsis for generating documentation.
+
+For a function, the comments should be something like this:
+
+/// Short descriptions (1-line or so)
+
+/// Optional longer description, covering parameters, etc.
+/// This can be multiple lines.
+
+
+&gt;<i> +inline
+</I>&gt;<i> +Index&lt;1&gt;&amp;
+</I>&gt;<i> +next(
+</I>&gt;<i> +  Length&lt;1&gt; const&amp; /*extent*/,
+</I>&gt;<i> +  Index&lt;1&gt;&amp;        idx)
+</I>&gt;<i> +{
+</I>&gt;<i> +  ++idx[0];
+</I>&gt;<i> +  return idx;
+</I>&gt;<i> +}
+</I>&gt;<i> +
+</I>&gt;<i> +
+</I>&gt;<i> +
+</I>&gt;<i> +inline
+</I>&gt;<i> +Index&lt;2&gt;&amp;
+</I>&gt;<i> +next(
+</I>&gt;<i> +  Length&lt;2&gt; const&amp; extent,
+</I>&gt;<i> +  Index&lt;2&gt;&amp;        idx)
+</I>&gt;<i> +{
+</I>&gt;<i> +  if (++idx[0] == extent[0])
+</I>&gt;<i> +  {
+</I>&gt;<i> +    if (++idx[1] != extent[1])
+</I>&gt;<i> +      idx[0] = 0;
+</I>&gt;<i> +  }
+</I>&gt;<i> +  return idx;
+</I>&gt;<i> +}
+</I>&gt;<i> +
+</I>&gt;<i> +
+</I>&gt;<i> +
+</I>&gt;<i> +inline
+</I>&gt;<i> +Index&lt;3&gt;&amp;
+</I>&gt;<i> +next(
+</I>&gt;<i> +  Length&lt;3&gt; const&amp; extent,
+</I>&gt;<i> +  Index&lt;3&gt;&amp;        idx)
+</I>&gt;<i> +{
+</I>&gt;<i> +  if (++idx[0] == extent[0])
+</I>&gt;<i> +  {
+</I>&gt;<i> +    if (++idx[1] == extent[1])
+</I>&gt;<i> +    {
+</I>&gt;<i> +      if (++idx[2] == extent[2])
+</I>&gt;<i> +	return idx;
+</I>&gt;<i> +      idx[1] = 0;
+</I>&gt;<i> +    }
+</I>&gt;<i> +    idx[0] = 0;
+</I>&gt;<i> +  }
+</I>&gt;<i> +
+</I>&gt;<i> +  return idx;
+</I>&gt;<i> +}
+</I>&gt;<i> +
+</I>&gt;<i> +
+</I>&gt;<i>  
+</I>&gt;<i>  template &lt;dimension_type Dim&gt;
+</I>&gt;<i>  inline bool
+</I>&gt;<i> @@ -206,6 +259,21 @@
+</I>&gt;<i>    return true;
+</I>&gt;<i>  }
+</I>&gt;<i>  
+</I>&gt;<i> +// This function checks if the index is valid given a certain length. This
+</I>&gt;<i> +// function works for multiple dimension spaces.
+</I>&gt;<i> +template &lt;dimension_type D&gt;
+</I>&gt;<i> +inline bool
+</I>&gt;<i> +valid(
+</I>&gt;<i> +  Length&lt;D&gt; const&amp; extent,
+</I>&gt;<i> +  Index&lt;D&gt;  const&amp; idx)
+</I>&gt;<i> +{
+</I>&gt;<i> +  for(dimension_type d=0;d&lt;D;++d)
+</I>&gt;<i> +    if(idx[d] &gt;= extent[d])
+</I>&gt;<i> +      return false;
+</I>&gt;<i> +  return true;
+</I>&gt;<i> +}
+</I>&gt;<i> +
+</I>&gt;<i> +
+</I>&gt;<i>  
+</I>&gt;<i>  template &lt;dimension_type Dim&gt;
+</I>&gt;<i>  inline
+</I>&gt;<i> @@ -297,7 +365,6 @@
+</I>&gt;<i>  }
+</I>&gt;<i>  
+</I>&gt;<i>  
+</I>&gt;<i> -
+</I>&gt;<i>  /// Put a value into a 2-dim block.
+</I>&gt;<i>  
+</I>&gt;<i>  template &lt;typename Block&gt;
+</I>&gt;<i> @@ -325,6 +392,84 @@
+</I>&gt;<i>  }
+</I>&gt;<i>  
+</I>&gt;<i>  
+</I>&gt;<i> +// These functions use an Index instead of a Point.
+</I>&gt;<i> +// The use Point is depricated
+</I>&gt;<i> +
+</I>&gt;<i> +/// Get a value from a 1-dim block.
+</I>&gt;<i> +
+</I>&gt;<i> +template &lt;typename Block&gt;
+</I>&gt;<i> +inline typename Block::value_type
+</I>&gt;<i> +get(
+</I>&gt;<i> +  Block const&amp;    block,
+</I>&gt;<i> +  Index&lt;1&gt; const&amp; idx)
+</I>&gt;<i> +{
+</I>&gt;<i> +  return block.get(idx[0]);
+</I>&gt;<i> +}
+</I>&gt;<i> +
+</I>&gt;<i> +
+</I>&gt;<i> +
+</I>&gt;<i> +/// Get a value from a 2-dim block.
+</I>&gt;<i> +
+</I>&gt;<i> +template &lt;typename Block&gt;
+</I>&gt;<i> +inline typename Block::value_type
+</I>&gt;<i> +get(
+</I>&gt;<i> +  Block const&amp;    block,
+</I>&gt;<i> +  Index&lt;2&gt; const&amp; idx)
+</I>&gt;<i> +{
+</I>&gt;<i> +  return block.get(idx[0], idx[1]);
+</I>&gt;<i> +}
+</I>&gt;<i> +
+</I>&gt;<i> +
+</I>&gt;<i> +
+</I>&gt;<i> +/// Get a value from a 3-dim block.
+</I>&gt;<i> +
+</I>&gt;<i> +template &lt;typename Block&gt;
+</I>&gt;<i> +inline typename Block::value_type
+</I>&gt;<i> +get(
+</I>&gt;<i> +  Block const&amp;    block,
+</I>&gt;<i> +  Index&lt;3&gt; const&amp; idx)
+</I>&gt;<i> +{
+</I>&gt;<i> +  return block.get(idx[0], idx[1], idx[2]);
+</I>&gt;<i> +}
+</I>&gt;<i> +
+</I>&gt;<i> +
+</I>&gt;<i> +
+</I>&gt;<i> +/// Put a value into a 1-dim block.
+</I>&gt;<i> +
+</I>&gt;<i> +template &lt;typename Block&gt;
+</I>&gt;<i> +inline void
+</I>&gt;<i> +put(
+</I>&gt;<i> +  Block&amp;                            block,
+</I>&gt;<i> +  Index&lt;1&gt; const&amp;                   idx,
+</I>&gt;<i> +  typename Block::value_type const&amp; val)
+</I>&gt;<i> +{
+</I>&gt;<i> +  block.put(idx[0], val);
+</I>&gt;<i> +}
+</I>&gt;<i> +
+</I>&gt;<i> +
+</I>&gt;<i> +/// Put a value into a 2-dim block.
+</I>&gt;<i> +
+</I>&gt;<i> +template &lt;typename Block&gt;
+</I>&gt;<i> +inline void
+</I>&gt;<i> +put(
+</I>&gt;<i> +  Block&amp;                            block,
+</I>&gt;<i> +  Index&lt;2&gt; const&amp;                   idx,
+</I>&gt;<i> +  typename Block::value_type const&amp; val)
+</I>&gt;<i> +{
+</I>&gt;<i> +  block.put(idx[0], idx[1], val);
+</I>&gt;<i> +}
+</I>&gt;<i> +
+</I>&gt;<i> +
+</I>&gt;<i> +template &lt;typename Block&gt;
+</I>&gt;<i> +inline void
+</I>&gt;<i> +put(
+</I>&gt;<i> +  Block&amp;                            block,
+</I>&gt;<i> +  Index&lt;3&gt; const&amp;                   idx,
+</I>&gt;<i> +  typename Block::value_type const&amp; val)
+</I>&gt;<i> +{
+</I>&gt;<i> +  block.put(idx[0], idx[1], idx[2], val);
+</I>&gt;<i> +}
+</I>&gt;<i> +
+</I>&gt;<i>  
+</I>&gt;<i>  
+</I>&gt;<i>  
+</I>&gt;<i> Index: tests/appmap.cpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: /home/cvs/Repository/vpp/tests/appmap.cpp,v
+</I>&gt;<i> retrieving revision 1.10
+</I>&gt;<i> diff -u -r1.10 appmap.cpp
+</I>&gt;<i> --- tests/appmap.cpp	27 Mar 2006 23:19:34 -0000	1.10
+</I>&gt;<i> +++ tests/appmap.cpp	30 Mar 2006 17:00:12 -0000
+</I>&gt;<i> @@ -13,14 +13,15 @@
+</I>&gt;<i>  #include &lt;vsip/support.hpp&gt;
+</I>&gt;<i>  #include &lt;vsip/map.hpp&gt;
+</I>&gt;<i>  #include &lt;vsip/matrix.hpp&gt;
+</I>&gt;<i> +#include &lt;vsip/impl/length.hpp&gt;
+</I>&gt;<i>  #include &quot;test.hpp&quot;
+</I>&gt;<i>  #include &quot;output.hpp&quot;
+</I>&gt;<i>  
+</I>&gt;<i>  using namespace std;
+</I>&gt;<i>  using namespace vsip;
+</I>&gt;<i>  
+</I>&gt;<i> -using vsip::impl::Point;
+</I>&gt;<i> -using vsip::impl::extent_old;
+</I>&gt;<i> +using vsip::impl::Length;
+</I>&gt;<i> +using vsip::impl::extent;
+</I>&gt;<i>  using vsip::impl::valid;
+</I>&gt;<i>  using vsip::impl::next;
+</I>&gt;<i>  using vsip::impl::domain_nth;
+</I>&gt;<i> @@ -95,12 +96,6 @@
+</I>&gt;<i>  
+</I>&gt;<i>  
+</I>&gt;<i>  
+</I>&gt;<i> -inline Index&lt;1&gt; as_index(Point&lt;1&gt; const&amp; p) {return Index&lt;1&gt;(p[0]); }
+</I>&gt;<i> -inline Index&lt;2&gt; as_index(Point&lt;2&gt; const&amp; p) {return Index&lt;2&gt;(p[0],p[1]); }
+</I>&gt;<i> -inline Index&lt;3&gt; as_index(Point&lt;3&gt; const&amp; p) {return Index&lt;3&gt;(p[0],p[1],p[2]); }
+</I>&gt;<i> -
+</I>&gt;<i> -
+</I>&gt;<i> -
+</I>&gt;<i>  // Check that local and global indices within a patch are consistent.
+</I>&gt;<i>  
+</I>&gt;<i>  template &lt;dimension_type Dim,
+</I>&gt;<i> @@ -147,16 +142,20 @@
+</I>&gt;<i>      }
+</I>&gt;<i>    }
+</I>&gt;<i>  
+</I>&gt;<i> -  Point&lt;Dim&gt; ext = extent_old(gdom);
+</I>&gt;<i> +  /* We can replace this segment of code with one that uses Length and Index.
+</I>&gt;<i> +   * The use of Point is depricated and Length and Index should be used
+</I>&gt;<i> +   * Instead
+</I>&gt;<i> +   */
+</I>
+Comment not necessary
+
+&gt;<i>  
+</I>&gt;<i> -  for (Point&lt;Dim&gt; idx; valid(ext, idx); next(ext, idx))
+</I>&gt;<i> +  Length&lt;Dim&gt; ext = extent(gdom);
+</I>&gt;<i> +  for(Index&lt;Dim&gt; idx; valid(ext,idx); next(ext,idx))
+</I>&gt;<i>    {
+</I>&gt;<i> -    Index&lt;Dim&gt; g_idx = as_index(domain_nth(gdom, idx));
+</I>&gt;<i> -    Index&lt;Dim&gt; l_idx = as_index(domain_nth(ldom, idx));
+</I>&gt;<i> -
+</I>&gt;<i> +    Index&lt;Dim&gt; g_idx = domain_nth(gdom,idx);
+</I>&gt;<i> +    Index&lt;Dim&gt; l_idx = domain_nth(ldom,idx);
+</I>&gt;<i>      test_assert(map.impl_subblock_from_global_index(g_idx) == sb);
+</I>&gt;<i>      test_assert(map.impl_patch_from_global_index(g_idx)    == p);
+</I>&gt;<i>    }
+</I>&gt;<i> +
+</I>&gt;<i>  }
+</I>&gt;<i>  
+</I>&gt;<i>  
+</I>&gt;<i> Index: tests/fast-block.cpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: /home/cvs/Repository/vpp/tests/fast-block.cpp,v
+</I>&gt;<i> retrieving revision 1.6
+</I>&gt;<i> diff -u -r1.6 fast-block.cpp
+</I>&gt;<i> --- tests/fast-block.cpp	20 Dec 2005 12:48:40 -0000	1.6
+</I>&gt;<i> +++ tests/fast-block.cpp	30 Mar 2006 17:00:12 -0000
+</I>&gt;<i> @@ -16,13 +16,16 @@
+</I>&gt;<i>  #include &lt;vsip/impl/point.hpp&gt;
+</I>&gt;<i>  #include &lt;vsip/impl/point-fcn.hpp&gt;
+</I>&gt;<i>  #include &lt;vsip/impl/fast-block.hpp&gt;
+</I>&gt;<i> +#include &lt;vsip/impl/length.hpp&gt;
+</I>&gt;<i>  #include &quot;test.hpp&quot;
+</I>&gt;<i>  
+</I>&gt;<i>  using namespace std;
+</I>&gt;<i>  using namespace vsip;
+</I>&gt;<i>  
+</I>&gt;<i> -using vsip::impl::Point;
+</I>&gt;<i> -using vsip::impl::extent_old;
+</I>&gt;<i> +using vsip::impl::Length;
+</I>&gt;<i> +using vsip::impl::extent;
+</I>&gt;<i> +using vsip::impl::valid;
+</I>&gt;<i> +using vsip::impl::next;
+</I>&gt;<i>  
+</I>&gt;<i>  
+</I>&gt;<i>  
+</I>&gt;<i> @@ -30,33 +33,35 @@
+</I>&gt;<i>    Definitions
+</I>&gt;<i>  ***********************************************************************/
+</I>&gt;<i>  
+</I>&gt;<i> +/* We no longer use Point. Instead we will use Index and Length. We need a
+</I>&gt;<i> + * different set of functions that operate on Index and Length instead of
+</I>&gt;<i> + * Point.
+</I>&gt;<i> + */
+</I>
+comment not necessary
+
+&gt;<i> +
+</I>&gt;<i>  template &lt;typename T&gt;
+</I>&gt;<i>  inline T
+</I>&gt;<i>  identity(
+</I>&gt;<i> -  Point&lt;1&gt; /*extent*/,
+</I>&gt;<i> -  Point&lt;1&gt; idx,
+</I>&gt;<i> +  Length&lt;1&gt; /*extent*/,
+</I>&gt;<i> +  Index&lt;1&gt; idx,
+</I>&gt;<i>    int      k)
+</I>&gt;<i>  {
+</I>&gt;<i>    return static_cast&lt;T&gt;(k*idx[0] + 1);
+</I>&gt;<i>  }
+</I>&gt;<i>  
+</I>&gt;<i>  
+</I>&gt;<i> -
+</I>&gt;<i>  template &lt;typename T&gt;
+</I>&gt;<i>  inline T
+</I>&gt;<i>  identity(
+</I>&gt;<i> -  Point&lt;2&gt; extent,
+</I>&gt;<i> -  Point&lt;2&gt; idx,
+</I>&gt;<i> -  int      k)
+</I>&gt;<i> +  Length&lt;2&gt; extent,
+</I>&gt;<i> +  Index&lt;2&gt;  idx,
+</I>&gt;<i> +  int       k)
+</I>&gt;<i>  {
+</I>&gt;<i> -  Point&lt;2&gt; offset;
+</I>&gt;<i> +  Index&lt;2&gt; offset;
+</I>&gt;<i>    index_type i = (idx[0]+offset[0])*extent[1] + (idx[1]+offset[1]);
+</I>&gt;<i>    return static_cast&lt;T&gt;(k*i+1);
+</I>&gt;<i>  }
+</I>&gt;<i>  
+</I>&gt;<i>  
+</I>&gt;<i> -
+</I>&gt;<i> -
+</I>&gt;<i>  template &lt;dimension_type Dim,
+</I>&gt;<i>  	  typename       Block&gt;
+</I>&gt;<i>  void
+</I>&gt;<i> @@ -64,15 +69,14 @@
+</I>&gt;<i>  {
+</I>&gt;<i>    typedef typename Block::value_type value_type;
+</I>&gt;<i>  
+</I>&gt;<i> -  Point&lt;Dim&gt; ex = extent_old&lt;Dim&gt;(blk);
+</I>&gt;<i> -  for (Point&lt;Dim&gt; idx; idx != ex; next(ex, idx))
+</I>&gt;<i> +  Length&lt;Dim&gt; ex = extent&lt;Dim&gt;(blk);
+</I>&gt;<i> +  for (Index&lt;Dim&gt; idx; valid(ex,idx); next(ex, idx))
+</I>&gt;<i>    {
+</I>&gt;<i>      put(blk, idx, identity&lt;value_type&gt;(ex, idx, k));
+</I>&gt;<i>    }
+</I>&gt;<i>  }
+</I>&gt;<i>  
+</I>&gt;<i>  
+</I>&gt;<i> -
+</I>&gt;<i>  template &lt;dimension_type Dim,
+</I>&gt;<i>  	  typename       Block&gt;
+</I>&gt;<i>  void
+</I>&gt;<i> @@ -80,8 +84,8 @@
+</I>&gt;<i>  {
+</I>&gt;<i>    typedef typename Block::value_type value_type;
+</I>&gt;<i>  
+</I>&gt;<i> -  Point&lt;Dim&gt; ex = extent_old&lt;Dim&gt;(blk);
+</I>&gt;<i> -  for (Point&lt;Dim&gt; idx; idx != ex; next(ex, idx))
+</I>&gt;<i> +  Length&lt;Dim&gt; ex = extent&lt;Dim&gt;(blk);
+</I>&gt;<i> +  for (Index&lt;Dim&gt; idx; valid(ex,idx); next(ex, idx))
+</I>&gt;<i>    {
+</I>&gt;<i>      test_assert(equal( get(blk, idx),
+</I>&gt;<i>  		  identity&lt;value_type&gt;(ex, idx, k)));
+</I>&gt;<i> @@ -89,7 +93,6 @@
+</I>&gt;<i>  }
+</I>&gt;<i>  
+</I>&gt;<i>  
+</I>&gt;<i> -
+</I>&gt;<i>  template &lt;dimension_type Dim,
+</I>&gt;<i>  	  typename       Block&gt;
+</I>&gt;<i>  void
+</I>&gt;<i> Index: tests/us-block.cpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: /home/cvs/Repository/vpp/tests/us-block.cpp,v
+</I>&gt;<i> retrieving revision 1.1
+</I>&gt;<i> diff -u -r1.1 us-block.cpp
+</I>&gt;<i> --- tests/us-block.cpp	10 Feb 2006 22:24:02 -0000	1.1
+</I>&gt;<i> +++ tests/us-block.cpp	30 Mar 2006 17:00:12 -0000
+</I>&gt;<i> @@ -16,14 +16,15 @@
+</I>&gt;<i>  #include &lt;vsip/impl/point.hpp&gt;
+</I>&gt;<i>  #include &lt;vsip/impl/point-fcn.hpp&gt;
+</I>&gt;<i>  #include &lt;vsip/impl/us-block.hpp&gt;
+</I>&gt;<i> +#include &lt;vsip/impl/length.hpp&gt;
+</I>&gt;<i>  
+</I>&gt;<i>  #include &quot;test.hpp&quot;
+</I>&gt;<i>  
+</I>&gt;<i>  using namespace std;
+</I>&gt;<i>  using namespace vsip;
+</I>&gt;<i>  
+</I>&gt;<i> -using vsip::impl::Point;
+</I>&gt;<i> -using vsip::impl::extent_old;
+</I>&gt;<i> +using vsip::impl::Length;
+</I>&gt;<i> +using vsip::impl::extent;
+</I>&gt;<i>  
+</I>&gt;<i>  
+</I>&gt;<i>  
+</I>&gt;<i> @@ -31,32 +32,35 @@
+</I>&gt;<i>    Definitions
+</I>&gt;<i>  ***********************************************************************/
+</I>&gt;<i>  
+</I>&gt;<i> +/* We no longer use Point. Instead we will use Index and Length. We need a
+</I>&gt;<i> + * different set of functions that operate on Index and Length instead of
+</I>&gt;<i> + * Point.
+</I>&gt;<i> + */
+</I>
+Comment not necessary
+
+&gt;<i> +
+</I>&gt;<i>  template &lt;typename T&gt;
+</I>&gt;<i>  inline T
+</I>&gt;<i>  identity(
+</I>&gt;<i> -  Point&lt;1&gt; /*extent*/,
+</I>&gt;<i> -  Point&lt;1&gt; idx,
+</I>&gt;<i> +  Length&lt;1&gt; /*extent*/,
+</I>&gt;<i> +  Index&lt;1&gt; idx,
+</I>&gt;<i>    int      k)
+</I>&gt;<i>  {
+</I>&gt;<i>    return static_cast&lt;T&gt;(k*idx[0] + 1);
+</I>&gt;<i>  }
+</I>&gt;<i>  
+</I>&gt;<i>  
+</I>&gt;<i> -
+</I>&gt;<i>  template &lt;typename T&gt;
+</I>&gt;<i>  inline T
+</I>&gt;<i>  identity(
+</I>&gt;<i> -  Point&lt;2&gt; extent,
+</I>&gt;<i> -  Point&lt;2&gt; idx,
+</I>&gt;<i> -  int      k)
+</I>&gt;<i> +  Length&lt;2&gt; extent,
+</I>&gt;<i> +  Index&lt;2&gt;  idx,
+</I>&gt;<i> +  int       k)
+</I>&gt;<i>  {
+</I>&gt;<i> -  Point&lt;2&gt; offset;
+</I>&gt;<i> +  Index&lt;2&gt; offset;
+</I>&gt;<i>    index_type i = (idx[0]+offset[0])*extent[1] + (idx[1]+offset[1]);
+</I>&gt;<i>    return static_cast&lt;T&gt;(k*i+1);
+</I>&gt;<i>  }
+</I>&gt;<i>  
+</I>&gt;<i>  
+</I>&gt;<i> -
+</I>&gt;<i>  template &lt;dimension_type Dim,
+</I>&gt;<i>  	  typename       Block&gt;
+</I>&gt;<i>  void
+</I>&gt;<i> @@ -64,15 +68,14 @@
+</I>&gt;<i>  {
+</I>&gt;<i>    typedef typename Block::value_type value_type;
+</I>&gt;<i>  
+</I>&gt;<i> -  Point&lt;Dim&gt; ex = extent_old&lt;Dim&gt;(blk);
+</I>&gt;<i> -  for (Point&lt;Dim&gt; idx; idx != ex; next(ex, idx))
+</I>&gt;<i> +  Length&lt;Dim&gt; ex = extent&lt;Dim&gt;(blk);
+</I>&gt;<i> +  for (Index&lt;Dim&gt; idx; valid(ex,idx); next(ex, idx))
+</I>&gt;<i>    {
+</I>&gt;<i>      put(blk, idx, identity&lt;value_type&gt;(ex, idx, k));
+</I>&gt;<i>    }
+</I>&gt;<i>  }
+</I>&gt;<i>  
+</I>&gt;<i>  
+</I>&gt;<i> -
+</I>&gt;<i>  template &lt;dimension_type Dim,
+</I>&gt;<i>  	  typename       Block&gt;
+</I>&gt;<i>  void
+</I>&gt;<i> @@ -80,16 +83,17 @@
+</I>&gt;<i>  {
+</I>&gt;<i>    typedef typename Block::value_type value_type;
+</I>&gt;<i>  
+</I>&gt;<i> -  Point&lt;Dim&gt; ex = extent_old&lt;Dim&gt;(blk);
+</I>&gt;<i> -  for (Point&lt;Dim&gt; idx; idx != ex; next(ex, idx))
+</I>&gt;<i> +  Length&lt;Dim&gt; ex = extent&lt;Dim&gt;(blk);
+</I>&gt;<i> +  for (Index&lt;Dim&gt; idx; valid(ex,idx); next(ex, idx))
+</I>&gt;<i>    {
+</I>&gt;<i>      test_assert(equal( get(blk, idx),
+</I>&gt;<i> -		       identity&lt;value_type&gt;(ex, idx, k)));
+</I>&gt;<i> +		  identity&lt;value_type&gt;(ex, idx, k)));
+</I>&gt;<i>    }
+</I>&gt;<i>  }
+</I>&gt;<i>  
+</I>&gt;<i>  
+</I>&gt;<i>  
+</I>&gt;<i> +
+</I>&gt;<i>  template &lt;dimension_type Dim,
+</I>&gt;<i>  	  typename       BlockT&gt;
+</I>&gt;<i>  void
+</I>&gt;<i> Index: tests/user_storage.cpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: /home/cvs/Repository/vpp/tests/user_storage.cpp,v
+</I>&gt;<i> retrieving revision 1.6
+</I>&gt;<i> diff -u -r1.6 user_storage.cpp
+</I>&gt;<i> --- tests/user_storage.cpp	20 Dec 2005 12:48:41 -0000	1.6
+</I>&gt;<i> +++ tests/user_storage.cpp	30 Mar 2006 17:00:12 -0000
+</I>&gt;<i> @@ -17,24 +17,24 @@
+</I>&gt;<i>  #include &lt;vsip/impl/point.hpp&gt;
+</I>&gt;<i>  #include &lt;vsip/impl/point-fcn.hpp&gt;
+</I>&gt;<i>  #include &lt;vsip/impl/domain-utils.hpp&gt;
+</I>&gt;<i> +#include &lt;vsip/impl/length.hpp&gt;
+</I>&gt;<i>  #include &quot;test.hpp&quot;
+</I>&gt;<i>  
+</I>&gt;<i>  using namespace std;
+</I>&gt;<i>  using namespace vsip;
+</I>&gt;<i>  
+</I>&gt;<i> -using vsip::impl::Point;
+</I>&gt;<i> +using vsip::impl::Length;
+</I>&gt;<i>  
+</I>&gt;<i>  
+</I>&gt;<i>  
+</I>&gt;<i>  /***********************************************************************
+</I>&gt;<i>    Definitions
+</I>&gt;<i>  ***********************************************************************/
+</I>&gt;<i> -
+</I>&gt;<i>  template &lt;typename       Order,
+</I>&gt;<i>  	  dimension_type Dim&gt;
+</I>&gt;<i>  index_type
+</I>&gt;<i> -to_index(Point&lt;Dim&gt; const&amp; ext,
+</I>&gt;<i> -	 Point&lt;Dim&gt; const&amp; idx)
+</I>&gt;<i> +to_index(Length&lt;Dim&gt; const&amp; ext,
+</I>&gt;<i> +	 Index&lt;Dim&gt;  const&amp; idx)
+</I>&gt;<i>  {
+</I>&gt;<i>    if (Dim == 1)
+</I>&gt;<i>      return idx[0];
+</I>&gt;<i> @@ -47,7 +47,6 @@
+</I>&gt;<i>  }
+</I>&gt;<i>  	  
+</I>&gt;<i>  
+</I>&gt;<i> -
+</I>&gt;<i>  template &lt;typename       Order,
+</I>&gt;<i>  	  typename       T,
+</I>&gt;<i>  	  dimension_type Dim,
+</I>&gt;<i> @@ -58,8 +57,8 @@
+</I>&gt;<i>    Domain&lt;Dim&gt; const&amp; dom,
+</I>&gt;<i>    Func               fun)
+</I>&gt;<i>  {
+</I>&gt;<i> -  Point&lt;Dim&gt; ext = impl::extent_old(dom);
+</I>&gt;<i> -  for (Point&lt;Dim&gt; idx; idx != ext; next(ext, idx))
+</I>&gt;<i> +  Length&lt;Dim&gt; ext = impl::extent(dom);
+</I>&gt;<i> +  for (Index&lt;Dim&gt; idx; valid(ext, idx); next(ext, idx))
+</I>&gt;<i>    {
+</I>&gt;<i>      index_type i = to_index&lt;Order&gt;(ext, idx);
+</I>&gt;<i>      data[i] = fun(i);
+</I>&gt;<i> @@ -67,7 +66,6 @@
+</I>&gt;<i>  }
+</I>&gt;<i>  
+</I>&gt;<i>  
+</I>&gt;<i> -
+</I>&gt;<i>  template &lt;typename       Order,
+</I>&gt;<i>  	  typename       T,
+</I>&gt;<i>  	  dimension_type Dim,
+</I>&gt;<i> @@ -78,8 +76,8 @@
+</I>&gt;<i>    Domain&lt;Dim&gt; const&amp; dom,
+</I>&gt;<i>    Func               fun)
+</I>&gt;<i>  {
+</I>&gt;<i> -  Point&lt;Dim&gt; ext = impl::extent_old(dom);
+</I>&gt;<i> -  for (Point&lt;Dim&gt; idx; idx != ext; next(ext, idx))
+</I>&gt;<i> +  Length&lt;Dim&gt; ext = impl::extent(dom);
+</I>&gt;<i> +  for (Index&lt;Dim&gt; idx; valid(ext,idx); next(ext, idx))
+</I>&gt;<i>    {
+</I>&gt;<i>      index_type i = to_index&lt;Order&gt;(ext, idx);
+</I>&gt;<i>      if (!equal(data[i], fun(i)))
+</I>&gt;<i> @@ -89,7 +87,6 @@
+</I>&gt;<i>  }
+</I>&gt;<i>  
+</I>&gt;<i>  
+</I>&gt;<i> -
+</I>&gt;<i>  template &lt;typename       Order,
+</I>&gt;<i>  	  typename       T,
+</I>&gt;<i>  	  dimension_type Dim,
+</I>&gt;<i> @@ -100,8 +97,8 @@
+</I>&gt;<i>    Domain&lt;Dim&gt; const&amp; dom,
+</I>&gt;<i>    Func               fun)
+</I>&gt;<i>  {
+</I>&gt;<i> -  Point&lt;Dim&gt; ext = impl::extent_old(dom);
+</I>&gt;<i> -  for (Point&lt;Dim&gt; idx; idx != ext; next(ext, idx))
+</I>&gt;<i> +  Length&lt;Dim&gt; ext = impl::extent(dom);
+</I>&gt;<i> +  for (Index&lt;Dim&gt; idx; valid(ext,idx); next(ext, idx))
+</I>&gt;<i>    {
+</I>&gt;<i>      index_type i = to_index&lt;Order&gt;(ext, idx);
+</I>&gt;<i>      complex&lt;T&gt; val = fun(i);
+</I>&gt;<i> @@ -111,7 +108,6 @@
+</I>&gt;<i>  }
+</I>&gt;<i>  
+</I>&gt;<i>  
+</I>&gt;<i> -
+</I>&gt;<i>  template &lt;typename       Order,
+</I>&gt;<i>  	  typename       T,
+</I>&gt;<i>  	  dimension_type Dim,
+</I>&gt;<i> @@ -122,8 +118,8 @@
+</I>&gt;<i>    Domain&lt;Dim&gt; const&amp; dom,
+</I>&gt;<i>    Func               fun)
+</I>&gt;<i>  {
+</I>&gt;<i> -  Point&lt;Dim&gt; ext = impl::extent_old(dom);
+</I>&gt;<i> -  for (Point&lt;Dim&gt; idx; idx != ext; next(ext, idx))
+</I>&gt;<i> +  Length&lt;Dim&gt; ext = impl::extent(dom);
+</I>&gt;<i> +  for (Index&lt;Dim&gt; idx; valid(ext,idx); next(ext, idx))
+</I>&gt;<i>    {
+</I>&gt;<i>      index_type i = to_index&lt;Order&gt;(ext, idx);
+</I>&gt;<i>      complex&lt;T&gt; val = fun(i);
+</I>&gt;<i> @@ -135,7 +131,6 @@
+</I>&gt;<i>  }
+</I>&gt;<i>  
+</I>&gt;<i>  
+</I>&gt;<i> -
+</I>&gt;<i>  template &lt;typename       Order,
+</I>&gt;<i>  	  typename       T,
+</I>&gt;<i>  	  dimension_type Dim,
+</I>&gt;<i> @@ -147,8 +142,8 @@
+</I>&gt;<i>    Domain&lt;Dim&gt; const&amp; dom,
+</I>&gt;<i>    Func               fun)
+</I>&gt;<i>  {
+</I>&gt;<i> -  Point&lt;Dim&gt; ext = impl::extent_old(dom);
+</I>&gt;<i> -  for (Point&lt;Dim&gt; idx; idx != ext; next(ext, idx))
+</I>&gt;<i> +  Length&lt;Dim&gt; ext = impl::extent(dom);
+</I>&gt;<i> +  for (Index&lt;Dim&gt; idx; valid(ext,idx); next(ext, idx))
+</I>&gt;<i>    {
+</I>&gt;<i>      index_type i = to_index&lt;Order&gt;(ext, idx);
+</I>&gt;<i>      complex&lt;T&gt; val = fun(i);
+</I>&gt;<i> @@ -158,7 +153,6 @@
+</I>&gt;<i>  }
+</I>&gt;<i>  
+</I>&gt;<i>  
+</I>&gt;<i> -
+</I>&gt;<i>  template &lt;typename       Order,
+</I>&gt;<i>  	  typename       T,
+</I>&gt;<i>  	  dimension_type Dim,
+</I>&gt;<i> @@ -170,8 +164,8 @@
+</I>&gt;<i>    Domain&lt;Dim&gt; const&amp; dom,
+</I>&gt;<i>    Func               fun)
+</I>&gt;<i>  {
+</I>&gt;<i> -  Point&lt;Dim&gt; ext = impl::extent_old(dom);
+</I>&gt;<i> -  for (Point&lt;Dim&gt; idx; idx != ext; next(ext, idx))
+</I>&gt;<i> +  Length&lt;Dim&gt; ext = impl::extent(dom);
+</I>&gt;<i> +  for (Index&lt;Dim&gt; idx; valid(ext,idx); next(ext, idx))
+</I>&gt;<i>    {
+</I>&gt;<i>      index_type i = to_index&lt;Order&gt;(ext, idx);
+</I>&gt;<i>      complex&lt;T&gt; val = fun(i);
+</I>&gt;<i> @@ -182,8 +176,6 @@
+</I>&gt;<i>    return true;
+</I>&gt;<i>  }
+</I>&gt;<i>  
+</I>&gt;<i> -
+</I>&gt;<i> -
+</I>&gt;<i>  template &lt;typename       Order,
+</I>&gt;<i>  	  typename       Block,
+</I>&gt;<i>  	  dimension_type Dim,
+</I>&gt;<i> @@ -194,16 +186,14 @@
+</I>&gt;<i>    Domain&lt;Dim&gt; const&amp; dom,
+</I>&gt;<i>    Func               fun)
+</I>&gt;<i>  {
+</I>&gt;<i> -  Point&lt;Dim&gt; ext = impl::extent_old(dom);
+</I>&gt;<i> -  for (Point&lt;Dim&gt; idx; idx != ext; next(ext, idx))
+</I>&gt;<i> +  Length&lt;Dim&gt; ext = impl::extent(dom);
+</I>&gt;<i> +  for (Index&lt;Dim&gt; idx; valid(ext,idx); next(ext, idx))
+</I>&gt;<i>    {
+</I>&gt;<i>      index_type i = to_index&lt;Order&gt;(ext, idx);
+</I>&gt;<i>      put(block, idx, fun(i));
+</I>&gt;<i>    }
+</I>&gt;<i>  }
+</I>&gt;<i>  
+</I>&gt;<i> -
+</I>&gt;<i> -
+</I>&gt;<i>  template &lt;typename       Order,
+</I>&gt;<i>  	  typename       Block,
+</I>&gt;<i>  	  dimension_type Dim,
+</I>&gt;<i> @@ -214,8 +204,8 @@
+</I>&gt;<i>    Domain&lt;Dim&gt; const&amp; dom,
+</I>&gt;<i>    Func               fun)
+</I>&gt;<i>  {
+</I>&gt;<i> -  Point&lt;Dim&gt; ext = impl::extent_old(dom);
+</I>&gt;<i> -  for (Point&lt;Dim&gt; idx; idx != ext; next(ext, idx))
+</I>&gt;<i> +  Length&lt;Dim&gt; ext = impl::extent(dom);
+</I>&gt;<i> +  for (Index&lt;Dim&gt; idx; valid(ext,idx); next(ext, idx))
+</I>&gt;<i>    {
+</I>&gt;<i>      index_type i = to_index&lt;Order&gt;(ext, idx);
+</I>&gt;<i>      if (!equal(get(block, idx), fun(i)))
+</I>&gt;<i> @@ -224,7 +214,6 @@
+</I>&gt;<i>    return true;
+</I>&gt;<i>  }
+</I>&gt;<i>  
+</I>&gt;<i> -
+</I>&gt;<i>  template &lt;typename T&gt;
+</I>&gt;<i>  class Filler
+</I>&gt;<i>  {
+</I>&gt;<i> Index: tests/util-par.hpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: /home/cvs/Repository/vpp/tests/util-par.hpp,v
+</I>&gt;<i> retrieving revision 1.8
+</I>&gt;<i> diff -u -r1.8 util-par.hpp
+</I>&gt;<i> --- tests/util-par.hpp	27 Mar 2006 23:19:34 -0000	1.8
+</I>&gt;<i> +++ tests/util-par.hpp	30 Mar 2006 17:00:12 -0000
+</I>&gt;<i> @@ -20,6 +20,7 @@
+</I>&gt;<i>  #include &lt;vsip/vector.hpp&gt;
+</I>&gt;<i>  #include &lt;vsip/matrix.hpp&gt;
+</I>&gt;<i>  #include &lt;vsip/parallel.hpp&gt;
+</I>&gt;<i> +#include &lt;vsip/domain.hpp&gt;
+</I>&gt;<i>  
+</I>&gt;<i>  #include &quot;output.hpp&quot;
+</I>&gt;<i>  #include &quot;extdata-output.hpp&quot;
+</I>&gt;<i> @@ -276,8 +277,8 @@
+</I>&gt;<i>    Increment(T delta) : delta_(delta) {}
+</I>&gt;<i>  
+</I>&gt;<i>    T operator()(T value,
+</I>&gt;<i> -	       vsip::impl::Point&lt;Dim&gt; const&amp;,
+</I>&gt;<i> -	       vsip::impl::Point&lt;Dim&gt; const&amp;)
+</I>&gt;<i> +	       vsip::Index&lt;Dim&gt; const&amp;,
+</I>&gt;<i> +	       vsip::Index&lt;Dim&gt; const&amp;)
+</I>&gt;<i>      { return value + delta_; }
+</I>&gt;<i>  
+</I>&gt;<i>    // Member Data
+</I>&gt;<i> @@ -294,19 +295,22 @@
+</I>&gt;<i>  class Set_identity
+</I>&gt;<i>  {
+</I>&gt;<i>  public:
+</I>&gt;<i> +  // The Set_identity () operators used to take Point as their argument. The
+</I>&gt;<i> +  // use of Point is depricated. We need to use Index instead.
+</I>&gt;<i> +
+</I>&gt;<i>    Set_identity(vsip::Domain&lt;Dim&gt; const&amp; dom, int k = 1, int o = 0)
+</I>&gt;<i>      : dom_(dom), k_(k), o_(o) {}
+</I>&gt;<i>  
+</I>&gt;<i>    template &lt;typename T&gt;
+</I>&gt;<i>    T operator()(T /*value*/,
+</I>&gt;<i> -	       vsip::impl::Point&lt;1&gt; const&amp; /*local*/,
+</I>&gt;<i> -	       vsip::impl::Point&lt;1&gt; const&amp; global)
+</I>&gt;<i> +	       vsip::Index&lt;1&gt; const&amp; /*local*/,
+</I>&gt;<i> +	       vsip::Index&lt;1&gt; const&amp; global)
+</I>&gt;<i>      { return T(k_*global[0] + o_); }
+</I>&gt;<i>  
+</I>&gt;<i>    template &lt;typename T&gt;
+</I>&gt;<i>    T operator()(T /*value*/,
+</I>&gt;<i> -	       vsip::impl::Point&lt;2&gt; const&amp; /*local*/,
+</I>&gt;<i> -	       vsip::impl::Point&lt;2&gt; const&amp; global)
+</I>&gt;<i> +	       vsip::Index&lt;2&gt; const&amp; /*local*/,
+</I>&gt;<i> +	       vsip::Index&lt;2&gt; const&amp; global)
+</I>&gt;<i>    {
+</I>&gt;<i>      vsip::index_type i = global[0]*dom_[1].length()+global[1];
+</I>&gt;<i>      return T(k_*i+o_);
+</I>&gt;<i> @@ -314,8 +318,8 @@
+</I>&gt;<i>  
+</I>&gt;<i>    template &lt;typename T&gt;
+</I>&gt;<i>    T operator()(T /*value*/,
+</I>&gt;<i> -	       vsip::impl::Point&lt;3&gt; const&amp; /*local*/,
+</I>&gt;<i> -	       vsip::impl::Point&lt;3&gt; const&amp; global)
+</I>&gt;<i> +	       vsip::Index&lt;3&gt; const&amp; /*local*/,
+</I>&gt;<i> +	       vsip::Index&lt;3&gt; const&amp; global)
+</I>&gt;<i>    {
+</I>&gt;<i>      vsip::index_type i = global[0]*dom_[1].length()*dom_[2].length()
+</I>&gt;<i>                         + global[1]*dom_[2].length()
+</I>&gt;<i> @@ -343,10 +347,14 @@
+</I>&gt;<i>  
+</I>&gt;<i>    bool good() { return good_; }
+</I>&gt;<i>  
+</I>&gt;<i> +  // The Check_identity () operators used to take Point as their argument. The
+</I>&gt;<i> +  // use of Point is depricated. We need to use Index instead.
+</I>&gt;<i> +
+</I>&gt;<i> +
+</I>&gt;<i>    template &lt;typename T&gt;
+</I>&gt;<i>    T operator()(T value,
+</I>&gt;<i> -	       vsip::impl::Point&lt;1&gt; const&amp; /*local*/,
+</I>&gt;<i> -	       vsip::impl::Point&lt;1&gt; const&amp; global)
+</I>&gt;<i> +	       vsip::Index&lt;1&gt; const&amp; /*local*/,
+</I>&gt;<i> +	       vsip::Index&lt;1&gt; const&amp; global)
+</I>&gt;<i>    {
+</I>&gt;<i>      int i = global[0];
+</I>&gt;<i>      T expected = T(k_*i + o_);
+</I>&gt;<i> @@ -363,8 +371,8 @@
+</I>&gt;<i>  
+</I>&gt;<i>    template &lt;typename T&gt;
+</I>&gt;<i>    T operator()(T value,
+</I>&gt;<i> -	       vsip::impl::Point&lt;2&gt; const&amp; /*local*/,
+</I>&gt;<i> -	       vsip::impl::Point&lt;2&gt; const&amp; global)
+</I>&gt;<i> +	       vsip::Index&lt;2&gt; const&amp; /*local*/,
+</I>&gt;<i> +	       vsip::Index&lt;2&gt; const&amp; global)
+</I>&gt;<i>    {
+</I>&gt;<i>      int i = global[0]*dom_[1].length()+global[1];
+</I>&gt;<i>      T expected = T(k_*i+o_);
+</I>&gt;<i> @@ -383,8 +391,8 @@
+</I>&gt;<i>  
+</I>&gt;<i>    template &lt;typename T&gt;
+</I>&gt;<i>    T operator()(T value,
+</I>&gt;<i> -	       vsip::impl::Point&lt;3&gt; const&amp; /*local*/,
+</I>&gt;<i> -	       vsip::impl::Point&lt;3&gt; const&amp; global)
+</I>&gt;<i> +	       vsip::Index&lt;3&gt; const&amp; /*local*/,
+</I>&gt;<i> +	       vsip::Index&lt;3&gt; const&amp; global)
+</I>&gt;<i>    {
+</I>&gt;<i>      int i = global[0]*dom_[1].length()*dom_[2].length()
+</I>&gt;<i>            + global[1]*dom_[2].length()
+</I>&gt;<i> Index: tests/view.cpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: /home/cvs/Repository/vpp/tests/view.cpp,v
+</I>&gt;<i> retrieving revision 1.10
+</I>&gt;<i> diff -u -r1.10 view.cpp
+</I>&gt;<i> --- tests/view.cpp	20 Dec 2005 12:48:41 -0000	1.10
+</I>&gt;<i> +++ tests/view.cpp	30 Mar 2006 17:00:12 -0000
+</I>&gt;<i> @@ -23,14 +23,14 @@
+</I>&gt;<i>  #include &lt;vsip/impl/point.hpp&gt;
+</I>&gt;<i>  #include &lt;vsip/domain.hpp&gt;
+</I>&gt;<i>  #include &lt;vsip/impl/point-fcn.hpp&gt;
+</I>&gt;<i> +#include &lt;vsip/impl/length.hpp&gt;
+</I>&gt;<i>  #include &quot;test.hpp&quot;
+</I>&gt;<i>  #include &quot;test-storage.hpp&quot;
+</I>&gt;<i>  
+</I>&gt;<i>  using namespace std;
+</I>&gt;<i>  using namespace vsip;
+</I>&gt;<i>  
+</I>&gt;<i> -using vsip::impl::Point;
+</I>&gt;<i> -using vsip::impl::extent_old;
+</I>&gt;<i> +using vsip::impl::Length;
+</I>&gt;<i>  
+</I>&gt;<i>  
+</I>&gt;<i>  
+</I>&gt;<i> @@ -348,6 +348,9 @@
+</I>&gt;<i>  
+</I>&gt;<i>  // Check that all elements of a view have the same const values
+</I>&gt;<i>  
+</I>&gt;<i> +// The use of Point is depricated. This function was converted to use Length
+</I>&gt;<i> +// and index instead.
+</I>&gt;<i> +
+</I>&gt;<i>  template &lt;typename View&gt;
+</I>&gt;<i>  bool
+</I>&gt;<i>  check_view_const(
+</I>&gt;<i> @@ -355,7 +358,8 @@
+</I>&gt;<i>    typename View::value_type scalar)
+</I>&gt;<i>  {
+</I>&gt;<i>    dimension_type const dim = View::dim;
+</I>&gt;<i> -  for (Point&lt;dim&gt; idx; idx != extent_old(view); next(extent_old(view), idx))
+</I>&gt;<i> +  Length&lt;dim&gt; ext = extent(view);
+</I>&gt;<i> +  for (Index&lt;dim&gt; idx; valid(ext,idx); next(ext, idx))
+</I>&gt;<i>    {
+</I>&gt;<i>      if (!equal(get(view, idx), scalar))
+</I>&gt;<i>        return false;
+</I>&gt;<i> Index: tests/vmmul.cpp
+</I>&gt;<i> ===================================================================
+</I>&gt;<i> RCS file: /home/cvs/Repository/vpp/tests/vmmul.cpp,v
+</I>&gt;<i> retrieving revision 1.4
+</I>&gt;<i> diff -u -r1.4 vmmul.cpp
+</I>&gt;<i> --- tests/vmmul.cpp	20 Dec 2005 12:48:41 -0000	1.4
+</I>&gt;<i> +++ tests/vmmul.cpp	30 Mar 2006 17:00:12 -0000
+</I>&gt;<i> @@ -19,6 +19,7 @@
+</I>&gt;<i>  #include &lt;vsip/map.hpp&gt;
+</I>&gt;<i>  #include &lt;vsip/parallel.hpp&gt;
+</I>&gt;<i>  #include &lt;vsip/math.hpp&gt;
+</I>&gt;<i> +#include &lt;vsip/domain.hpp&gt;
+</I>&gt;<i>  
+</I>&gt;<i>  #include &quot;test.hpp&quot;
+</I>&gt;<i>  #include &quot;util-par.hpp&quot;
+</I>&gt;<i> @@ -87,8 +88,8 @@
+</I>&gt;<i>  
+</I>&gt;<i>    template &lt;typename T&gt;
+</I>&gt;<i>    T operator()(T value,
+</I>&gt;<i> -	       vsip::impl::Point&lt;2&gt; const&amp; /*local*/,
+</I>&gt;<i> -	       vsip::impl::Point&lt;2&gt; const&amp; global)
+</I>&gt;<i> +	       vsip::Index&lt;2&gt; const&amp; /*local*/,
+</I>&gt;<i> +	       vsip::Index&lt;2&gt; const&amp; global)
+</I>&gt;<i>    {
+</I>&gt;<i>      vsip::index_type i = global[0]*dom_[1].length()+global[1];
+</I>&gt;<i>      T expected = (VecDim == 0) ? T(global[1] * i) : T(global[0] * i);
+</I>
+
+-- 
+Jules Bergmann
+CodeSourcery
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">jules at codesourcery.com</A>
+(650) 331-3385 x705
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000340.html">Index and Length
+</A></li>
+	<LI>Next message: <A HREF="000341.html">Index and Length
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#342">[ date ]</a>
+              <a href="thread.html#342">[ thread ]</a>
+              <a href="subject.html#342">[ subject ]</a>
+              <a href="author.html#342">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">More information about the vsipl++
+mailing list</a><br>
+</body></html>

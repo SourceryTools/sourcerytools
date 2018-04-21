@@ -1,0 +1,153 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [pooma-dev] src/Particles/tests compilable
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bpooma-dev%5D%20src/Particles/tests%20compilable&In-Reply-To=%3C001801c46c2b%240ea93420%246401a8c0%40JULES%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001640.html">
+   <LINK REL="Next"  HREF="001641.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[pooma-dev] src/Particles/tests compilable</H1>
+    <B>Julian C. Cummings</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bpooma-dev%5D%20src/Particles/tests%20compilable&In-Reply-To=%3C001801c46c2b%240ea93420%246401a8c0%40JULES%3E"
+       TITLE="[pooma-dev] src/Particles/tests compilable">cummings at linkline.com
+       </A><BR>
+    <I>Sat Jul 17 18:22:45 UTC 2004</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001640.html">[pooma-dev] src/Particles/tests compilable
+</A></li>
+        <LI>Next message: <A HREF="001641.html">[PATCH] Add gradient operator
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1651">[ date ]</a>
+              <a href="thread.html#1651">[ thread ]</a>
+              <a href="subject.html#1651">[ subject ]</a>
+              <a href="author.html#1651">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Richard,
+
+The guard layers act differently than usual in a particle scatter operation
+because it is possible for particles to scatter a portion of their data
+value into guard cells.  At the end of the scatter operation, we must add
+the value in a physical cell to the values in all of the corresponding guard
+cells and assign that to the physical cell.  And then we can update the
+guard cells from the physical cells once again for consistency.  So the
+zeroing of the guard cells is needed at the beginning so that there is no
+miscounting.  It is the equivalent of setting a summation variable to zero
+before beginning to compute the sum.  The external guard cells are a bit
+different because they presumably do not have any corresponding physical
+cells.  There is probably no chance of miscounting the scatter in this case.
+However, there could be a boundary condition that has set the external guard
+cells to a non-zero value, so we zero them out as well. 
+
+These actions are primarily safety measures to guard against user stupidity.
+Perhaps there is an easier way now to achieve the same effect by doing
+field.all() = 0.0.  This may have been a syntax that was added after the
+particle-field interpolation code was written.  It makes more sense to just
+make sure the *entire* field is zero before starting the scatter
+computation.  Alternatively, you could leave this responsibility to the user
+and write some assertion code that just checks that all physical and guard
+cells are set to zero.  The assertion code would be removed in an optimized
+compile.
+
+Regards, Julian C.
+
+Dr. Julian C. Cummings
+Staff Scientist, CACR/Caltech
+(626) 395-2543
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">cummings at cacr.caltech.edu</A>
+ 
+
+&gt;<i> -----Original Message-----
+</I>&gt;<i> From: Richard Guenther [mailto:<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">rguenth at tat.physik.uni-tuebingen.de</A>] 
+</I>&gt;<i> Sent: Thursday, July 15, 2004 1:28 PM
+</I>&gt;<i> To: Roman Krylov
+</I>&gt;<i> Cc: <A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">pooma-dev at pooma.codesourcery.com</A>
+</I>&gt;<i> Subject: Re: [pooma-dev] src/Particles/tests compilable
+</I>&gt;<i> 
+</I>&gt;<i> 
+</I>&gt;<i> Roman Krylov wrote:
+</I>&gt;<i> &gt; Hi.
+</I>&gt;<i> &gt; Now all src/Particles/tests compilable.
+</I>&gt;<i> &gt; 
+</I>&gt;<i> &gt; What I have to note especially is that I had commented //#include 
+</I>&gt;<i> &gt; &quot;Particles/InterpolatorNGP.h&quot; //#include 
+</I>&gt;<i> &quot;Particles/InterpolatorCIC.h&quot;
+</I>&gt;<i> &gt; //#include &quot;Particles/InterpolatorSUDS.h&quot;
+</I>&gt;<i> &gt; in src/Pooma/Particles.h - I think it'll be better if one 
+</I>&gt;<i> who need it 
+</I>&gt;<i> &gt; will include it manually OK?
+</I>&gt;<i> &gt; And I've commented all 'setExternalGuards(field,zero);'. As 
+</I>&gt;<i> I thought 
+</I>&gt;<i> &gt; external guards are only an optimization not real g.l. ?
+</I>&gt;<i> 
+</I>&gt;<i> They are real guard layers, but this use looked suspicious to 
+</I>&gt;<i> me, too, 
+</I>&gt;<i> as usually external guards filling is up to the user, as is 
+</I>&gt;<i> the physical 
+</I>&gt;<i> domain.  Maybe Julian can comment on this:
+</I>&gt;<i> 
+</I>&gt;<i> Interpolator&lt;Dim,T,CIC&gt;::scatter(const PA&amp; attrib, const FC&amp; field, 
+</I>&gt;<i> const PPos&amp; pos)
+</I>&gt;<i> {
+</I>&gt;<i>     ...
+</I>&gt;<i>        // Zero out the guard layers before scattering
+</I>&gt;<i>        typename FC::Element_t zero(0);
+</I>&gt;<i>        field.engine().setGuards(zero);
+</I>&gt;<i>        setExternalGuards(field,zero);
+</I>&gt;<i>     ...
+</I>&gt;<i> }
+</I>&gt;<i> 
+</I>&gt;<i> The question is, if we assume the destination field to be 
+</I>&gt;<i> zeroed by the 
+</I>&gt;<i> user at entry of this function, then we need to do this only if we 
+</I>&gt;<i> bypass the guard updating.  And this will be an optimization, if and 
+</I>&gt;<i> only if we assum initial zero field value (else clearing the internal 
+</I>&gt;<i> guards is even wrong).  The external guards can be handled by 
+</I>&gt;<i> the user by just field.all() = 0.0; before scattering, 
+</I>&gt;<i> instead of field = 0.0;
+</I>&gt;<i> 
+</I>&gt;<i> How was this all supposed to being used?
+</I>&gt;<i> 
+</I>&gt;<i> Richard.
+</I>&gt;<i> 
+</I>&gt;<i> &gt; As I had noticed previously 'pointIndex'-&gt;'cellContaining' and also 
+</I>&gt;<i> &gt; 'indexPoint'-&gt;'vertexPosition'. Well here they are(attached).
+</I>&gt;<i> &gt; Roman.
+</I>&gt;<i> 
+</I>
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001640.html">[pooma-dev] src/Particles/tests compilable
+</A></li>
+	<LI>Next message: <A HREF="001641.html">[PATCH] Add gradient operator
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1651">[ date ]</a>
+              <a href="thread.html#1651">[ thread ]</a>
+              <a href="subject.html#1651">[ subject ]</a>
+              <a href="author.html#1651">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

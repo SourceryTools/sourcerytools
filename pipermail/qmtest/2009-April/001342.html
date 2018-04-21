@@ -1,0 +1,202 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [qmtest] Where to put 'import', function defs etc.
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:qmtest%40codesourcery.com?Subject=Re%3A%20%5Bqmtest%5D%20Where%20to%20put%20%27import%27%2C%20function%20defs%20etc.&In-Reply-To=%3C49E74449.20107%40sympatico.ca%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001341.html">
+   <LINK REL="Next"  HREF="001343.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[qmtest] Where to put 'import', function defs etc.</H1>
+    <B>Stefan Seefeld</B> 
+    <A HREF="mailto:qmtest%40codesourcery.com?Subject=Re%3A%20%5Bqmtest%5D%20Where%20to%20put%20%27import%27%2C%20function%20defs%20etc.&In-Reply-To=%3C49E74449.20107%40sympatico.ca%3E"
+       TITLE="[qmtest] Where to put 'import', function defs etc.">seefeld at sympatico.ca
+       </A><BR>
+    <I>Thu Apr 16 14:44:25 UTC 2009</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001341.html">Where to put 'import', function defs etc.
+</A></li>
+        <LI>Next message: <A HREF="001343.html">Cluster Testing
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1342">[ date ]</a>
+              <a href="thread.html#1342">[ thread ]</a>
+              <a href="subject.html#1342">[ subject ]</a>
+              <a href="author.html#1342">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Rowan Sylvester-Bradley wrote:
+&gt;<i> Hi,
+</I>&gt;<i>
+</I>&gt;<i> I'm trying to use QMtest for the first time and am having some 
+</I>&gt;<i> difficulties getting to grips with it. I hope someone can answer the 
+</I>&gt;<i> following questions for me (or tell me where to find a tutorial 
+</I>&gt;<i> explaining all this). I'm trying to test a remote device so all my 
+</I>&gt;<i> tests send messages via the serial port and receive serial responses. 
+</I>&gt;<i> I'm trying to use the python.ExecTest test class, and write all my 
+</I>&gt;<i> tests in Python.
+</I>&gt;<i>
+</I>&gt;<i> 1. Where do I put 'import' statements, function definitions etc. that 
+</I>&gt;<i> my tests need?
+</I>
+Your own test classes live in ordinary modules, so all the normal rules 
+for coding in Python apply. What turns a test class into a 
+QMTest-visible extension class is its registration via QMTest/classes.qmc.
+
+&gt;<i> 2. If many of my tests need the same imports and functions, is there a 
+</I>&gt;<i> generic place to put the imports and function defs where they will be 
+</I>&gt;<i> accessible to all tests, or do I have to put them in every test?
+</I>I presume you put your test definitions into Python modules inside the 
+QMTest/ directory in your test database root directory.
+I believe that directory is being searched for for imports, so you could 
+simply add arbitrary python modules (or entire packages) with shared 
+code there, too.
+
+&gt;<i>
+</I>&gt;<i> 3. It looks as if each test in QMtest must be self contained and 
+</I>&gt;<i> atomic, i.e. it must not depend on which tests have already been run, 
+</I>&gt;<i> or in which order.
+</I>
+That's right.
+
+&gt;<i> If this is right, I don't understand how to deal with a situation that 
+</I>&gt;<i> needs a long sequence of messages to the device under test and 
+</I>&gt;<i> responses. The prerequisite concept doesn't seem to solve the problem, 
+</I>&gt;<i> because (as I understand it) although it guarantees that some tests 
+</I>&gt;<i> will have been run before the current test, it does not guarantee in 
+</I>&gt;<i> which order, or whether other tests will also have been run, all of 
+</I>&gt;<i> which will change the state of the device under test.
+</I>Right. As tests are (by design) self-contained, they must not result in 
+any external state-changes affecting other tests.
+
+If you need to prepare the environment the test will run in, you may put 
+that into a 'resource' 
+(<A HREF="http://www.codesourcery.com/public/qmtest/qmtest-snapshot/share/doc/qmtest/html/tutorial/concepts-resources.html">http://www.codesourcery.com/public/qmtest/qmtest-snapshot/share/doc/qmtest/html/tutorial/concepts-resources.html</A>)
+
+Resources can be shared among many tests (and QMTest will make sure 
+resources are set up prior to the dependent test being run, on the 
+target the test is being run). In particular, this means a resource is 
+set up only once. If you have a sequence of preparational steps that 
+need to be repeated for each test, you have to execute them from within 
+your test.
+
+
+&gt;<i> If I genuinely have to make every test independent of what's gone 
+</I>&gt;<i> before, I will have to start each test with a reboot, and then add 
+</I>&gt;<i> commands to the test one by one - so if my test sequence consists of 
+</I>&gt;<i> reboot, send command A, receive response A, send command B, receive 
+</I>&gt;<i> response B, send command C, receive response C I will have to have 
+</I>&gt;<i> tests 1 (reboot, send A receive A), 2 (reboot, send A, receive A, send 
+</I>&gt;<i> B, receive B) and 3 (reboot, send A, receive A, send B, receive B, 
+</I>&gt;<i> send C, receive C). If I have 100 or more steps in my sequence, this 
+</I>&gt;<i> could be very tedious. If I could force my tests to run in sequence, I 
+</I>&gt;<i> could just have tests 1 (reboot, send A, receive A), 2 (send B, 
+</I>&gt;<i> receive B) and 3 (send C, receive C).
+</I>
+Why don't you put all the different steps into a single test ? Put 
+appropriate validation checkpoints in between the steps, so your test 
+lot will tell at which point things have broken, in case it fails.
+
+(Compare that to a CompilationTest involving first compiling a source 
+file, then running it. The multiple steps are 1) preprocessing, 2) 
+compilation, 3) linking, 4) execution. In case of failure the test will 
+report in which of those steps an error happened.)
+
+
+&gt;<i> 4. How do I make the execution of a test dependent on the results of 
+</I>&gt;<i> previous tests (i.e. how do I access the results of previous tests 
+</I>&gt;<i> from within the Python code of a new test)?
+</I>
+You don't, as per the design that stipulates all tests being 
+independent. (To illustrate one of the rationales: imagine running tests 
+in parallel, possibly on a build farm: Test B may run in a different 
+universe than test A, and both not knowing anything about each other.)
+
+The concept of 'prerequisite tests' is simply meant as an optimization, 
+so you can skip a test it is known to fail, because some other 
+'prerequisite' test failed, too. See
+<A HREF="http://www.codesourcery.com/public/qmtest/qmtest-snapshot/share/doc/qmtest/html/tutorial/concepts.html#concepts-tests">http://www.codesourcery.com/public/qmtest/qmtest-snapshot/share/doc/qmtest/html/tutorial/concepts.html#concepts-tests</A>
+
+&gt;<i> 5. How do I make the sequence of tests dependent on the results of 
+</I>&gt;<i> previous tests? E.g. if test B passes, do test C and then test D, or 
+</I>&gt;<i> if it fails, do test E and then test F.
+</I>
+See above.
+
+&gt;<i> 6. If I'm using the &quot;Python Source Code&quot; part of the python.ExecTest, 
+</I>&gt;<i> and not the Python Expression section, what is the recommended way of 
+</I>&gt;<i> indicating to QMtest whether the test has passed or failed?
+</I>As per the python.ExecTest's documentation, in the absence of an 
+expression, the test fails if it throws an exception.
+
+&gt;<i> 7. Should or must I make every comparison of expected results with 
+</I>&gt;<i> actual results a separate QMtest test, or can/should I have multiple 
+</I>&gt;<i> comparisons within a single QMtest test? In the latter case there 
+</I>&gt;<i> would obviously be multiple ways in which the test could fail, which 
+</I>&gt;<i> would need to be reported.
+</I>Right. Existing test classes are probably not flexible enough if you 
+want to distinguish multiple such failure codes.
+In that case you may want to write your own test classes and then log 
+the failure details in the Result object.
+
+&gt;<i> What are &quot;resources&quot;? Does using these help me solve any of my problems?
+</I>
+Possibly. See above.
+
+&gt;<i> 8. If I want to create a new test class, where do I put the class 
+</I>&gt;<i> definition?
+</I>That's explained in 
+<A HREF="http://www.codesourcery.com/public/qmtest/qmtest-snapshot/share/doc/qmtest/html/tutorial/extending.html">http://www.codesourcery.com/public/qmtest/qmtest-snapshot/share/doc/qmtest/html/tutorial/extending.html</A>
+
+&gt;<i>
+</I>&gt;<i> 9. Is there a simple example of how to add a new test class written in 
+</I>&gt;<i> Python somewhere?
+</I>
+I'm not sure whether we have complete examples. However, the above 
+documentation explains all the details. You may want to copy an existing 
+module (such as qm/test/classes/python.py) into your QMTest/ directory, 
+register the classes via QMTest/classes.qmc, and then experiment with 
+modifications you apply to that code.
+
+Good luck !
+
+       Stefan
+
+-- 
+
+      ...ich hab' noch einen Koffer in Berlin...
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001341.html">Where to put 'import', function defs etc.
+</A></li>
+	<LI>Next message: <A HREF="001343.html">Cluster Testing
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1342">[ date ]</a>
+              <a href="thread.html#1342">[ thread ]</a>
+              <a href="subject.html#1342">[ subject ]</a>
+              <a href="author.html#1342">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">More information about the qmtest
+mailing list</a><br>
+</body></html>

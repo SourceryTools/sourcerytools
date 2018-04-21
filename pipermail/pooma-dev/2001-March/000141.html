@@ -1,0 +1,122 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [pooma-dev] how does one do a reduce
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bpooma-dev%5D%20how%20does%20one%20do%20a%20reduce&In-Reply-To=%3CF871BB04B0EA224A821A5274C31DF3152BB2%40proxim-sf001.santafe.proximation.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000140.html">
+   <LINK REL="Next"  HREF="000142.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[pooma-dev] how does one do a reduce</H1>
+    <B>James Crotinger</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bpooma-dev%5D%20how%20does%20one%20do%20a%20reduce&In-Reply-To=%3CF871BB04B0EA224A821A5274C31DF3152BB2%40proxim-sf001.santafe.proximation.com%3E"
+       TITLE="[pooma-dev] how does one do a reduce">JimC at proximation.com
+       </A><BR>
+    <I>Fri Mar 30 00:06:10 UTC 2001</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000140.html">how does one do a reduce
+</A></li>
+        <LI>Next message: <A HREF="000142.html">SMARTS
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#141">[ date ]</a>
+              <a href="thread.html#141">[ thread ]</a>
+              <a href="subject.html#141">[ subject ]</a>
+              <a href="author.html#141">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>To answer the simple question first, Tulip is the old name for Cheetah,
+which is the messaging layer that r2 sits on top of. Tulip was supposed to
+be renamed for the 2.3 release, but apparently that didn't happen.
+
+Now, for reductions. The implementation is in Tulip/ReduceOverContexts.h.
+This is used in DynamicLayout.cmpl.cpp, for example, to globally check the
+dirty flag, etc. Here is an example:
+
+typedef ReduceOverContexts&lt;int, OpAddAssign&gt; GlobalSum_t;
+
+// Do a global reduction on the initialized and dirty flags
+
+int globalInitialized;
+GlobalSum_t(int(initialized())).broadcast(globalInitialized);
+
+Where initialized() returns the local value of the initialized field of the
+layout.
+
+We probably could wrap this basic functionality in a template function.
+Something like
+
+#include &quot;Tulip/ReduceOverContexts.h&quot;
+
+namespace Pooma {
+
+  template &lt;class T, class ReductionOp&gt;
+  reduce(T &amp;globalVal, const T &amp;localVal, ReductionOp)
+  {
+    typedef ReduceOverContexts&lt;T, ReductionOp&gt; Reducer_t;  
+    Reducer_t(localVal).broadcast(globalVal);
+  }
+}
+
+I haven't tested this, and it's been almost a year since I messed with any
+of this code, but I think something like this would make reductions a bit
+easier. I'd also like one the just does a global AND or OR of local bools. 
+
+	Jim
+
+---------------------------------------------------
+James A. Crotinger
+Software Research Scientist
+Proximation, LLC
+
+ -----Original Message-----
+From: 	Steve Nolen [mailto:<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">drnuke at lanl.gov</A>] 
+Sent:	Thursday, March 29, 2001 4:38 PM
+To:	Pooma
+Subject:	[pooma-dev] how does one do a reduce
+
+
+i want to do a reduction operation over all the contexts looking for a
+single double.  in r1 it was as simple as
+
+reduce( TotalVal, LocalVal, OpAddAssign() );
+
+how does this work in r2?  what is tulip?
+
+-steve
+-------------- next part --------------
+An HTML attachment was scrubbed...
+URL: &lt;<A HREF="http://sourcerytools.com/pipermail/pooma-dev/attachments/20010329/a03bab88/attachment.html">http://sourcerytools.com/pipermail/pooma-dev/attachments/20010329/a03bab88/attachment.html</A>&gt;
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000140.html">how does one do a reduce
+</A></li>
+	<LI>Next message: <A HREF="000142.html">SMARTS
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#141">[ date ]</a>
+              <a href="thread.html#141">[ thread ]</a>
+              <a href="subject.html#141">[ subject ]</a>
+              <a href="author.html#141">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

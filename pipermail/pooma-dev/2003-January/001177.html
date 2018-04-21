@@ -1,0 +1,252 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [PATCH] Make two-arg where() work for Fields.
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20Make%20two-arg%20where%28%29%20work%20for%20Fields.&In-Reply-To=%3CPine.LNX.4.33.0301231719000.19303-100000%40bellatrix.tat.physik.uni-tuebingen.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001176.html">
+   <LINK REL="Next"  HREF="001178.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[PATCH] Make two-arg where() work for Fields.</H1>
+    <B>Richard Guenther</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20Make%20two-arg%20where%28%29%20work%20for%20Fields.&In-Reply-To=%3CPine.LNX.4.33.0301231719000.19303-100000%40bellatrix.tat.physik.uni-tuebingen.de%3E"
+       TITLE="[PATCH] Make two-arg where() work for Fields.">rguenth at tat.physik.uni-tuebingen.de
+       </A><BR>
+    <I>Thu Jan 23 16:21:55 UTC 2003</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001176.html">[pooma-dev] [PATCH] Use ln rather than cp for * -&gt; *_APP
+</A></li>
+        <LI>Next message: <A HREF="001178.html">[PATCH] avoid warnings from dont-use-functions.
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1177">[ date ]</a>
+              <a href="thread.html#1177">[ thread ]</a>
+              <a href="subject.html#1177">[ subject ]</a>
+              <a href="author.html#1177">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Just stumbled over the following patch in one of my repositories...
+
+Ok?
+
+Richard.
+
+
+2003Jan23  Richard Guenther &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">richard.guenther at uni-tuebingen.de</A>&gt;
+
+	* src/Field/Field.h: add assign(,WhereProxy,), add necessary
+	specializations for ExpressionTraits, CombineExpressionTraits
+	and ConvertWhereProxy.
+	src/Field/tests/WhereTest.cpp: enable checking of two-argument
+	where() for Fields.
+
+# This is a BitKeeper generated patch for the following project:
+# Project Name: pooma/cheetah repository tracking CVS/tarball
+# This patch format is intended for GNU patch command version 2.5 or higher.
+# This patch includes the following deltas:
+#	           ChangeSet	1.25    -&gt; 1.26
+#	r2/src/Field/Field.h	1.3     -&gt; 1.5
+#	r2/src/Field/tests/WhereTest.cpp	1.1     -&gt; 1.2
+#
+# The following is the BitKeeper ChangeSet Log
+# --------------------------------------------
+# 03/01/23	<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">rguenth at bellatrix.tat.physik.uni-tuebingen.de</A>	1.26
+# Two-arg where() support for Fields.
+# --------------------------------------------
+#
+diff -Nru a/r2/src/Field/Field.h b/r2/src/Field/Field.h
+--- a/r2/src/Field/Field.h	Thu Jan 23 17:18:40 2003
++++ b/r2/src/Field/Field.h	Thu Jan 23 17:18:40 2003
+@@ -146,6 +146,13 @@
+ assign(const Array&lt;Dim2, T2, EngineTag2&gt; &amp;lhs,
+        const Field&lt;Mesh, T, EngineTag&gt; &amp;rhs, const Op &amp;op);
+
++template&lt;class Mesh, class T, class EngineTag,
++ class F, class B, class Op&gt;
++const Field&lt;Mesh, T, EngineTag&gt; &amp;
++assign(const Field&lt;Mesh, T, EngineTag&gt; &amp;lhs,
++       const WhereProxy&lt;F, B&gt; &amp;rhs,
++       const Op &amp;op);
++
+ //-----------------------------------------------------------------------------
+ // SubFieldView is used to implement the syntax f[i], which selects the
+ // ith SubField for field f.
+@@ -2010,6 +2017,49 @@
+
+
+ //-----------------------------------------------------------------------------
++// Traits class for expressions containing fields.
++//-----------------------------------------------------------------------------
++
++struct ExpressionIsField { };
++
++template&lt;class Mesh, class T, class EngineTag&gt;
++struct ExpressionTraits&lt;Field&lt;Mesh, T, EngineTag&gt; &gt;
++{
++  typedef ExpressionIsField Type_t;
++};
++
++template&lt;&gt;
++struct CombineExpressionTraits&lt;ExpressionIsField, ExpressionIsField&gt;
++{
++  typedef ExpressionIsField Type_t;
++};
++
++template&lt;&gt;
++struct CombineExpressionTraits&lt;ExpressionIsField, ExpressionIsScalar&gt;
++{
++  typedef ExpressionIsField Type_t;
++};
++
++template&lt;&gt;
++struct CombineExpressionTraits&lt;ExpressionIsScalar, ExpressionIsField&gt;
++{
++  typedef ExpressionIsField Type_t;
++};
++
++template&lt;&gt;
++struct CombineExpressionTraits&lt;ExpressionIsField, ExpressionIsArray&gt;
++{
++  typedef ExpressionIsField Type_t;
++};
++
++template&lt;&gt;
++struct CombineExpressionTraits&lt;ExpressionIsArray, ExpressionIsField&gt;
++{
++  typedef ExpressionIsField Type_t;
++};
++
++
++//-----------------------------------------------------------------------------
+ // assign() function for Field assign-op array.
+ //-----------------------------------------------------------------------------
+
+@@ -2138,6 +2188,28 @@
+
+   Evaluator&lt;MainEvaluatorTag&gt;().evaluate(lhs, op, rhs);
+
++  return lhs;
++}
++
++
++//-----------------------------------------------------------------------------
++// assign() function for Field assign-op WhereProxy.
++//-----------------------------------------------------------------------------
++
++template&lt;class Tree&gt;
++struct ConvertWhereProxy&lt;ExpressionIsField, Tree&gt;
++{
++  typedef MakeFieldReturn&lt;Tree&gt; Make_t;
++};
++
++template&lt;class Mesh, class T, class EngineTag,
++ class F, class B, class Op&gt;
++const Field&lt;Mesh, T, EngineTag&gt; &amp;
++assign(const Field&lt;Mesh, T, EngineTag&gt; &amp;lhs,
++       const WhereProxy&lt;F, B&gt; &amp;rhs, const Op &amp;op)
++{
++  assign(lhs, rhs.whereMask(), rhs.opMask(op));
++
+   return lhs;
+ }
+
+diff -Nru a/r2/src/Field/tests/WhereTest.cpp b/r2/src/Field/tests/WhereTest.cpp
+--- a/r2/src/Field/tests/WhereTest.cpp	Thu Jan 23 17:18:40 2003
++++ b/r2/src/Field/tests/WhereTest.cpp	Thu Jan 23 17:18:40 2003
+@@ -111,26 +111,15 @@
+
+   Vector&lt;2&gt; line(1.0, 1.0);
+
++
++  // 3-arg where
++
+   a = where(dot(x, line) &gt; 8.0, x.comp(0), x.comp(1));
+
+   // equivalent to:
+   //  a = where(x.comp(0) + x.comp(1) &gt; 8.0, x.comp(0), x.comp(1));
+
+-  // These fail to compile:
+-
+-  //  b = where(dot(x, line) &gt; 8.0, x.comp(0));
+-  //  c = where(dot(x, line) &lt;= 8.0, x.comp(1));
+-
+-  tester.out() &lt;&lt; a &lt;&lt; std::endl;
+-
+-  //  tester.out().setf(std::ios_base::fixed, std::ios_base::floatfield);
+-
+-  //  tester.out() &lt;&lt; sum(a[0]) &lt;&lt; std::endl;
+-  //  tester.out() &lt;&lt; sum(a[0] * x[0].comp(0)) &lt;&lt; std::endl;
+-  //  tester.out() &lt;&lt; sum(a[0] * x[0].comp(1)) &lt;&lt; std::endl;
+-  //  tester.out() &lt;&lt; sum(a[1]) &lt;&lt; std::endl;
+-  //  tester.out() &lt;&lt; sum(a[1] * x[1].comp(0)) &lt;&lt; std::endl;
+-  //  tester.out() &lt;&lt; sum(a[1] * x[1].comp(1)) &lt;&lt; std::endl;
++  tester.out() &lt;&lt; &quot;where(dot(x, line) &gt; 8.0, x.comp(0), x.comp(1))\n&quot; &lt;&lt; a &lt;&lt; std::endl;
+
+   // Should verify these results by hand.
+   // These are basically regression tests.
+@@ -141,6 +130,30 @@
+   tester.check(&quot;sum a[1]&quot;, sum(a[1]), 387.0);
+   tester.check(&quot;sum a[1]*x[1](0)&quot;, sum(a[1] * x[1].comp(0)), 2161.5);
+   tester.check(&quot;sum a[1]*x[1](1)&quot;, sum(a[1] * x[1].comp(1)), 1990.5);
++
++
++  // 2-arg where
++
++  b = where(dot(x, line) &gt; 8.0, x.comp(0));
++  c = where(dot(x, line) &lt;= 8.0, x.comp(1));
++
++  tester.out() &lt;&lt; &quot;where(dot(x, line) &gt; 8.0, x.comp(0))&quot; &lt;&lt; b &lt;&lt; std::endl;
++  tester.out() &lt;&lt; &quot;where(dot(x, line) &lt;= 8.0, x.comp(1))&quot; &lt;&lt; c &lt;&lt; std::endl;
++
++  // verify using 3-arg where verified above
++
++  tester.check(&quot;twoarg where result 0.0 part, centering zero&quot;,
++	       all(where(dot(x.subField(0, 0), line) &gt; 8.0,
++                   c.subField(0, 0), b.subField(0, 0)) == 0.0));
++  tester.check(&quot;twoarg where result 0.0 part, centering one&quot;,
++	       all(where(dot(x.subField(0, 1), line) &gt; 8.0,
++                   c.subField(0, 1), b.subField(0, 1)) == 0.0));
++  tester.check(&quot;twoarg where result dirtied part, centering zero&quot;,
++               all(where(dot(x.subField(0, 0), line) &gt; 8.0,
++                   b.subField(0, 0), c.subField(0, 0)) == a.subField(0, 0)));
++  tester.check(&quot;twoarg where result dirtied part, centering one&quot;,
++               all(where(dot(x.subField(0, 1), line) &gt; 8.0,
++                   b.subField(0, 1), c.subField(0, 1)) == a.subField(0, 1)));
+
+   int ret = tester.results(&quot;WhereTest&quot;);
+   Pooma::finalize();
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001176.html">[pooma-dev] [PATCH] Use ln rather than cp for * -&gt; *_APP
+</A></li>
+	<LI>Next message: <A HREF="001178.html">[PATCH] avoid warnings from dont-use-functions.
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1177">[ date ]</a>
+              <a href="thread.html#1177">[ thread ]</a>
+              <a href="subject.html#1177">[ subject ]</a>
+              <a href="author.html#1177">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

@@ -1,0 +1,463 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [PATCH] Fix ScalarCode with expression arguments
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20Fix%20ScalarCode%20with%20expression%20arguments&In-Reply-To=%3C41237A53.7040206%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001705.html">
+   <LINK REL="Next"  HREF="001706.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[PATCH] Fix ScalarCode with expression arguments</H1>
+    <B>Jeffrey D. Oldham</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20Fix%20ScalarCode%20with%20expression%20arguments&In-Reply-To=%3C41237A53.7040206%40codesourcery.com%3E"
+       TITLE="[PATCH] Fix ScalarCode with expression arguments">oldham at codesourcery.com
+       </A><BR>
+    <I>Wed Aug 18 15:48:35 UTC 2004</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001705.html">[PATCH] Fix ScalarCode with expression arguments
+</A></li>
+        <LI>Next message: <A HREF="001706.html">[PATCH] Allow custom evaluation domain for ScalarCode
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1712">[ date ]</a>
+              <a href="thread.html#1712">[ thread ]</a>
+              <a href="subject.html#1712">[ subject ]</a>
+              <a href="author.html#1712">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Richard Guenther wrote:
+
+&gt;<i>This patch fixes expression arguments with (read-only) arguments
+</I>&gt;<i>to ScalarCode.  Before this patch there were several problems with
+</I>&gt;<i>this:
+</I>&gt;<i>- updating of the engine state did not handle expression engines
+</I>&gt;<i>- internal guards were not updated correctly
+</I>&gt;<i>
+</I>&gt;<i>With fixing the above ScalarCode also gains from the previous guard
+</I>&gt;<i>layer update optimizations.
+</I>&gt;<i>
+</I>&gt;<i>Tested with all ScalarCode tests and Evaluator tests.
+</I>&gt;<i>
+</I>&gt;<i>Ok?
+</I>&gt;<i>
+</I>&gt;<i>  
+</I>&gt;<i>
+</I>I guess so.  I do not understand, but that is because of my ignorance.
+
+&gt;<i>Richard.
+</I>&gt;<i>
+</I>&gt;<i>Btw. the test is evaluatorTest10 - patches to merge other tests are on the
+</I>&gt;<i>way.
+</I>&gt;<i>
+</I>&gt;<i>
+</I>&gt;<i>2004Aug18  Richard Guenther &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">richard.guenther at uni-tuebingen.de</A>&gt;
+</I>&gt;<i>
+</I>&gt;<i>	* src/Evaluator/MultiArgEvaluator.h: handle expression engines
+</I>&gt;<i>	in EngineWriteNotifier, pass stencil extent to SimpleIntersector.
+</I>&gt;<i>	src/Evaluator/SimpleIntersector.h: honour stencil extent,
+</I>&gt;<i>	recursively intersect and update expression engines.
+</I>&gt;<i>	src/Evaluator/tests/evaluatorTest10.cpp: new.
+</I>&gt;<i>  
+</I>&gt;<i>
+</I>&gt;<i>------------------------------------------------------------------------
+</I>&gt;<i>
+</I>&gt;<i>Index: MultiArgEvaluator.h
+</I>&gt;<i>===================================================================
+</I>&gt;<i>RCS file: /home/pooma/Repository/r2/src/Evaluator/MultiArgEvaluator.h,v
+</I>&gt;<i>retrieving revision 1.14
+</I>&gt;<i>diff -u -u -r1.14 MultiArgEvaluator.h
+</I>&gt;<i>--- MultiArgEvaluator.h	21 Nov 2003 17:36:10 -0000	1.14
+</I>&gt;<i>+++ MultiArgEvaluator.h	18 Aug 2004 09:41:57 -0000
+</I>&gt;<i>@@ -74,6 +74,8 @@
+</I>&gt;<i> //-----------------------------------------------------------------------------
+</I>&gt;<i> 
+</I>&gt;<i> template&lt;class MultiArg&gt; struct MultiArgEvaluatorTag;
+</I>&gt;<i>+template&lt;class MeshTag, class T, class EngineTag&gt; class Field;
+</I>&gt;<i>+template&lt;int Dim, class T, class EngineTag&gt; class Array;
+</I>&gt;<i> 
+</I>&gt;<i> /**
+</I>&gt;<i>  * Implements: MultiArgEvaluator&lt;MainEvaluatorTag&gt;::evaluate
+</I>&gt;<i>@@ -111,19 +113,30 @@
+</I>&gt;<i>   }
+</I>&gt;<i> 
+</I>&gt;<i>   template&lt;class A&gt;
+</I>&gt;<i>-  void operator()(const A &amp;a, bool f) const
+</I>&gt;<i>+  void operator()(const A &amp;a) const
+</I>&gt;<i>   {
+</I>&gt;<i>-    if (f)
+</I>&gt;<i>-    {
+</I>&gt;<i>-      // This isn't quite what we want here, because we may want to
+</I>&gt;<i>-      // write to a field containing multiple centering engines.
+</I>&gt;<i>-      // Need to rewrite notifyEngineWrite as an ExpressionApply,
+</I>&gt;<i>-      // and create a version of ExpressionApply that goes through
+</I>&gt;<i>-      // all the engines in a field.
+</I>&gt;<i>+    // This isn't quite what we want here, because we may want to
+</I>&gt;<i>+    // write to a field containing multiple centering engines.
+</I>&gt;<i>+    // Need to rewrite notifyEngineWrite as an ExpressionApply,
+</I>&gt;<i>+    // and create a version of ExpressionApply that goes through
+</I>&gt;<i>+    // all the engines in a field.
+</I>&gt;<i> 
+</I>&gt;<i>-      notifyEngineWrite(a.engine());
+</I>&gt;<i>-      dirtyRelations(a, WrappedInt&lt;A::hasRelations&gt;());
+</I>&gt;<i>-    }
+</I>&gt;<i>+    notifyEngineWrite(a.engine());
+</I>&gt;<i>+    dirtyRelations(a, WrappedInt&lt;A::hasRelations&gt;());
+</I>&gt;<i>+  }
+</I>&gt;<i>+
+</I>&gt;<i>+  // overload for ExpressionTag engines to not fall on our faces compile time
+</I>&gt;<i>+  template&lt;class MeshTag, class T, class Expr&gt;
+</I>&gt;<i>+  void operator()(const Field&lt;MeshTag, T, ExpressionTag&lt;Expr&gt; &gt;&amp;) const
+</I>&gt;<i>+  {
+</I>&gt;<i>+    // we must be able to compile this, but never execute
+</I>&gt;<i>+    PInsist(false, &quot;writing to expression engine?&quot;);
+</I>&gt;<i>+  }
+</I>&gt;<i>+  template&lt;int Dim, class T, class Expr&gt;
+</I>&gt;<i>+  void operator()(const Array&lt;Dim, T, ExpressionTag&lt;Expr&gt; &gt;&amp;) const
+</I>&gt;<i>+  {
+</I>&gt;<i>+    // we must be able to compile this, but never execute
+</I>&gt;<i>+    PInsist(false, &quot;writing to expression engine?&quot;);
+</I>&gt;<i>   }
+</I>&gt;<i> };
+</I>&gt;<i> 
+</I>&gt;<i>@@ -172,7 +185,7 @@
+</I>&gt;<i>     MultiArgEvaluator&lt;Evaluator_t&gt;::evaluate(multiArg, function,
+</I>&gt;<i> 					     domain, info, kernel);
+</I>&gt;<i> 
+</I>&gt;<i>-    applyMultiArg(multiArg, EngineWriteNotifier(), info.writers());
+</I>&gt;<i>+    applyMultiArgIf(multiArg, EngineWriteNotifier(), info.writers());
+</I>&gt;<i> 
+</I>&gt;<i>     Pooma::endExpression();
+</I>&gt;<i>   }
+</I>&gt;<i>@@ -265,7 +278,12 @@
+</I>&gt;<i> 	   const Kernel &amp;kernel)
+</I>&gt;<i>   {
+</I>&gt;<i>     typedef SimpleIntersector&lt;Dim&gt; Inter_t;
+</I>&gt;<i>-    Inter_t inter(domain);
+</I>&gt;<i>+    GuardLayers&lt;Dim&gt; extent;
+</I>&gt;<i>+    for (int i=0; i&lt;Dim; ++i) {
+</I>&gt;<i>+      extent.lower(i) = info.lowerExtent(i);
+</I>&gt;<i>+      extent.upper(i) = info.upperExtent(i);
+</I>&gt;<i>+    }
+</I>&gt;<i>+    Inter_t inter(domain, extent);
+</I>&gt;<i> 
+</I>&gt;<i>     applyMultiArg(multiArg, inter, info.useGuards());
+</I>&gt;<i>  
+</I>&gt;<i>@@ -368,7 +386,12 @@
+</I>&gt;<i> 	   const Kernel &amp;kernel)
+</I>&gt;<i>   {
+</I>&gt;<i>     typedef SimpleIntersector&lt;Dim&gt; Inter_t;
+</I>&gt;<i>-    Inter_t inter(domain);
+</I>&gt;<i>+    GuardLayers&lt;Dim&gt; extent;
+</I>&gt;<i>+    for (int i=0; i&lt;Dim; ++i) {
+</I>&gt;<i>+      extent.lower(i) = info.lowerExtent(i);
+</I>&gt;<i>+      extent.upper(i) = info.upperExtent(i);
+</I>&gt;<i>+    }
+</I>&gt;<i>+    Inter_t inter(domain, extent);
+</I>&gt;<i> 
+</I>&gt;<i>     applyMultiArg(multiArg, inter, info.useGuards());
+</I>&gt;<i>  
+</I>&gt;<i>Index: SimpleIntersector.h
+</I>&gt;<i>===================================================================
+</I>&gt;<i>RCS file: /home/pooma/Repository/r2/src/Evaluator/SimpleIntersector.h,v
+</I>&gt;<i>retrieving revision 1.6
+</I>&gt;<i>diff -u -u -r1.6 SimpleIntersector.h
+</I>&gt;<i>--- SimpleIntersector.h	22 Oct 2003 20:43:26 -0000	1.6
+</I>&gt;<i>+++ SimpleIntersector.h	18 Aug 2004 09:41:57 -0000
+</I>&gt;<i>@@ -91,8 +91,8 @@
+</I>&gt;<i> 
+</I>&gt;<i>   // Default constructor is trival.
+</I>&gt;<i>   
+</I>&gt;<i>-  inline SimpleIntersectorData(const Interval&lt;Dim&gt; &amp;domain)
+</I>&gt;<i>-    : seenFirst_m(false), domain_m(domain)
+</I>&gt;<i>+  inline SimpleIntersectorData(const Interval&lt;Dim&gt; &amp;domain, const GuardLayers&lt;Dim&gt; &amp;extent)
+</I>&gt;<i>+    : seenFirst_m(false), domain_m(domain), extent_m(extent)
+</I>&gt;<i>   {
+</I>&gt;<i>   }
+</I>&gt;<i> 
+</I>&gt;<i>@@ -105,9 +105,10 @@
+</I>&gt;<i>   inline ~SimpleIntersectorData() { }
+</I>&gt;<i>   
+</I>&gt;<i>   template&lt;class Engine&gt;
+</I>&gt;<i>-  void intersect(const Engine &amp;engine) 
+</I>&gt;<i>+  void intersect(const Engine &amp;engine, bool useGuards) 
+</I>&gt;<i>   {
+</I>&gt;<i>     typedef typename Engine::Layout_t Layout_t;
+</I>&gt;<i>+    typedef typename NewEngine&lt;Engine, Interval&lt;Dim&gt; &gt;::Type_t NewEngine_t;
+</I>&gt;<i>     const Layout_t &amp;layout(engine.layout());
+</I>&gt;<i> 
+</I>&gt;<i>     // add an assertion that all layouts have the same base (probably
+</I>&gt;<i>@@ -126,6 +127,15 @@
+</I>&gt;<i>     {
+</I>&gt;<i>       shared(layout.ID(), firstID_m);
+</I>&gt;<i>     }
+</I>&gt;<i>+    // We need to process possible expression engines with different
+</I>&gt;<i>+    // guard needs here.  Modeled after StencilIntersector.
+</I>&gt;<i>+    if (useGuards) {
+</I>&gt;<i>+      expressionApply(NewEngine_t(engine, grow(domain_m, extent_m)),
+</I>&gt;<i>+		      IntersectorTag&lt;Intersector&lt;Dim&gt; &gt;(lhsi_m));
+</I>&gt;<i>+    } else {
+</I>&gt;<i>+      expressionApply(NewEngine_t(engine, domain_m),
+</I>&gt;<i>+		      IntersectorTag&lt;Intersector&lt;Dim&gt; &gt;(lhsi_m));
+</I>&gt;<i>+    }
+</I>&gt;<i>   }
+</I>&gt;<i> 
+</I>&gt;<i>   inline
+</I>&gt;<i>@@ -149,10 +159,14 @@
+</I>&gt;<i>   INodeContainer_t inodes_m;
+</I>&gt;<i>   GlobalIDDataBase gidStore_m;
+</I>&gt;<i>   Interval&lt;Dim&gt; domain_m;
+</I>&gt;<i>+  GuardLayers&lt;Dim&gt; extent_m;
+</I>&gt;<i>+  Intersector&lt;Dim&gt; lhsi_m;
+</I>&gt;<i> };
+</I>&gt;<i> 
+</I>&gt;<i> /**
+</I>&gt;<i>- * This intersector handles matching layouts only.
+</I>&gt;<i>+ * This intersector handles matching layouts only.  It also assumes you
+</I>&gt;<i>+ * know in advance the amount of guards used.  But it allows differentiating
+</I>&gt;<i>+ * between engines that use or do not use guards.
+</I>&gt;<i>  *
+</I>&gt;<i>  * It doesnt intersect individual layouts but is done with creating INodes
+</I>&gt;<i>  * from the first layout it sees by intersecting with the domain.
+</I>&gt;<i>@@ -179,8 +193,8 @@
+</I>&gt;<i>   
+</I>&gt;<i>   enum { dimensions = Dim };
+</I>&gt;<i>   
+</I>&gt;<i>-  SimpleIntersector(const Interval&lt;Dim&gt; &amp;domain)
+</I>&gt;<i>-    : pdata_m(new SimpleIntersectorData_t(domain)), useGuards_m(true)
+</I>&gt;<i>+  SimpleIntersector(const Interval&lt;Dim&gt; &amp;domain, const GuardLayers&lt;Dim&gt; &amp;extent)
+</I>&gt;<i>+    : pdata_m(new SimpleIntersectorData_t(domain, extent)), useGuards_m(true)
+</I>&gt;<i>   { }
+</I>&gt;<i> 
+</I>&gt;<i>   SimpleIntersector(const This_t &amp;model)
+</I>&gt;<i>@@ -189,8 +203,10 @@
+</I>&gt;<i> 
+</I>&gt;<i>   This_t &amp;operator=(const This_t &amp;model)
+</I>&gt;<i>   {
+</I>&gt;<i>-    if (this != &amp;model)
+</I>&gt;<i>+    if (this != &amp;model) {
+</I>&gt;<i>       pdata_m = model.pdata_m;
+</I>&gt;<i>+      useGuards_m = model.useGuards_m;
+</I>&gt;<i>+    }
+</I>&gt;<i>     return *this;
+</I>&gt;<i>   }
+</I>&gt;<i> 
+</I>&gt;<i>@@ -221,7 +237,8 @@
+</I>&gt;<i>   inline
+</I>&gt;<i>   void intersect(const Engine &amp;l) const
+</I>&gt;<i>   {
+</I>&gt;<i>-    data()-&gt;intersect(l);
+</I>&gt;<i>+    data()-&gt;intersect(l, useGuards());
+</I>&gt;<i>+
+</I>&gt;<i>   }
+</I>&gt;<i> 
+</I>&gt;<i>   inline
+</I>&gt;<i>@@ -236,7 +253,7 @@
+</I>&gt;<i>     useGuards_m = f;
+</I>&gt;<i>   }
+</I>&gt;<i> 
+</I>&gt;<i>-  // Interface to be used by applyNode()
+</I>&gt;<i>+  // Interface to be used by applyMultiArg()
+</I>&gt;<i> 
+</I>&gt;<i>   template&lt;class A&gt;
+</I>&gt;<i>   void operator()(const A &amp;a, bool f) const
+</I>&gt;<i>@@ -284,39 +301,39 @@
+</I>&gt;<i> // with the enclosed intersector.
+</I>&gt;<i> //---------------------------------------------------------------------------
+</I>&gt;<i> 
+</I>&gt;<i>-template &lt;int Dim, class T, class LayoutTag, class PatchTag, int D2&gt;
+</I>&gt;<i>+template &lt;int Dim, class T, class LayoutTag, class PatchTag&gt;
+</I>&gt;<i> struct LeafFunctor&lt;Engine&lt;Dim, T, MultiPatch&lt;LayoutTag,PatchTag&gt; &gt;,
+</I>&gt;<i>-  ExpressionApply&lt;SimpleIntersector&lt;D2&gt; &gt; &gt;
+</I>&gt;<i>+  ExpressionApply&lt;SimpleIntersector&lt;Dim&gt; &gt; &gt;
+</I>&gt;<i> {
+</I>&gt;<i>   typedef int Type_t;
+</I>&gt;<i> 
+</I>&gt;<i>   static Type_t
+</I>&gt;<i>   apply(const Engine&lt;Dim,T,MultiPatch&lt;LayoutTag,PatchTag&gt; &gt; &amp;engine,
+</I>&gt;<i>-	const ExpressionApply&lt;SimpleIntersector&lt;D2&gt; &gt; &amp;apply)
+</I>&gt;<i>+	const ExpressionApply&lt;SimpleIntersector&lt;Dim&gt; &gt; &amp;apply)
+</I>&gt;<i>   {
+</I>&gt;<i>     apply.tag().intersect(engine);
+</I>&gt;<i> 
+</I>&gt;<i>     if (apply.tag().useGuards())
+</I>&gt;<i>-      engine.fillGuards();
+</I>&gt;<i>+      engine.fillGuards(apply.tag().data()-&gt;extent_m);
+</I>&gt;<i> 
+</I>&gt;<i>     return 0;
+</I>&gt;<i>   }
+</I>&gt;<i> };
+</I>&gt;<i> 
+</I>&gt;<i>-template &lt;int Dim, class T, class LT, class PatchTag, int BD, int D2&gt;
+</I>&gt;<i>+template &lt;int Dim, class T, class LT, class PatchTag, int BD&gt;
+</I>&gt;<i> struct LeafFunctor&lt;Engine&lt;Dim, T, MultiPatchView&lt;LT,PatchTag,BD&gt; &gt;,
+</I>&gt;<i>-  ExpressionApply&lt;SimpleIntersector&lt;D2&gt; &gt; &gt;
+</I>&gt;<i>+  ExpressionApply&lt;SimpleIntersector&lt;Dim&gt; &gt; &gt;
+</I>&gt;<i> {
+</I>&gt;<i>   typedef int Type_t;
+</I>&gt;<i> 
+</I>&gt;<i>   static Type_t
+</I>&gt;<i>   apply(const Engine&lt;Dim,T,MultiPatchView&lt;LT,PatchTag,BD&gt; &gt; &amp;engine,
+</I>&gt;<i>-	const ExpressionApply&lt;SimpleIntersector&lt;D2&gt; &gt; &amp;apply)
+</I>&gt;<i>+	const ExpressionApply&lt;SimpleIntersector&lt;Dim&gt; &gt; &amp;apply)
+</I>&gt;<i>   {
+</I>&gt;<i>     apply.tag().intersect(engine);
+</I>&gt;<i> 
+</I>&gt;<i>     if (apply.tag().useGuards())
+</I>&gt;<i>-      engine.fillGuards();
+</I>&gt;<i>+      engine.fillGuards(apply.tag().data()-&gt;extent_m);
+</I>&gt;<i> 
+</I>&gt;<i>     return 0;
+</I>&gt;<i>   }
+</I>&gt;<i>--- /dev/null	Tue May 18 17:20:27 2004
+</I>&gt;<i>+++ tests/evaluatorTest10.cpp	Wed Aug 18 11:19:58 2004
+</I>&gt;<i>@@ -0,0 +1,108 @@
+</I>&gt;<i>+// -*- C++ -*-
+</I>&gt;<i>+// ACL:license
+</I>&gt;<i>+// ----------------------------------------------------------------------
+</I>&gt;<i>+// This software and ancillary information (herein called &quot;SOFTWARE&quot;)
+</I>&gt;<i>+// called POOMA (Parallel Object-Oriented Methods and Applications) is
+</I>&gt;<i>+// made available under the terms described here.  The SOFTWARE has been
+</I>&gt;<i>+// approved for release with associated LA-CC Number LA-CC-98-65.
+</I>&gt;<i>+// 
+</I>&gt;<i>+// Unless otherwise indicated, this SOFTWARE has been authored by an
+</I>&gt;<i>+// employee or employees of the University of California, operator of the
+</I>&gt;<i>+// Los Alamos National Laboratory under Contract No. W-7405-ENG-36 with
+</I>&gt;<i>+// the U.S. Department of Energy.  The U.S. Government has rights to use,
+</I>&gt;<i>+// reproduce, and distribute this SOFTWARE. The public may copy, distribute,
+</I>&gt;<i>+// prepare derivative works and publicly display this SOFTWARE without 
+</I>&gt;<i>+// charge, provided that this Notice and any statement of authorship are 
+</I>&gt;<i>+// reproduced on all copies.  Neither the Government nor the University 
+</I>&gt;<i>+// makes any warranty, express or implied, or assumes any liability or 
+</I>&gt;<i>+// responsibility for the use of this SOFTWARE.
+</I>&gt;<i>+// 
+</I>&gt;<i>+// If SOFTWARE is modified to produce derivative works, such modified
+</I>&gt;<i>+// SOFTWARE should be clearly marked, so as not to confuse it with the
+</I>&gt;<i>+// version available from LANL.
+</I>&gt;<i>+// 
+</I>&gt;<i>+// For more information about POOMA, send e-mail to <A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">pooma at acl.lanl.gov</A>,
+</I>&gt;<i>+// or visit the POOMA web page at <A HREF="http://www.acl.lanl.gov/pooma/.">http://www.acl.lanl.gov/pooma/.</A>
+</I>&gt;<i>+// ----------------------------------------------------------------------
+</I>&gt;<i>+// ACL:license
+</I>&gt;<i>+
+</I>&gt;<i>+//-----------------------------------------------------------------------------
+</I>&gt;<i>+// evaluatorTest5 - testing ScalarCode and expression arguments
+</I>&gt;<i>+//-----------------------------------------------------------------------------
+</I>&gt;<i>+
+</I>&gt;<i>+#include &quot;Pooma/Pooma.h&quot;
+</I>&gt;<i>+#include &quot;Pooma/Arrays.h&quot;
+</I>&gt;<i>+#include &quot;Evaluator/ScalarCode.h&quot;
+</I>&gt;<i>+#include &quot;Utilities/Tester.h&quot;
+</I>&gt;<i>+#include &lt;iostream&gt;
+</I>&gt;<i>+
+</I>&gt;<i>+
+</I>&gt;<i>+// ScalarCode just evaluating/assigning an expression
+</I>&gt;<i>+
+</I>&gt;<i>+struct EvaluateExpr
+</I>&gt;<i>+{
+</I>&gt;<i>+  EvaluateExpr() {}
+</I>&gt;<i>+
+</I>&gt;<i>+  template&lt;class LHS, class RHS&gt;
+</I>&gt;<i>+  inline void operator()(const LHS &amp;a, const RHS &amp;b, const Loc&lt;1&gt; &amp;i) const
+</I>&gt;<i>+  {
+</I>&gt;<i>+	  a(i) = b.read(i);
+</I>&gt;<i>+  }
+</I>&gt;<i>+
+</I>&gt;<i>+  void scalarCodeInfo(ScalarCodeInfo&amp; i) const
+</I>&gt;<i>+  {
+</I>&gt;<i>+    i.arguments(2);
+</I>&gt;<i>+    i.dimensions(1);
+</I>&gt;<i>+    i.write(0, true);
+</I>&gt;<i>+    i.write(1, false);
+</I>&gt;<i>+    i.useGuards(0, false);
+</I>&gt;<i>+    i.useGuards(1, false);
+</I>&gt;<i>+  }
+</I>&gt;<i>+};
+</I>&gt;<i>+
+</I>&gt;<i>+
+</I>&gt;<i>+int main(int argc, char *argv[])
+</I>&gt;<i>+{
+</I>&gt;<i>+  // Initialize POOMA and output stream, using Tester class
+</I>&gt;<i>+  Pooma::initialize(argc, argv);
+</I>&gt;<i>+  Pooma::Tester tester(argc, argv);
+</I>&gt;<i>+
+</I>&gt;<i>+  Pooma::blockingExpressions(true);
+</I>&gt;<i>+
+</I>&gt;<i>+  Interval&lt;1&gt; domain(8);
+</I>&gt;<i>+  UniformGridLayout&lt;1&gt; layout(domain, Loc&lt;1&gt;(2), GuardLayers&lt;1&gt;(1), DistributedTag());
+</I>&gt;<i>+
+</I>&gt;<i>+  Array&lt;1, int, MultiPatch&lt;UniformTag, Remote&lt;Brick&gt; &gt; &gt;
+</I>&gt;<i>+     a(layout), b(layout), c(layout);
+</I>&gt;<i>+
+</I>&gt;<i>+  a = 0;
+</I>&gt;<i>+  b = 1;
+</I>&gt;<i>+  c = 2;
+</I>&gt;<i>+  ScalarCode&lt;EvaluateExpr&gt;()(a, c-b);
+</I>&gt;<i>+  tester.check(&quot;a = c - b&quot;, all(a(domain) == 1));
+</I>&gt;<i>+  tester.out() &lt;&lt; a(domain) &lt;&lt; std::endl;
+</I>&gt;<i>+
+</I>&gt;<i>+  a = 0;
+</I>&gt;<i>+  ScalarCode&lt;EvaluateExpr&gt;()(a, b(domain-1)+c(domain+1));
+</I>&gt;<i>+  tester.check(&quot;a = b(i-1) + c(i+1)&quot;, all(a(domain) == 3));
+</I>&gt;<i>+  tester.out() &lt;&lt; a(domain) &lt;&lt; std::endl;
+</I>&gt;<i>+
+</I>&gt;<i>+  tester.out() &lt;&lt; &quot;Manually triggering igc fill&quot; &lt;&lt; std::endl;
+</I>&gt;<i>+  b.engine().fillGuards();
+</I>&gt;<i>+  c.engine().fillGuards();
+</I>&gt;<i>+  a = 0;
+</I>&gt;<i>+  ScalarCode&lt;EvaluateExpr&gt;()(a, b(domain-1)+c(domain+1));
+</I>&gt;<i>+  tester.check(&quot;a = b(i-1) + c(i+1)&quot;, all(a(domain) == 3));
+</I>&gt;<i>+  tester.out() &lt;&lt; a(domain) &lt;&lt; std::endl;
+</I>&gt;<i>+
+</I>&gt;<i>+  int retval = tester.results(&quot;evaluatorTest10 (ScalarCode with expressions)&quot;);
+</I>&gt;<i>+  Pooma::finalize();
+</I>&gt;<i>+  return retval;  
+</I>&gt;<i>+}
+</I>&gt;<i>+
+</I>&gt;<i>+// ACL:rcsinfo
+</I>&gt;<i>+// ----------------------------------------------------------------------
+</I>&gt;<i>+// $RCSfile: evaluatorTest5.cpp,v $   $Author: pooma $
+</I>&gt;<i>+// $Revision: 1.1 $   $Date: 2003/02/20 16:39:42 $
+</I>&gt;<i>+// ----------------------------------------------------------------------
+</I>&gt;<i>+// ACL:rcsinfo
+</I>&gt;<i>  
+</I>&gt;<i>
+</I>
+
+-- 
+Jeffrey D. Oldham
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">oldham at codesourcery.com</A>
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001705.html">[PATCH] Fix ScalarCode with expression arguments
+</A></li>
+	<LI>Next message: <A HREF="001706.html">[PATCH] Allow custom evaluation domain for ScalarCode
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1712">[ date ]</a>
+              <a href="thread.html#1712">[ thread ]</a>
+              <a href="subject.html#1712">[ subject ]</a>
+              <a href="author.html#1712">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

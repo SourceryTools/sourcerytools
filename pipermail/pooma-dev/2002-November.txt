@@ -1,0 +1,252 @@
+From rguenth at tat.physik.uni-tuebingen.de  Wed Nov  6 14:16:19 2002
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Wed, 6 Nov 2002 15:16:19 +0100 (CET)
+Subject: [pooma-dev] Revised Q: How to apply a Stencil to all leafs in
+ an expression
+In-Reply-To: <Pine.LNX.4.33.0210301030560.10183-100000@bellatrix.tat.physik.uni-tuebingen.de>
+Message-ID: <Pine.LNX.4.33.0211061509180.10183-100000@bellatrix.tat.physik.uni-tuebingen.de>
+
+
+As usually, I found a solution myself, but of course am going to share
+it with you:
+
+On Wed, 30 Oct 2002, Richard Guenther wrote:
+
+> I.e. instead of writing
+>
+>   A(I) = (stencil(B)*stencil(C))(I);
+>
+> I'd like to write something like
+>
+>   A(I) = applyStencil(B*C)(I);
+>
+> for brevity (I really have huge expressions, they get completely
+> unreadable otherwise).
+
+Code along the following is needed to achieve this (where stencil
+is called Dummy - still need to figure out how to template that thing
+on a specific stencil, but at the moment I need this for polynomial
+evaluation only):
+
+
+struct ApplyDummy {};
+
+template <class Mesh, class T, class EngineTag>
+struct LeafFunctor< Field<Mesh, T, EngineTag>, ApplyDummy >
+{
+  typedef typename FieldStencilSimple<DummyStencil<Mesh::dimensions, T>,
+    Field<Mesh, T, EngineTag> >::Type_t Type_t;
+  inline static Type_t apply(const Field<Mesh, T, EngineTag> &f,
+			     const ApplyDummy &)
+  {
+    return FieldStencilSimple<DummyStencil<Mesh::dimensions, T>,
+    Field<Mesh, T, EngineTag> >::make(DummyStencil<Mesh::dimensions, T>(),
+f);
+  }
+};
+
+template <class Leaf>
+struct LeafFunctor< Leaf, ApplyDummy >
+{
+  typedef Leaf Type_t;
+  inline static Type_t apply(const Leaf &f,
+			     const ApplyDummy &)
+  {
+    return f;
+  }
+};
+
+template <class Mesh, class T, class Expr>
+Field<Mesh, T, ExpressionTag< typename ForEach<Expr, ApplyDummy,
+TreeCombine>::Type_t> >
+applyDummy(const Field<Mesh, T, ExpressionTag<Expr> > &e)
+{
+  return Field<Mesh, T, ExpressionTag< typename ForEach<Expr, ApplyDummy,
+TreeCombine>::Type_t> >
+    (forEach(e.engine().expression(), ApplyDummy(), TreeCombine()));
+}
+
+
+So the idea is to just change the (Field) leaf engines to stencil
+apply engines and stick them at the old place, for other leafs just
+keep them, so f.i. applyStencil(A*B+0.5) still works.
+
+Maybe this is of use to someone -- I use this to evaluate polynomial
+expressions at certain points, f.e.
+
+ peeval<0>((rhe_r + (gamma-1)*(rhe_r - 0.5*pow2(rhv_r)))
+           * rhv_r/pow2(rh_r), 0.5)(I+dI)
+
+where you can imagine the mess created by individual peval() calls at
+every term of the expression.
+
+Richard.
+
+--
+Richard Guenther <richard.guenther at uni-tuebingen.de>
+WWW: http://www.tat.physik.uni-tuebingen.de/~rguenth/
+The GLAME Project: http://www.glame.de/
+
+
+
+From rguenth at tat.physik.uni-tuebingen.de  Wed Nov 20 14:23:17 2002
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Wed, 20 Nov 2002 15:23:17 +0100 (CET)
+Subject: Using template template parameters in new code ok?
+Message-ID: <Pine.LNX.4.33.0211201522100.19216-100000@bellatrix.tat.physik.uni-tuebingen.de>
+
+Hi!
+
+I wonder wether using template template parameters in new code
+is ok? I didnt find any existing code in pooma using this C++
+feature, maybe not without reason?
+
+Thanks for clarifying, Richard.
+
+--
+Richard Guenther <richard.guenther at uni-tuebingen.de>
+WWW: http://www.tat.physik.uni-tuebingen.de/~rguenth/
+The GLAME Project: http://www.glame.de/
+
+
+
+From oldham at codesourcery.com  Wed Nov 20 15:15:08 2002
+From: oldham at codesourcery.com (Jeffrey Oldham)
+Date: Wed, 20 Nov 2002 07:15:08 -0800
+Subject: [pooma-dev] Using template template parameters in new code ok?
+References: <Pine.LNX.4.33.0211201522100.19216-100000@bellatrix.tat.physik.uni-tuebingen.de>
+Message-ID: <3DDBA6FC.3000204@codesourcery.com>
+
+Richard Guenther wrote:
+> Hi!
+> 
+> I wonder wether using template template parameters in new code
+> is ok? I didnt find any existing code in pooma using this C++
+> feature, maybe not without reason?
+> 
+> Thanks for clarifying, Richard.
+
+In the past, some C++ compilers did not correctly handle template 
+template parameters, but I guess that is no longer the case.  May be 
+James Crotinger can provide a little history on any decisions?
+
+Thanks,
+Jeffrey D. Oldham
+oldham at codesourcery.com
+
+
+
+From sasmith at cybermesa.com  Wed Nov 20 16:23:30 2002
+From: sasmith at cybermesa.com (Stephen Smith)
+Date: Wed, 20 Nov 2002 09:23:30 -0700
+Subject: [pooma-dev] Using template template parameters in new code
+  ok?
+In-Reply-To: <3DDBA6FC.3000204@codesourcery.com>
+References: <Pine.LNX.4.33.0211201522100.19216-100000@bellatrix.tat.physik.uni-tuebingen.de>
+Message-ID: <5.1.1.6.0.20021120090834.00b18608@mail.cybermesa.com>
+
+That's all there is too it.  In fact, people had often commented that some 
+code would
+be cleaner with template template.  It is a pretty recent addition to many 
+compilers.
+
+Rather than write:
+
+template <template <class T> class X>
+class A { //...
+    X<int> myFunctor;
+};
+
+We would define a requirement for an external traits-like class and use a tag:
+
+template <class X>
+class A { //...
+   MyFunctor<X,int> myFunctor;
+};
+
+You'll find patterns like this all over POOMA.
+
+     Stephen
+
+At 07:15 AM 11/20/2002 -0800, Jeffrey Oldham wrote:
+>Richard Guenther wrote:
+>>Hi!
+>>I wonder wether using template template parameters in new code
+>>is ok? I didnt find any existing code in pooma using this C++
+>>feature, maybe not without reason?
+>>Thanks for clarifying, Richard.
+>
+>In the past, some C++ compilers did not correctly handle template template 
+>parameters, but I guess that is no longer the case.  May be James 
+>Crotinger can provide a little history on any decisions?
+>
+>Thanks,
+>Jeffrey D. Oldham
+>oldham at codesourcery.com
+>
+
+
+
+
+
+From jcrotinger at proximation.com  Wed Nov 20 20:49:27 2002
+From: jcrotinger at proximation.com (James Crotinger)
+Date: Wed, 20 Nov 2002 13:49:27 -0700
+Subject: [pooma-dev] Using template template parameters in new code ok
+	?
+Message-ID: <F871BB04B0EA224A821A5274C31DF315129394@proxim-sf001.santafe.proximation.com>
+
+None aside from what Jeffrey's said. There may be customers at the lab who
+want to use this code - if so, it would be nice to keep it SGI compliant.
+That was probably the issue that last time we looked at this.
+
+	Jim
+
+-----Original Message-----
+From: Jeffrey Oldham [mailto:oldham at codesourcery.com] 
+Sent: Wednesday, November 20, 2002 8:15 AM
+To: Richard Guenther
+Cc: pooma-dev at pooma.codesourcery.com
+Subject: Re: [pooma-dev] Using template template parameters in new code ok?
+
+Richard Guenther wrote:
+> Hi!
+> 
+> I wonder wether using template template parameters in new code
+> is ok? I didnt find any existing code in pooma using this C++
+> feature, maybe not without reason?
+> 
+> Thanks for clarifying, Richard.
+
+In the past, some C++ compilers did not correctly handle template 
+template parameters, but I guess that is no longer the case.  May be 
+James Crotinger can provide a little history on any decisions?
+
+Thanks,
+Jeffrey D. Oldham
+oldham at codesourcery.com
+-------------- next part --------------
+An HTML attachment was scrubbed...
+URL: <http://sourcerytools.com/pipermail/pooma-dev/attachments/20021120/09d83a7d/attachment.html>
+
+From rguenth at tat.physik.uni-tuebingen.de  Thu Nov 21 10:49:26 2002
+From: rguenth at tat.physik.uni-tuebingen.de (Richard Guenther)
+Date: Thu, 21 Nov 2002 11:49:26 +0100 (CET)
+Subject: notifyEngineRead()?
+Message-ID: <Pine.LNX.4.33.0211211147520.19216-100000@bellatrix.tat.physik.uni-tuebingen.de>
+
+Hi!
+
+What/where is the complementary function to notifyEngineWrite() for
+reads? Just didnt find anything... (and a Pooma::blockAndEvaluate()
+is way too slow).
+
+Thanks, Richard.
+
+--
+Richard Guenther <richard.guenther at uni-tuebingen.de>
+WWW: http://www.tat.physik.uni-tuebingen.de/~rguenth/
+The GLAME Project: http://www.glame.de/
+
+
+

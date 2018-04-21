@@ -1,0 +1,163 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> performance concern with Mappers
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20performance%20concern%20with%20Mappers&In-Reply-To=%3CNABBJEAOKIDHLPHKHPDLAEEIEAAA.allan%40stokes.ca%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000145.html">
+   <LINK REL="Next"  HREF="000147.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>performance concern with Mappers</H1>
+    <B>Allan Stokes</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20performance%20concern%20with%20Mappers&In-Reply-To=%3CNABBJEAOKIDHLPHKHPDLAEEIEAAA.allan%40stokes.ca%3E"
+       TITLE="performance concern with Mappers">allan at stokes.ca
+       </A><BR>
+    <I>Fri Mar 30 11:00:52 UTC 2001</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000145.html">[pooma-dev] what does this mean?
+</A></li>
+        <LI>Next message: <A HREF="000147.html">[pooma-dev] performance concern with Mappers
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#146">[ date ]</a>
+              <a href="thread.html#146">[ thread ]</a>
+              <a href="subject.html#146">[ subject ]</a>
+              <a href="author.html#146">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>
+Hello all,
+
+I've been working my way through the Pooma code from the bottom up, starting
+with Domain (which I don't pretend to fully understand yet) and progressing
+recently through Layout and Partition.
+
+Tonight I noted a potential performance issue within the Mapper
+implementation.  But first, I want to start with an architectural
+observation about contexts.
+
+As far as I can see within my narrow horizons, contexts are just integer
+values obtained via Pooma::context() which can be assigned into Nodes to
+determine how [some sub-Domain operation I haven't discovered yet] is
+eventually scheduled.
+
+What I found interesting is that there does not appear to be any kind of
+Context data structure which can be informed about what work units (nodes)
+have been assigned into each context.  Without having this structure as a
+reference point, it's not clear to me how the system can collect information
+about the effectiveness of the different mapping heuristics.
+
+A second consequence of not having a Context data structure is that each
+mapping becomes an independent event.  If a context is already under a
+larger than average work assignment there is no way to discover or avert
+this as additional slabs of data are sliced and diced.
+
+My observation about the Mapper implementation is that a built-in bias
+exists which causes low numbered contexts to receive more than their fair
+share of node assignments.
+
+I haven't read all this code yet.  The two modules I've looked at tonight
+are UniformMapper.cmpl.cpp and DistributedMapper.h
+
+UniformMapper.cmpl.cpp(57)
+  if (c &lt; remainder)
+    templist[index++]-&gt;context() = c;
+
+The effect of this line is to assign the extra &quot;remainder&quot; contexts to the
+low numbered contexts 0..remainder-1.
+
+DistributedMapper.h(65)
+  // if there are more contexts than patches, assign one
+  // patch per context for as many patches as there are
+  ...
+  // we should probably alert the user here!
+  npc = 1;
+  ncontexts = templist.size();
+
+npc is the number of patches assigned per context.  We see the same effect
+again that the uneven assignments are onto contexts 0..templist.size()-1.
+
+I suspect that higher dimensionality objects might compound this issue.
+Suppose we have a three dimensional array of size (101,101,101) and we
+partition each dimension into ten segments.  If this works the way I think
+it does, this process would create 1000 nodes (guard cells ignored).  Most
+of the nodes would be 10x10x10 in size.  But there would also be one node
+11x11x11 in size.  This is a fairly substantial 30% extra work if the
+largest node were rate limiting.  If the partitioning logic has the same
+bias (putting the larger nodes first in the mapper lists) these two effects
+could be compounding negatively.
+
+My suggestion is that we use stochastic mapping for determining which
+contexts take on the &quot;round-off&quot; nodes.  This is a fairly standard procedure
+in Internet proxy caches (where load balancing _really_ matters ;-) and
+there are many good algorithms for doing this.
+
+If we are in a situation where more than one context must determine the same
+mappings in parallel we would need to take special care to ensure that the
+PRNG behaves consistently in each independent context.  The bullet-proof
+approach is to embed a PRNG object inside the ContextMapper base class so
+that each Mapper only depends on receiving the same map requests in the same
+order.  If there is a higher level of parallel determinism, a global PRNG
+would suffice.
+
+One of the properties in the algorithms I've inspected is that the Node list
+is partitioned among the available contexts in contiguous segments.  (Does
+this matter?)  To retain this property we need an algorithm which is
+sequential by context.  Let M = floor(nodes/contexts) and R =
+nodes%contexts.  Each context will be assigned either M or M+1 consecutive
+nodes from the node list.
+
+In the present implementation of UniformMapper, contexts 0..R-1 are assigned
+M+1 nodes and the rest of the contexts are assigned M nodes.
+
+The simple stochastic algorithm uses a helper structure P, which is a
+(deterministically) random permutation of a bit vector (values 0 and 1) of
+length equal to the number of contexts which sums to R.
+
+Context c is assigned M nodes if P[c] == 1; M+1 nodes if P[c] == 1.
+
+There are a variety of efficient methods to generate P.
+
+My second suggestion is that context-to-node bindings be made through some
+kind of function call which could, at some point in the future, also notify
+a global Context data structure about Node assignments accrued.  In the
+meantime, one could at least toss a trace statement at such a control point
+to determine, for example, whether the Mapper issues I've identified are a
+practical concern.
+
+Allan
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000145.html">[pooma-dev] what does this mean?
+</A></li>
+	<LI>Next message: <A HREF="000147.html">[pooma-dev] performance concern with Mappers
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#146">[ date ]</a>
+              <a href="thread.html#146">[ thread ]</a>
+              <a href="subject.html#146">[ subject ]</a>
+              <a href="author.html#146">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

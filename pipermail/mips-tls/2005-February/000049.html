@@ -1,0 +1,141 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [mips-tls] A couple of potential changes to the MIPS TLS ABI
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:mips-tls%40codesourcery.com?Subject=Re%3A%20%5Bmips-tls%5D%20A%20couple%20of%20potential%20changes%20to%20the%20MIPS%20TLS%20ABI&In-Reply-To=%3C20050210215822.GC12253%40nevyn.them.org%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000048.html">
+   <LINK REL="Next"  HREF="000044.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[mips-tls] A couple of potential changes to the MIPS TLS ABI</H1>
+    <B>Daniel Jacobowitz</B> 
+    <A HREF="mailto:mips-tls%40codesourcery.com?Subject=Re%3A%20%5Bmips-tls%5D%20A%20couple%20of%20potential%20changes%20to%20the%20MIPS%20TLS%20ABI&In-Reply-To=%3C20050210215822.GC12253%40nevyn.them.org%3E"
+       TITLE="[mips-tls] A couple of potential changes to the MIPS TLS ABI">dan at codesourcery.com
+       </A><BR>
+    <I>Thu Feb 10 21:58:24 UTC 2005</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000048.html">[mips-tls] A couple of potential changes to the MIPS TLS ABI
+</A></li>
+        <LI>Next message: <A HREF="000044.html">[mips-tls] A couple of potential changes to the MIPS TLS ABI
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#49">[ date ]</a>
+              <a href="thread.html#49">[ thread ]</a>
+              <a href="subject.html#49">[ subject ]</a>
+              <a href="author.html#49">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>On Thu, Feb 10, 2005 at 01:25:13PM -0800, Michael Uhler wrote:
+&gt;<i> 
+</I>&gt;<i> &gt; If this is OK with you, I'd appreciate it if you could get 
+</I>&gt;<i> &gt; back to us about the choice of register number.  I've got at 
+</I>&gt;<i> &gt; least a couple more days worth of work before the port will 
+</I>&gt;<i> &gt; be ready.  It won't cripple me to sit on it for a couple 
+</I>&gt;<i> &gt; weeks after that, but I'd love to have it submitted - I've 
+</I>&gt;<i> &gt; already started to get requests for the code.
+</I>&gt;<i> 
+</I>&gt;<i> I wouldn't exactly say that it's OK with us.  The impression that I get is
+</I>&gt;<i> that it's too late to change, and even if it weren't we'd have to prove that
+</I>&gt;<i> the trap-and-emulate approach had performance problems.  We have to trade
+</I>&gt;<i> that off with our own desire to get NPTL supported, even if we have a
+</I>&gt;<i> feeling that the implementation may cause problems in the future.
+</I>
+Let me quote a message you didn't directly answer:
+
+   My point is for NPTL to work.  Specifically:
+   
+     - Tying it to a new ABI is unacceptable in the short term, and
+       possibly in the longer term, because of community pushback against
+       additional ABIs.
+   
+     - Using a wired TLB entry gives kernel developers the shakes, because
+       it restricts the available TLB slots, which can have complex
+       effects on the performance of existing applications.
+   
+   That only leaves methods which enter the kernel.  Our choices are via a
+   load from an unmapped page, via a syscall, or via an RI exception.
+   Only one of those models is compatible with acceleration via future
+   hardware.
+   
+   Using rdhwr does not provide cripplingly slow - or even perceptibly
+   slow - performance, and I'm using a much more expensive emulation layer
+   than Maciej's.  If the MIPS folks can clearly justify their concerns
+   about this solution, and some relevant ideas to benchmark the problem,
+   then maybe we can make forward progress.
+   
+   As was just pointed out to me, Maciej's numbers are on the same order
+   of magnitude as a load miss.  Note that the rdhwr is never needed more
+   than once per function with an optimizing compiler.  I think that at
+   the cost of a load miss, you're getting a bargain.
+
+
+I'm not asking for &quot;proof&quot; that there are performance problems.  I'm
+asking for something that I can understand as more than a &quot;feeling&quot;,
+since I &quot;feel&quot; that there aren't.  I'm trying to be responsive to your
+concerns, but I'm still having trouble getting a handle on why
+(whether?) you think any of the other ideas presented are better than
+emulating rdhwr.
+
+Please, if you have a better proposal...
+
+&gt;<i> So, I have allocated RDHWR register 29 (decimal) for use as the pseudo-TLS
+</I>&gt;<i> pointer.  What this means is that we have changed the architecture documents
+</I>&gt;<i> to indicate that this register is used for an ABI-related activity such that
+</I>&gt;<i> it will never be re-allocated for another purpose.  At this point, we do not
+</I>&gt;<i> intend to implement this as a hardware register, nor will other MIPS
+</I>&gt;<i> implementations be doing so.  We'll revisit this (as an architecture change)
+</I>&gt;<i> once we measure the performance impact of the proposal and compare that with
+</I>&gt;<i> other potential changes to the ABI.
+</I>
+Thank you.  We'll need to choose a preferred GPR for the fast-path
+emulation also; Thiemo suggested $3, which sounds reasonable to me.  The
+choice does not make a great deal of difference.
+
+&gt;<i> Based on the email thread, I'm not sure if Mark's suggestion of a compromise
+</I>&gt;<i> by marking the RDHWR with a relocation has benefit or not.  If it does, it
+</I>&gt;<i> would be nice to have some hedge in the future.
+</I>
+I don't think it adds any additional value.  It would only be useful if
+we wanted to replace the one instruction with any single other
+instruction in legacy code; most things will be rebuildable and I do
+not see the application startup time overhead as preferable to the
+kernel emulation for legacy code.  Does anyone else see a scenario in
+which this would be good to have?
+
+-- 
+Daniel Jacobowitz
+CodeSourcery, LLC
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000048.html">[mips-tls] A couple of potential changes to the MIPS TLS ABI
+</A></li>
+	<LI>Next message: <A HREF="000044.html">[mips-tls] A couple of potential changes to the MIPS TLS ABI
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#49">[ date ]</a>
+              <a href="thread.html#49">[ thread ]</a>
+              <a href="subject.html#49">[ subject ]</a>
+              <a href="author.html#49">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/mips-tls">More information about the mips-tls
+mailing list</a><br>
+</body></html>

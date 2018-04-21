@@ -1,0 +1,924 @@
+From BBadke at hemispheregps.com  Tue Oct 16 19:15:25 2012
+From: BBadke at hemispheregps.com (Brad Badke)
+Date: Tue, 16 Oct 2012 19:15:25 +0000
+Subject: [arm-gnu] undefined reference to _init
+Message-ID: <40786BD4949BFE469E0E6800967D3F0B2029CB13@CORMS1.hemi.corp.local>
+
+I am converting my ARM code to over to CodeSourcery. I am using both C and C++. In my ARM code I called __rt_entry to initialize the C run time library and jump to my main().  In my startup.S file for CodeSourcery I have done the following:
+
+@Invoke all static constructors
+   ldr r12,=__libc_init_array
+@    ldr r12,= __cs3_start_c
+    mov lr,pc @set the return address
+    BX r12 @the target code can be ARM or THUMB
+   ldr r12,=main @Enter the C/C++ code
+    mov lr,pc @set the return address
+    bx r12 @the target code can be ARM or THUMB
+@@@    BL       __rt_entry   @@This is what we did for ARM compiler
+
+This results in the following linker error:
+In function `__libc_init_array': init.c:(.text+0x40): undefined reference to `_init'
+
+Any ideas on what I need to re-implement or link in?
+
+-------------- next part --------------
+An HTML attachment was scrubbed...
+URL: <http://sourcerytools.com/pipermail/arm-gnu/attachments/20121016/9a13bc37/attachment.html>
+
+From BBadke at hemispheregps.com  Thu Oct 18 02:10:17 2012
+From: BBadke at hemispheregps.com (Brad Badke)
+Date: Thu, 18 Oct 2012 02:10:17 +0000
+Subject: [arm-gnu] undefined reference to _init
+Message-ID: <40786BD4949BFE469E0E6800967D3F0B2029CC86@CORMS1.hemi.corp.local>
+
+Ok, let's try this one more time. I am developing code for a GNSS receiver manufacturer. We currently develop using ARM RVDS 4.1. I have ported my entire application over to the free version of CodeSourcery. In the ARM compiler I used __rt_entry to jump to my main and initialize various things (I use C and C++). So it seems I need to use __cs3_start_asm and __cs3_start_c to do the equivalent of ARM __rt_entry. When I try to do that I get the following linker errors:
+
+undefined reference to `__cs3_start_asm'
+
+In function `__libc_init_array':
+init.c:(.text+0x40): undefined reference to `_init'
+
+I am starting out using the following linker script:
+
+CodeSourcery/Sourcery_CodeBench_Lite_for_ARM_EABI/arm-none-eabi/lib/generic-vfp.ld
+
+And my own makefile which I derived from something I started with from TI. If I skip the c library init stuff I can get my code to run on my Sitrara Cortea-A8 processor a bit before it runs into the problems caused by not running __cs3_start_c.
+
+So, can I get any help on this? Will I get any help if I buy the $99 version? If this works satisfactorily we would eventually buy the professional floating license for 3 developers.
+
+Thanks, Brad
+
+From: Brad Badke
+Sent: Tuesday, October 16, 2012 12:16 PM
+To: 'arm-gnu at codesourcery.com'
+Subject: undefined reference to _init
+
+I am converting my ARM code to over to CodeSourcery. I am using both C and C++. In my ARM code I called __rt_entry to initialize the C run time library and jump to my main().  In my startup.S file for CodeSourcery I have done the following:
+
+@Invoke all static constructors
+   ldr r12,=__libc_init_array
+@    ldr r12,= __cs3_start_c
+    mov lr,pc @set the return address
+    BX r12 @the target code can be ARM or THUMB
+   ldr r12,=main @Enter the C/C++ code
+    mov lr,pc @set the return address
+    bx r12 @the target code can be ARM or THUMB
+@@@    BL       __rt_entry   @@This is what we did for ARM compiler
+
+This results in the following linker error:
+In function `__libc_init_array': init.c:(.text+0x40): undefined reference to `_init'
+
+Any ideas on what I need to re-implement or link in?
+
+-------------- next part --------------
+An HTML attachment was scrubbed...
+URL: <http://sourcerytools.com/pipermail/arm-gnu/attachments/20121018/2671e3c7/attachment.html>
+
+From BBadke at hemispheregps.com  Thu Oct 18 03:46:13 2012
+From: BBadke at hemispheregps.com (Brad Badke)
+Date: Thu, 18 Oct 2012 03:46:13 +0000
+Subject: [arm-gnu] undefined reference to _init
+Message-ID: <40786BD4949BFE469E0E6800967D3F0B2029CCAF@CORMS1.hemi.corp.local>
+
+Apparently I needed to also link in crti.o.  Which I got from
+
+CodeSourcery/Sourcery_CodeBench_Lite_for_ARM_EABI/lib/gcc/arm-none-eabi/4.6.3/crti.o
+
+Not sure if that is the correct crti.o
+
+I think what I maybe really need is a bit of help re-implementing my own __cs3_start_asm, __cs3_start_c, and _init.
+
+From: Brad Badke
+Sent: Wednesday, October 17, 2012 7:10 PM
+To: 'arm-gnu at codesourcery.com'
+Subject: undefined reference to _init
+
+Ok, let's try this one more time. I am developing code for a GNSS receiver manufacturer. We currently develop using ARM RVDS 4.1. I have ported my entire application over to the free version of CodeSourcery. In the ARM compiler I used __rt_entry to jump to my main and initialize various things (I use C and C++). So it seems I need to use __cs3_start_asm and __cs3_start_c to do the equivalent of ARM __rt_entry. When I try to do that I get the following linker errors:
+
+undefined reference to `__cs3_start_asm'
+
+In function `__libc_init_array':
+init.c:(.text+0x40): undefined reference to `_init'
+
+I am starting out using the following linker script:
+
+CodeSourcery/Sourcery_CodeBench_Lite_for_ARM_EABI/arm-none-eabi/lib/generic-vfp.ld
+
+And my own makefile which I derived from something I started with from TI. If I skip the c library init stuff I can get my code to run on my Sitrara Cortea-A8 processor a bit before it runs into the problems caused by not running __cs3_start_c.
+
+So, can I get any help on this? Will I get any help if I buy the $99 version? If this works satisfactorily we would eventually buy the professional floating license for 3 developers.
+
+Thanks, Brad
+
+From: Brad Badke
+Sent: Tuesday, October 16, 2012 12:16 PM
+To: 'arm-gnu at codesourcery.com'
+Subject: undefined reference to _init
+
+I am converting my ARM code to over to CodeSourcery. I am using both C and C++. In my ARM code I called __rt_entry to initialize the C run time library and jump to my main().  In my startup.S file for CodeSourcery I have done the following:
+
+@Invoke all static constructors
+   ldr r12,=__libc_init_array
+@    ldr r12,= __cs3_start_c
+    mov lr,pc @set the return address
+    BX r12 @the target code can be ARM or THUMB
+   ldr r12,=main @Enter the C/C++ code
+    mov lr,pc @set the return address
+    bx r12 @the target code can be ARM or THUMB
+@@@    BL       __rt_entry   @@This is what we did for ARM compiler
+
+This results in the following linker error:
+In function `__libc_init_array': init.c:(.text+0x40): undefined reference to `_init'
+
+Any ideas on what I need to re-implement or link in?
+
+-------------- next part --------------
+An HTML attachment was scrubbed...
+URL: <http://sourcerytools.com/pipermail/arm-gnu/attachments/20121018/45b387ae/attachment.html>
+
+From gds at chartertn.net  Thu Oct 18 05:17:59 2012
+From: gds at chartertn.net (Gene Smith)
+Date: Thu, 18 Oct 2012 01:17:59 -0400
+Subject: [arm-gnu] Release notes comment and question (bit-fields)
+Message-ID: <507F9107.9010005@chartertn.net>
+
+Looking at the release notes for Sourcery CodeBench Lite EABI 
+2012.03-56, I don't see the release notes for the previous version, 
+2011-09-69. Instead it jumps to 2011.03-42. Guess this is just a typo.
+
+The question is regarding a specific release note for the newest version 
+2012.03-56:
+
+<quote>
+Fix for bit-field optimization bug. A compiler bug that caused incorrect 
+code to be generated for programs using bit-fields has been fixed.
+<end quote>
+
+On this mailing list a bug like this was discussed a while back 
+(Aug/Sept 2010)
+Subject: Access to volatile bit-fields.
+It referenced this bugzilla report:
+http://gcc.gnu.org/bugzilla/show_bug.cgi?id=23623
+I think this was a fairly special case and did not mean that *any* usage 
+of a bit-field was broken in older versions. ??
+
+Thanks,
+Gene Smith
+
+
+
+From freddie_chopin at op.pl  Thu Oct 18 06:24:24 2012
+From: freddie_chopin at op.pl (Freddie Chopin)
+Date: Thu, 18 Oct 2012 08:24:24 +0200
+Subject: [arm-gnu] undefined reference to _init
+In-Reply-To: <40786BD4949BFE469E0E6800967D3F0B2029CCAF@CORMS1.hemi.corp.local>
+References: <40786BD4949BFE469E0E6800967D3F0B2029CCAF@CORMS1.hemi.corp.local>
+Message-ID: <507FA098.5000902@op.pl>
+
+You could try downloading one of my example projects for ARM 
+microcontrollers from my website - www.freddiechopin.info > Download > 
+ARM > examples . These have linker scripts, Makefiles and startups that 
+REALLY work without any voodoo with strange functions from strange 
+libraries. They have what you need, which is C++ 
+initialization/deinitialization using __libc_init_array and 
+__libc_fini_array - you could use that as a reference point, as I see 
+you use something bigger than microcontroller...
+
+Then you can switch to some other toolchain, for example linaro, as they 
+actually provide support for their releases via launchpad answers - 
+https://launchpad.net/gcc-arm-embedded
+
+In case of doubts - ask (;
+
+4\/3!!
+
+
+From BBadke at hemispheregps.com  Thu Oct 18 18:18:52 2012
+From: BBadke at hemispheregps.com (Brad Badke)
+Date: Thu, 18 Oct 2012 18:18:52 +0000
+Subject: [arm-gnu] undefined reference to _init
+In-Reply-To: <507FA098.5000902@op.pl>
+References: <40786BD4949BFE469E0E6800967D3F0B2029CCAF@CORMS1.hemi.corp.local>
+	<507FA098.5000902@op.pl>
+Message-ID: <40786BD4949BFE469E0E6800967D3F0B2029CD46@CORMS1.hemi.corp.local>
+
+Thanks for your response. Your examples look well written. So I found I have to manually link in CodeSourcery/Sourcery_CodeBench_Lite_for_ARM_EABI/lib/gcc/arm-none-eabi/4.6.3/crti.o to get rid of the _init problem. I have to do this even if I don't use the -nostartfiles flag.
+
+Anyway, I am pretty new to the GCC stuff and make files but have been using ARM for 9 years (code warrior and eclipse IDEs). I have already converted my boot code over to GCC and am pretty happy with that --- but I did notice that GCC sprintf is a real space hog compared to ARM. If I don't use sprintf my ARM and GCC compile to within 2KB of each other. If I use sprintf, the GCC code is 18KB bigger than ARM. Rather significant since my boot code binary is only 38KB.
+
+Anyway, my boot code reads my app code .bin out of NAND flash and puts it in RAM. Then the boot jumps to the app startup and that is where my difficulty is. Anyway by the time I get to the app I am strictly in RAM but I still have to contend with C/C++ and initializing the run time library. So now I get my app to compile and link but at some point in __libc_init_array my app startup an exception occurs and dumps me back to my boot loader trap. Progress, but I clearly still don't have everything correct in my make file and/or my linker script.
+
+-----Original Message-----
+From: arm-gnu-bounces at codesourcery.com [mailto:arm-gnu-bounces at codesourcery.com] On Behalf Of Freddie Chopin
+Sent: Wednesday, October 17, 2012 11:24 PM
+To: arm-gnu at codesourcery.com
+Subject: Re: [arm-gnu] undefined reference to _init
+
+You could try downloading one of my example projects for ARM microcontrollers from my website - www.freddiechopin.info > Download > ARM > examples . These have linker scripts, Makefiles and startups that REALLY work without any voodoo with strange functions from strange libraries. They have what you need, which is C++ initialization/deinitialization using __libc_init_array and __libc_fini_array - you could use that as a reference point, as I see you use something bigger than microcontroller...
+
+Then you can switch to some other toolchain, for example linaro, as they actually provide support for their releases via launchpad answers - https://launchpad.net/gcc-arm-embedded
+
+In case of doubts - ask (;
+
+4\/3!!
+_______________________________________________
+arm-gnu mailing list
+arm-gnu at codesourcery.com
+http://sourcerytools.com/cgi-bin/mailman/listinfo/arm-gnu
+
+
+From freddie_chopin at op.pl  Fri Oct 19 06:35:02 2012
+From: freddie_chopin at op.pl (Freddie Chopin)
+Date: Fri, 19 Oct 2012 08:35:02 +0200
+Subject: [arm-gnu] undefined reference to _init
+In-Reply-To: <40786BD4949BFE469E0E6800967D3F0B2029CD46@CORMS1.hemi.corp.local>
+References: <40786BD4949BFE469E0E6800967D3F0B2029CCAF@CORMS1.hemi.corp.local>
+	<507FA098.5000902@op.pl>
+	<40786BD4949BFE469E0E6800967D3F0B2029CD46@CORMS1.hemi.corp.local>
+Message-ID: <5080F496.3080109@op.pl>
+
+W dniu 2012-10-18 20:18, Brad Badke pisze:
+> Thanks for your response. Your examples look well written. So I found I have to manually link in CodeSourcery/Sourcery_CodeBench_Lite_for_ARM_EABI/lib/gcc/arm-none-eabi/4.6.3/crti.o to get rid of the _init problem. I have to do this even if I don't use the -nostartfiles flag.
+
+I never had to explicitly link any library...
+
+> Anyway, I am pretty new to the GCC stuff and make files but have been using ARM for 9 years (code warrior and eclipse IDEs). I have already converted my boot code over to GCC and am pretty happy with that --- but I did notice that GCC sprintf is a real space hog compared to ARM. If I don't use sprintf my ARM and GCC compile to within 2KB of each other. If I use sprintf, the GCC code is 18KB bigger than ARM. Rather significant since my boot code binary is only 38KB.
+
+You could try "integer-only" version that does not support floats - 
+siprintf(), iprintf(), fiprintf() etc. - these are smaller.
+
+> Anyway, my boot code reads my app code .bin out of NAND flash and puts it in RAM. Then the boot jumps to the app startup and that is where my difficulty is. Anyway by the time I get to the app I am strictly in RAM but I still have to contend with C/C++ and initializing the run time library. So now I get my app to compile and link but at some point in __libc_init_array my app startup an exception occurs and dumps me back to my boot loader trap. Progress, but I clearly still don't have everything correct in my make file and/or my linker script.
+
+If you're in a trap exception, you can check which instruction (address) 
+generated the exception, this way you could get to the real culprit. Or 
+just use a debugger - if you can (;
+
+4\/3!!
+
+
+From BBadke at hemispheregps.com  Sat Oct 20 01:56:12 2012
+From: BBadke at hemispheregps.com (Brad Badke)
+Date: Sat, 20 Oct 2012 01:56:12 +0000
+Subject: [arm-gnu] undefined reference to _init
+In-Reply-To: <5080F496.3080109@op.pl>
+References: <40786BD4949BFE469E0E6800967D3F0B2029CCAF@CORMS1.hemi.corp.local>
+	<507FA098.5000902@op.pl>
+	<40786BD4949BFE469E0E6800967D3F0B2029CD46@CORMS1.hemi.corp.local>
+	<5080F496.3080109@op.pl>
+Message-ID: <40786BD4949BFE469E0E6800967D3F0B2029D0BD@CORMS1.hemi.corp.local>
+
+I have some other issue to work through and clean up, but I wrote my own __libc_init_array and now my mixed C/C++ app runs on my GNSS receiver board. I suspect someday I will figure out what I need to do with my linker script to make the __libc_init_array supplied by CodeSourcery work, but not sure I care anymore!
+
+ 
+-----Original Message-----
+From: Freddie Chopin [mailto:freddie_chopin at op.pl] 
+Sent: Thursday, October 18, 2012 11:35 PM
+To: Brad Badke
+Cc: arm-gnu at codesourcery.com
+Subject: Re: [arm-gnu] undefined reference to _init
+
+W dniu 2012-10-18 20:18, Brad Badke pisze:
+> Thanks for your response. Your examples look well written. So I found I have to manually link in CodeSourcery/Sourcery_CodeBench_Lite_for_ARM_EABI/lib/gcc/arm-none-eabi/4.6.3/crti.o to get rid of the _init problem. I have to do this even if I don't use the -nostartfiles flag.
+
+I never had to explicitly link any library...
+
+> Anyway, I am pretty new to the GCC stuff and make files but have been using ARM for 9 years (code warrior and eclipse IDEs). I have already converted my boot code over to GCC and am pretty happy with that --- but I did notice that GCC sprintf is a real space hog compared to ARM. If I don't use sprintf my ARM and GCC compile to within 2KB of each other. If I use sprintf, the GCC code is 18KB bigger than ARM. Rather significant since my boot code binary is only 38KB.
+
+You could try "integer-only" version that does not support floats - siprintf(), iprintf(), fiprintf() etc. - these are smaller.
+
+> Anyway, my boot code reads my app code .bin out of NAND flash and puts it in RAM. Then the boot jumps to the app startup and that is where my difficulty is. Anyway by the time I get to the app I am strictly in RAM but I still have to contend with C/C++ and initializing the run time library. So now I get my app to compile and link but at some point in __libc_init_array my app startup an exception occurs and dumps me back to my boot loader trap. Progress, but I clearly still don't have everything correct in my make file and/or my linker script.
+
+If you're in a trap exception, you can check which instruction (address) generated the exception, this way you could get to the real culprit. Or just use a debugger - if you can (;
+
+4\/3!!
+
+
+From obhie.bgx at gmail.com  Sat Oct 20 00:17:25 2012
+From: obhie.bgx at gmail.com (Robby Maududy)
+Date: Sat, 20 Oct 2012 07:17:25 +0700
+Subject: [arm-gnu] Release notes comment and question (bit-fields)
+In-Reply-To: <507F9107.9010005@chartertn.net>
+References: <507F9107.9010005@chartertn.net>
+Message-ID: <CAG40DWan-bd1bW_KKDrPTggbPhYOzi21PF1P=sOx4jAdPrmcfA@mail.gmail.com>
+
+ok sir,,thank you..
+On Thu, Oct 18, 2012 at 12:17 PM, Gene Smith <gds at chartertn.net> wrote:
+
+> Looking at the release notes for Sourcery CodeBench Lite EABI 2012.03-56,
+> I don't see the release notes for the previous version, 2011-09-69. Instead
+> it jumps to 2011.03-42. Guess this is just a typo.
+>
+> The question is regarding a specific release note for the newest version
+> 2012.03-56:
+>
+> <quote>
+> Fix for bit-field optimization bug. A compiler bug that caused incorrect
+> code to be generated for programs using bit-fields has been fixed.
+> <end quote>
+>
+> On this mailing list a bug like this was discussed a while back (Aug/Sept
+> 2010)
+> Subject: Access to volatile bit-fields.
+> It referenced this bugzilla report:
+> http://gcc.gnu.org/bugzilla/**show_bug.cgi?id=23623<http://gcc.gnu.org/bugzilla/show_bug.cgi?id=23623>
+> I think this was a fairly special case and did not mean that *any* usage
+> of a bit-field was broken in older versions. ??
+>
+> Thanks,
+> Gene Smith
+>
+> ______________________________**_________________
+> arm-gnu mailing list
+> arm-gnu at codesourcery.com
+> http://sourcerytools.com/cgi-**bin/mailman/listinfo/arm-gnu<http://sourcerytools.com/cgi-bin/mailman/listinfo/arm-gnu>
+>
+-------------- next part --------------
+An HTML attachment was scrubbed...
+URL: <http://sourcerytools.com/pipermail/arm-gnu/attachments/20121020/1d7f256e/attachment.html>
+
+From BBadke at hemispheregps.com  Fri Oct 26 00:29:02 2012
+From: BBadke at hemispheregps.com (Brad Badke)
+Date: Fri, 26 Oct 2012 00:29:02 +0000
+Subject: [arm-gnu] undefined reference to _init
+Message-ID: <40786BD4949BFE469E0E6800967D3F0B2029D54D@CORMS1.hemi.corp.local>
+
+So I have my application/RTOS running on an ARM Cortex-A8 using the free version of Code Sourcery (arm-none-eabi /4.6.3). My application/RTOS fully supports hardware floating point (neon). With the free version of the Code Sourcery math libraries the performance is pretty slow compared to the same code built with the ARM RVDS4.1 tool chain.
+
+So I am curious if anyone can comment on how much performance would improve with the optimized libraries that come with the  Personal/Standard/Professional editions. My application performs a lot of math.
+-------------- next part --------------
+An HTML attachment was scrubbed...
+URL: <http://sourcerytools.com/pipermail/arm-gnu/attachments/20121026/b6a21619/attachment.html>
+
+From carlos_odonell at mentor.com  Fri Oct 26 00:34:55 2012
+From: carlos_odonell at mentor.com (Carlos O'Donell)
+Date: Thu, 25 Oct 2012 20:34:55 -0400
+Subject: [arm-gnu] undefined reference to _init
+In-Reply-To: <40786BD4949BFE469E0E6800967D3F0B2029D54D@CORMS1.hemi.corp.local>
+References: <40786BD4949BFE469E0E6800967D3F0B2029D54D@CORMS1.hemi.corp.local>
+Message-ID: <5089DAAF.109@mentor.com>
+
+On 10/25/2012 8:29 PM, Brad Badke wrote:
+> So I have my application/RTOS running on an ARM Cortex-A8 using the
+> free version of Code Sourcery (arm-none-eabi /4.6.3). My
+> application/RTOS fully supports hardware floating point (neon). With
+> the free version of the Code Sourcery math libraries the performance
+> is pretty slow compared to the same code built with the ARM RVDS4.1
+> tool chain.
+> 
+> 
+> 
+> So I am curious if anyone can comment on how much performance would
+> improve with the optimized libraries that come with the
+> Personal/Standard/Professional editions. My application performs a
+> lot of math.
+
+You're application is the best benchmark.
+
+Go get a 30-day evaluation of the tools and try it out?
+
+http://www.mentor.com/embedded-software/sourcery-tools/sourcery-codebench/overview
+
+Cheers,
+Carlos.
+-- 
+Carlos O'Donell
+Mentor Graphics / CodeSourcery
+carlos_odonell at mentor.com
+carlos at codesourcery.com
++1 (613) 963 1026
+
+
+From amcintosh at appcomsci.com  Fri Oct 26 00:58:32 2012
+From: amcintosh at appcomsci.com (Allen McIntosh)
+Date: Thu, 25 Oct 2012 20:58:32 -0400
+Subject: [arm-gnu] undefined reference to _init
+In-Reply-To: <5089DAAF.109@mentor.com>
+References: <40786BD4949BFE469E0E6800967D3F0B2029D54D@CORMS1.hemi.corp.local>
+	<5089DAAF.109@mentor.com>
+Message-ID: <5089E038.1090805@appcomsci.com>
+
+On 10/25/2012 08:34 PM, Carlos O'Donell wrote:
+> On 10/25/2012 8:29 PM, Brad Badke wrote:
+>> So I have my application/RTOS running on an ARM Cortex-A8 using the
+>> free version of Code Sourcery (arm-none-eabi /4.6.3). My
+>> application/RTOS fully supports hardware floating point (neon). With
+>> the free version of the Code Sourcery math libraries the performance
+>> is pretty slow compared to the same code built with the ARM RVDS4.1
+>> tool chain.
+>>
+>> So I am curious if anyone can comment on how much performance would
+>> improve with the optimized libraries that come with the
+>> Personal/Standard/Professional editions. My application performs a
+>> lot of math.
+> 
+> Your application is the best benchmark.
+> Go get a 30-day evaluation of the tools and try it out?
+> http://www.mentor.com/embedded-software/sourcery-tools/sourcery-codebench/overview
+
+There are other things you can do, with or without the 30 day trial.
+
+1) If you can unit test your FP code and have access to a Cortex-A8
+running Ubuntu 12.04, benchmark the unit test there.  IIRC you can
+compile both with and without hard FP.
+
+2) Make sure you tell the compiler about your FP hardware.  I don't mean
+"hard" FP either.  Simple stuff like -mfpu=neon can make a big
+difference to the running time of your code if the compiler default is
+to generate code with one function call per FLOP.  Note however that it
+may not make much difference if you are spending most of your time in
+libm code.
+
+Disclaimer: We licensed this product from Mentor.
+
+
+From BBadke at hemispheregps.com  Fri Oct 26 15:55:16 2012
+From: BBadke at hemispheregps.com (Brad Badke)
+Date: Fri, 26 Oct 2012 15:55:16 +0000
+Subject: [arm-gnu] undefined reference to _init
+In-Reply-To: <5089E038.1090805@appcomsci.com>
+References: <40786BD4949BFE469E0E6800967D3F0B2029D54D@CORMS1.hemi.corp.local>
+	<5089DAAF.109@mentor.com> <5089E038.1090805@appcomsci.com>
+Message-ID: <40786BD4949BFE469E0E6800967D3F0B2029D573@CORMS1.hemi.corp.local>
+
+This is what I am compiling with.
+CFLAGS=-mcpu=cortex-a8
+CFLAGS+=-mfpu=neon
+CFLAG+=-mfpu=vfpv3-d16
+CFLAGS+=-c ${${TARGET_MODE}_FLAG} -mlong-calls -fdata-sections -funsigned-char -ffunction-sections -Wall ${IPATH} -Dgcc ${DEVICE_D} ${EVM_D} -D SUPPORT_UNALIGNED
+CFLAGS+=-nostartfiles -nodefaultlibs -nostdlib
+CFLAGS+=-DNDEBUG
+CFLAGS+=-fno-exceptions
+
+-----Original Message-----
+From: arm-gnu-bounces at codesourcery.com [mailto:arm-gnu-bounces at codesourcery.com] On Behalf Of Allen McIntosh
+Sent: Thursday, October 25, 2012 5:59 PM
+To: arm-gnu at codesourcery.com
+Subject: Re: [arm-gnu] undefined reference to _init
+
+On 10/25/2012 08:34 PM, Carlos O'Donell wrote:
+> On 10/25/2012 8:29 PM, Brad Badke wrote:
+>> So I have my application/RTOS running on an ARM Cortex-A8 using the 
+>> free version of Code Sourcery (arm-none-eabi /4.6.3). My 
+>> application/RTOS fully supports hardware floating point (neon). With 
+>> the free version of the Code Sourcery math libraries the performance 
+>> is pretty slow compared to the same code built with the ARM RVDS4.1 
+>> tool chain.
+>>
+>> So I am curious if anyone can comment on how much performance would 
+>> improve with the optimized libraries that come with the 
+>> Personal/Standard/Professional editions. My application performs a 
+>> lot of math.
+> 
+> Your application is the best benchmark.
+> Go get a 30-day evaluation of the tools and try it out?
+> http://www.mentor.com/embedded-software/sourcery-tools/sourcery-codebe
+> nch/overview
+
+There are other things you can do, with or without the 30 day trial.
+
+1) If you can unit test your FP code and have access to a Cortex-A8 running Ubuntu 12.04, benchmark the unit test there.  IIRC you can compile both with and without hard FP.
+
+2) Make sure you tell the compiler about your FP hardware.  I don't mean "hard" FP either.  Simple stuff like -mfpu=neon can make a big difference to the running time of your code if the compiler default is to generate code with one function call per FLOP.  Note however that it may not make much difference if you are spending most of your time in libm code.
+
+Disclaimer: We licensed this product from Mentor.
+_______________________________________________
+arm-gnu mailing list
+arm-gnu at codesourcery.com
+http://sourcerytools.com/cgi-bin/mailman/listinfo/arm-gnu
+
+
+From BBadke at hemispheregps.com  Fri Oct 26 16:25:09 2012
+From: BBadke at hemispheregps.com (Brad Badke)
+Date: Fri, 26 Oct 2012 16:25:09 +0000
+Subject: [arm-gnu] undefined reference to _init
+In-Reply-To: <40786BD4949BFE469E0E6800967D3F0B2029D573@CORMS1.hemi.corp.local>
+References: <40786BD4949BFE469E0E6800967D3F0B2029D54D@CORMS1.hemi.corp.local>
+	<5089DAAF.109@mentor.com> <5089E038.1090805@appcomsci.com>
+	<40786BD4949BFE469E0E6800967D3F0B2029D573@CORMS1.hemi.corp.local>
+Message-ID: <40786BD4949BFE469E0E6800967D3F0B2029D58B@CORMS1.hemi.corp.local>
+
+Let's try this again, had a cut/paste error.
+
+CFLAGS=-mcpu=cortex-a8
+CFLAGS+=-mfpu=neon
+CFLAG+=-mfpu=vfpv3-d16
+CFLAGS+=-c ${${TARGET_MODE}_FLAG} -mlong-calls -fdata-sections -funsigned-char -ffunction-sections -Wall ${IPATH} -Dgcc ${DEVICE_D} ${EVM_D} -D SUPPORT_UNALIGNED
+CFLAGS+=-nostartfiles -nodefaultlibs -nostdlib
+CFLAGS+=-DNDEBUG
+CFLAGS+=-fno-exceptions
+
+-----Original Message-----
+From: arm-gnu-bounces at codesourcery.com [mailto:arm-gnu-bounces at codesourcery.com] On Behalf Of Brad Badke
+Sent: Friday, October 26, 2012 8:55 AM
+To: Allen McIntosh; arm-gnu at codesourcery.com
+Subject: Re: [arm-gnu] undefined reference to _init
+
+This is what I am compiling with.
+CFLAGS=-mcpu=cortex-a8
+CFLAGS+=-mfpu=neon
+CFLAG+=-mfpu=vfpv3-d16
+CFLAGS+=-c ${${TARGET_MODE}_FLAG} -mlong-calls -fdata-sections 
+CFLAGS+-funsigned-char -ffunction-sections -Wall ${IPATH} -Dgcc 
+CFLAGS+${DEVICE_D} ${EVM_D} -D SUPPORT_UNALIGNED =-nostartfiles 
+CFLAGS+-nodefaultlibs -nostdlib =-DNDEBUG =-fno-exceptions
+
+-----Original Message-----
+From: arm-gnu-bounces at codesourcery.com [mailto:arm-gnu-bounces at codesourcery.com] On Behalf Of Allen McIntosh
+Sent: Thursday, October 25, 2012 5:59 PM
+To: arm-gnu at codesourcery.com
+Subject: Re: [arm-gnu] undefined reference to _init
+
+On 10/25/2012 08:34 PM, Carlos O'Donell wrote:
+> On 10/25/2012 8:29 PM, Brad Badke wrote:
+>> So I have my application/RTOS running on an ARM Cortex-A8 using the 
+>> free version of Code Sourcery (arm-none-eabi /4.6.3). My 
+>> application/RTOS fully supports hardware floating point (neon). With 
+>> the free version of the Code Sourcery math libraries the performance 
+>> is pretty slow compared to the same code built with the ARM RVDS4.1 
+>> tool chain.
+>>
+>> So I am curious if anyone can comment on how much performance would 
+>> improve with the optimized libraries that come with the 
+>> Personal/Standard/Professional editions. My application performs a 
+>> lot of math.
+> 
+> Your application is the best benchmark.
+> Go get a 30-day evaluation of the tools and try it out?
+> http://www.mentor.com/embedded-software/sourcery-tools/sourcery-codebe
+> nch/overview
+
+There are other things you can do, with or without the 30 day trial.
+
+1) If you can unit test your FP code and have access to a Cortex-A8 running Ubuntu 12.04, benchmark the unit test there.  IIRC you can compile both with and without hard FP.
+
+2) Make sure you tell the compiler about your FP hardware.  I don't mean "hard" FP either.  Simple stuff like -mfpu=neon can make a big difference to the running time of your code if the compiler default is to generate code with one function call per FLOP.  Note however that it may not make much difference if you are spending most of your time in libm code.
+
+Disclaimer: We licensed this product from Mentor.
+_______________________________________________
+arm-gnu mailing list
+arm-gnu at codesourcery.com
+http://sourcerytools.com/cgi-bin/mailman/listinfo/arm-gnu
+_______________________________________________
+arm-gnu mailing list
+arm-gnu at codesourcery.com
+http://sourcerytools.com/cgi-bin/mailman/listinfo/arm-gnu
+
+
+From freddie_chopin at op.pl  Fri Oct 26 18:28:50 2012
+From: freddie_chopin at op.pl (Freddie Chopin)
+Date: Fri, 26 Oct 2012 20:28:50 +0200
+Subject: [arm-gnu] undefined reference to _init
+In-Reply-To: <5089DAAF.109@mentor.com>
+References: <40786BD4949BFE469E0E6800967D3F0B2029D54D@CORMS1.hemi.corp.local>
+	<5089DAAF.109@mentor.com>
+Message-ID: <508AD662.2060404@op.pl>
+
+W dniu 2012-10-26 02:34, Carlos O'Donell pisze:
+> Go get a 30-day evaluation of the tools and try it out?
+>
+> http://www.mentor.com/embedded-software/sourcery-tools/sourcery-codebench/overview
+
+Or you can get a REALLY free solution by downloading linaro's toolchain, 
+which has the feature enabled at no cost.
+
+http://www.linaro.org/downloads/
+
+You and even try building one yourself, it's not that hard as you might 
+think... In this case you can enable any options you wish (;
+
+4\/3!!
+
+
+From BBadke at hemispheregps.com  Sat Oct 27 01:45:11 2012
+From: BBadke at hemispheregps.com (Brad Badke)
+Date: Sat, 27 Oct 2012 01:45:11 +0000
+Subject: [arm-gnu] undefined reference to _init
+In-Reply-To: <5089DAAF.109@mentor.com>
+References: <40786BD4949BFE469E0E6800967D3F0B2029D54D@CORMS1.hemi.corp.local>
+	<5089DAAF.109@mentor.com>
+Message-ID: <40786BD4949BFE469E0E6800967D3F0B2029D5F3@CORMS1.hemi.corp.local>
+
+Well, I installed your 30 day trial. I would have thought I could just redirect my makefile and ld file to the new compiler and linker and all would work just fine, but I get two linker errors:
+
+undefined reference to `__cxa_pure_virtual'
+
+and 
+
+undefined reference to `abort'
+
+I can make my own abort easy enough but the `__cxa_pure_virtual' is a problem.
+
+-----Original Message-----
+From: Carlos O'Donell [mailto:carlos_odonell at mentor.com] 
+Sent: Thursday, October 25, 2012 5:35 PM
+To: Brad Badke
+Cc: arm-gnu at codesourcery.com
+Subject: Re: [arm-gnu] undefined reference to _init
+
+On 10/25/2012 8:29 PM, Brad Badke wrote:
+> So I have my application/RTOS running on an ARM Cortex-A8 using the 
+> free version of Code Sourcery (arm-none-eabi /4.6.3). My 
+> application/RTOS fully supports hardware floating point (neon). With 
+> the free version of the Code Sourcery math libraries the performance 
+> is pretty slow compared to the same code built with the ARM RVDS4.1 
+> tool chain.
+> 
+> 
+> 
+> So I am curious if anyone can comment on how much performance would 
+> improve with the optimized libraries that come with the 
+> Personal/Standard/Professional editions. My application performs a lot 
+> of math.
+
+You're application is the best benchmark.
+
+Go get a 30-day evaluation of the tools and try it out?
+
+http://www.mentor.com/embedded-software/sourcery-tools/sourcery-codebench/overview
+
+Cheers,
+Carlos.
+--
+Carlos O'Donell
+Mentor Graphics / CodeSourcery
+carlos_odonell at mentor.com
+carlos at codesourcery.com
++1 (613) 963 1026
+
+
+From BBadke at hemispheregps.com  Sat Oct 27 02:09:19 2012
+From: BBadke at hemispheregps.com (Brad Badke)
+Date: Sat, 27 Oct 2012 02:09:19 +0000
+Subject: [arm-gnu] undefined reference to _init
+In-Reply-To: <40786BD4949BFE469E0E6800967D3F0B2029D5F3@CORMS1.hemi.corp.local>
+References: <40786BD4949BFE469E0E6800967D3F0B2029D54D@CORMS1.hemi.corp.local>
+	<5089DAAF.109@mentor.com>
+	<40786BD4949BFE469E0E6800967D3F0B2029D5F3@CORMS1.hemi.corp.local>
+Message-ID: <40786BD4949BFE469E0E6800967D3F0B2029D60D@CORMS1.hemi.corp.local>
+
+The linker error was only in my debug build not my release build. Why, I don't know!
+
+The bigger problem is that I have now built with your eval edition and my app does not run any faster at all!
+
+So I started looking through your directories for the math libraries and I see that all the directories related to VFP and NEON are empty.
+
+Do you not give these out with the eval???
+
+Hard for me to evaluate and compare against ARM RVDS4.1 if I do not have the libraries I need.
+
+-----Original Message-----
+From: arm-gnu-bounces at codesourcery.com [mailto:arm-gnu-bounces at codesourcery.com] On Behalf Of Brad Badke
+Sent: Friday, October 26, 2012 6:45 PM
+To: Carlos O'Donell
+Cc: arm-gnu at codesourcery.com
+Subject: Re: [arm-gnu] undefined reference to _init
+
+Well, I installed your 30 day trial. I would have thought I could just redirect my makefile and ld file to the new compiler and linker and all would work just fine, but I get two linker errors:
+
+undefined reference to `__cxa_pure_virtual'
+
+and 
+
+undefined reference to `abort'
+
+I can make my own abort easy enough but the `__cxa_pure_virtual' is a problem.
+
+-----Original Message-----
+From: Carlos O'Donell [mailto:carlos_odonell at mentor.com]
+Sent: Thursday, October 25, 2012 5:35 PM
+To: Brad Badke
+Cc: arm-gnu at codesourcery.com
+Subject: Re: [arm-gnu] undefined reference to _init
+
+On 10/25/2012 8:29 PM, Brad Badke wrote:
+> So I have my application/RTOS running on an ARM Cortex-A8 using the 
+> free version of Code Sourcery (arm-none-eabi /4.6.3). My 
+> application/RTOS fully supports hardware floating point (neon). With 
+> the free version of the Code Sourcery math libraries the performance 
+> is pretty slow compared to the same code built with the ARM RVDS4.1 
+> tool chain.
+> 
+> 
+> 
+> So I am curious if anyone can comment on how much performance would 
+> improve with the optimized libraries that come with the 
+> Personal/Standard/Professional editions. My application performs a lot 
+> of math.
+
+You're application is the best benchmark.
+
+Go get a 30-day evaluation of the tools and try it out?
+
+http://www.mentor.com/embedded-software/sourcery-tools/sourcery-codebench/overview
+
+Cheers,
+Carlos.
+--
+Carlos O'Donell
+Mentor Graphics / CodeSourcery
+carlos_odonell at mentor.com
+carlos at codesourcery.com
++1 (613) 963 1026
+_______________________________________________
+arm-gnu mailing list
+arm-gnu at codesourcery.com
+http://sourcerytools.com/cgi-bin/mailman/listinfo/arm-gnu
+
+
+From carlos_odonell at mentor.com  Sat Oct 27 13:31:22 2012
+From: carlos_odonell at mentor.com (Carlos O'Donell)
+Date: Sat, 27 Oct 2012 09:31:22 -0400
+Subject: [arm-gnu] undefined reference to _init
+In-Reply-To: <40786BD4949BFE469E0E6800967D3F0B2029D60D@CORMS1.hemi.corp.local>
+References: <40786BD4949BFE469E0E6800967D3F0B2029D54D@CORMS1.hemi.corp.local>
+	<5089DAAF.109@mentor.com>
+	<40786BD4949BFE469E0E6800967D3F0B2029D5F3@CORMS1.hemi.corp.local>
+	<40786BD4949BFE469E0E6800967D3F0B2029D60D@CORMS1.hemi.corp.local>
+Message-ID: <508BE22A.9040206@mentor.com>
+
+On 10/26/2012 10:09 PM, Brad Badke wrote:
+> The linker error was only in my debug build not my release build. Why, I don't know!
+> 
+> The bigger problem is that I have now built with your eval edition and my app does not run any faster at all!
+> 
+> So I started looking through your directories for the math libraries and I see that all the directories related to VFP and NEON are empty.
+> 
+> Do you not give these out with the eval???
+
+We do give them out.
+
+> Hard for me to evaluate and compare against ARM RVDS4.1 if I do not have the libraries I need.
+
+As an evaluator you can file support tickets to get help from our support team and engineering.
+
+In this case the answer to your problem is as follows:
+
+(a) Make sure you set the right flags to enable using the runtimes you want.
+
+See Chapter 3 "Base Library Configurations"
+
+also see: https://sourcery.mentor.com/GNUToolchain/kbentry29
+
+and
+
+(b) Make sure you install any additional runtimes you want to use.
+
+See Chapter 2 "Installing Add-ons"
+
+Cheers,
+Carlos.
+-- 
+Carlos O'Donell
+Mentor Graphics / CodeSourcery
+carlos_odonell at mentor.com
+carlos at codesourcery.com
++1 (613) 963 1026
+
+
+From BBadke at hemispheregps.com  Sat Oct 27 13:58:52 2012
+From: BBadke at hemispheregps.com (Brad Badke)
+Date: Sat, 27 Oct 2012 13:58:52 +0000
+Subject: [arm-gnu] undefined reference to _init
+In-Reply-To: <508BE22A.9040206@mentor.com>
+References: <40786BD4949BFE469E0E6800967D3F0B2029D54D@CORMS1.hemi.corp.local>
+	<5089DAAF.109@mentor.com>
+	<40786BD4949BFE469E0E6800967D3F0B2029D5F3@CORMS1.hemi.corp.local>
+	<40786BD4949BFE469E0E6800967D3F0B2029D60D@CORMS1.hemi.corp.local>,
+	<508BE22A.9040206@mentor.com>
+Message-ID: <40786BD4949BFE469E0E6800967D3F0B2029D670@CORMS1.hemi.corp.local>
+
+I downloaded the required libraries and my app/rtos runs as fast with GCC as it does with ARM rvds4.1. Slightly bigger binary though. Thanks
+________________________________________
+From: Carlos O'Donell [carlos_odonell at mentor.com]
+Sent: Saturday, October 27, 2012 6:31 AM
+To: Brad Badke
+Cc: arm-gnu at codesourcery.com
+Subject: Re: [arm-gnu] undefined reference to _init
+
+On 10/26/2012 10:09 PM, Brad Badke wrote:
+> The linker error was only in my debug build not my release build. Why, I don't know!
+>
+> The bigger problem is that I have now built with your eval edition and my app does not run any faster at all!
+>
+> So I started looking through your directories for the math libraries and I see that all the directories related to VFP and NEON are empty.
+>
+> Do you not give these out with the eval???
+
+We do give them out.
+
+> Hard for me to evaluate and compare against ARM RVDS4.1 if I do not have the libraries I need.
+
+As an evaluator you can file support tickets to get help from our support team and engineering.
+
+In this case the answer to your problem is as follows:
+
+(a) Make sure you set the right flags to enable using the runtimes you want.
+
+See Chapter 3 "Base Library Configurations"
+
+also see: https://sourcery.mentor.com/GNUToolchain/kbentry29
+
+and
+
+(b) Make sure you install any additional runtimes you want to use.
+
+See Chapter 2 "Installing Add-ons"
+
+Cheers,
+Carlos.
+--
+Carlos O'Donell
+Mentor Graphics / CodeSourcery
+carlos_odonell at mentor.com
+carlos at codesourcery.com
++1 (613) 963 1026
+
+
+From carlos_odonell at mentor.com  Sat Oct 27 14:43:27 2012
+From: carlos_odonell at mentor.com (Carlos O'Donell)
+Date: Sat, 27 Oct 2012 10:43:27 -0400
+Subject: [arm-gnu] undefined reference to _init
+In-Reply-To: <40786BD4949BFE469E0E6800967D3F0B2029D670@CORMS1.hemi.corp.local>
+References: <40786BD4949BFE469E0E6800967D3F0B2029D54D@CORMS1.hemi.corp.local>
+	<5089DAAF.109@mentor.com>
+	<40786BD4949BFE469E0E6800967D3F0B2029D5F3@CORMS1.hemi.corp.local>
+	<40786BD4949BFE469E0E6800967D3F0B2029D60D@CORMS1.hemi.corp.local>,
+	<508BE22A.9040206@mentor.com>
+	<40786BD4949BFE469E0E6800967D3F0B2029D670@CORMS1.hemi.corp.local>
+Message-ID: <508BF30F.9070806@mentor.com>
+
+On 10/27/2012 9:58 AM, Brad Badke wrote:
+> I downloaded the required libraries and my app/rtos runs as fast with
+> GCC as it does with ARM rvds4.1. Slightly bigger binary though.
+> Thanks
+
+Glad to hear that!
+
+You might want to look into using -ffunction-sections -fdata-sections
+when compiling and then have the linker garbage collect unused sections
+with -Wl,--gc-sections.
+
+You need to be careful though because the linker will discard sections
+that you might only have indirectly referenced.
+
+It's always good to look at the link map (-Wl,-Map,linkermap.txt) and
+see exactly what was discarded and use KEEP() in your linker script
+to keep those things you know you need.
+
+Cheers,
+Carlos.
+-- 
+Carlos O'Donell
+Mentor Graphics / CodeSourcery
+carlos_odonell at mentor.com
+carlos at codesourcery.com
++1 (613) 963 1026
+
+
+From david at westcontrol.com  Mon Oct 29 09:58:35 2012
+From: david at westcontrol.com (David Brown)
+Date: Mon, 29 Oct 2012 10:58:35 +0100
+Subject: [arm-gnu] undefined reference to _init
+In-Reply-To: <508BF30F.9070806@mentor.com>
+References: <40786BD4949BFE469E0E6800967D3F0B2029D54D@CORMS1.hemi.corp.local>
+	<5089DAAF.109@mentor.com>
+	<40786BD4949BFE469E0E6800967D3F0B2029D5F3@CORMS1.hemi.corp.local>
+	<40786BD4949BFE469E0E6800967D3F0B2029D60D@CORMS1.hemi.corp.local>,
+	<508BE22A.9040206@mentor.com>
+	<40786BD4949BFE469E0E6800967D3F0B2029D670@CORMS1.hemi.corp.local>
+	<508BF30F.9070806@mentor.com>
+Message-ID: <508E534B.8080104@westcontrol.com>
+
+On 27/10/2012 16:43, Carlos O'Donell wrote:
+> On 10/27/2012 9:58 AM, Brad Badke wrote:
+>> I downloaded the required libraries and my app/rtos runs as fast with
+>> GCC as it does with ARM rvds4.1. Slightly bigger binary though.
+>> Thanks
+>
+> Glad to hear that!
+>
+> You might want to look into using -ffunction-sections -fdata-sections
+> when compiling and then have the linker garbage collect unused sections
+> with -Wl,--gc-sections.
+>
+> You need to be careful though because the linker will discard sections
+> that you might only have indirectly referenced.
+>
+> It's always good to look at the link map (-Wl,-Map,linkermap.txt) and
+> see exactly what was discarded and use KEEP() in your linker script
+> to keep those things you know you need.
+>
+> Cheers,
+> Carlos.
+>
+
+Link-time optimisation can also reduce the binary size somewhat (and 
+speed up some kinds of code), but you can get other linking issues, and 
+it can make debugging "entertaining".
+
+mvh.,
+
+David
+
+
+

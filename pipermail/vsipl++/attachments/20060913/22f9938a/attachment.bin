@@ -1,0 +1,118 @@
+Index: src/vsip/impl/config.hpp
+===================================================================
+--- src/vsip/impl/config.hpp	(revision 149109)
++++ src/vsip/impl/config.hpp	(working copy)
+@@ -29,6 +29,13 @@
+ # define VSIP_IMPL_PI 3.14159265358979323846
+ #endif
+ 
++#if defined(_WIN32) && VSIP_IMPL_HAVE_IPP
++// IPP on Windows uses __stdcall for all functions.
++# define VSIP_IMPL_IPP_CALL __stdcall
++#else
++# define VSIP_IMPL_IPP_CALL
++#endif
++
+ // autoconf defines them
+ #undef PACKAGE_NAME
+ #undef PACKAGE_STRING
+Index: src/vsip/impl/ipp.cpp
+===================================================================
+--- src/vsip/impl/ipp.cpp	(revision 149109)
++++ src/vsip/impl/ipp.cpp	(working copy)
+@@ -469,8 +469,8 @@
+ template
+ <
+   typename T, typename IppT,
+-  IppStatus (&ippFirF)(IppT const*,IppT*,int,IppT const*,int,IppT*,int*),
+-  IppStatus (&ippFirDecF)(
++  IppStatus (VSIP_IMPL_IPP_CALL *ippFirF)(IppT const*,IppT*,int,IppT const*,int,IppT*,int*),
++  IppStatus (VSIP_IMPL_IPP_CALL *ippFirDecF)(
+     IppT const*,IppT*,int,IppT const*,int,int,int,int,int,IppT*)
+ >
+ struct Ipp_fir_base
+Index: src/vsip/impl/ipp/fft.cpp
+===================================================================
+--- src/vsip/impl/ipp/fft.cpp	(revision 149109)
++++ src/vsip/impl/ipp/fft.cpp	(working copy)
+@@ -11,6 +11,7 @@
+   Included Files
+ ***********************************************************************/
+ 
++#include <vsip/impl/config.hpp>
+ #include <vsip/support.hpp>
+ #include <vsip/domain.hpp>
+ #include <vsip/impl/fft/backend.hpp>
+@@ -57,11 +58,11 @@
+ template <typename T, //< Type used in the API.
+ 	  typename I, //< IPP's corresponding type.
+ 	  typename P, //< Plan type.
+-	  IppStatus (*Plan)(P**, int, int, IppHintAlgorithm),
+-	  IppStatus (*Dispose)(P*),
+-	  IppStatus (*Bufsize)(P const*, int*),
+-	  IppStatus (*Forward)(I const*, I*, P const*, Ipp8u*),
+-	  IppStatus (*Inverse)(I const*, I*, P const*, Ipp8u*)>
++	  IppStatus (VSIP_IMPL_IPP_CALL *Plan)(P**, int, int, IppHintAlgorithm),
++	  IppStatus (VSIP_IMPL_IPP_CALL *Dispose)(P*),
++	  IppStatus (VSIP_IMPL_IPP_CALL *Bufsize)(P const*, int*),
++	  IppStatus (VSIP_IMPL_IPP_CALL *Forward)(I const*, I*, P const*, Ipp8u*),
++	  IppStatus (VSIP_IMPL_IPP_CALL *Inverse)(I const*, I*, P const*, Ipp8u*)>
+ struct Driver_base_1d
+ {
+   Driver_base_1d() : plan_(0), buffer_(0) {}
+@@ -114,11 +115,11 @@
+ template <typename T, //< Type used in the API.
+ 	  typename I, //< IPP's corresponding type.
+ 	  typename P, //< Plan type.
+-	  IppStatus (*Plan)(P**, int, int, int, IppHintAlgorithm),
+-	  IppStatus (*Dispose)(P*),
+-	  IppStatus (*Bufsize)(P const*, int*),
+-	  IppStatus (*Forward)(I const*, int, I*, int, P const*, Ipp8u*),
+-	  IppStatus (*Inverse)(I const*, int, I*, int, P const*, Ipp8u*)>
++	  IppStatus (VSIP_IMPL_IPP_CALL *Plan)(P**, int, int, int, IppHintAlgorithm),
++	  IppStatus (VSIP_IMPL_IPP_CALL *Dispose)(P*),
++	  IppStatus (VSIP_IMPL_IPP_CALL *Bufsize)(P const*, int*),
++	  IppStatus (VSIP_IMPL_IPP_CALL *Forward)(I const*, int, I*, int, P const*, Ipp8u*),
++	  IppStatus (VSIP_IMPL_IPP_CALL *Inverse)(I const*, int, I*, int, P const*, Ipp8u*)>
+ struct Driver_base_2d
+ {
+   Driver_base_2d() : plan_(0), buffer_(0) {}
+@@ -213,8 +214,8 @@
+ 
+ // Provide function wrapper to adjust to desired uniform signature.
+ IppStatus 
+-ippiDFTInitAlloc_C_32fc(IppiDFTSpec_C_32fc**plan, int x, int y,
+-			int flag, IppHintAlgorithm hint)
++VSIP_IMPL_IPP_CALL ippiDFTInitAlloc_C_32fc(IppiDFTSpec_C_32fc**plan, int x, int y,
++                                           int flag, IppHintAlgorithm hint)
+ {
+   IppiSize roi = {x, y};
+   return ippiDFTInitAlloc_C_32fc(plan, roi, flag, hint);
+Index: ChangeLog
+===================================================================
+--- ChangeLog	(revision 149109)
++++ ChangeLog	(working copy)
+@@ -1,3 +1,10 @@
++2006-09-13  Stefan Seefeld  <stefan@codesourcery.com>
++
++	* configure.ac: Fix macro comment.
++	* src/vsip/impl/config.hpp: Introduce VSIP_IMPL_IPP_CALL.
++	* src/vsip/impl/ipp.cpp: Use it.
++	* src/vsip/impl/ipp/fft.cpp: Use it.
++
+ 2006-09-12  Jules Bergmann  <jules@codesourcery.com>
+ 
+ 	* src/vsip/impl/config.hpp: Remove unused macros for SIZEOF_DOUBLE
+Index: configure.ac
+===================================================================
+--- configure.ac	(revision 149109)
++++ configure.ac	(working copy)
+@@ -1861,7 +1861,7 @@
+ fi
+ 
+ AC_DEFINE_UNQUOTED(VSIP_IMPL_SIMD_TAG_LIST, $taglist,
+-          [Define to set whether or not to use Intel's IPP library.])
++          [Define to the taglist used for SIMD loop fusion dispatching.])
+ 
+ #
+ # Define VSIP_IMPL_TEST_LEVEL

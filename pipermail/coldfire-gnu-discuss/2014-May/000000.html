@@ -1,0 +1,124 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [coldfire-gnu-discuss] GCC Clobbering Branch Predict Bit in CF3	Cores
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:coldfire-gnu-discuss%40localhost.localdomain?Subject=Re%3A%20%5Bcoldfire-gnu-discuss%5D%20GCC%20Clobbering%20Branch%20Predict%20Bit%20in%20CF3%0A%09Cores&In-Reply-To=%3C5379AC4E.3010603%40optusnet.com.au%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=utf-8">
+   
+   <LINK REL="Next"  HREF="000001.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[coldfire-gnu-discuss] GCC Clobbering Branch Predict Bit in CF3	Cores</H1>
+    <B>Tom Evans</B> 
+    <A HREF="mailto:coldfire-gnu-discuss%40localhost.localdomain?Subject=Re%3A%20%5Bcoldfire-gnu-discuss%5D%20GCC%20Clobbering%20Branch%20Predict%20Bit%20in%20CF3%0A%09Cores&In-Reply-To=%3C5379AC4E.3010603%40optusnet.com.au%3E"
+       TITLE="[coldfire-gnu-discuss] GCC Clobbering Branch Predict Bit in CF3	Cores">tom_usenet
+       </A><BR>
+    <I>Mon May 19 00:01:34 PDT 2014</I>
+    <P><UL>
+        
+        <LI>Next message (by thread): <A HREF="000001.html">[coldfire-gnu-discuss] GCC Clobbering Branch Predict Bit in CF3 Cores
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#0">[ date ]</a>
+              <a href="thread.html#0">[ thread ]</a>
+              <a href="subject.html#0">[ subject ]</a>
+              <a href="author.html#0">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Is this mailing list still alive? The last archived post was in 2011. The last 
+post was in Oct 2012, but it isn't in the archive (yet)??
+
+Has this list been replaced by this &quot;community&quot;?
+
+<A HREF="http://communities.mentor.com/mgcx/community/embedded_software/sourcery_codebench?view=discussions">http://communities.mentor.com/mgcx/community/embedded_software/sourcery_codebench?view=discussions</A>
+
+
+I've searched for this apparent bug on gcc.gnu.org/bugzilla, but didn't find 
+anything.
+
+I'm using:
+
+$ m68k-elf-gcc --version
+m68k-elf-gcc.exe (Sourcery G++ Lite 4.3-208) 4.3.3
+Copyright (C) 2008 Free Software Foundation, Inc.
+
+The command line is:
+
+m68k-elf-gcc -MD -MF adl3.d0 -gdwarf-2 -mcpu=5329 -Wall -std=c99 -g  -Os ...
+
+Note the &quot;-mcpu=5329&quot; line.
+
+A small snippet of source code:
+
+#define cd_BUS_OFF 0x2000
+#define cd_BUS_OFF 0x1000
+#define cd_OVERRUN 0x0008
+
+     else if (cc-&gt;status &amp; cd_BUS_OFF) {
+40109020:       202a 003c       movel %a2@(60),%d0
+40109024:       0800 000d       btst #13,%d0
+40109028:       6710            beqs 4010903a &lt;comm_check_status+0x58&gt;
+(other code)
+     } else if (cc-&gt;status &amp; cd_BUS_RWARN) {
+4010903a:       0800 000c       btst #12,%d0
+4010903e:       6604            bnes 40109044 &lt;comm_check_status+0x62&gt;
+     } else if (cc-&gt;status &amp; cd_OVERRUN) {
+40109040:       44c0            movew %d0,%ccr
+40109042:       6a02            bpls 40109046 &lt;comm_check_status+0x64&gt;
+
+Note the weird word-saving trick in the last compare? It copies the data to 
+the CCR and then tests the &quot;N&quot; bit.
+
+It only seems to do this trick for the &quot;N&quot; and &quot;Z&quot; bits (bits 2 and 3). it 
+should be able to do it for &quot;C&quot; and &quot;V&quot; (0 and 1), but I haven't seen any code 
+doing this. I've also seen code like:
+
+4012193e:       44c2            movew %d2,%ccr
+40121940:       57c0            seq %d0
+40121942:       44c2            movew %d2,%ccr
+40121944:       5bc1            smi %d1
+
+What's the problem? Bit 7 of the CCR is:
+
+     Branch prediction (Version 3 only). Alters the static
+     prediction algorithm used by the branch acceleration
+     logic in the instruction fetch pipeline on forward
+     conditional branches. Refer to a V3 core or device
+     user?s manual for further information on this bit.
+
+So the use of the &quot;movew %d0,%ccr&quot; instruction is changing the CPU's branch 
+prediction randomly. It shouldn't be doing that.
+
+Tom
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	
+	<LI>Next message (by thread): <A HREF="000001.html">[coldfire-gnu-discuss] GCC Clobbering Branch Predict Bit in CF3 Cores
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#0">[ date ]</a>
+              <a href="thread.html#0">[ thread ]</a>
+              <a href="subject.html#0">[ subject ]</a>
+              <a href="author.html#0">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://localhost.localdomain/cgi-bin/mailman/listinfo/coldfire-gnu-discuss">More information about the Coldfire-gnu-discuss
+mailing list</a><br>
+</body></html>

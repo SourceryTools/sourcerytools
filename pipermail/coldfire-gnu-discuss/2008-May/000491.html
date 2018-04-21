@@ -1,0 +1,261 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> Building Linux for Coldfire V4
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:coldfire-gnu-discuss%40codesourcery.com?Subject=Re%3A%20Building%20Linux%20for%20Coldfire%20V4&In-Reply-To=%3C483FCE2B.8020501%40wut.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000490.html">
+   <LINK REL="Next"  HREF="000492.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>Building Linux for Coldfire V4</H1>
+    <B>Markus K&#246;nigshaus</B> 
+    <A HREF="mailto:coldfire-gnu-discuss%40codesourcery.com?Subject=Re%3A%20Building%20Linux%20for%20Coldfire%20V4&In-Reply-To=%3C483FCE2B.8020501%40wut.de%3E"
+       TITLE="Building Linux for Coldfire V4">m.koenigshaus at wut.de
+       </A><BR>
+    <I>Fri May 30 09:51:39 UTC 2008</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000490.html">[coldfire-gnu-discuss] Programming Flash Memory
+</A></li>
+        <LI>Next message: <A HREF="000492.html">[coldfire-gnu-discuss] Building Linux for Coldfire V4
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#491">[ date ]</a>
+              <a href="thread.html#491">[ thread ]</a>
+              <a href="subject.html#491">[ subject ]</a>
+              <a href="author.html#491">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Hello,
+
+I try to use the Sourcery G++ Lite 4.2-125 edition to build the Linux 
+Kernel 2.6.23 for the MCF54455 Coldfireprocessor. The Kernelsources come 
+from the BSP M54455EVB, Release 20071214. The compilation is ok, but 
+there is some problem with the linkerscript:
+
+/* ld script to make m68k Coldfire Linux kernel
+ *
+ * Derived from arch/m68k/kernel/vmlinux-std.lds
+ *
+ * Updated 11/26/2007 for new CodeSourcery toolset
+ *     by Kurt Mahan &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/coldfire-gnu-discuss">kmahan at freescale.com</A>&gt;
+ */
+
+#define    LOAD_OFFSET    0x00000000
+
+#include &lt;asm-generic/vmlinux.lds.h&gt;
+#include &lt;asm/page_offset.h&gt;
+
+#define    START_OFFSET    0x00020000
+#define    IMAGE_START    PAGE_OFFSET_RAW + START_OFFSET
+
+OUTPUT_FORMAT(&quot;elf32-m68k&quot;, &quot;elf32-m68k&quot;, &quot;elf32-m68k&quot;)
+OUTPUT_ARCH(m68k)
+ENTRY(_stext)
+jiffies = jiffies_64 + 4;
+
+SECTIONS
+{
+  . = IMAGE_START;
+  .text.head : AT(ADDR(.text.head) - LOAD_OFFSET) {
+      _text = .;            /* Text and read-only data */
+    *(.text.head)
+  } :text = 0x4e75
+
+  .text : AT(ADDR(.text) - LOAD_OFFSET) {
+    TEXT_TEXT
+    SCHED_TEXT
+    LOCK_TEXT
+    *(.fixup)
+    *(.gnu.warning)
+  } :text = 0x4e75
+  _etext = .;            /* End of text section */
+
+  . = ALIGN(16);
+  __ex_table : AT(ADDR(__ex_table) - LOAD_OFFSET) {
+    __start___ex_table = .;
+    *(__ex_table)
+    __stop___ex_table = .;
+  }
+
+  RODATA
+
+  . = ALIGN(8192);
+  .data : AT(ADDR(.data) - LOAD_OFFSET) {    /* Data */
+    DATA_DATA
+    CONSTRUCTORS
+  } :data
+
+  .bss : AT(ADDR(.bss) - LOAD_OFFSET) {        /* BSS */
+    *(.bss)
+  }
+
+  . = ALIGN(16);
+  .data.cacheline_aligned : AT(ADDR(.data.cacheline_aligned) - 
+LOAD_OFFSET ) {
+    *(.data.cacheline_aligned)
+  } :data
+
+  _edata = .;            /* End of data section */
+
+  . = ALIGN(8192);        /* Initrd */
+  .init.text : AT(ADDR(.init.text) - LOAD_OFFSET) {
+      __init_begin = .;
+    _sinittext = .;
+    *(.init.text)
+    _einittext = .;
+  }
+
+  .init.data : AT(ADDR(.init.data) - LOAD_OFFSET) {
+    *(.init.data)
+  }
+
+  . = ALIGN(16);
+  .init.setup : AT(ADDR(.init.setup) - LOAD_OFFSET) {
+    __setup_start = .;
+    *(.init.setup)
+      __setup_end = .;
+  }
+
+  .initcall.init : AT(ADDR(.initcall.init) - LOAD_OFFSET) {
+    __initcall_start = .;
+    INITCALLS
+    __initcall_end = .;
+  }
+
+  .con_initcall.init : AT(ADDR(.con_initcall.init) - LOAD_OFFSET) {
+    __con_initcall_start = .;
+    *(.con_initcall.init)
+    __con_initcall_end = .;
+  }
+
+  SECURITY_INIT
+
+#ifdef CONFIG_BLK_DEV_INITRD
+  . = ALIGN(8192);
+  .init.ramfs : AT(ADDR(.init.ramfs) - LOAD_OFFSET) {
+    __initramfs_start = .;
+    *(.init.ramfs)
+    __initramfs_end = .;
+  }
+#endif
+
+  . = ALIGN(8192);
+  __init_end = .;
+
+  .data.init_task : AT(ADDR(.data.init_task) - LOAD_OFFSET) {
+    *(.data.init_task)    /* The initial task and kernel stack */
+  }
+
+  _end = . ;
+
+  /* Sections to be discarded */
+  /DISCARD/ : {
+    *(.exit.text)
+    *(.exit.data)
+    *(.exitcall.exit)
+  }
+
+  /* Stabs debugging sections.  */
+  STABS_DEBUG
+}
+
+Trying to link .tmp_vmlinux1, I get
+
+LD      .tmp_vmlinux1
+m68k-linux-gnu-ld: .tmp_vmlinux1: PROGBITS section 
+'.data.cacheline_aligned' cannot be placed into same segment after 
+NOBITS section '.bss'
+m68k-linux-gnu-ld: map sections to segments failed: Nonrepresentable 
+section on output
+
+With the older Linker (Sourcery G++ Lite 4.2-35) 2.17, there is no problem.
+
+I try to allocate the data.cacheline_aligned bevore the .bss section, I 
+get some overlapping errors:
+
+
+...
+  . = ALIGN(8192);
+  .data : AT(ADDR(.data) - LOAD_OFFSET) {    /* Data */
+    DATA_DATA
+    CONSTRUCTORS   
+  } :data
+
+. = ALIGN(16);
+  .data.cacheline_aligned : AT(ADDR(.data.cacheline_aligned) - 
+LOAD_OFFSET ) {
+    *(.data.cacheline_aligned)
+  } :data
+
+  .bss : AT(ADDR(.bss) - LOAD_OFFSET) {        /* BSS */
+    *(.bss)
+  }
+...
+
+
+LD      .tmp_vmlinux1
+m68k-linux-gnu-ld: .tmp_vmlinux1: section .data lma 0xc0290000 overlaps 
+previous sections
+m68k-linux-gnu-ld: .tmp_vmlinux1: section .data.cacheline_aligned lma 
+0xc02a4a50 overlaps previous sections
+m68k-linux-gnu-ld: .tmp_vmlinux1: section .bss lma 0xc02a4af0 overlaps 
+previous sections
+m68k-linux-gnu-ld: .tmp_vmlinux1: section .init.text lma 0xc02da000 
+overlaps previous sections
+m68k-linux-gnu-ld: .tmp_vmlinux1: section .init.data lma 0xc02eb304 
+overlaps previous sections
+m68k-linux-gnu-ld: .tmp_vmlinux1: section .init.setup lma 0xc02ed110 
+overlaps previous sections
+m68k-linux-gnu-ld: .tmp_vmlinux1: section .initcall.init lma 0xc02ed350 
+overlaps previous sections
+m68k-linux-gnu-ld: .tmp_vmlinux1: section .con_initcall.init lma 
+0xc02ed590 overlaps previous sections
+m68k-linux-gnu-ld: .tmp_vmlinux1: section .data.init_task lma 0xc02ee000 
+overlaps previous sections
+m68k-linux-gnu-ld: .tmp_vmlinux1: section `.data' can't be allocated in 
+segment 2
+LOAD: .note.gnu.build-id .data .data.cacheline_aligned .bss .init.text 
+.init.data .init.setup .initcall.init .con_initcall.init .data.init_task
+m68k-linux-gnu-ld: final link failed: Bad value
+
+Do you know a workaround?
+
+Best regards,
+
+Markus K&#246;nigshaus
+-------------- next part --------------
+An HTML attachment was scrubbed...
+URL: &lt;<A HREF="http://sourcerytools.com/pipermail/coldfire-gnu-discuss/attachments/20080530/71569f0d/attachment.html">http://sourcerytools.com/pipermail/coldfire-gnu-discuss/attachments/20080530/71569f0d/attachment.html</A>&gt;
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000490.html">[coldfire-gnu-discuss] Programming Flash Memory
+</A></li>
+	<LI>Next message: <A HREF="000492.html">[coldfire-gnu-discuss] Building Linux for Coldfire V4
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#491">[ date ]</a>
+              <a href="thread.html#491">[ thread ]</a>
+              <a href="subject.html#491">[ subject ]</a>
+              <a href="author.html#491">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/coldfire-gnu-discuss">More information about the coldfire-gnu-discuss
+mailing list</a><br>
+</body></html>

@@ -1,0 +1,738 @@
+From akanksha.govil at induslogic.com  Wed Apr  5 07:33:22 2006
+From: akanksha.govil at induslogic.com (akanksha govil)
+Date: Wed, 05 Apr 2006 13:03:22 +0530
+Subject: How to turn on the traces of Qmtest
+Message-ID: <443372C2.9070603@induslogic.com>
+
+Hi,
+
+I wanted to know how to turn on the logs of Qmtest while its running and 
+where is the log file being formed.
+
+Thanks
+Akanksha
+
+
+From stefan at codesourcery.com  Wed Apr  5 14:27:02 2006
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Wed, 05 Apr 2006 10:27:02 -0400
+Subject: [qmtest] How to turn on the traces of Qmtest
+In-Reply-To: <443372C2.9070603@induslogic.com>
+References: <443372C2.9070603@induslogic.com>
+Message-ID: <4433D3B6.20102@codesourcery.com>
+
+akanksha govil wrote:
+> Hi,
+> 
+> I wanted to know how to turn on the logs of Qmtest while its running and 
+> where is the log file being formed.
+
+I'm not sure I understand what you mean by 'logs'. What information are
+you looking for ?
+
+Thanks,
+		Stefan
+
+
+From dimock at cag.csail.mit.edu  Thu Apr  6 15:30:00 2006
+From: dimock at cag.csail.mit.edu (Allyn Dimock)
+Date: Thu, 6 Apr 2006 11:30:00 -0400 (EDT)
+Subject: partial order on prereqs independent of outcome?
+Message-ID: <Pine.LNX.4.61.0604061107280.6264@cag.csail.mit.edu>
+
+
+Dear QMTest Gurus,
+
+I have a situation where I am running a test suite using multiple targets
+on the same physical machine (a 4-process target on a machine with 2 
+multi-threaded cpus).
+
+A few tests come relatively close to operating-system limits on some 
+system resources.  Resulting in onpredictable failures if multiple such 
+tests run simultaneously.
+
+I would like to assure multiple "resource-hog" tests do not run at the 
+same time.
+
+I think that the simplest way to do this would be to establish a linear 
+order between resource-hog tests.  The mechanism of using prerequisites
+almost works, except -- to quote the manual:
+
+"A test specifies for each of its prerequisite tests an expected outcome. 
+If the prerequisite is included in the test run and the actual outcome of 
+the prerequisite test is different from the expected outcome, the test is 
+not run. Instead, it is given an UNTESTED outcome."
+
+In my situation I want ignore the outcome of a test, and merely have the 
+fact that it has been run be a prerequisite for running another test.
+
+A quick skim through the code makes me believe that the question of what 
+to patch or subclass is NOT "intuitively obvious to the most casual 
+observer", since and get this info threaded through the infrastructure from 
+XMLDatabase.__ParseTestDocument to ExecutionEngine. __FindRunnableTest
+My idea here being: use an expected outcome of "*" for a prerequisite to 
+indicate that any expected outome is acceptable
+
+Before going further on my own, I though I would ask the experts:
+
+(1) What do I need to subclass or patch to make the running of a test a 
+prerequisite if another test independent of the outcome of the first test.
+
+(2) Is this requirement encountered often enought that it should be 
+considered for inclusion in future releases?
+
+Thanks,
+
+-- Allyn
+
+Allyn Dimock <dimock at csail.mit.edu>
+
+
+From stefan at codesourcery.com  Fri Apr  7 00:30:33 2006
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Thu, 06 Apr 2006 20:30:33 -0400
+Subject: [qmtest] partial order on prereqs independent of outcome?
+In-Reply-To: <Pine.LNX.4.61.0604061107280.6264@cag.csail.mit.edu>
+References: <Pine.LNX.4.61.0604061107280.6264@cag.csail.mit.edu>
+Message-ID: <4435B2A9.3010000@codesourcery.com>
+
+Allyn Dimock wrote:
+
+> (1) What do I need to subclass or patch to make the running of a test a 
+> prerequisite if another test independent of the outcome of the first test.
+
+I don't think it is a good idea to try to use prerequisite tests for
+scheduling. Parallelism is what targets are meant to address.
+
+> (2) Is this requirement encountered often enought that it should be 
+> considered for inclusion in future releases?
+
+I haven't seen such a requirement before, and I'm not sure what to propose.
+While I understand the problem you are trying to solve I don't think that
+such a feature fits well into QMTest concepts. QMTest simply doesn't have
+any way to express can-run-in-parallel and can-not-run-in-parallel properties.
+It would be much easier to reduce the overal concurrency of your test runs,
+though that obviously means longer build cycles.
+
+Thanks,
+		Stefan
+
+
+From dimock at cag.csail.mit.edu  Fri Apr  7 14:36:42 2006
+From: dimock at cag.csail.mit.edu (Allyn Dimock)
+Date: Fri, 7 Apr 2006 10:36:42 -0400 (EDT)
+Subject: [qmtest] partial order on prereqs independent of outcome?
+In-Reply-To: <4435B2A9.3010000@codesourcery.com>
+References: <Pine.LNX.4.61.0604061107280.6264@cag.csail.mit.edu>
+ <4435B2A9.3010000@codesourcery.com>
+Message-ID: <Pine.LNX.4.61.0604071019350.24971@cag.csail.mit.edu>
+
+
+
+On Thu, 6 Apr 2006, Stefan Seefeld wrote:
+
+> [...] QMTest simply doesn't have
+> any way to express can-run-in-parallel and can-not-run-in-parallel 
+> properties.
+
+I understand that there should be other ways of dealing with parallel vs 
+not in parallel.  I had thought that there might have been some call 
+before for multiple allowable outcomes on a pre-req.  For instance "ERROR 
+or FAIL".  If that feature existed, I could build on it.
+
+I can't decrease the parallelism from 4 to 1 since that would increase the 
+test time from 6 to 24 hours per cycle.
+
+The obvious solution is to throw independent hardware at the problem.
+I can't see how to use ssh from a batch process to get access to multiple 
+systems without exposing my passphrase or my password.  Using a background 
+interactive process where I run ssh-agent is vulnerable to the occasional 
+system reboot.
+
+One of these days, when not fighting fires, I will put a 
+PBS back end on to solve this problem.  PBS's idea of distributed batch 
+processing is a poor match for QMTest's idea of being in control of the
+order of processing, but if I run QMTest with more threads than the number 
+of simultaneous processes that PBS will allow me to run, then I should be 
+able to jury-rig something.  It's just that I have been trying for the 
+last several months to find a bit of free time to do this and there has 
+always been a higher-priority task that needs doing -- I'm sure that you 
+know the situation.
+
+-- Allyn
+
+
+
+From lucaskeli at fastmail.fm  Mon Apr 10 21:30:06 2006
+From: lucaskeli at fastmail.fm (Kelly Lucas)
+Date: Mon, 10 Apr 2006 14:30:06 -0700
+Subject: Variable in argument list
+Message-ID: <443ACE5E.3020902@fastmail.fm>
+
+I'm trying to set up qmtest so that from the command line I can specify 
+a specific host to run all of my tests against. In other words, I have 
+about 12 hosts, and I only want QMTest to run against the host I specify 
+in the command line.
+
+What is the best way to configure this? I used to specify this in the 
+argument list, and have a different suite for each hostname, but as my 
+testbed increased in size, this is becoming unmanageable, and I know 
+what to specify the host as a dynamic argument. What is the best way to 
+configure this in QMTest? It looks like the Argument List expects a 
+string, and not another variable.
+
+kdl
+
+-- 
+Kelly D. Lucas
+lucaskeli at fastmail.fm
+
+
+
+From lucaskeli at fastmail.fm  Mon Apr 10 21:43:11 2006
+From: lucaskeli at fastmail.fm (Kelly Lucas)
+Date: Mon, 10 Apr 2006 14:43:11 -0700
+Subject: Variable in argument list
+Message-ID: <443AD16F.6030200@fastmail.fm>
+
+Actually, it looks like the context switch may do it. So, if I run 
+qmtest like this:
+
+qmtest run -c SUT=blade testsuite.test1
+
+how would I specify this context variable inside of a test? Could I 
+simply place SUT in the field argument list?
+
+kdl
+
+-- 
+Kelly D. Lucas
+lucaskeli at fastmail.fm
+
+
+
+From seefeld at sympatico.ca  Mon Apr 10 21:49:51 2006
+From: seefeld at sympatico.ca (Stefan Seefeld)
+Date: Mon, 10 Apr 2006 17:49:51 -0400
+Subject: [qmtest] Variable in argument list
+In-Reply-To: <443ACE5E.3020902@fastmail.fm>
+References: <443ACE5E.3020902@fastmail.fm>
+Message-ID: <443AD2FF.3030103@sympatico.ca>
+
+Kelly Lucas wrote:
+> I'm trying to set up qmtest so that from the command line I can specify 
+> a specific host to run all of my tests against. In other words, I have 
+> about 12 hosts, and I only want QMTest to run against the host I specify 
+> in the command line.
+> 
+> What is the best way to configure this? I used to specify this in the 
+> argument list, and have a different suite for each hostname, but as my 
+> testbed increased in size, this is becoming unmanageable, and I know 
+> what to specify the host as a dynamic argument. What is the best way to 
+> configure this in QMTest? It looks like the Argument List expects a 
+> string, and not another variable.
+
+I believe that should be possible by setting up a target file:
+
+http://www.codesourcery.com/public/qmtest/qm-snapshot/qm/test/doc/html/sec-qmtest-concepts.html#sec-targets
+
+and then use that with the 'qmtest run' command.
+I'm not sure what you are referring to as 'argument list' here. Arguments
+to what command ?
+
+Thanks,
+		Stefan
+
+
+From seefeld at sympatico.ca  Mon Apr 10 21:52:06 2006
+From: seefeld at sympatico.ca (Stefan Seefeld)
+Date: Mon, 10 Apr 2006 17:52:06 -0400
+Subject: [qmtest] Variable in argument list
+In-Reply-To: <443AD16F.6030200@fastmail.fm>
+References: <443AD16F.6030200@fastmail.fm>
+Message-ID: <443AD386.7040209@sympatico.ca>
+
+Kelly Lucas wrote:
+> Actually, it looks like the context switch may do it. So, if I run 
+> qmtest like this:
+> 
+> qmtest run -c SUT=blade testsuite.test1
+> 
+> how would I specify this context variable inside of a test? Could I 
+> simply place SUT in the field argument list?
+
+The context dictionary is provided in the Test.Run() call, so you
+can use its values there. However, that requires that your test
+classes do all the work of connecting to the host that should run
+the actual test. Wouldn't it be simpler to use QMTest's builtin
+support for this (see my other mail) ?
+
+Regards,
+		Stefan
+
+
+
+From seefeld at sympatico.ca  Mon Apr 10 22:04:36 2006
+From: seefeld at sympatico.ca (Stefan Seefeld)
+Date: Mon, 10 Apr 2006 18:04:36 -0400
+Subject: [qmtest] Variable in argument list
+In-Reply-To: <443AD599.9000502@fastmail.fm>
+References: <443AD16F.6030200@fastmail.fm> <443AD386.7040209@sympatico.ca> <443AD599.9000502@fastmail.fm>
+Message-ID: <443AD674.9010400@sympatico.ca>
+
+Kelly Lucas wrote:
+> I'm not sure I understand how to access this. Yes, each individual test 
+> already does the work of connecting to the system under test. I just 
+> need a dynamic way to pass qmtest the hostname of the system I want to 
+> test. So under the scenario below, how could I access $SUT once qmtest 
+> is running?
+
+Ok, in this case a context variable seems indeed like the best way to
+go. Run 'qmtest run -c name=variable' and from your test's Run() method
+access the variable as 'context["name"]'.
+
+Regards,
+		Stefan
+
+
+From lucaskeli at fastmail.fm  Mon Apr 10 22:14:16 2006
+From: lucaskeli at fastmail.fm (Kelly Lucas)
+Date: Mon, 10 Apr 2006 15:14:16 -0700
+Subject: [qmtest] Variable in argument list
+In-Reply-To: <443AD674.9010400@sympatico.ca>
+References: <443AD16F.6030200@fastmail.fm> <443AD386.7040209@sympatico.ca> <443AD599.9000502@fastmail.fm> <443AD674.9010400@sympatico.ca>
+Message-ID: <443AD8B8.9070303@fastmail.fm>
+
+Thanks. But if I'm not writing my own classes, etc, I just want to 
+access the variable by specifying this variable in the xml file for each 
+testcase. Is this something I can do?
+
+kdl
+
+Kelly D. Lucas
+lucaskeli at fastmail.fm
+
+
+
+Stefan Seefeld wrote:
+> Kelly Lucas wrote:
+>> I'm not sure I understand how to access this. Yes, each individual 
+>> test already does the work of connecting to the system under test. I 
+>> just need a dynamic way to pass qmtest the hostname of the system I 
+>> want to test. So under the scenario below, how could I access $SUT 
+>> once qmtest is running?
+>
+> Ok, in this case a context variable seems indeed like the best way to
+> go. Run 'qmtest run -c name=variable' and from your test's Run() method
+> access the variable as 'context["name"]'.
+>
+> Regards,
+>         Stefan
+
+
+From seefeld at sympatico.ca  Mon Apr 10 22:16:32 2006
+From: seefeld at sympatico.ca (Stefan Seefeld)
+Date: Mon, 10 Apr 2006 18:16:32 -0400
+Subject: [qmtest] Variable in argument list
+In-Reply-To: <443AD50C.4060409@fastmail.fm>
+References: <443ACE5E.3020902@fastmail.fm> <443AD2FF.3030103@sympatico.ca> <443AD50C.4060409@fastmail.fm>
+Message-ID: <443AD940.5070508@sympatico.ca>
+
+Kelly Lucas wrote:
+> This looks like the preferred solution, except that it would require 
+> that I have qmtest installed on all of the hosts I want to run my tests on.
+
+That's correct. QMTest also supports a 'Host' extension type that supports
+remote program execution by means of 'rsh' or 'ssh' without any need to
+prepare that machine, as that extension is responsible for uploading files
+before executing them remotely.
+(You can provide your own 'Host' types in the same way you can implement
+your own tests, and so have full control over what to upload and where.)
+
+> Currently, I have a bunch of tests that look like:
+> 
+> ssh -X $1 'command'
+> 
+> Where $1 is the hostname of the system I'm testing, and I specified that 
+> in each testcase in the Argument List. This is a field that is available 
+> through the GUI and help says:
+> 
+> 
+>       Argument List
+> 
+> 
+>         About This Field
+> 
+> The command-line arguments.
+
+I see ! While you may be able to use these fields, you usually shouldn't
+use different values for the same test in different test runs. To quote
+from the manual:
+
+"The arguments to the test parameterize the test; they are what make two
+  instances of the same test class different from each other."
+
+Regards,
+		Stefan
+
+
+From lucaskeli at fastmail.fm  Mon Apr 10 22:56:55 2006
+From: lucaskeli at fastmail.fm (Kelly Lucas)
+Date: Mon, 10 Apr 2006 15:56:55 -0700
+Subject: [qmtest] Variable in argument list
+In-Reply-To: <443AD940.5070508@sympatico.ca>
+References: <443ACE5E.3020902@fastmail.fm> <443AD2FF.3030103@sympatico.ca> <443AD50C.4060409@fastmail.fm> <443AD940.5070508@sympatico.ca>
+Message-ID: <443AE2B7.4010001@fastmail.fm>
+
+Ok, I tried to use the targets file, and I'm getting all kinds of python 
+errors. I did the following:
+
+1) Installed qmtest on the remote machine I want to test
+2) removed the ssh -qX $1 out of my test case
+3) removed the argument list from my testcase
+4) created a target file that looks like this: <hostname> 
+rsh_target.RSHTarget xw4000 remote_shell="/usr/bin/ssh"
+5) ran qmtest with following: qmtest run -T <targetfile> <testcasename>
+
+and I get the following output:
+
+Traceback (most recent call last):
+  File "/usr/bin/qmtest", line 189, in ?
+    exit_code = main()
+  File "/usr/bin/qmtest", line 167, in main
+    exit_code = command.Execute()
+  File "/usr/lib/python2.2/site-packages/qm/test/cmdline.py", line 675, 
+in Execute
+    return method()
+  File "/usr/lib/python2.2/site-packages/qm/test/cmdline.py", line 1365, 
+in __ExecuteRun
+    targets = self.GetTargets()
+  File "/usr/lib/python2.2/site-packages/qm/test/cmdline.py", line 741, 
+in GetTargets
+    test.set_targets(self.GetTargetsFromFile(file_name))
+  File "/usr/lib/python2.2/site-packages/qm/test/cmdline.py", line 706, 
+in GetTargetsFromFile
+    document = qm.xmlutil.load_xml_file(file_name)
+  File "/usr/lib/python2.2/site-packages/qm/xmlutil.py", line 55, in 
+load_xml_file
+    return load_xml(file)
+  File "/usr/lib/python2.2/site-packages/qm/xmlutil.py", line 69, in 
+load_xml
+    document = xml.dom.minidom.parse(file)
+  File "/usr/lib/python2.2/site-packages/_xmlplus/dom/minidom.py", line 
+962, in parse
+    return _doparse(pulldom.parse, args, kwargs)
+  File "/usr/lib/python2.2/site-packages/_xmlplus/dom/minidom.py", line 
+954, in _doparse
+    toktype, rootNode = events.getEvent()
+  File "/usr/lib/python2.2/site-packages/_xmlplus/dom/pulldom.py", line 
+265, in getEvent
+    self.parser.feed(buf)
+  File "/usr/lib/python2.2/site-packages/_xmlplus/sax/expatreader.py", 
+line 208, in feed
+    self._err_handler.fatalError(exc)
+  File "/usr/lib/python2.2/site-packages/_xmlplus/sax/handler.py", line 
+38, in fatalError
+    raise exception
+xml.sax._exceptions.SAXParseException: <unknown>:1:0: syntax error
+
+Any ideas why this would fail? I can run the testcase if I first ssh to 
+the remote system and then execute qmtest.
+
+kdl
+
+Kelly D. Lucas
+lucaskeli at fastmail.fm
+
+
+
+Stefan Seefeld wrote:
+> Kelly Lucas wrote:
+>> This looks like the preferred solution, except that it would require 
+>> that I have qmtest installed on all of the hosts I want to run my 
+>> tests on.
+>
+> That's correct. QMTest also supports a 'Host' extension type that 
+> supports
+> remote program execution by means of 'rsh' or 'ssh' without any need to
+> prepare that machine, as that extension is responsible for uploading 
+> files
+> before executing them remotely.
+> (You can provide your own 'Host' types in the same way you can implement
+> your own tests, and so have full control over what to upload and where.)
+>
+>> Currently, I have a bunch of tests that look like:
+>>
+>> ssh -X $1 'command'
+>>
+>> Where $1 is the hostname of the system I'm testing, and I specified 
+>> that in each testcase in the Argument List. This is a field that is 
+>> available through the GUI and help says:
+>>
+>>
+>>       Argument List
+>>
+>>
+>>         About This Field
+>>
+>> The command-line arguments.
+>
+> I see ! While you may be able to use these fields, you usually shouldn't
+> use different values for the same test in different test runs. To quote
+> from the manual:
+>
+> "The arguments to the test parameterize the test; they are what make two
+>  instances of the same test class different from each other."
+>
+> Regards,
+>         Stefan
+
+
+From seefeld at sympatico.ca  Mon Apr 10 23:58:40 2006
+From: seefeld at sympatico.ca (Stefan Seefeld)
+Date: Mon, 10 Apr 2006 19:58:40 -0400
+Subject: [qmtest] Variable in argument list
+In-Reply-To: <443AD8B8.9070303@fastmail.fm>
+References: <443AD16F.6030200@fastmail.fm> <443AD386.7040209@sympatico.ca> <443AD599.9000502@fastmail.fm> <443AD674.9010400@sympatico.ca> <443AD8B8.9070303@fastmail.fm>
+Message-ID: <443AF130.2080205@sympatico.ca>
+
+Kelly Lucas wrote:
+> Thanks. But if I'm not writing my own classes, etc, I just want to 
+> access the variable by specifying this variable in the xml file for each 
+> testcase. Is this something I can do?
+
+I don't quite understand the question. There is a one-to-one mapping
+between extension (e.g. Test) parameters and those variables in the
+xml files (you can think of these xml files as a serialized form of
+the test). The meaning is defined by the Test class. If you want to
+add a new variable, or change the meaning of an existing variable,
+this indicates that you probably want to write your own test class(es).
+
+Regards,
+		Stefan
+
+
+
+From seefeld at sympatico.ca  Tue Apr 11 00:03:42 2006
+From: seefeld at sympatico.ca (Stefan Seefeld)
+Date: Mon, 10 Apr 2006 20:03:42 -0400
+Subject: [qmtest] Variable in argument list
+In-Reply-To: <443AE2B7.4010001@fastmail.fm>
+References: <443ACE5E.3020902@fastmail.fm> <443AD2FF.3030103@sympatico.ca> <443AD50C.4060409@fastmail.fm> <443AD940.5070508@sympatico.ca> <443AE2B7.4010001@fastmail.fm>
+Message-ID: <443AF25E.2050609@sympatico.ca>
+
+Kelly Lucas wrote:
+> Ok, I tried to use the targets file, and I'm getting all kinds of python 
+> errors. I did the following:
+> 
+> 1) Installed qmtest on the remote machine I want to test
+> 2) removed the ssh -qX $1 out of my test case
+> 3) removed the argument list from my testcase
+> 4) created a target file that looks like this: <hostname> 
+> rsh_target.RSHTarget xw4000 remote_shell="/usr/bin/ssh"
+
+It seems the errors stems from qmtest trying to parse the target file
+(which should contain an xml document). It may be simpler to create
+that target file by means of the 'qmtest create-target' command, at least
+to get an initial version that contains the right syntax. You could
+then make manual adjustments (such as changing hostname etc.).
+
+Regards,
+		Stefan
+
+
+From lucaskeli at fastmail.fm  Tue Apr 11 00:24:00 2006
+From: lucaskeli at fastmail.fm (Kelly Lucas)
+Date: Mon, 10 Apr 2006 17:24:00 -0700
+Subject: [qmtest] Variable in argument list
+In-Reply-To: <443AF25E.2050609@sympatico.ca>
+References: <443ACE5E.3020902@fastmail.fm> <443AD2FF.3030103@sympatico.ca> <443AD50C.4060409@fastmail.fm> <443AD940.5070508@sympatico.ca> <443AE2B7.4010001@fastmail.fm> <443AF25E.2050609@sympatico.ca>
+Message-ID: <443AF720.4090808@fastmail.fm>
+
+Ah, that was my problem, it needed to be in xml format. That worked 
+great! So I'll adopt this solution to my tests and all should be well!
+
+Thanks for your much needed advice.
+
+kdl
+
+Kelly D. Lucas
+lucaskeli at fastmail.fm
+
+
+
+Stefan Seefeld wrote:
+> Kelly Lucas wrote:
+>> Ok, I tried to use the targets file, and I'm getting all kinds of 
+>> python errors. I did the following:
+>>
+>> 1) Installed qmtest on the remote machine I want to test
+>> 2) removed the ssh -qX $1 out of my test case
+>> 3) removed the argument list from my testcase
+>> 4) created a target file that looks like this: <hostname> 
+>> rsh_target.RSHTarget xw4000 remote_shell="/usr/bin/ssh"
+>
+> It seems the errors stems from qmtest trying to parse the target file
+> (which should contain an xml document). It may be simpler to create
+> that target file by means of the 'qmtest create-target' command, at least
+> to get an initial version that contains the right syntax. You could
+> then make manual adjustments (such as changing hostname etc.).
+>
+> Regards,
+>         Stefan
+
+
+From lucaskeli at fastmail.fm  Sun Apr 23 00:06:13 2006
+From: lucaskeli at fastmail.fm (Kelly Lucas)
+Date: Sat, 22 Apr 2006 17:06:13 -0700
+Subject: Wrong Exit Codes
+Message-ID: <444AC4F5.6040000@fastmail.fm>
+
+I recently moved my test suite for another platform, which is code named 
+Breezy, the Ubuntu Linux release.
+
+I've previously been running my testsuite using QMTest on RedHat and 
+Ubuntu Hoary. However, I was amazed to see that when I ran some negative 
+tests, such as attempting to create a file or directory where I don't 
+have permissions. On Redhat and Ubuntu Hoary [kernel 2.4x], I would 
+always get non zero exit codes on such tests. However, now I'm getting 
+exit codes of 0. I don't understand what happened. Code the version of 
+python I'm using affect this? Here's an example of a test:
+
+A simple script that tries to touch a file in a directory where it does 
+not have write permissions:
+
+touch /home/user/testfile
+
+If I try the same test from a shell script, and echo the exit code, it 
+is non zero.
+
+I'm kind of baffled!
+
+kdl
+
+-- 
+Kelly D. Lucas
+lucaskeli at fastmail.fm
+
+
+
+From seefeld at sympatico.ca  Sun Apr 23 01:45:21 2006
+From: seefeld at sympatico.ca (Stefan Seefeld)
+Date: Sat, 22 Apr 2006 21:45:21 -0400
+Subject: [qmtest] Wrong Exit Codes
+In-Reply-To: <444AC4F5.6040000@fastmail.fm>
+References: <444AC4F5.6040000@fastmail.fm>
+Message-ID: <444ADC31.6010103@sympatico.ca>
+
+Kelly Lucas wrote:
+> I recently moved my test suite for another platform, which is code named 
+> Breezy, the Ubuntu Linux release.
+> 
+> I've previously been running my testsuite using QMTest on RedHat and 
+> Ubuntu Hoary. However, I was amazed to see that when I ran some negative 
+> tests, such as attempting to create a file or directory where I don't 
+> have permissions. On Redhat and Ubuntu Hoary [kernel 2.4x], I would 
+> always get non zero exit codes on such tests. However, now I'm getting 
+> exit codes of 0. I don't understand what happened. Code the version of 
+> python I'm using affect this? Here's an example of a test:
+> 
+> A simple script that tries to touch a file in a directory where it does 
+> not have write permissions:
+> 
+> touch /home/user/testfile
+> 
+> If I try the same test from a shell script, and echo the exit code, it 
+> is non zero.
+> 
+> I'm kind of baffled!
+
+I have seen situations in which a non-zero exit code of a command was not
+correctly reported back, though I don't remember whether that was a bug
+in the script or a problem with a particular shell.
+However, I fear I don't have enough details to be able to make meaningful
+suggestions. Are you sure you use the same version of QMTest in both cases ?
+What about the test class ? Is it any of QMTest's builtin classes ? If not,
+could you post some code ? (Especially the one that evaluates the exit code.)
+What does your command look like ?
+
+
+Regards,
+		Stefan
+
+
+From lucaskeli at fastmail.fm  Mon Apr 24 18:39:28 2006
+From: lucaskeli at fastmail.fm (Kelly Lucas)
+Date: Mon, 24 Apr 2006 11:39:28 -0700
+Subject: [qmtest] Wrong Exit Codes
+In-Reply-To: <444ADC31.6010103@sympatico.ca>
+References: <444AC4F5.6040000@fastmail.fm> <444ADC31.6010103@sympatico.ca>
+Message-ID: <444D1B60.8010701@fastmail.fm>
+
+Well, here's an exmple of a test that fails on Breezy, kernel 2.6.16.1, 
+and the same exact test that passes on Redhat [kernel 2.4x] and Hoary, 
+kernel 2.6.13.4:
+
+My test is a shell script, and the shell script is simply:
+
+touch <pathname>
+
+The pathname is a place where the user running the test does not have 
+permissions. On Redhat and Hoary, I get the correct exit Code from 
+QMTest, which is 1. I'm using QMTest's built in checks for exit codes. I 
+do get the expected standard error in all cases, which is:
+
+touch: cannot touch <pathname>:  Permission denied
+
+The system where the wrong exit code is returned is running Python 
+2.4.2. The other two systems where the exit code is correct, are 
+running: Python 2.4.1 and Python 2.2.2.
+
+kdl
+
+Kelly D. Lucas
+lucaskeli at fastmail.fm
+
+
+
+Stefan Seefeld wrote:
+> Kelly Lucas wrote:
+>> I recently moved my test suite for another platform, which is code 
+>> named Breezy, the Ubuntu Linux release.
+>>
+>> I've previously been running my testsuite using QMTest on RedHat and 
+>> Ubuntu Hoary. However, I was amazed to see that when I ran some 
+>> negative tests, such as attempting to create a file or directory 
+>> where I don't have permissions. On Redhat and Ubuntu Hoary [kernel 
+>> 2.4x], I would always get non zero exit codes on such tests. However, 
+>> now I'm getting exit codes of 0. I don't understand what happened. 
+>> Code the version of python I'm using affect this? Here's an example 
+>> of a test:
+>>
+>> A simple script that tries to touch a file in a directory where it 
+>> does not have write permissions:
+>>
+>> touch /home/user/testfile
+>>
+>> If I try the same test from a shell script, and echo the exit code, 
+>> it is non zero.
+>>
+>> I'm kind of baffled!
+>
+> I have seen situations in which a non-zero exit code of a command was not
+> correctly reported back, though I don't remember whether that was a bug
+> in the script or a problem with a particular shell.
+> However, I fear I don't have enough details to be able to make meaningful
+> suggestions. Are you sure you use the same version of QMTest in both 
+> cases ?
+> What about the test class ? Is it any of QMTest's builtin classes ? If 
+> not,
+> could you post some code ? (Especially the one that evaluates the exit 
+> code.)
+> What does your command look like ?
+>
+>
+> Regards,
+>         Stefan
+
+

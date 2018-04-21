@@ -1,0 +1,146 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [coldfire-gnu-discuss] Debugging from flash
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:coldfire-gnu-discuss%40codesourcery.com?Subject=Re%3A%20%5Bcoldfire-gnu-discuss%5D%20Debugging%20from%20flash&In-Reply-To=%3CD3E384327F5C6D48AADCEA84160B7D7332BFFB%40mcbain.dw.local%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000558.html">
+   <LINK REL="Next"  HREF="000563.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[coldfire-gnu-discuss] Debugging from flash</H1>
+    <B>Corrin Meyer</B> 
+    <A HREF="mailto:coldfire-gnu-discuss%40codesourcery.com?Subject=Re%3A%20%5Bcoldfire-gnu-discuss%5D%20Debugging%20from%20flash&In-Reply-To=%3CD3E384327F5C6D48AADCEA84160B7D7332BFFB%40mcbain.dw.local%3E"
+       TITLE="[coldfire-gnu-discuss] Debugging from flash">Corrin.Meyer at dornerworks.com
+       </A><BR>
+    <I>Mon Sep  8 21:24:40 UTC 2008</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000558.html">[coldfire-gnu-discuss] Debugging from flash
+</A></li>
+        <LI>Next message: <A HREF="000563.html">[coldfire-gnu-discuss] Debugging from flash
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#559">[ date ]</a>
+              <a href="thread.html#559">[ thread ]</a>
+              <a href="subject.html#559">[ subject ]</a>
+              <a href="author.html#559">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Sorry, I forgot to include the exception frame.  That is actually what I
+was trying to look into but it doesn't seem to make sense to me.  The
+following GDB session output was from attempting to debug the 'hello
+world' program from flash. This program, when run without GDB, runs
+fine.  It can be debugged fine by GDB when run from RAM.
+
+
+(gdb) target remote | m68k-elf-sprite pe: m52235evb Remote debugging
+using | m68k-elf-sprite pe: m52235evb
+m68k-elf-sprite: Opening P&amp;E USBMultilink port 1 (USB1 : USB-ML-CF REF :
+M52230DEMO (PE60))
+m68k-elf-sprite: Target reset
+0x00000000 in __cs3_interrupt_vector_coldfire ()
+(gdb) c
+Continuing.
+
+Program received signal SIGTRAP, Trace/breakpoint trap.
+0x00000f5e in __cs3_isr_illegal_instruction ()
+(gdb) p $sp
+$1 = (void *) 0x20007f88
+(gdb) x/4xw $sp
+0x20007f88:     0x20007fd4      0x40102708      0x00000002
+0xfffffffe
+(gdb)
+
+
+This exception frame doesn't seem to make a whole lot of sense to me.
+
+I did make some progress though.  If I manually set $pc = __cs3_reset
+and $sp = 0x20008000 and then issue the continue command, it executes as
+expected. Also I can add breakpoints if I use 'hbreak' but it doesn't
+seem to add hardware breakpoints by default.
+
+Corrin Meyer
+
+&gt;<i> -----Original Message-----
+</I>&gt;<i> From: Corrin Meyer [mailto:<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/coldfire-gnu-discuss">Corrin.Meyer at dornerworks.com</A>]
+</I>&gt;<i> Sent: Monday, September 08, 2008 10:42 AM
+</I>&gt;<i> To: <A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/coldfire-gnu-discuss">coldfire-gnu-discuss at codesourcery.com</A>
+</I>&gt;<i> Subject: RE: [coldfire-gnu-discuss] Debugging from flash
+</I>&gt;<i> 
+</I>&gt;<i> It actually is not a M52235EVB but the ColdFire is configured like a
+</I>&gt;<i> M52235EVB.  I have been able to successfully run and debug
+</I>applications
+&gt;<i> from RAM.  It is just once I go to Flash that I am getting this
+</I>problem.
+&gt;<i> 
+</I>&gt;<i> Corrin Meyer
+</I>&gt;<i> 
+</I>&gt;<i> &gt; -----Original Message-----
+</I>&gt;<i> &gt; From: Daniel Jacobowitz [mailto:<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/coldfire-gnu-discuss">dan at codesourcery.com</A>]
+</I>&gt;<i> &gt; Sent: Monday, September 08, 2008 9:42 AM
+</I>&gt;<i> &gt; To: Corrin Meyer
+</I>&gt;<i> &gt; Cc: <A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/coldfire-gnu-discuss">coldfire-gnu-discuss at codesourcery.com</A>
+</I>&gt;<i> &gt; Subject: Re: [coldfire-gnu-discuss] Debugging from flash
+</I>&gt;<i> &gt;
+</I>&gt;<i> &gt; On Mon, Sep 08, 2008 at 09:21:09AM -0400, Corrin Meyer wrote:
+</I>&gt;<i> &gt; &gt; (gdb) target remote | m68k-elf-sprite pe: m52235evb
+</I>&gt;<i> &gt;
+</I>&gt;<i> &gt; Just checking, is your board actually an M52235EVB or is it
+</I>something
+&gt;<i> &gt; similar but slightly different?
+</I>&gt;<i> &gt;
+</I>&gt;<i> &gt; &gt; Program received signal SIGTRAP, Trace/breakpoint trap.
+</I>&gt;<i> &gt; &gt; 0x00000e12 in __cs3_isr_illegal_instruction ()
+</I>&gt;<i> &gt; &gt; (gdb)
+</I>&gt;<i> &gt;
+</I>&gt;<i> &gt; At this point, I'd suggest you check the exception frame on the
+</I>stack
+&gt;<i> &gt; to see what instruction was illegal.
+</I>&gt;<i> &gt;
+</I>&gt;<i> &gt; &gt; I would expect that after issuing the continue command that the
+</I>&gt;<i> program
+</I>&gt;<i> &gt; &gt; should execute just as if the board had been booted.  Am I missing
+</I>&gt;<i> &gt; &gt; something?
+</I>&gt;<i> &gt;
+</I>&gt;<i> &gt; Almost the same.  The only difference is that the initialization
+</I>&gt;<i> &gt; sequence in the board file is executed first; this is to support
+</I>&gt;<i> &gt; programs run from RAM, which may require the memory controller
+</I>&gt;<i> &gt; to be initialized first.  But in general the initialization sequence
+</I>&gt;<i> &gt; does not cause a problem if executed twice.
+</I>&gt;<i> &gt;
+</I>&gt;<i> &gt; --
+</I>&gt;<i> &gt; Daniel Jacobowitz
+</I>&gt;<i> &gt; CodeSourcery
+</I>
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000558.html">[coldfire-gnu-discuss] Debugging from flash
+</A></li>
+	<LI>Next message: <A HREF="000563.html">[coldfire-gnu-discuss] Debugging from flash
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#559">[ date ]</a>
+              <a href="thread.html#559">[ thread ]</a>
+              <a href="subject.html#559">[ subject ]</a>
+              <a href="author.html#559">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/coldfire-gnu-discuss">More information about the coldfire-gnu-discuss
+mailing list</a><br>
+</body></html>

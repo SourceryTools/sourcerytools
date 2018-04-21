@@ -1,0 +1,445 @@
+From michel.marti at objectxp.com  Wed Apr  5 12:37:37 2006
+From: michel.marti at objectxp.com (Michel Marti)
+Date: Wed, 05 Apr 2006 14:37:37 +0200
+Subject: coldfire-toolchain: "make dep" fails
+Message-ID: <4433BA11.1010306@objectxp.com>
+
+Hello,
+
+I just downloaded the CodeSourcery GNU toolchain for the coldfire platform
+(freescale-coldfire-4.1-3-m68k-uclinux-i686-pc-linux-gnu.tar.bz2) and tried to compile a
+linux 2.4.32-uc0 kernel with it. Unfortunately, "make dep" fails:
+
+$ PATH=~/codesourcery/bin/:$PATH
+$ m68k-uclinux-gcc -v
+Using built-in specs.
+Target: m68k-uclinux
+Configured with: /scratch/richard/codesourcery/freescale/src/gcc-coldfire-4_1/configure
+--disable-nls --build=i686-pc-linux-gnu --host=i686-pc-linux-gnu --target=m68k-uclinux
+--enable-languages=c,c++ --enable-shared --enable-threads --disable-libmudflap
+--disable-libssp --disable-libgomp --disable-libstdcxx-pch --disable-shared
+--with-cpu=5206 --with-gnu-as --with-gnu-ld
+--prefix=/opt/freescale/usr/local/gcc-4.1-uclibc-0.9/m68k-uclibc
+--with-sysroot=/opt/freescale/usr/local/gcc-4.1-uclibc-0.9/m68k-uclibc/m68k-uclinux/libc
+--with-build-sysroot=/scratch/richard/codesourcery/freescale/install/m68k-uclinux/libc
+Thread model: single
+gcc version 4.1.0 (CodeSourcery ColdFire)
+
+$ make ARCH=m68knommu CROSS_COMPILE=m68k-uclinux- menuconfig
+...
+
+$ make ARCH=m68knommu CROSS_COMPILE=m68k-uclinux- dep
+rm -f .depend .hdepend
+make _sfdep_arch/m68knommu/kernel _sfdep_arch/m68knommu/mm _sfdep_arch/m68knommu/lib
+_sfdep_arch/m68knommu/platform/527x _sfdep_kernel _sfdep_drivers _sfdep_mmnommu _sfdep_fs
+_sfdep_net _sfdep_ipc _sfdep_lib _sfdep_crypto
+_FASTDEP_ALL_SUB_DIRS="arch/m68knommu/kernel arch/m68knommu/mm arch/m68knommu/lib
+arch/m68knommu/platform/527x kernel drivers mmnommu fs net ipc lib crypto"
+make[1]: Entering directory `/home/mma/sandbox/linux-2.4.32-uc0'
+make -C arch/m68knommu/kernel fastdep
+make[2]: Entering directory `/home/mma/sandbox/linux-2.4.32-uc0/arch/m68knommu/kernel'
+/home/mma/sandbox/linux-2.4.32-uc0/scripts/mkdep -fno-builtin -nostdinc -D__KERNEL__
+-I/home/mma/sandbox/linux-2.4.32-uc0/include  -Wall -Wstrict-prototypes -Wno-trigraphs -O1
+-g -fno-strict-aliasing -fno-common -I../include -pipe -DNO_MM -DNO_FPU -m5307 -Wa,-S
+-Wa,-m5307 -D__ELF__ -DMAGIC_ROM_PTR -DUTS_SYSNAME=\"uClinux\" -D__linux__ -O1  -nostdinc
+-iwithprefix include -- bios32.c console.c m68k_defs.c m68k_ksyms.c process.c ptrace.c
+semaphore.c setup.c sys_m68k.c time.c traps.c > .depend
+realpath(../include) failed, No such file or directory
+make[2]: *** [fastdep] Error 1
+make[2]: Leaving directory `/home/mma/sandbox/linux-2.4.32-uc0/arch/m68knommu/kernel'
+make[1]: *** [_sfdep_arch/m68knommu/kernel] Error 2
+make[1]: Leaving directory `/home/mma/sandbox/linux-2.4.32-uc0'
+make: *** [dep-files] Error 2
+
+Using the toolchain from www.uclinux.org (based on gcc.2.95) this works without a problem.
+
+Any hints on what's wrong?
+
+Thanks,
+
+Michel
+
+
+From mark at codesourcery.com  Wed Apr  5 14:59:39 2006
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Wed, 05 Apr 2006 07:59:39 -0700
+Subject: [coldfire-gnu-discuss] coldfire-toolchain: "make dep" fails
+In-Reply-To: <4433BA11.1010306@objectxp.com>
+References: <4433BA11.1010306@objectxp.com>
+Message-ID: <4433DB5B.7080304@codesourcery.com>
+
+Michel Marti wrote:
+> Hello,
+> 
+> I just downloaded the CodeSourcery GNU toolchain for the coldfire platform
+> (freescale-coldfire-4.1-3-m68k-uclinux-i686-pc-linux-gnu.tar.bz2) and tried to compile a
+> linux 2.4.32-uc0 kernel with it. Unfortunately, "make dep" fails:
+
+Our release is based on GCC 4.1; it may be that 2.4 kernels do not work
+correctly with that version of GCC.
+
+-- 
+Mark Mitchell
+CodeSourcery
+mark at codesourcery.com
+(650) 331-3385 x713
+
+
+From michel.marti at objectxp.com  Wed Apr  5 15:45:17 2006
+From: michel.marti at objectxp.com (Michel Marti)
+Date: Wed, 05 Apr 2006 17:45:17 +0200
+Subject: [coldfire-gnu-discuss] coldfire-toolchain: "make dep" fails
+In-Reply-To: <4433DB5B.7080304@codesourcery.com>
+References: <4433BA11.1010306@objectxp.com> <4433DB5B.7080304@codesourcery.com>
+Message-ID: <4433E60D.7000902@objectxp.com>
+
+Mark Mitchell wrote:
+> Our release is based on GCC 4.1; it may be that 2.4 kernels do not work
+> correctly with that version of GCC.
+
+I don't have a GCC 4.1.x handy, but using GCC 4.0, "make dep" works...
+
+Somehow, Make thinks that it should add "-I../include" when using the toolchain from
+CodeSourcery. Since chances are relatively low that such a directory exists, the command
+fails:
+
+make[2]: Entering directory `/home/mma/sandbox/linux-2.4.32-uc0/arch/m68knommu/kernel'
+/home/mma/sandbox/linux-2.4.32-uc0/scripts/mkdep -fno-builtin -nostdinc -D__KERNEL__
+-I/home/mma/sandbox/linux-2.4.32-uc0/include  -Wall -Wstrict-prototypes -Wno-trigraphs -O1
+-g -fno-strict-aliasing -fno-common -I../include -pipe -DNO_MM -DNO_FPU -m5307 -Wa,-S
+-Wa,-m5307 -D__ELF__ -DMAGIC_ROM_PTR -DUTS_SYSNAME=\"uClinux\" -D__linux__ -O1  -nostdinc
+-iwithprefix include -- bios32.c console.c m68k_defs.c m68k_ksyms.c process.c ptrace.c
+semaphore.c setup.c sys_m68k.c time.c traps.c > .depend
+realpath(../include) failed, No such file or directory
+make[2]: *** [fastdep] Error 1
+
+
+In contrast, using the uclinux toolchain results in make using
+"-I/usr/local/lib/gcc-lib/m68k-elf/2.95.3/include" which is a valid directory:
+
+make[2]: Entering directory `/home/mma/sandbox/linux-2.4.32-uc0/arch/m68knommu/kernel'
+/home/mma/sandbox/linux-2.4.32-uc0/scripts/mkdep -fno-builtin -nostdinc -D__KERNEL__
+-I/home/mma/sandbox/linux-2.4.32-uc0/include  -Wall -Wstrict-prototypes -Wno-trigraphs -O1
+-g -fno-strict-aliasing -fno-common -I/usr/local/lib/gcc-lib/m68k-elf/2.95.3/./include
+-pipe -DNO_MM -DNO_FPU -m5307 -Wa,-S -Wa,-m5307 -D__ELF__ -DMAGIC_ROM_PTR
+-DUTS_SYSNAME=\"uClinux\" -D__linux__ -O1  -nostdinc -iwithprefix include -- bios32.c
+console.c m68k_defs.c m68k_ksyms.c process.c ptrace.c semaphore.c setup.c sys_m68k.c
+time.c traps.c > .depend
+make[2]: Leaving directory `/home/mma/sandbox/linux-2.4.32-uc0/arch/m68knommu/kernel'
+
+Cheers,
+
+Michel
+
+
+From dan at codesourcery.com  Wed Apr  5 16:06:07 2006
+From: dan at codesourcery.com (Daniel Jacobowitz)
+Date: Wed, 5 Apr 2006 12:06:07 -0400
+Subject: [coldfire-gnu-discuss] coldfire-toolchain: "make dep" fails
+In-Reply-To: <4433E60D.7000902@objectxp.com>
+References: <4433BA11.1010306@objectxp.com> <4433DB5B.7080304@codesourcery.com> <4433E60D.7000902@objectxp.com>
+Message-ID: <20060405160607.GN14380@caradoc.them.org>
+
+On Wed, Apr 05, 2006 at 05:45:17PM +0200, Michel Marti wrote:
+> In contrast, using the uclinux toolchain results in make using
+> "-I/usr/local/lib/gcc-lib/m68k-elf/2.95.3/include" which is a valid directory:
+
+I believe this was a bug in the kernel build system, since fixed.  You
+might want to check how the makefile gets that path.
+
+-- 
+Daniel Jacobowitz
+CodeSourcery
+
+
+From michel.marti at objectxp.com  Wed Apr  5 16:26:07 2006
+From: michel.marti at objectxp.com (Michel Marti)
+Date: Wed, 05 Apr 2006 18:26:07 +0200
+Subject: [coldfire-gnu-discuss] coldfire-toolchain: "make dep" fails
+In-Reply-To: <20060405160607.GN14380@caradoc.them.org>
+References: <4433BA11.1010306@objectxp.com> <4433DB5B.7080304@codesourcery.com> <4433E60D.7000902@objectxp.com> <20060405160607.GN14380@caradoc.them.org>
+Message-ID: <4433EF9F.7070608@objectxp.com>
+
+Daniel Jacobowitz wrote:
+>>In contrast, using the uclinux toolchain results in make using
+>>"-I/usr/local/lib/gcc-lib/m68k-elf/2.95.3/include" which is a valid directory:
+> 
+> 
+> I believe this was a bug in the kernel build system, since fixed.  You
+> might want to check how the makefile gets that path.
+> 
+
+In my case, it get's it in arch/m68knommu/platform/527x/Rules.make:
+
+GCC_DIR = $(shell $(CC) -v 2>&1 | grep specs | sed -e 's/.* \(.*\)specs/\1\./')
+
+The question now is how to replace this with something that works for a gcc that returns
+"Using built-in specs." when invoking it with "-v". Are there any other gcc-options that
+will return the path to the gcc's include directory?
+
+
+
+From dan at codesourcery.com  Wed Apr  5 17:01:39 2006
+From: dan at codesourcery.com (Daniel Jacobowitz)
+Date: Wed, 5 Apr 2006 13:01:39 -0400
+Subject: [coldfire-gnu-discuss] coldfire-toolchain: "make dep" fails
+In-Reply-To: <4433EF9F.7070608@objectxp.com>
+References: <4433BA11.1010306@objectxp.com> <4433DB5B.7080304@codesourcery.com> <4433E60D.7000902@objectxp.com> <20060405160607.GN14380@caradoc.them.org> <4433EF9F.7070608@objectxp.com>
+Message-ID: <20060405170138.GS14380@caradoc.them.org>
+
+On Wed, Apr 05, 2006 at 06:26:07PM +0200, Michel Marti wrote:
+> In my case, it get's it in arch/m68knommu/platform/527x/Rules.make:
+> 
+> GCC_DIR = $(shell $(CC) -v 2>&1 | grep specs | sed -e 's/.* \(.*\)specs/\1\./')
+> 
+> The question now is how to replace this with something that works for a gcc that returns
+> "Using built-in specs." when invoking it with "-v". Are there any other gcc-options that
+> will return the path to the gcc's include directory?
+
+"gcc -print-file-name=include".  This is used by 2.6.x kernels:
+
+Makefile:NOSTDINC_FLAGS += -nostdinc -isystem $(shell $(CC) -print-file-name=include)
+
+
+-- 
+Daniel Jacobowitz
+CodeSourcery
+
+
+From richard at codesourcery.com  Thu Apr  6 06:40:47 2006
+From: richard at codesourcery.com (Richard Sandiford)
+Date: Thu, 06 Apr 2006 07:40:47 +0100
+Subject: [coldfire-gnu-discuss] coldfire-toolchain: "make dep" fails
+In-Reply-To: <4433BA11.1010306@objectxp.com> (Michel Marti's message of "Wed,
+	05 Apr 2006 14:37:37 +0200")
+References: <4433BA11.1010306@objectxp.com>
+Message-ID: <87fykrqk9c.fsf@talisman.home>
+
+Michel Marti <michel.marti at objectxp.com> writes:
+> I just downloaded the CodeSourcery GNU toolchain for the coldfire
+> platform (freescale-coldfire-4.1-3-m68k-uclinux-i686-pc-linux-gnu.tar.bz2)
+> and tried to compile a linux 2.4.32-uc0 kernel with it. Unfortunately,
+> "make dep" fails:
+
+Further to what Mark and Daniel said: I don't know if using 2.6 is an
+option for you, but we successfully built a linux-2.6.12-uc0 kernel as
+part of testing the toolchain.
+
+Richard
+
+
+From michel.marti at objectxp.com  Thu Apr  6 08:14:59 2006
+From: michel.marti at objectxp.com (Michel Marti)
+Date: Thu, 06 Apr 2006 10:14:59 +0200
+Subject: [coldfire-gnu-discuss] coldfire-toolchain: "make dep" fails
+In-Reply-To: <87fykrqk9c.fsf@talisman.home>
+References: <4433BA11.1010306@objectxp.com> <87fykrqk9c.fsf@talisman.home>
+Message-ID: <4434CE03.4000200@objectxp.com>
+
+Richard Sandiford wrote:
+> Further to what Mark and Daniel said: I don't know if using 2.6 is an
+> option for you, but we successfully built a linux-2.6.12-uc0 kernel as
+> part of testing the toolchain.
+
+OK, I give up ;-) There are some efforts to make 2.4.32 compilable with GCC 4.x
+(http://lkml.org/lkml/2006/3/4/120), but those patches concentrate on x86.
+
+I now tried to build 2.6.12-uc0 for the M5271EVB platform using the CodeSourcery
+toolchain, but this fails as well:
+
+$ make ARCH=m68knommu CROSS_COMPILE=m68k-uclinux-
+  CHK     include/linux/version.h
+  UPD     include/linux/version.h
+  SYMLINK include/asm -> include/asm-m68knommu
+  SPLIT   include/linux/autoconf.h -> include/config/*
+  CC      arch/m68knommu/kernel/asm-offsets.s
+  CHK     include/asm-m68knommu/asm-offsets.h
+  UPD     include/asm-m68knommu/asm-offsets.h
+  CC      init/main.o
+  CHK     include/linux/compile.h
+  UPD     include/linux/compile.h
+  CC      init/version.o
+  CC      init/do_mounts.o
+In file included from include/linux/nfs_fs.h:15,
+                 from init/do_mounts.c:11:
+include/linux/pagemap.h: In function 'fault_in_pages_readable':
+include/linux/pagemap.h:236: error: read-only variable '__gu_val' used as 'asm' output
+include/linux/pagemap.h:236: error: read-only variable '__gu_val' used as 'asm' output
+include/linux/pagemap.h:236: error: read-only variable '__gu_val' used as 'asm' output
+include/linux/pagemap.h:236: warning: passing argument 1 of 'memcpy' discards qualifiers
+from pointer target type
+include/linux/pagemap.h:236: error: assignment of read-only variable '__gu_val'
+include/linux/pagemap.h:242: error: read-only variable '__gu_val' used as 'asm' output
+include/linux/pagemap.h:242: error: read-only variable '__gu_val' used as 'asm' output
+include/linux/pagemap.h:242: error: read-only variable '__gu_val' used as 'asm' output
+include/linux/pagemap.h:242: warning: passing argument 1 of 'memcpy' discards qualifiers
+from pointer target type
+include/linux/pagemap.h:242: error: assignment of read-only variable '__gu_val'
+make[1]: *** [init/do_mounts.o] Error 1
+make: *** [init] Error 2
+
+Any further hints?
+
+Michel
+
+
+From nathan at codesourcery.com  Tue Apr 18 10:09:25 2006
+From: nathan at codesourcery.com (Nathan Sidwell)
+Date: Tue, 18 Apr 2006 11:09:25 +0100
+Subject: [coldfire-gnu-discuss] coldfire-toolchain: "make dep" fails
+In-Reply-To: <4434CE03.4000200@objectxp.com>
+References: <4433BA11.1010306@objectxp.com> <87fykrqk9c.fsf@talisman.home> <4434CE03.4000200@objectxp.com>
+Message-ID: <4444BAD5.9010908@codesourcery.com>
+
+Michel Marti wrote:
+
+> I now tried to build 2.6.12-uc0 for the M5271EVB platform using the CodeSourcery
+> toolchain, but this fails as well:
+> 
+
+> In file included from include/linux/nfs_fs.h:15,
+>                  from init/do_mounts.c:11:
+> include/linux/pagemap.h: In function 'fault_in_pages_readable':
+> include/linux/pagemap.h:236: error: read-only variable '__gu_val' used as 'asm' output
+> include/linux/pagemap.h:236: error: read-only variable '__gu_val' used as 'asm' output
+> include/linux/pagemap.h:236: error: read-only variable '__gu_val' used as 'asm' output
+> include/linux/pagemap.h:236: warning: passing argument 1 of 'memcpy' discards qualifiers
+> from pointer target type
+> include/linux/pagemap.h:236: error: assignment of read-only variable '__gu_val'
+> include/linux/pagemap.h:242: error: read-only variable '__gu_val' used as 'asm' output
+> include/linux/pagemap.h:242: error: read-only variable '__gu_val' used as 'asm' output
+> include/linux/pagemap.h:242: error: read-only variable '__gu_val' used as 'asm' output
+> include/linux/pagemap.h:242: warning: passing argument 1 of 'memcpy' discards qualifiers
+> from pointer target type
+> include/linux/pagemap.h:242: error: assignment of read-only variable '__gu_val'
+> make[1]: *** [init/do_mounts.o] Error 1
+> make: *** [init] Error 2
+> 
+> Any further hints?
+
+I'm not sure if you received a reply to this, and I'm just catching up with my 
+email.  This problem is a bug with the kernel sources.  GCC 4.1 is stricter in 
+verifying const qualifiers on asm outputs.  This case is something like
+	const int __gu_val;
+	asm ("..." : "=r" (__gu_val) ...);
+which is now correctly diagnosed.  (IIRC, actually it's inside a macro and uses 
+__typeof__ in the form of '__typeof__(*FOO) __gu_val;' and FOO is a pointer to 
+const qualified type.)
+
+The 2.6 kernel sources have been patched (across the several architectures that 
+had this problem).
+
+nathan
+
+-- 
+Nathan Sidwell    ::   http://www.codesourcery.com   ::         CodeSourcery
+nathan at codesourcery.com    ::     http://www.planetfall.pwp.blueyonder.co.uk
+
+
+
+From michel.marti at objectxp.com  Tue Apr 18 10:25:21 2006
+From: michel.marti at objectxp.com (Michel Marti)
+Date: Tue, 18 Apr 2006 12:25:21 +0200
+Subject: [coldfire-gnu-discuss] coldfire-toolchain: "make dep" fails
+In-Reply-To: <4444BAD5.9010908@codesourcery.com>
+References: <4433BA11.1010306@objectxp.com> <87fykrqk9c.fsf@talisman.home> <4434CE03.4000200@objectxp.com> <4444BAD5.9010908@codesourcery.com>
+Message-ID: <4444BE91.3000707@objectxp.com>
+
+Nathan Sidwell wrote:
+>     const int __gu_val;
+>     asm ("..." : "=r" (__gu_val) ...);
+> which is now correctly diagnosed.  (IIRC, actually it's inside a macro
+> and uses __typeof__ in the form of '__typeof__(*FOO) __gu_val;' and FOO
+> is a pointer to const qualified type.)
+> 
+> The 2.6 kernel sources have been patched (across the several
+> architectures that had this problem).
+
+This error shows up when trying to compile 2.6.12-UC0 and also with 2.6.16-UC0....
+Should I try something newer then?
+
+Michel
+
+
+From richard at codesourcery.com  Tue Apr 18 10:59:22 2006
+From: richard at codesourcery.com (Richard Sandiford)
+Date: Tue, 18 Apr 2006 11:59:22 +0100
+Subject: [coldfire-gnu-discuss] coldfire-toolchain: "make dep" fails
+In-Reply-To: <4444BE91.3000707@objectxp.com> (Michel Marti's message of "Tue,
+	18 Apr 2006 12:25:21 +0200")
+References: <4433BA11.1010306@objectxp.com> <87fykrqk9c.fsf@talisman.home>
+	<4434CE03.4000200@objectxp.com> <4444BAD5.9010908@codesourcery.com>
+	<4444BE91.3000707@objectxp.com>
+Message-ID: <871wvvup2t.fsf@talisman.home>
+
+Michel Marti <michel.marti at objectxp.com> writes:
+> This error shows up when trying to compile 2.6.12-UC0 and also with
+> 2.6.16-UC0....  Should I try something newer then?
+
+I've attached the patch we used internally.  It allowed us to run the
+toolchain testsuites, but bear in mind that it isn't an official patch.
+
+Richard
+
+
+Index: include/asm-m68knommu/uaccess.h
+===================================================================
+RCS file: /home/cvs/Repository/linux/include/asm-m68knommu/uaccess.h,v
+retrieving revision 1.1.11.1
+retrieving revision 1.1.11.1.2.2
+diff -u -r1.1.11.1 -r1.1.11.1.2.2
+--- include/asm-m68knommu/uaccess.h	24 Mar 2006 16:23:59 -0000	1.1.11.1
++++ include/asm-m68knommu/uaccess.h	12 Apr 2006 13:46:09 -0000	1.1.11.1.2.2
+@@ -99,26 +99,30 @@
+ #define get_user(x, ptr)					\
+ ({								\
+     int __gu_err = 0;						\
+-    typeof(*(ptr)) __gu_val = 0;				\
++    unsigned long __gu_val;					\
++    unsigned long long __gu_val2;				\
+     switch (sizeof(*(ptr))) {					\
+     case 1:							\
+ 	__get_user_asm(__gu_err, __gu_val, ptr, b, "=d");	\
++	(x) = (typeof(*(ptr))) __gu_val;			\
+ 	break;							\
+     case 2:							\
+ 	__get_user_asm(__gu_err, __gu_val, ptr, w, "=r");	\
++	(x) = (typeof(*(ptr))) __gu_val;			\
+ 	break;							\
+     case 4:							\
+ 	__get_user_asm(__gu_err, __gu_val, ptr, l, "=r");	\
++	(x) = (typeof(*(ptr))) __gu_val;			\
+ 	break;							\
+     case 8:							\
+-	memcpy(&__gu_val, ptr, sizeof (*(ptr))); \
++	memcpy(&__gu_val2, ptr, sizeof (*(ptr)));		\
++	(x) = (typeof(*(ptr))) __gu_val2;			\
+ 	break;							\
+     default:							\
+ 	__gu_val = 0;						\
+ 	__gu_err = __get_user_bad();				\
+ 	break;							\
+     }								\
+-    (x) = __gu_val;						\
+     __gu_err;							\
+ })
+ #define __get_user(x, ptr) get_user(x, ptr)
+
+
+From michel.marti at objectxp.com  Thu Apr 20 09:11:24 2006
+From: michel.marti at objectxp.com (Michel Marti)
+Date: Thu, 20 Apr 2006 11:11:24 +0200
+Subject: [coldfire-gnu-discuss] coldfire-toolchain: "make dep" fails
+In-Reply-To: <871wvvup2t.fsf@talisman.home>
+References: <4433BA11.1010306@objectxp.com> <87fykrqk9c.fsf@talisman.home>	<4434CE03.4000200@objectxp.com> <4444BAD5.9010908@codesourcery.com>	<4444BE91.3000707@objectxp.com> <871wvvup2t.fsf@talisman.home>
+Message-ID: <4447503C.6090104@objectxp.com>
+
+Richard Sandiford wrote:
+> I've attached the patch we used internally.  It allowed us to run the
+> toolchain testsuites, but bear in mind that it isn't an official patch.
+
+Thanks, this did the trick. (When) will this patch become official?
+
+Michel
+
+

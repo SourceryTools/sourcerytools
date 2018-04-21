@@ -1,0 +1,1153 @@
+? .boring
+? .darcs-binaries
+? 1.diff
+? 2.diff
+? _darcs
+? ch
+? dlb.diff
+? misc.diff
+? pr.change
+? pr.diff
+? apps/sarsim/gdb.sims
+? doc/reference
+? doc/quickstart/quickstart
+? doc/quickstart/quickstart.html
+? doc/tutorial/tutorial
+? doc/tutorial/tutorial.html
+? scripts/fix-exec.sh
+? scripts/src-release-modified
+? tests/Makefile.in
+? vendor/atlas/_darcs
+? vendor/atlas/autom4te.cache
+? vendor/atlas/configure
+? vendor/atlas/CONFIG/acconfig.hpp.in
+? vendor/atlas/bin/Makefile.in
+? vendor/atlas/interfaces/blas/C/src/Makefile.in
+? vendor/atlas/interfaces/blas/C/testing/Makefile.in
+? vendor/atlas/interfaces/blas/F77/src/Makefile.in
+? vendor/atlas/interfaces/blas/F77/testing/Makefile.in
+? vendor/atlas/interfaces/lapack/C/src/Makefile.in
+? vendor/atlas/interfaces/lapack/F77/src/Makefile.in
+? vendor/atlas/lib/Makefile.in
+? vendor/atlas/src/auxil/Makefile.in
+? vendor/atlas/src/blas/gemm/Make.inc.in
+? vendor/atlas/src/blas/gemm/Makefile.in
+? vendor/atlas/src/blas/gemm/GOTO/Makefile.in
+? vendor/atlas/src/blas/gemv/Make.inc.in
+? vendor/atlas/src/blas/gemv/Makefile.in
+? vendor/atlas/src/blas/ger/Make.inc.in
+? vendor/atlas/src/blas/ger/Makefile.in
+? vendor/atlas/src/blas/level1/Make.inc.in
+? vendor/atlas/src/blas/level1/Makefile.in
+? vendor/atlas/src/blas/level2/Makefile.in
+? vendor/atlas/src/blas/level2/kernel/Makefile.in
+? vendor/atlas/src/blas/level3/Makefile.in
+? vendor/atlas/src/blas/level3/kernel/Makefile.in
+? vendor/atlas/src/blas/level3/rblas/Makefile.in
+? vendor/atlas/src/blas/pklevel3/Makefile.in
+? vendor/atlas/src/blas/pklevel3/gpmm/Makefile.in
+? vendor/atlas/src/blas/pklevel3/sprk/Makefile.in
+? vendor/atlas/src/blas/reference/level1/Makefile.in
+? vendor/atlas/src/blas/reference/level2/Makefile.in
+? vendor/atlas/src/blas/reference/level3/Makefile.in
+? vendor/atlas/src/lapack/Makefile.in
+? vendor/atlas/src/pthreads/blas/level1/Makefile.in
+? vendor/atlas/src/pthreads/blas/level2/Makefile.in
+? vendor/atlas/src/pthreads/blas/level3/Makefile.in
+? vendor/atlas/src/pthreads/misc/Makefile.in
+? vendor/atlas/src/testing/Makefile.in
+? vendor/atlas/tune/blas/gemm/Makefile.in
+? vendor/atlas/tune/blas/gemv/Makefile.in
+? vendor/atlas/tune/blas/ger/Makefile.in
+? vendor/atlas/tune/blas/level1/Makefile.in
+? vendor/atlas/tune/blas/level3/Makefile.in
+? vendor/atlas/tune/sysinfo/Makefile.in
+? vendor/fftw/_darcs
+? vendor/lapack/_darcs
+Index: ChangeLog
+===================================================================
+RCS file: /home/cvs/Repository/vpp/ChangeLog,v
+retrieving revision 1.369
+diff -u -r1.369 ChangeLog
+--- ChangeLog	17 Jan 2006 02:44:07 -0000	1.369
++++ ChangeLog	18 Jan 2006 01:50:06 -0000
+@@ -1,3 +1,28 @@
++2006-01-17 Jules Bergmann  <jules@codesourcery.com>
++
++	* GNUmakefile.in: Exclude _darcs directories from source package.
++	* configure.ac: Pass host, build, and target to ATLAS and FFTW
++	  sub-configures.  Pass configure options to ATLAS configure
++	  (via atlas-cfg-opt).
++	* scripts/release.sh: New meta-script to automate release process.
++	* scripts/config: Specify ATLAS options when cross-compiling.
++	  Move IPP and MKL paths to variable.
++	
++	* vendor/atlas/configure.ac (--with-isa, --with-int-type,
++	  --with-string-convention): New configure options.
++	  Setting values avoids probing, which breaks cross-compiling.
++	* vendor/atlas/tune/blas/gemm/emit_mm.c: Use $(GOODGCC) in
++	  generatd makefile rather than gcc.  Avoids breakage when
++	  cross-compiling.
++	
++	* src/vsip/impl/block-traits.hpp (Is_sized_block): New trait for
++	  blocks where size matters.
++	* src/vsip/impl/expr_scalar_block.hpp (Is_sized_block): Speciialize it.
++	* src/vsip/impl/expr_binary_block.hpp: Use Is_sized_block to
++	  determine if lhs/rhs block size is relevant.
++	* tests/par_expr.cpp: Additional test case, same block distribution
++	  over all processors for all operands.
++
+ 2006-01-16 Jules Bergmann  <jules@codesourcery.com>
+ 
+ 	* tests/conv-2d.cpp: Initialize/finalize the library with vsipl obj.
+Index: GNUmakefile.in
+===================================================================
+RCS file: /home/cvs/Repository/vpp/GNUmakefile.in,v
+retrieving revision 1.41
+diff -u -r1.41 GNUmakefile.in
+--- GNUmakefile.in	10 Jan 2006 21:35:53 -0000	1.41
++++ GNUmakefile.in	18 Jan 2006 01:50:06 -0000
+@@ -343,6 +343,7 @@
+ 	-chmod -R a+r $(distname)
+ 	tar cjhf $@ --owner=0 --group=0\
+           --exclude CVS \
++          --exclude _darcs \
+           --exclude .cvsignore \
+           --exclude autom4te.cache \
+           --exclude '*~' \
+Index: configure.ac
+===================================================================
+RCS file: /home/cvs/Repository/vpp/configure.ac,v
+retrieving revision 1.73
+diff -u -r1.73 configure.ac
+--- configure.ac	12 Jan 2006 16:43:35 -0000	1.73
++++ configure.ac	18 Jan 2006 01:50:06 -0000
+@@ -172,6 +172,10 @@
+                  [specify the directory containing ATLAS libraries.
+ 	          (Enables LAPACK).]))
+ 
++AC_ARG_WITH(atlas_cfg_opts,
++  AS_HELP_STRING([--with-atlas-cfg-opts=OPTS],
++                 [specify additional options for ATLAS configure.]))
++
+ AC_ARG_WITH(mkl_prefix,
+   AS_HELP_STRING([--with-mkl-prefix=PATH],
+                  [specify the installation prefix of the MKL library.  Headers
+@@ -499,7 +503,15 @@
+ 
+     fftw3_opts="--disable-dependency-tracking --silent"
+     fftw3_opts="$fftw3_opts --disable-fortran"
+-
++    if test "x$host" != "x"; then
++      fftw3_opts="$fftw3_opts --host=$host"
++    fi
++    if test "x$build" != "x"; then
++      fftw3_opts="$fftw3_opts --build=$build"
++    fi
++    if test "x$target" != "x"; then
++      fftw3_opts="$fftw3_opts --target=$target"
++    fi
+ 
+     fftw3_f_simd=
+     fftw3_d_simd=
+@@ -1151,7 +1163,18 @@
+         else
+           AC_MSG_RESULT([Cannot find vendor/atlas/configure after cd.])
+         fi
+-	$atlas_configure 
++	atlas_opts=""
++	if test "$host" != ""; then
++	  atlas_opts="$atlas_opts --host=$host"
++	fi
++	if test "$build" != ""; then
++	  atlas_opts="$atlas_opts --build=$build"
++	fi
++	if test "$target" != ""; then
++	  atlas_opts="$atlas_opts --target=$target"
++	fi
++	atlas_opts="$atlas_opts $with_atlas_cfg_opts"
++	$atlas_configure $atlas_opts
+         cd ../..
+ 
+         echo "==============================================================="
+Index: scripts/config
+===================================================================
+RCS file: /home/cvs/Repository/vpp/scripts/config,v
+retrieving revision 1.1
+diff -u -r1.1 config
+--- scripts/config	11 Jan 2006 20:57:07 -0000	1.1
++++ scripts/config	18 Jan 2006 01:50:06 -0000
+@@ -13,11 +13,20 @@
+          '--build=x86_64-unknown-linux-gnu',
+          '--target=i686-pc-linux-gnu']
+ 
++builtin_lapack = ['--with-lapack=builtin']
++
++cross_builtin_lapack = ['--with-lapack=builtin',
++	                '--with-atlas-cfg-opts="--with-mach=P4E --with-isa=SSE3 --with-int-type=int --with-string-convention=sun"']
++
+ nompi = ['--disable-mpi']
+ mpi = ['--enable-mpi']
+ 
+ g2c32 = '/usr/local/tools/vpp-1.0/i686-pc-linux-gnu/lib/libg2c.a'
+-g2c64 = '/usr/lib/gcc-lib/x86_64-redhat-linux/3.2.3/libg2c.a'
++# g2c64 = '/usr/lib/gcc-lib/x86_64-redhat-linux/3.2.3/libg2c.a' # RHEL 3
++g2c64 = '/usr/lib/gcc/x86_64-redhat-linux/3.4.3/libg2c.a'	# RHEL 4
++
++ipp_dir = '/scratch/jules/opt/intel/ipp41_eval'
++mkl_dir = '/scratch/jules/opt/intel/mkl721'
+ 
+ class SerialBuiltin32(Package):
+ 
+@@ -25,13 +34,13 @@
+         suffix = ''
+         options = ['CXXFLAGS="%s"'%' '.join(release),
+                    '--with-g2c-copy=%s'%g2c32,
+-                   '--with-fft=builtin', '--with-lapack=builtin'] + cross + nompi
++                   '--with-fft=builtin'] + cross_builtin_lapack + cross + nompi
+ 
+     class Debug(Configuration):
+         suffix = '-debug'
+         options = ['CXXFLAGS="%s"'%' '.join(debug),
+                    '--with-g2c-copy=%s'%g2c32,
+-                   '--with-fft=builtin', '--with-lapack=builtin'] + cross + nompi
++                   '--with-fft=builtin'] + cross_builtin_lapack + cross + nompi
+ 
+     suffix = '-serial-builtin'
+     release = Release
+@@ -43,13 +52,13 @@
+         suffix = ''
+         options = ['CXXFLAGS="%s"'%' '.join(release),
+                    '--with-g2c-copy=%s'%g2c64,
+-                   '--with-fft=builtin', '--with-lapack=builtin'] + nompi
++                   '--with-fft=builtin'] + builtin_lapack + nompi
+ 
+     class Debug(Configuration):
+         suffix = '-debug'
+         options = ['CXXFLAGS="%s"'%' '.join(debug),
+                    '--with-g2c-copy=%s'%g2c64,
+-                   '--with-fft=builtin', '--with-lapack=builtin'] + nompi
++                   '--with-fft=builtin'] + builtin_lapack + nompi
+ 
+     suffix = '-serial-builtin'
+     release = Release
+@@ -61,15 +70,15 @@
+         suffix = ''
+         options = ['CXXFLAGS="%s"'%' '.join(release),
+                    '--with-g2c-copy=%s'%g2c32,
+-                   '--with-ipp-prefix=/opt/intel/ipp41_eval/ia32_itanium', '--with-fft=ipp',
+-                   '--with-mkl-prefix=/opt/intel/mkl721/'] + cross + nompi
++                   '--with-ipp-prefix=%s/ia32_itanium'%ipp_dir, '--with-fft=ipp',
++                   '--with-mkl-prefix=%s'%mkl_dir] + cross + nompi
+ 
+     class Debug(Configuration):
+         suffix = '-debug'
+         options = ['CXXFLAGS="%s"'%' '.join(debug),
+                    '--with-g2c-copy=%s'%g2c32,
+-                   '--with-ipp-prefix=/opt/intel/ipp41_eval/ia32_itanium', '--with-fft=ipp',
+-                   '--with-mkl-prefix=/opt/intel/mkl721/'] + cross + nompi
++                   '--with-ipp-prefix=%s/ia32_itanium'%ipp_dir, '--with-fft=ipp',
++                   '--with-mkl-prefix=%s'%mkl_dir] + cross + nompi
+ 
+     suffix = '-serial-intel'
+     release = Release
+@@ -81,15 +90,15 @@
+         suffix = ''
+         options = ['CXXFLAGS="%s"'%' '.join(release),
+                    '--with-g2c-copy=%s'%g2c64,
+-                   '--with-ipp-prefix=/opt/intel/ipp41_eval/em64t', '--with-fft=ipp',
+-                   '--with-mkl-prefix=/opt/intel/mkl721/'] + nompi
++                   '--with-ipp-prefix=%s/em64t'%ipp_dir, '--with-fft=ipp',
++                   '--with-mkl-prefix=%s'%mkl_dir] + nompi
+ 
+     class Debug(Configuration):
+         suffix = '-debug'
+         options = ['CXXFLAGS="%s"'%' '.join(debug),
+                    '--with-g2c-copy=%s'%g2c64,
+-                   '--with-ipp-prefix=/opt/intel/ipp41_eval/em64t', '--with-fft=ipp',
+-                   '--with-mkl-prefix=/opt/intel/mkl721/'] + nompi
++                   '--with-ipp-prefix=%s/em64t'%ipp_dir, '--with-fft=ipp',
++                   '--with-mkl-prefix=%s'%mkl_dir] + nompi
+ 
+     suffix = '-serial-intel'
+     release = Release
+@@ -101,13 +110,13 @@
+         suffix = ''
+         options = ['CXXFLAGS="%s"'%' '.join(release),
+                    '--with-g2c-copy=%s'%g2c32,
+-                   'disable-mpi', '--with-fft=builtin', '--with-lapack=builtin'] + cross + mpi
++                   '--with-fft=builtin'] + cross_builtin_lapack + cross + mpi
+ 
+     class Debug(Configuration):
+         suffix = '-debug'
+         options = ['CXXFLAGS="%s"'%' '.join(debug),
+                    '--with-g2c-copy=%s'%g2c32,
+-                   '--with-fft=builtin', '--with-lapack=builtin'] + cross + mpi
++                   '--with-fft=builtin'] + cross_builtin_lapack + cross + mpi
+ 
+     suffix = '-parallel-builtin'
+     release = Release
+@@ -119,13 +128,13 @@
+         suffix = ''
+         options = ['CXXFLAGS="%s"'%' '.join(release),
+                    '--with-g2c-copy=%s'%g2c64,
+-                   '--with-fft=builtin', '--with-lapack=builtin'] + mpi
++                   '--with-fft=builtin'] + builtin_lapack + mpi
+ 
+     class Debug(Configuration):
+         suffix = '-debug'
+         options = ['CXXFLAGS="%s"'%' '.join(debug),
+                    '--with-g2c-copy=%s'%g2c64,
+-                   '--with-fft=builtin', '--with-lapack=builtin'] + mpi
++                   '--with-fft=builtin'] + builtin_lapack + mpi
+ 
+     suffix = '-parallel-builtin'
+     release = Release
+@@ -137,15 +146,15 @@
+         suffix = ''
+         options = ['CXXFLAGS="%s"'%' '.join(release),
+                    '--with-g2c-copy=%s'%g2c32,
+-                   '--with-ipp-prefix=/opt/intel/ipp41_eval/ia32_itanium', '--with-fft=ipp',
+-                   '--with-mkl-prefix=/opt/intel/mkl721/'] + cross + mpi
++                   '--with-ipp-prefix=%s/ia32_itanium'%ipp_dir, '--with-fft=ipp',
++                   '--with-mkl-prefix=%s'%mkl_dir] + cross + mpi
+ 
+     class Debug(Configuration):
+         suffix = '-debug'
+         options = ['CXXFLAGS="%s"'%' '.join(debug),
+                    '--with-g2c-copy=%s'%g2c32,
+-                   '--with-ipp-prefix=/opt/intel/ipp41_eval/ia32_itanium', '--with-fft=ipp',
+-                   '--with-mkl-prefix=/opt/intel/mkl721/'] + cross + mpi
++                   '--with-ipp-prefix=%s/ia32_itanium'%ipp_dir, '--with-fft=ipp',
++                   '--with-mkl-prefix=%s'%mkl_dir] + cross + mpi
+ 
+     suffix = '-parallel-intel'
+     release = Release
+@@ -157,15 +166,15 @@
+         suffix = ''
+         options = ['CXXFLAGS="%s"'%' '.join(release),
+                    '--with-g2c-copy=%s'%g2c64,
+-                   '--with-ipp-prefix=/opt/intel/ipp41_eval/em64t', '--with-fft=ipp',
+-                   '--with-mkl-prefix=/opt/intel/mkl721/'] + mpi
++                   '--with-ipp-prefix=%s/em64t'%ipp_dir, '--with-fft=ipp',
++                   '--with-mkl-prefix=%s'%mkl_dir] + mpi
+ 
+     class Debug(Configuration):
+         suffix = '-debug'
+         options = ['CXXFLAGS="%s"'%' '.join(debug),
+                    '--with-g2c-copy=%s'%g2c64,
+-                   '--with-ipp-prefix=/opt/intel/ipp41_eval/em64t', '--with-fft=ipp',
+-                   '--with-mkl-prefix=/opt/intel/mkl721/'] + mpi
++                   '--with-ipp-prefix=%s/em64t'%ipp_dir, '--with-fft=ipp',
++                   '--with-mkl-prefix=%s'%mkl_dir] + mpi
+ 
+     suffix = '-parallel-intel'
+     release = Release
+Index: scripts/release.sh
+===================================================================
+RCS file: scripts/release.sh
+diff -N scripts/release.sh
+--- /dev/null	1 Jan 1970 00:00:00 -0000
++++ scripts/release.sh	18 Jan 2006 01:50:07 -0000
+@@ -0,0 +1,183 @@
++#! /bin/sh
++
++########################################################################
++#
++# File:   release.sh
++# Author: Jules Bergmann
++# Date:   2005-01-11
++#
++# Contents:
++#   Script to build Sourcery VSIPL++ release.
++#
++########################################################################
++
++# SYNOPSIS
++#   release.sh -w <command> -d <dir>
++#
++# OPTIONS
++#   -w <command>
++#      Specify action of script.  Valid choices are:
++#         'src'  - build source package.
++#         'bin'  - build binary packages.
++#         'test' - test binary packages.
++#         'all'  - combination of src, bin, and test (default).
++#
++#   -d <dir>
++#      Specify source directory for 'package' command.
++#      Path to command will be <dir>/scripts/package.
++#
++# DESCRIPTION
++#   This script automates the building of source and binary packages
++#   for Sourcery VSIPL++.  It uses the 'package' script to perform
++#   the following steps:
++#     1. Check out sources from CVS,
++#     2. Build a source package,
++#     3. Build binary packages from source package,
++#     4. Test binary packages.
++
++what="all"
++dir=$HOME/csl/src/vpp/CVS-HEAD
++cfgfile=default
++pkgs="SerialBuiltin32 SerialBuiltin64 ParallelBuiltin32 ParallelBuiltin64 SerialIntel32 SerialIntel64 ParallelIntel32 ParallelIntel64"
++cvs_srcdir="cvs_srcdir"
++src_builddir="vpp-src-build"
++srcdir="sourceryvsipl++-1.0"
++test_srcdir="$srcdir"
++srcpkg="$srcdir.tar.bz2"
++
++while getopts "w:d:c:p:C:t:" arg; do
++    case $arg in
++	w)
++	    what=$OPTARG
++	    ;;
++	d)
++	    dir=$OPTARG
++	    ;;
++	c)
++	    cfgfile=$OPTARG
++	    ;;
++	C)
++	    cvs_srcdir=$OPTARG
++	    ;;
++	p)
++	    pkgs=$OPTARG
++	    ;;
++	t)
++	    test_srcdir=$OPTARG
++	    ;;
++	\?)
++            error "usage: release.sh [-v VERSION]"
++	    ;;
++    esac
++done
++
++package=$dir/scripts/package
++if test "$cfgfile" == "default"; then
++  cfgfile=$dir/scripts/config
++fi
++
++
++
++########################################################################
++# Step 0: Set environment variables for PATH and LD_LIBRARY_PATH
++#         to known values.
++########################################################################
++
++TOOL_DIR=/usr/local/tools/vpp-1.0
++GCCTOOL_DIR=/usr/local/tools/gcc-3.4.0
++GC_DIR=/opt/gc6.6/lib
++DOT_DIR=/usr/local/graphviz-2.6
++
++export PATH=$TOOL_DIR/sourceryg++/bin
++export PATH=$PATH:$TOOL_DIR/bin
++export PATH=$PATH:$GCCTOOL_DIR/bin
++export PATH=$PATH:/usr/bin
++export PATH=$PATH:/bin
++export PATH=$PATH:/usr/local/bin
++export PATH=$PATH:$DOT_DIR/bin
++export PATH=$PATH:/opt/renderx/xep
++
++export LD_LIBRARY_PATH=$TOOL_DIR/sourceryg++/lib
++export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$TOOL_DIR/sourceryg++/lib64
++export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$TOOL_DIR/lib
++export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$TOOL_DIR/lib64:$GC_DIR
++export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$GC_DIR
++export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$ipp_dir/em64t/sharedlib
++export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$ipp_dir/em64t/sharedlib/linuxem64t
++export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$ipp_dir/ia32_itanium/sharedlib
++export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$ipp_dir/ia32_itanium/sharedlib/linux32
++export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$mkl_dir/lib/em64t
++export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$mkl_dir/lib/32
++
++if test "$debug" == "yes"; then
++  echo `which g++`
++fi
++
++# 1. Build/unpack source package.
++if test "$what" == "src" -o "$what" == "all"; then
++  if test -f "$srcpkg"; then
++    echo "Source package found ... using it"
++  else
++    echo "Source package not found ... creating it"
++
++    # 1a. Checkout Sources
++    if test -d "$cvs_srcdir"; then
++      echo "Use $cvs_srcdir (no checkout)"
++    else
++      echo "Checkout $cvs_srcdir"
++      $package checkout --verbose --srcdir=$cvs_srcdir	\
++	--configfile=$cfgfile				\
++	2>&1 > log-checkout
++    fi
++
++
++    # 1b. Build source package
++    echo "Build SDist (from $cvs_srcdir)"
++    $package build_sdist --verbose --srcdir=$cvs_srcdir	\
++	--builddir=$src_builddir			\
++	--configfile=$cfgfile				\
++	2>&1 > log-src-build
++
++    # 1c. Untar source package.  Use this to build binary packages.
++    mv $src_builddir/$srcpkg .
++  fi
++fi
++
++
++# 2. Build binary packages.
++if test "$what" == "bin" -o "$what" == "all"; then
++  if test -f "$srcpkg"; then
++    tar xfj $srcpkg
++  else
++    echo "No source package found ($srcpkg)."
++    exit
++  fi
++
++  for pkg in $pkgs; do
++    echo "Build: $pkg"
++    builddir=vpp-build-$pkg
++    $package build_bdist --verbose --srcdir=$srcdir	\
++	--configfile=$cfgfile					\
++	--builddir=$builddir					\
++	--package=$pkg 2>&1 > log-build-$pkg
++  done
++fi
++
++# 3. Test binary packages.
++if test "$what" == "test" -o "$what" == "all"; then
++  for pkg in $pkgs; do
++    builddir=vpp-build-$pkg
++
++    pkgfile=`ls vpp-build-$pkg/sourceryvsipl++-*.tar.bz2`
++
++    echo "Test: $pkg ($pkgfile)"
++
++    rm -rf vpp-dist
++    $package test_bdist --verbose					\
++	--packagefile=$pkgfile					\
++	--srcdir=$test_srcdir					\
++	--configfile=$cfgfile					\
++	--builddir=$builddir					\
++	--package=$pkg 2>&1 > log-test-$pkg
++  done
++fi
+Index: src/vsip/impl/block-traits.hpp
+===================================================================
+RCS file: /home/cvs/Repository/vpp/src/vsip/impl/block-traits.hpp,v
+retrieving revision 1.16
+diff -u -r1.16 block-traits.hpp
+--- src/vsip/impl/block-traits.hpp	11 Jan 2006 16:22:44 -0000	1.16
++++ src/vsip/impl/block-traits.hpp	18 Jan 2006 01:50:07 -0000
+@@ -195,6 +195,18 @@
+ 
+ 
+ 
++/// Traits class to determine if block has a size.
++
++template <typename Block>
++struct Is_sized_block
++{ static bool const value = true; };
++
++template <typename Block>
++struct Is_sized_block<const Block>
++{ static bool const value = Is_sized_block<Block>::value; };
++
++
++
+ /// Check if lhs map is same as rhs block's map.
+ 
+ template <typename MapT,
+Index: src/vsip/impl/expr_binary_block.hpp
+===================================================================
+RCS file: /home/cvs/Repository/vpp/src/vsip/impl/expr_binary_block.hpp,v
+retrieving revision 1.18
+diff -u -r1.18 expr_binary_block.hpp
+--- src/vsip/impl/expr_binary_block.hpp	12 Jan 2006 05:47:13 -0000	1.18
++++ src/vsip/impl/expr_binary_block.hpp	18 Jan 2006 01:50:07 -0000
+@@ -18,6 +18,7 @@
+ #include <vsip/support.hpp>
+ #include <vsip/impl/block-traits.hpp>
+ #include <vsip/impl/noncopyable.hpp>
++#include <vsip/impl/metaprogramming.hpp>
+ 
+ namespace vsip
+ {
+@@ -347,18 +348,25 @@
+ 		LBlock, LType,
+ 		RBlock, RType>::size() const VSIP_NOTHROW
+ {
+-  if (lhs_.size() != rhs_.size())
++  if (!Is_sized_block<LBlock>::value)
++    return rhs_.size();
++  else if (!Is_sized_block<RBlock>::value)
++    return lhs_.size();
++  else
+   {
+-    printf("Binary_expr_block::size\n");
+-    printf("   %08lx rhs_.size() = %lu (%s)\n", (unsigned long)&rhs_,
+-	   static_cast<unsigned long>(rhs_.size()),
+-	   typeid(rhs_).name());
+-    printf("   %08lx lhs_.size() = %lu (%s)\n", (unsigned long)&lhs_,
+-	   static_cast<unsigned long>(lhs_.size()),
+-	   typeid(lhs_).name());
++    if (lhs_.size() != rhs_.size())
++    {
++      printf("Binary_expr_block::size\n");
++      printf("   %08lx rhs_.size() = %lu (%s)\n", (unsigned long)&rhs_,
++	     static_cast<unsigned long>(rhs_.size()),
++	     typeid(rhs_).name());
++      printf("   %08lx lhs_.size() = %lu (%s)\n", (unsigned long)&lhs_,
++	     static_cast<unsigned long>(lhs_.size()),
++	     typeid(lhs_).name());
++    }
++    assert(lhs_.size() == rhs_.size());
++    return lhs_.size(); 
+   }
+-  assert(lhs_.size() == rhs_.size());
+-  return lhs_.size(); 
+ }
+ 
+ template <dimension_type D,
+@@ -371,8 +379,15 @@
+ 		RBlock, RType>::size(dimension_type Dim,
+ 				     dimension_type d) const VSIP_NOTHROW
+ {
+-  assert(lhs_.size(Dim, d) == rhs_.size(Dim, d));
+-  return lhs_.size(Dim, d); 
++  if (!Is_sized_block<LBlock>::value)
++    return rhs_.size(Dim, d); 
++  else if (!Is_sized_block<RBlock>::value)
++    return lhs_.size(Dim, d); 
++  else
++  {
++    assert(lhs_.size(Dim, d) == rhs_.size(Dim, d));
++    return lhs_.size(Dim, d); 
++  }
+ }
+ 
+ template <dimension_type D,
+Index: src/vsip/impl/expr_scalar_block.hpp
+===================================================================
+RCS file: /home/cvs/Repository/vpp/src/vsip/impl/expr_scalar_block.hpp,v
+retrieving revision 1.12
+diff -u -r1.12 expr_scalar_block.hpp
+--- src/vsip/impl/expr_scalar_block.hpp	12 Jan 2006 05:47:13 -0000	1.12
++++ src/vsip/impl/expr_scalar_block.hpp	18 Jan 2006 01:50:07 -0000
+@@ -116,6 +116,13 @@
+ 
+ template <dimension_type D,
+ 	  typename       Scalar>
++struct Is_sized_block<Scalar_block<D, Scalar> >
++{ static bool const value = false; };
++
++
++
++template <dimension_type D,
++	  typename       Scalar>
+ struct Distributed_local_block<Scalar_block<D, Scalar> const>
+ {
+   typedef Scalar_block<D, Scalar> const type;
+Index: tests/par_expr.cpp
+===================================================================
+RCS file: /home/cvs/Repository/vpp/tests/par_expr.cpp,v
+retrieving revision 1.11
+diff -u -r1.11 par_expr.cpp
+--- tests/par_expr.cpp	11 Jan 2006 16:22:47 -0000	1.11
++++ tests/par_expr.cpp	18 Jan 2006 01:50:07 -0000
+@@ -490,6 +490,7 @@
+   Map<Cyclic_dist> map4(Cyclic_dist(np,1));
+   Map<Cyclic_dist> map5(Cyclic_dist(np,2));
+   Map<Cyclic_dist> map6(Cyclic_dist(np,3));
++  Map<Block_dist> map7 = Map<Block_dist>(Block_dist(np));
+ 
+ 
+   test_distributed_expr<T>(
+@@ -499,6 +500,11 @@
+ 
+   test_distributed_expr<T>(
+     Domain<1>(16),
++    map7, map7, map7,
++    loop);
++
++  test_distributed_expr<T>(
++    Domain<1>(16),
+     map1, map1, map2,
+     loop);
+ 
+Index: vendor/atlas/configure.ac
+===================================================================
+RCS file: /home/cvs/Repository/atlas/configure.ac,v
+retrieving revision 1.1
+diff -u -r1.1 configure.ac
+--- vendor/atlas/configure.ac	1 Dec 2005 14:43:17 -0000	1.1
++++ vendor/atlas/configure.ac	18 Jan 2006 01:50:07 -0000
+@@ -22,6 +22,26 @@
+                  [Specify machine type (default is to probe).]),,
+   [with_mach="probe"])
+ 
++AC_ARG_WITH(isa,
++  AS_HELP_STRING([--with-isa=ISA],
++                 [Specify ISA type.  Can be: AltiVec, SSE1, SSE2, SSE3, 3DNow1,
++                  3DNow2, none, or probe.  (Default is probe).]),,
++  [with_isa="probe"])
++
++AC_ARG_WITH(int-type,
++  AS_HELP_STRING([--with-int-type=ISA],
++                 [Specify C type corresponding to Fortran integer.
++                  Choices are: long, int, short, and probe.
++                  Default is probe.]),,
++  [with_int_type="probe"])
++
++AC_ARG_WITH(string-convention,
++  AS_HELP_STRING([--with-string-convention=CONV],
++                 [Specify Fortran string calling convention.
++                  Choices are: sun, cray, structval, structptr, and probe.
++                  Default is probe.]),,
++  [with_string_convention="probe"])
++
+ AC_ARG_WITH(libprefix,
+   AS_HELP_STRING([--with-libprefix=prefix],
+                  [Specify prefix for libraries. (default is none).]),,
+@@ -192,7 +212,7 @@
+ mach_is_alpha=""	# true if Alpha architecture
+ 
+ case $mach in
+-  PII | PIII | PPRO | P5MMX | P4 )
++  PII | PIII | PPRO | P5MMX | P4 | P4E )
+     mach_is_x86_32="true" ;;
+   P4E64 | HAMMER64 )
+     mach_is_x86_64="true" ;;
+@@ -226,10 +246,8 @@
+ # GetISAExt
+ # --------------------------------------------------------------------
+ 
+-use_isa="probe"
+-
+ # Check for AltiVec
+-if test "$use_isa" == "probe"; then
++if test "$with_isa" == "probe"; then
+   AC_MSG_CHECKING([for AltiVec ISA])
+ 
+   altivec_cfgs="altivec1 altivec2"
+@@ -280,12 +298,12 @@
+    exit(0);
+ }
+     ]])],
+-    [use_isa="AltiVec"
++    [with_isa="AltiVec"
+      break])
+     CFLAGS=$old_CFLAGS
+   done
+ 
+-  if test "$use_isa" == "AltiVec"; then
++  if test "$with_isa" == "AltiVec"; then
+     AC_MSG_RESULT([FOUND.])
+   else
+     AC_MSG_RESULT([not found.])
+@@ -293,7 +311,7 @@
+ fi
+ 
+ # --------------------------------------------------------------------
+-if test "$use_isa" == "probe"; then
++if test "$with_isa" == "probe"; then
+   AC_MSG_CHECKING([for SSE3])
+ 
+   AC_RUN_IFELSE([
+@@ -348,19 +366,22 @@
+   exit(0);
+ }
+     ]])],
+-  [use_isa="SSE3"
++  [with_isa="SSE3"
+    break])
+ 
+-  if test "$use_isa" == "SSE3"; then
+-    ARCHDEFS="$ARCHDEFS -DATL_SSE1 -DATL_SSE2 -DATL_SSE3"
++  if test "$with_isa" == "SSE3"; then
+     AC_MSG_RESULT([FOUND.])
+   else
+     AC_MSG_RESULT([not found.])
+   fi
+ fi
+ 
++if test "$with_isa" == "SSE3"; then
++  ARCHDEFS="$ARCHDEFS -DATL_SSE1 -DATL_SSE2 -DATL_SSE3"
++fi
++
+ # --------------------------------------------------------------------
+-if test "$use_isa" == "probe"; then
++if test "$with_isa" == "probe"; then
+   AC_MSG_CHECKING([for SSE2])
+ 
+   AC_RUN_IFELSE([
+@@ -423,20 +444,23 @@
+   exit(0);
+ }
+     ]])],
+-  [use_isa="SSE2"
++  [with_isa="SSE2"
+    break])
+ 
+-  if test "$use_isa" == "SSE2"; then
+-    ARCHDEFS="$ARCHDEFS -DATL_SSE1 -DATL_SSE2"
++  if test "$with_isa" == "SSE2"; then
+     AC_MSG_RESULT([FOUND.])
+   else
+     AC_MSG_RESULT([not found.])
+   fi
+ fi
+ 
++if test "$with_isa" == "SSE2"; then
++  ARCHDEFS="$ARCHDEFS -DATL_SSE1 -DATL_SSE2"
++fi
++
+ 
+ # --------------------------------------------------------------------
+-if test "$use_isa" == "probe"; then
++if test "$with_isa" == "probe"; then
+   AC_MSG_CHECKING([for SSE1])
+ 
+   AC_RUN_IFELSE([
+@@ -500,19 +524,22 @@
+ 
+ }
+     ]])],
+-  [use_isa="SSE1"
++  [with_isa="SSE1"
+    break])
+ 
+-  if test "$use_isa" == "SSE1"; then
+-    ARCHDEFS="$ARCHDEFS -DATL_SSE1"
++  if test "$with_isa" == "SSE1"; then
+     AC_MSG_RESULT([FOUND.])
+   else
+     AC_MSG_RESULT([not found.])
+   fi
+ fi
+ 
++if test "$with_isa" == "SSE1"; then
++  ARCHDEFS="$ARCHDEFS -DATL_SSE1"
++fi
++
+ # --------------------------------------------------------------------
+-if test "$use_isa" == "probe"; then
++if test "$with_isa" == "probe"; then
+   if test "$disable_3dnow" != "yes"; then
+   AC_MSG_CHECKING([for 3DNow2])
+ 
+@@ -583,11 +610,10 @@
+ 
+ }
+     ]])],
+-  [use_isa="3DNow2"
++  [with_isa="3DNow2"
+    break])
+ 
+-  if test "$use_isa" == "3DNow2"; then
+-    ARCHDEFS="$ARCHDEFS -DATL_3DNow2"
++  if test "$with_isa" == "3DNow2"; then
+     AC_MSG_RESULT([FOUND.])
+   else
+     AC_MSG_RESULT([not found.])
+@@ -595,9 +621,13 @@
+ fi
+ fi
+ 
++if test "$with_isa" == "3DNow2"; then
++  ARCHDEFS="$ARCHDEFS -DATL_3DNow2"
++fi
++
+ 
+ # --------------------------------------------------------------------
+-if test "$use_isa" == "probe"; then
++if test "$with_isa" == "probe"; then
+   if test "$disable_3dnow" != "yes"; then
+   AC_MSG_CHECKING([for 3DNow1])
+ 
+@@ -667,11 +697,10 @@
+ 
+ }
+     ]])],
+-  [use_isa="3DNow1"
++  [with_isa="3DNow1"
+    break])
+ 
+-  if test "$use_isa" == "3DNow1"; then
+-    ARCHDEFS="$ARCHDEFS -DATL_3DNow1"
++  if test "$with_isa" == "3DNow1"; then
+     AC_MSG_RESULT([FOUND.])
+   else
+     AC_MSG_RESULT([not found.])
+@@ -679,8 +708,12 @@
+ fi
+ fi
+ 
+-if test "$use_isa" == "probe"; then
+-  use_isa="none"
++if test "$with_isa" == "3DNow1"; then
++  ARCHDEFS="$ARCHDEFS -DATL_3DNow1"
++fi
++
++if test "$with_isa" == "probe"; then
++  with_isa="none"
+ fi
+ 
+ 
+@@ -741,8 +774,8 @@
+ # --------------------------------------------------------------------
+ 
+ ARCH0="$mach"
+-if test $use_isa != "none"; then
+-  ARCH0="$ARCH0$use_isa"
++if test $with_isa != "none"; then
++  ARCH0="$ARCH0$with_isa"
+ fi
+ ARCH0="$ARCH0$usermm_name"
+ 
+@@ -950,14 +983,15 @@
+ # Determine C type corresponding to Fortran integer
+ # --------------------------------------------------------------------
+ 
+-AC_MSG_CHECKING([for C type corresponding to Fortran integer])
+-use_int_type="none"
++if test "$with_int_type" == "probe"; then
++  AC_MSG_CHECKING([for C type corresponding to Fortran integer])
++  with_int_type="none"
+ 
+-AC_LANG_SAVE()
+-AC_LANG([C])
+-old_CPPFLAGS="$CPPFLAGS"
+-CPPFLAGS="$CPPFLAGS $f2c_namedef"
+-AC_COMPILE_IFELSE([
++  AC_LANG_SAVE()
++  AC_LANG([C])
++  old_CPPFLAGS="$CPPFLAGS"
++  CPPFLAGS="$CPPFLAGS $f2c_namedef"
++  AC_COMPILE_IFELSE([
+       AC_LANG_SOURCE([
+       ])
+ #include <stdio.h>
+@@ -985,39 +1019,40 @@
+       /* F77 INTEGER -> C short */
+       fprintf (f, "short\n");
+    else
+-      fprintf (f, "NONE\n");
++      fprintf (f, "none\n");
+    fclose(f);
+ }
+-    ],[
+-      AC_LANG([Fortran 77])
+-      old_LDFLAGS="$LDFLAGS"
+-      LDFLAGS="conftest.$ac_objext $LDFLAGS"
+-      AC_TRY_RUN([
+-       PROGRAM FF2CINT
+-       INTEGER IARR(8)
+-       IARR(1) = 1
+-       IARR(2) = -1
+-       IARR(3) = -1
+-       IARR(4) = -1
+-       IARR(5) = -1
+-       IARR(6) = -1
+-       IARR(7) = -1
+-       IARR(8) = -1
+-       CALL C2FINT(IARR)
+-       STOP
+-       END
+-     ])
+-     LDFLAGS="$old_LDFLAGS"
+-     use_int_type=`cat conftestval`
+-     rm -f conftestval
+-    ])
+-CPPFLAGS="$old_CPPFLAGS"
+-AC_LANG_RESTORE()
++      ],[
++        AC_LANG([Fortran 77])
++        old_LDFLAGS="$LDFLAGS"
++        LDFLAGS="conftest.$ac_objext $LDFLAGS"
++        AC_TRY_RUN([
++         PROGRAM FF2CINT
++         INTEGER IARR(8)
++         IARR(1) = 1
++         IARR(2) = -1
++         IARR(3) = -1
++         IARR(4) = -1
++         IARR(5) = -1
++         IARR(6) = -1
++         IARR(7) = -1
++         IARR(8) = -1
++         CALL C2FINT(IARR)
++         STOP
++         END
++       ])
++       LDFLAGS="$old_LDFLAGS"
++       with_int_type=`cat conftestval`
++       rm -f conftestval
++      ])
++  CPPFLAGS="$old_CPPFLAGS"
++  AC_LANG_RESTORE()
+ 
+-if test "$use_int_type" == "none"; then
+-  AC_MSG_ERROR([cannot determine C type for FORTRAN INTEGER.])
+-else
+-  AC_MSG_RESULT([$use_int_type.])
++  if test "$with_int_type" == "none"; then
++    AC_MSG_ERROR([cannot determine C type for FORTRAN INTEGER.])
++  else
++    AC_MSG_RESULT([$with_int_type.])
++  fi
+ fi
+ 
+ 
+@@ -1026,18 +1061,19 @@
+ # Determine Fortran string calling convention
+ # --------------------------------------------------------------------
+ 
+-AC_MSG_CHECKING([for Fortran string calling convention.])
+-string_conventions="-DSunStyle -DCrayStyle -DStringStructVal -DStringStructPtr"
+-
+-use_conv="none"
+-AC_LANG_SAVE()
+-old_CPPFLAGS="$CPPFLAGS"
+-for try_conv in $string_conventions; do
+-  AC_LANG([C])
+-  CPPFLAGS="$old_CPPFLAGS $f2c_namedef $try_conv -DF77_INTEGER=$use_int_type"
+-  res="no"
+-  AC_COMPILE_IFELSE([
+-      AC_LANG_SOURCE([[
++if test "$with_string_convention" == "probe"; then
++  AC_MSG_CHECKING([for Fortran string calling convention.])
++  string_conventions="-DSunStyle -DCrayStyle -DStringStructVal -DStringStructPtr"
++
++  use_conv="none"
++  AC_LANG_SAVE()
++  old_CPPFLAGS="$CPPFLAGS"
++  for try_conv in $string_conventions; do
++    AC_LANG([C])
++    CPPFLAGS="$old_CPPFLAGS $f2c_namedef $try_conv -DF77_INTEGER=$with_int_type"
++    res="no"
++    AC_COMPILE_IFELSE([
++        AC_LANG_SOURCE([[
+ #include <stdio.h>
+ #if defined(Add_) || defined(Add__)
+    #define crout crout_
+@@ -1119,42 +1155,51 @@
+    fclose(f);
+ }
+ #endif
+-      ]])
+-    ],[
+-      AC_LANG([Fortran 77])
+-      old_LDFLAGS="$LDFLAGS"
+-      LDFLAGS="conftest.$ac_objext $LDFLAGS"
+-      AC_TRY_RUN([
+-      PROGRAM CHARTST
+-      EXTERNAL CROUT
+-      CALL CROUT('123', -1, '12345', -2)
+-      STOP
+-      END
+-     ])
+-     LDFLAGS="$old_LDFLAGS"
+-     res=`cat conftestval`
+-     rm -f conftestval
+-    ])
+-  if test "$res" == "yes"; then
+-    use_conv="$try_conv"
+-    break
+-  fi
+-done
+-CPPFLAGS="$old_CPPFLAGS"
+-AC_LANG_RESTORE()
++        ]])
++      ],[
++        AC_LANG([Fortran 77])
++        old_LDFLAGS="$LDFLAGS"
++        LDFLAGS="conftest.$ac_objext $LDFLAGS"
++        AC_TRY_RUN([
++        PROGRAM CHARTST
++        EXTERNAL CROUT
++        CALL CROUT('123', -1, '12345', -2)
++        STOP
++        END
++       ])
++       LDFLAGS="$old_LDFLAGS"
++       res=`cat conftestval`
++       rm -f conftestval
++      ])
++    if test "$res" == "yes"; then
++      use_conv="$try_conv"
++      break
++    fi
++  done
++  CPPFLAGS="$old_CPPFLAGS"
++  AC_LANG_RESTORE()
+ 
+-if test "$use_conv" == "none"; then
+-  AC_MSG_ERROR([unknon FORTRAN string convention.])
+-else
+-  AC_MSG_RESULT([using $use_conv.])
++  if test "$use_conv" == "none"; then
++    AC_MSG_ERROR([unknown FORTRAN string convention.])
++  else
++    AC_MSG_RESULT([using $use_conv.])
++  fi
++elif test "$with_string_convention" == "sun"; then
++  use_conv="-DSunStyle"
++elif test "$with_string_convention" == "cray"; then
++  use_conv="-DCrayStyle"
++elif test "$with_string_convention" == "structval"; then
++  use_conv="-DStringStructVal"
++elif test "$with_string_convention" == "structptr"; then
++  use_conv="-DStringStructPtr"
+ fi
+ 
+-if test "$use_int_type" == "int"; then
++if test "$with_int_type" == "int"; then
+   # If F77_INTEGER == int, leave it undefined here so that it will be
+   # defined by atlas_f77.h ... otherwise FunkyInts will get defined too.
+   F2CDEFS="$f2c_namedef $use_conv"
+ else
+-  F2CDEFS="$f2c_namedef -DF77_INTEGER=$use_int_type $use_conv"
++  F2CDEFS="$f2c_namedef -DF77_INTEGER=$with_int_type $use_conv"
+ fi
+ LIBdir='$(TOPdir)/lib'
+ 
+@@ -1199,10 +1244,10 @@
+ fi
+ 
+ AC_MSG_CHECKING([C compiler family])
+-if expr "$CC" : "icc" > /dev/null; then
++if expr "$CC" : ".*icc" > /dev/null; then
+   AC_MSG_RESULT([ICC])
+   use_cc="icc"
+-elif expr "$CC" : "gcc" > /dev/null; then
++elif expr "$CC" : ".*gcc" > /dev/null; then
+   AC_MSG_RESULT([GCC])
+   use_cc="gcc"
+ else
+Index: vendor/atlas/tune/blas/gemm/emit_mm.c
+===================================================================
+RCS file: /home/cvs/Repository/atlas/tune/blas/gemm/emit_mm.c,v
+retrieving revision 1.2
+diff -u -r1.2 emit_mm.c
+--- vendor/atlas/tune/blas/gemm/emit_mm.c	1 Dec 2005 14:43:18 -0000	1.2
++++ vendor/atlas/tune/blas/gemm/emit_mm.c	18 Jan 2006 01:50:09 -0000
+@@ -2258,6 +2258,7 @@
+    fp = fopen(fnam, "w");
+    assert(fp);
+ 
++   fprintf(fp, "# Generated by tune/blas/gemm/emit_mm.c\n");
+    fprintf(fp, "include ../Make.inc\n\n");
+    fprintf(fp, "CDEFS2 = $(CDEFS)");
+    for (i=0; i < 3; i++)
+@@ -2339,7 +2340,8 @@
+                   else sprintf(fnam, "ATL_%cNBmm_b%c", pre, betas[j]);
+                      fprintf(fp, "%s.o : %s.c \n", fnam, fnam);
+                   fprintf(fp, "\t%s $(CDEFS2) -DATL_BETA=%c -c %s %s.c\n",
+-                          wp->CC, betas[j], wp->CCFLAGS, fnam);
++                          strcmp("gcc", wp->CC) == 0 ? "$(GOODGCC)" : wp->CC,
++                          betas[j], wp->CCFLAGS, fnam);
+                }
+             }
+          }

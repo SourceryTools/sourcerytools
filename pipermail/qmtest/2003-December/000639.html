@@ -1,0 +1,354 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> PATCH: Fix no-documentation builds
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:qmtest%40codesourcery.com?Subject=Re%3A%20PATCH%3A%20Fix%20no-documentation%20builds&In-Reply-To=%3C200312040239.hB42dJ65006709%40sirius.codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   
+   <LINK REL="Next"  HREF="000640.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>PATCH: Fix no-documentation builds</H1>
+    <B>Mark Mitchell</B> 
+    <A HREF="mailto:qmtest%40codesourcery.com?Subject=Re%3A%20PATCH%3A%20Fix%20no-documentation%20builds&In-Reply-To=%3C200312040239.hB42dJ65006709%40sirius.codesourcery.com%3E"
+       TITLE="PATCH: Fix no-documentation builds">mark at codesourcery.com
+       </A><BR>
+    <I>Thu Dec  4 02:39:19 UTC 2003</I>
+    <P><UL>
+        
+        <LI>Next message: <A HREF="000640.html">Some newbie questions...
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#639">[ date ]</a>
+              <a href="thread.html#639">[ thread ]</a>
+              <a href="subject.html#639">[ subject ]</a>
+              <a href="author.html#639">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>
+My recent configury changes caused problems for builds where Jade was
+unavailable and where the documentation had not already been pre-built
+into the source tree.  Fixed thusly.
+
+--
+Mark Mitchell
+CodeSourcery, LLC
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">mark at codesourcery.com</A>
+
+2003-12-03  Mark Mitchell  &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">mark at codesourcery.com</A>&gt;
+
+	* setup.py: Use glob expressions for documentation.
+	* doc/qm-sgml.dsl: Do not produce a manifest.
+	* qmdist/command/build_doc.py (build_doc.run): Tidy.
+	* qmdist/command/install_data.py (glob): Import it.
+	(types.StringType): Likewise.
+	(install_data.initialize_options): New method.
+
+Index: setup.py
+===================================================================
+RCS file: /home/qm/Repository/qm/setup.py,v
+retrieving revision 1.8
+diff -c -5 -p -r1.8 setup.py
+*** setup.py	24 Nov 2003 06:35:00 -0000	1.8
+--- setup.py	4 Dec 2003 02:34:58 -0000
+*************** def select_share_files(share_files, dir,
+*** 78,96 ****
+  
+  diagnostics=['common.txt','common-help.txt']
+  
+  messages=['help.txt', 'diagnostics.txt']
+  
+- if not os.path.isdir(os.path.normpath('qm/test/doc/html')):
+-     print &quot;&quot;&quot;Warning: to include documentation run the
+-              \'build_doc\' command first.&quot;&quot;&quot;
+-     html_docs = []
+- 
+- else:
+-     html_docs = filter(lambda f: f.endswith(&quot;.html&quot;),
+-                        os.listdir(os.path.normpath('qm/test/doc/html')))
+- 
+  tutorial_files = files_with_ext(&quot;qm/test/share/tutorial/tdb&quot;, &quot;.qmt&quot;)
+  test_dtml_files = files_with_ext(&quot;qm/test/share/dtml&quot;, &quot;.dtml&quot;)
+  
+  share_files = {}
+  os.path.walk(&quot;share&quot;, select_share_files, share_files)
+--- 78,87 ----
+*************** setup(name=&quot;qm&quot;, 
+*** 138,151 ****
+                     prefix(messages, 'qm/test/share/messages')),
+                    # DTML files for the GUI.
+                    (&quot;qm/dtml/test&quot;, test_dtml_files),
+                    # The documentation.
+                    ('qm/doc', ('README', 'COPYING')),
+!                   ('qm/doc/test/html',
+!                    prefix(html_docs, 'qm/test/doc/html')),
+!                   ('qm/doc/test/print',
+!                    [&quot;qm/test/doc/print/manual.pdf&quot;]),
+                    # The tutorial.
+                    (&quot;qm/tutorial/test/tdb&quot;, tutorial_files),
+                    (&quot;qm/tutorial/test/tdb/QMTest&quot;,
+                     (&quot;qm/test/share/tutorial/tdb/QMTest/configuration&quot;,))]
+                   # The files from the top-level &quot;share&quot; directory.
+--- 129,140 ----
+                     prefix(messages, 'qm/test/share/messages')),
+                    # DTML files for the GUI.
+                    (&quot;qm/dtml/test&quot;, test_dtml_files),
+                    # The documentation.
+                    ('qm/doc', ('README', 'COPYING')),
+!                   ('qm/doc/test/html', ['qm/test/doc/html/*.html']),
+!                   ('qm/doc/test/print', [&quot;qm/test/doc/print/*.pdf&quot;]),
+                    # The tutorial.
+                    (&quot;qm/tutorial/test/tdb&quot;, tutorial_files),
+                    (&quot;qm/tutorial/test/tdb/QMTest&quot;,
+                     (&quot;qm/test/share/tutorial/tdb/QMTest/configuration&quot;,))]
+                   # The files from the top-level &quot;share&quot; directory.
+Index: doc/qm-sgml.dsl
+===================================================================
+RCS file: /home/qm/Repository/qm/doc/qm-sgml.dsl,v
+retrieving revision 1.2
+diff -c -5 -p -r1.2 qm-sgml.dsl
+*** doc/qm-sgml.dsl	28 May 2002 01:37:53 -0000	1.2
+--- doc/qm-sgml.dsl	4 Dec 2003 02:34:59 -0000
+***************
+*** 44,57 ****
+  
+  ;; Don't place the first section of each chapter in the same chunk as
+  ;; the chapter head.
+  (define (chunk-skip-first-element-list) (list))
+  
+- ;; Write a manifest of created files to docbook-html.manifest.
+- (define html-manifest #t)
+- (define html-manifest-filename &quot;docbook-html.manifest&quot;)
+- 
+  ;; Use element ids to generate chunk filenames
+  (define %use-id-as-filename% #t)
+  
+  ;; Emit legal notices in a separate chunk.
+  (define %generate-legalnotice-link% #t)
+--- 44,53 ----
+Index: qmdist/command/build_doc.py
+===================================================================
+RCS file: /home/qm/Repository/qm/qmdist/command/build_doc.py,v
+retrieving revision 1.2
+diff -c -5 -p -r1.2 build_doc.py
+*** qmdist/command/build_doc.py	24 Nov 2003 00:52:58 -0000	1.2
+--- qmdist/command/build_doc.py	4 Dec 2003 02:34:59 -0000
+*************** class build_doc(build.build):
+*** 96,106 ****
+          source_files = map(normpath,
+                             ['qm/test/doc/manual.xml',
+                              'qm/test/doc/introduction.xml',
+                              'qm/test/doc/tour.xml',
+                              'qm/test/doc/reference.xml'])
+! 
+          jade = find_executable('jade')
+          dcl = find_file(map(normpath,
+                              ['/usr/share/doc/jade*/pubtext/xml.dcl',
+                               '/usr/share/doc/openjade*/pubtext/xml.dcl',
+                               '/usr/doc/jade*/pubtext/xml.dcl',
+--- 96,106 ----
+          source_files = map(normpath,
+                             ['qm/test/doc/manual.xml',
+                              'qm/test/doc/introduction.xml',
+                              'qm/test/doc/tour.xml',
+                              'qm/test/doc/reference.xml'])
+!         
+          jade = find_executable('jade')
+          dcl = find_file(map(normpath,
+                              ['/usr/share/doc/jade*/pubtext/xml.dcl',
+                               '/usr/share/doc/openjade*/pubtext/xml.dcl',
+                               '/usr/doc/jade*/pubtext/xml.dcl',
+*************** class build_doc(build.build):
+*** 117,143 ****
+                              ['/usr/lib/sgml',
+                               '/usr/share/sgml/docbook']),
+                          os.path.isdir)
+  
+          if not jade or not dcl or not stylesheets or not dtd:
+!             self.warn(&quot;can't build documentation&quot;)
+              return
+  
+          # All files that are generated below are generated in the
+          # source tree.  That is the only way that Distutils will
+          # install the documentation as data files (in &quot;share&quot;) rather
+          # than as program files (in &quot;lib&quot;).
+          
+          #
+          # Build html output.
+          #
+!         target = normpath(&quot;qm/test/doc/html&quot;)
+!         if newer_group(source_files, target):
+              self.announce(&quot;building html manual&quot;)
+!             # Remove the target first such that its new mtime reflects
+              # this build.
+!             if os.path.isdir(target): remove_tree(target)
+              self.call_jade(jade, ['-D%s'%dtd, '-D%s'%stylesheets],
+                             dcl, 'sgml',
+                             normpath('qm/test/doc/manual.xml'),
+                             normpath('qm/test/doc'))
+              tidy = find_executable('tidy')
+--- 117,143 ----
+                              ['/usr/lib/sgml',
+                               '/usr/share/sgml/docbook']),
+                          os.path.isdir)
+  
+          if not jade or not dcl or not stylesheets or not dtd:
+!             self.warn(&quot;cannot build documentation&quot;)
+              return
+  
+          # All files that are generated below are generated in the
+          # source tree.  That is the only way that Distutils will
+          # install the documentation as data files (in &quot;share&quot;) rather
+          # than as program files (in &quot;lib&quot;).
+          
+          #
+          # Build html output.
+          #
+!         html_dir = os.path.join(&quot;qm&quot;, &quot;test&quot;, &quot;doc&quot;, &quot;html&quot;)
+!         if newer_group(source_files, html_dir):
+              self.announce(&quot;building html manual&quot;)
+!             # Remove the html_dir first such that its new mtime reflects
+              # this build.
+!             if os.path.isdir(html_dir): remove_tree(html_dir)
+              self.call_jade(jade, ['-D%s'%dtd, '-D%s'%stylesheets],
+                             dcl, 'sgml',
+                             normpath('qm/test/doc/manual.xml'),
+                             normpath('qm/test/doc'))
+              tidy = find_executable('tidy')
+*************** class build_doc(build.build):
+*** 175,190 ****
+              os.remove(orig_tex_manual)
+  
+          #
+          # Build pdf output.
+          #
+!         target = normpath(&quot;qm/test/doc/print/manual.pdf&quot;)
+!         if newer_group(source_files, target):
+              self.announce(&quot;building pdf manual&quot;)
+!             # Remove the target first such that its new mtime reflects
+              # this build.
+!             if os.path.isfile(target): os.remove(target)
+              cwd = os.getcwd()
+              os.chdir(&quot;qm/test/doc/print&quot;)
+              for i in xrange(3):
+                  self.spawn(['pdfjadetex', &quot;manual.tex&quot;])
+              os.chdir(cwd)
+--- 175,190 ----
+              os.remove(orig_tex_manual)
+  
+          #
+          # Build pdf output.
+          #
+!         pdf_file = os.path.join(&quot;qm&quot;, &quot;test&quot;, &quot;doc&quot;, &quot;print&quot;, &quot;manual.pdf&quot;)
+!         if newer_group(source_files, pdf_file):
+              self.announce(&quot;building pdf manual&quot;)
+!             # Remove the pdf_file first such that its new mtime reflects
+              # this build.
+!             if os.path.isfile(pdf_file): os.remove(pdf_file)
+              cwd = os.getcwd()
+              os.chdir(&quot;qm/test/doc/print&quot;)
+              for i in xrange(3):
+                  self.spawn(['pdfjadetex', &quot;manual.tex&quot;])
+              os.chdir(cwd)
+Index: qmdist/command/install_data.py
+===================================================================
+RCS file: /home/qm/Repository/qm/qmdist/command/install_data.py,v
+retrieving revision 1.5
+diff -c -5 -p -r1.5 install_data.py
+*** qmdist/command/install_data.py	24 Nov 2003 00:52:58 -0000	1.5
+--- qmdist/command/install_data.py	4 Dec 2003 02:34:59 -0000
+***************
+*** 16,27 ****
+--- 16,29 ----
+  ########################################################################
+  # Imports
+  ########################################################################
+  
+  from   distutils.command import install_data as base
++ import glob
+  import os
+  from   qmdist.command import get_relative_path
++ from   types import StringType
+  
+  ########################################################################
+  # Classes
+  ########################################################################
+  
+*************** class install_data(base.install_data):
+*** 29,40 ****
+      &quot;&quot;&quot;Extends 'install_data' by generating a config module.
+  
+      This module contains data only available at installation time,
+      such as installation paths for data files.&quot;&quot;&quot;
+  
+!     def run(self):
+  
+          # Do the standard installation.
+          base.install_data.run(self)
+          
+          i = self.distribution.get_command_obj('install')
+          il = self.distribution.get_command_obj('install_lib')
+--- 31,61 ----
+      &quot;&quot;&quot;Extends 'install_data' by generating a config module.
+  
+      This module contains data only available at installation time,
+      such as installation paths for data files.&quot;&quot;&quot;
+  
+!     def initialize_options(self):
+! 
+!         base.install_data.initialize_options(self)
+!         # Expand glob expressions in 'data_files'.
+!         new_data_files = []
+!         for f in self.data_files:
+!             if type(f) == StringType:
+!                 f = glob.glob(f)
+!             else:
+!                 dir, fs = f
+!                 new_fs = []
+!                 for f in fs:
+!                     new_fs.extend(glob.glob(f))
+!                 f = (dir, new_fs)
+!             new_data_files.append(f)
+!         self.data_files = new_data_files
+!         self.distribution.data_files = new_data_files
+  
++ 
++     def run(self):
++         
+          # Do the standard installation.
+          base.install_data.run(self)
+          
+          i = self.distribution.get_command_obj('install')
+          il = self.distribution.get_command_obj('install_lib')
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	
+	<LI>Next message: <A HREF="000640.html">Some newbie questions...
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#639">[ date ]</a>
+              <a href="thread.html#639">[ thread ]</a>
+              <a href="subject.html#639">[ subject ]</a>
+              <a href="author.html#639">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">More information about the qmtest
+mailing list</a><br>
+</body></html>

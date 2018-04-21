@@ -1,0 +1,6523 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [newfield_revision Patch] Add Linear Algebra to Statigraphic Flow
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bnewfield_revision%20Patch%5D%20Add%20Linear%20Algebra%20to%20Statigraphic%20Flow&In-Reply-To=%3C20010816133115.C18803%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000630.html">
+   <LINK REL="Next"  HREF="000632.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[newfield_revision Patch] Add Linear Algebra to Statigraphic Flow</H1>
+    <B>Jeffrey Oldham</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bnewfield_revision%20Patch%5D%20Add%20Linear%20Algebra%20to%20Statigraphic%20Flow&In-Reply-To=%3C20010816133115.C18803%40codesourcery.com%3E"
+       TITLE="[newfield_revision Patch] Add Linear Algebra to Statigraphic Flow">oldham at codesourcery.com
+       </A><BR>
+    <I>Thu Aug 16 20:31:15 UTC 2001</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000630.html">[newfield_revision Patch] Fix nearestNeighbors()
+</A></li>
+        <LI>Next message: <A HREF="000632.html">[newfield_revision Patch] Use std::abs, not abs
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#631">[ date ]</a>
+              <a href="thread.html#631">[ thread ]</a>
+              <a href="subject.html#631">[ subject ]</a>
+              <a href="author.html#631">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>This patch to the (Chevron^r) statigraphic flow program adds the
+linear algebra computation.  We use the open-source beta Template
+Numerical Toolkit package from the NIST.  The linear algebra
+computation needs to be moved to a stencil.  We are currently working
+on that.
+
+2001-08-16  Jeffrey D. Oldham  &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">oldham at codesourcery.com</A>&gt;
+
+        * StatigraphicFlow.cpp: Add header files for linear algebra
+        computations.  Remove answered question and finished functions.
+        Add sum() to unfinished work list.  Update explanations with
+        revised replicate() information and new information for
+        nearestNeighbors(Centering, FieldOffset, Centering) and sum().
+        (findIndex): New function.
+        (main): Fix creation of spoke centering.  Add creation of disspoke
+        centering.  Add directedPermeability and faceDistance fields.
+        Replace linear algebra pseudocode with explicit computation.
+        Revise computation of totalFlux.
+        * makefile: (RULE_INCLUDES): Add support for linear alegebra
+        library.
+        * tnt/A10x10.dat: New file from linear algebra package.
+        * tnt/AB10x10.dat: Likewise.
+        * tnt/Makefile: Likewise.
+        * tnt/SPD10x10.dat: Likewise.
+        * tnt/cholesky.h: Likewise.
+        * tnt/cmat.h: Likewise.
+        * tnt/fchol.cc: Likewise.
+        * tnt/fcscmat.h: Likewise.
+        * tnt/fmat.h: Likewise.
+        * tnt/fortran.h: Likewise.
+        * tnt/fspvec.h: Likewise.
+        * tnt/index.h: Likewise.
+        * tnt/lapack.h: Likewise.
+        * tnt/lu-C.cc: Likewise.
+        * tnt/lu.cc: Likewise.
+        * tnt/lu.h: Likewise.
+        * tnt/matrix.dat: Likewise.
+        * tnt/qr.cc: Likewise.
+        * tnt/qr.h: Likewise.
+        * tnt/region1d.h: Likewise.
+        * tnt/region2d.h: Likewise.
+        * tnt/stopwatch.h: Likewise.
+        * tnt/subscript.h: Likewise.
+        * tnt/tnt.h: Likewise.
+        * tnt/tnt.h.patch: Likewise.
+        * tnt/tntmath.h: Likewise.
+        * tnt/tntreqs.h: Likewise.
+        * tnt/transv.h: Likewise.
+        * tnt/triang.h: Likewise.
+        * tnt/trisolve.h: Likewise.
+        * tnt/vec.h: Likewise.
+        * tnt/vec.h.patch: Likewise.
+        * tnt/vecadaptor.h: Likewise.
+        * tnt/version.h: Likewise.
+
+Applied to      newfield_revision branch of examples/NewField/StatigraphicFlow/
+Approved by     Stephen Smith
+Not tested.  It does not currently cleanly compile.
+
+Thanks,
+Jeffrey D. Oldham
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">oldham at codesourcery.com</A>
+-------------- next part --------------
+Index: StatigraphicFlow.cpp
+===================================================================
+RCS file: /home/pooma/Repository/r2/examples/NewField/StatigraphicFlow/Attic/StatigraphicFlow.cpp,v
+retrieving revision 1.1.2.1
+diff -c -p -r1.1.2.1 StatigraphicFlow.cpp
+*** StatigraphicFlow.cpp	2001/08/04 02:19:06	1.1.2.1
+--- StatigraphicFlow.cpp	2001/08/16 19:02:55
+***************
+*** 7,12 ****
+--- 7,17 ----
+  #include &lt;iostream&gt;
+  #include &lt;cstdlib&gt;
+  #include &quot;Pooma/NewFields.h&quot;
++ // linear algebra files:
++ #include &quot;tnt/tnt.h&quot;
++ #include &quot;tnt/vec.h&quot;
++ #include &quot;tnt/cmat.h&quot;
++ #include &quot;tnt/lu.h&quot;
+  
+  // This program implements &quot;Implementation of a Flux-Continuous Fnite
+  // Difference Method for Stratigraphic, Hexahedron Grids,&quot; by
+***************
+*** 28,49 ****
+  // o. I omitted a separate coordinates field, presumably updated each
+  //    iteration, in favor of using the mesh.  Since I do not know how
+  //    the coordinates are updated, I omitted updating the mesh.
+- // o. Is it important to flesh out the linear algebra solution?  We
+- //    might learn something about field syntax, but it will also take
+- //    time for me to determine the correct operands.
+  // o. Creating non-canonical edge and face centerings requires
+  //    dimension-dependent code.  Is this acceptable?
+  
+  
+  /** UNFINISHED WORK **/
+  
+- // o replicate(field, std::vector&lt;FieldOffsetList&gt;)
+  // o meshLayout.unitCoordinateNormals()
+  // o field.mesh()
+  // o field.mesh().normals()
+  // o field.mesh().normals().signedMagnitude()
+  
+- 
+  /** EXPLANATIONS **/
+  
+  // o Centering&lt;Dim&gt; canonicalCentering&lt;Dim&gt;(CellType, Continuous):
+--- 33,50 ----
+  // o. I omitted a separate coordinates field, presumably updated each
+  //    iteration, in favor of using the mesh.  Since I do not know how
+  //    the coordinates are updated, I omitted updating the mesh.
+  // o. Creating non-canonical edge and face centerings requires
+  //    dimension-dependent code.  Is this acceptable?
+  
+  
+  /** UNFINISHED WORK **/
+  
+  // o meshLayout.unitCoordinateNormals()
+  // o field.mesh()
+  // o field.mesh().normals()
+  // o field.mesh().normals().signedMagnitude()
++ // o sum(field, vector&lt;FieldOffsetList&gt;, centering)
+  
+  /** EXPLANATIONS **/
+  
+  // o Centering&lt;Dim&gt; canonicalCentering&lt;Dim&gt;(CellType, Continuous):
+***************
+*** 62,72 ****
+  // o The Chevron algorithm first solves a linear program.  I have
+  //    omitted since computation since it does not illustrate field
+  //    computations.
+! // o replicate(field, std::vector&lt;FieldOffsetList&gt;): This function,
+! //    syntactic sugar for a nearest neighbors computation, copies the
+! //    field values to the positions indicated by the
+! //    std::vector&lt;FieldOffsetList&gt;.  Each field value is copied to one
+! //    or more values.  replicate() could be replaced by sum(), but the
+  //    latter function has an unnecessary loop since each output value
+  //    equals one input value.
+  // o nearestNeighbors(inputCentering, outputCentering): This function
+--- 63,73 ----
+  // o The Chevron algorithm first solves a linear program.  I have
+  //    omitted since computation since it does not illustrate field
+  //    computations.
+! // o replicate(field, std::vector&lt;FieldOffsetList&gt;, centering): This
+! //    function, syntactic sugar for a nearest neighbors computation,
+! //    copies the field values to the positions indicated by the
+! //    std::vector&lt;FieldOffsetList&gt;.  Each field value is copied to one or
+! //    more values.  replicate() could be replaced by sum(), but the
+  //    latter function has an unnecessary loop since each output value
+  //    equals one input value.
+  // o nearestNeighbors(inputCentering, outputCentering): This function
+***************
+*** 75,80 ****
+--- 76,87 ----
+  //    value, the closest input values, wrt Manhattan distance, are
+  //    returned.  Eventually, these may be pre-computed or cached to
+  //    reduce running time.
++ // o nearestNeighbors(input centering, FieldOffset, offset's centering
++ //    [, bool]):  This function returns a FieldOffsetList with entries for
++ //    the closest input values, wrt Manhattan distance, to the value
++ //    specified by the FieldOffset and the offset centering.  The
++ //    optional fourth parameter indicates only values from the FieldOffset's
++ //    cell should be returned.
+  // o meshLayout.unitCoordinateNormals(): This returns a discontinuous
+  //    face-centered field with unit-length normals all pointing in
+  //    positive directions.
+***************
+*** 87,94 ****
+  //    equalling the face's area/volume and sign equalling whether the
+  //    face's normal is in a positive direction, e.g., the positive
+  //    x-direction vs. the negative x-direction.
+! // o sum(field, FieldOffsetList): this parallel-data statement adds
+! //    the values indicated in the FieldOffsetList to form each output value
+  
+  
+  /** DESIGN DECISIONS **/
+--- 94,102 ----
+  //    equalling the face's area/volume and sign equalling whether the
+  //    face's normal is in a positive direction, e.g., the positive
+  //    x-direction vs. the negative x-direction.
+! // o sum(field, vector&lt;FieldOffsetList&gt;, centering): this
+! //    parallel-data statement adds the values indicated in the
+! //    FieldOffsetList to form each output value
+  
+  
+  /** DESIGN DECISIONS **/
+***************
+*** 98,103 ****
+--- 106,129 ----
+  
+  /** THE PROGRAM **/
+  
++ 
++ // Return the index of the specified field offset in the given list.
++ // Return a negative number if not found.
++ 
++ template &lt;int Dim&gt;
++ inline int
++ findIndex(const FieldOffsetList&lt;Dim&gt; &amp;vec,
++ 	  const FieldOffset&lt;Dim&gt; &amp;fo)
++ {
++   int indx;
++   for (indx = vec.size()-1;
++        indx &gt;= 0 &amp;&amp; vec[indx] != fo;
++        --indx)
++     ;
++   return indx;
++ }
++ 
++ 
+  int main(int argc, char *argv[])
+  {
+    // Set up the Pooma library.
+*************** int main(int argc, char *argv[])
+*** 158,172 ****
+      position(zeroFace) = 0.0;
+      position(1-zeroFace) = 0.25; spoke.addValue(orientation, position);
+      position(1-zeroFace) = 0.75; spoke.addValue(orientation, position);
+-     position(zeroFace) = 1.0;
+-     position(1-zeroFace) = 0.25; spoke.addValue(orientation, position);
+-     position(1-zeroFace) = 0.75; spoke.addValue(orientation, position);
+    }
+    Fields_t spokeFlux		(spoke, meshLayout, origin, spacings);
+  
+    // Face-centered.
+  
+    Centering&lt;Dim&gt; disFace = canonicalCentering&lt;Dim&gt;(FaceType, Discontinuous);
+  
+  
+    /* INITIALIZATION */
+--- 184,211 ----
+      position(zeroFace) = 0.0;
+      position(1-zeroFace) = 0.25; spoke.addValue(orientation, position);
+      position(1-zeroFace) = 0.75; spoke.addValue(orientation, position);
+    }
+    Fields_t spokeFlux		(spoke, meshLayout, origin, spacings);
+  
++   Centering&lt;Dim&gt; disspoke(FaceType, Discontinuous);
++   // NOTE: This code is not dimension-independent.
++   for (int zeroFace = 0; zeroFace &lt; 2; ++zeroFace) {
++     orientation = 1; orientation[zeroFace] = 0;
++     position(zeroFace) = 0.0;
++     position(1-zeroFace) = 0.25; disspoke.addValue(orientation, position);
++     position(1-zeroFace) = 0.75; disspoke.addValue(orientation, position);
++     position(zeroFace) = 1.0;
++     position(1-zeroFace) = 0.25; disspoke.addValue(orientation, position);
++     position(1-zeroFace) = 0.75; disspoke.addValue(orientation, position);
++   }
++ 
+    // Face-centered.
+  
+    Centering&lt;Dim&gt; disFace = canonicalCentering&lt;Dim&gt;(FaceType, Discontinuous);
++   Fieldv_t directedPermeability	(disFace, meshLayout, origin, spacings);
++ 	// \gamma_{i,j} = K_i^t \dot \hat{n}_j
++   Fields_t faceDistance		(disFace, meshLayout, origin, spacings);
++ 	// distance from cell center to face center
+  
+  
+    /* INITIALIZATION */
+*************** int main(int argc, char *argv[])
+*** 180,210 ****
+  
+    /* COMPUTATION */
+  
+- #ifdef PSEUDOCODE
+    // Compute pressureGradients by simultaneously solving several
+    // linear equations.  The operands have different centerings.
+!   // FIXME
+!   pressureGradients =
+!     linearAlgebra&lt;2&gt;(pressure /* cell-centered */,
+! 		     /* Interpolate from vertex-centered to cell-centered: */
+! 		     interpolate&lt;Cell,Vertex&gt;(coordinates),
+! 		     permeability /* cell-centered */,
+! 		     normals /* face-centered */);
+  #endif // PSEUDOCODE
+  
+!   // Compute the spoke fluxes.
+  
+!   // We must multiply three quantities, each with a different
+!   // centering, to yield values at a fourth-centering.  permeability
+!   // is cell-centered.  pressureGradient is subcell-centered.  The
+!   // normals are face-centered.  The product is spoke-centered.
+  
+    spokeFlux = 
+!     dot(replicate(dot(replicate(permeability, nearestNeighbors(cell, subcell)),
+! 		      pressureGradient),
+! 		  nearestNeighbors(subcell, spoke)),
+! 	replicate(meshLayout.unitCoordinateNormals(),
+! 		  nearestNeighbors(disFace, spoke)));
+  
+    // Sum the spoke fluxes into a cell flux.
+  
+--- 219,339 ----
+  
+    /* COMPUTATION */
+  
+    // Compute pressureGradients by simultaneously solving several
+    // linear equations.  The operands have different centerings.
+! 
+!   // \Gamma is used in the flux continuity equations.
+!   directedPermeability =
+!     dot(replicate(permeability,
+! 		  nearestNeighbors(permeability.centering(),
+! 				   directedPermeability.centering()),
+! 		  directedPermeability.centering()),
+! 	meshLayout.unitCoordinateNormals());
+! 
+! #ifdef PSEUDOCODE
+!   // These distances are used in the pressure continuity equations.
+!   faceDistance = face-centered-positions -
+!     replicate(cell-centered-positions,
+! 	      nearestNeighbors(cell, faceDistance.centering()),
+! 	      faceDistance.centering());
+  #endif // PSEUDOCODE
++   
++   const int nuRows = (1 &lt;&lt; Dim) * Dim;
++   TNT::Matrix&lt;double&gt; A(nuRows, nuRows, 0.0);
++   TNT::Vector&lt;double&gt; rhs(nuRows, 0.0);
++   TNT::Vector&lt;TNT::Subscript&gt; ipiv;	// ignored
++ 
++   // FIXME: Move this code to a stencil so it can be applied across
++   // the entire grid.
++ 
++   // Assign values to the matrix A and vector rhs.
++ 
++   const Centering&lt;Dim&gt; vert = canonicalCentering&lt;Dim&gt;(VertexType, Continuous);
++   PInsist(vert.size() == 1, &quot;The vertex centering has too many values.&quot;);
++ 
++   const FieldOffsetList&lt;Dim&gt; gradients =
++     nearestNeighbors(pressureGradient.centering(),
++ 		     FieldOffset&lt;Dim&gt;(Loc&lt;Dim&gt;(0)) /* cell origin */, vert);
++     // gradients's order of pressure gradients will be used for the
++     // matrix and rhs.
++ 
++   const FieldOffsetList&lt;Dim&gt; fluxPoints =
++     nearestNeighbors(spokeFlux.centering(),
++ 		     FieldOffset&lt;Dim&gt;(Loc&lt;Dim&gt;(0)) /* cell origin */, vert);
++     // fluxPoints has locations for all faces incident to the vertex.
++   const int size = fluxPoints.size();
++   PAssert(gradients.size() * Dim == size * 2);
++ 
++   const std::vector&lt;FieldOffsetList&lt;Dim&gt; &gt; disFluxPoints =
++     nearestNeighbors(disspoke, fluxPoints, spokeFlux.centering());
++     // For every i, disFluxPoints[i] is two discontinuous positions on
++     // &quot;either side&quot; of the face represented by fluxPoints[i].
++ 
++   for (int faceIndex = size-1; faceIndex &gt;= 0; --faceIndex) {
++     // Work on the &quot;positive&quot; side of the face.
++     FieldOffset&lt;Dim&gt; fo = disFluxPoints[faceIndex][0];
++     int columnNu =
++       findIndex(gradients,
++ 		nearestNeighbors(pressureGradient.centering(),
++ 				 fo, disspoke, true)[0]);
++       // The column number is the pressure gradient corresponding to the
++       // &quot;positive&quot; side of the face.
++ 
++     // FIXME: The lhs (double) and rhs (vector field) do not match.
++ 
++     A[faceIndex][columnNu] =
++       directedPermeability(nearestNeighbors(directedPermeability.centering(),
++ 					    fo, disspoke, true)[0]);
++     A[faceIndex+size][columnNu] =
++       faceDistance(nearestNeighbors(faceDistance.centering(),
++ 				    fo, disspoke, true)[0]);
++     rhs[faceIndex+size] -=
++       pressure(nearestNeighbors(pressure.centering(),
++ 				fo, disspoke, true)[0]);
++ 
++     fo = disFluxPoints[faceIndex][1];
++     columnNu =
++       findIndex(gradients,
++ 		nearestNeighbors(pressureGradient.centering(),
++ 				 fo, disspoke, true)[0]);
++       // The column number is the pressure gradient corresponding to the
++       // &quot;positive&quot; side of the face.
++ 
++     A[faceIndex][columnNu] =
++       -directedPermeability(nearestNeighbors(directedPermeability.centering(),
++ 					     fo, disspoke, true)[0]);
++     A[faceIndex+size][columnNu] =
++       -faceDistance(nearestNeighbors(faceDistance.centering(),
++ 				     fo, disspoke, true)[0]);
++     rhs[faceIndex+size] -=
++       -pressure(nearestNeighbors(pressure.centering(),
++ 				 fo, disspoke, true)[0]);
++   }
+  
+!   // Solve for the pressure gradients.
+! 
+!   TNT::LU_solve(A, ipiv, rhs);
+! 
+!   // Now, rhs has the pressure gradients.
+  
+!   for (int faceIndex = size-1; faceIndex &gt;= 0; --faceIndex)
+!     // FIXME: Is this type of assignment supported by the current code base?
+!     pressureGradient(gradients[faceIndex], subcell) = rhs[faceIndex];
+! 
+! 
+!   // Compute the spoke fluxes.
+  
+    spokeFlux = 
+!     dot(replicate(pressureGradient,
+! 		  nearestNeighbors(pressureGradient.centering(),
+! 				   spokeFlux.centering(),
+! 				   true),
+! 		  spokeFlux.centering()),
+! 	replicate(directedPermeability,
+! 		  nearestNeighbors(directedPermeability.centering(),
+! 				   spokeFlux.centering(),
+! 				   true),
+! 		  spokeFlux.centering()));
+  
+    // Sum the spoke fluxes into a cell flux.
+  
+*************** int main(int argc, char *argv[])
+*** 217,224 ****
+  
+    totalFlux =
+      sum(spokeFlux.mesh().normals().signedMagnitude() *
+! 	sum(spokeFlux, nearestNeighbors(spoke, disFace)),
+! 	nearestNeighbors(disFace, cell));
+  
+  
+    /* TERMINATION */
+--- 346,364 ----
+  
+    totalFlux =
+      sum(spokeFlux.mesh().normals().signedMagnitude() *
+! 	// FIXME: This is not yet implemented.  We want a
+! 	// FIXME: data-parallel sum.  This is we want a function
+! 	// FIXME: Field_t sum(/* input */ Field_t,
+! 	// FIXME: std::vector&lt;FieldOffsetList&gt;, /*output */
+! 	// FIXME: Centering).  The vector's length == the output
+! 	// centering's length.  The function works by using the input
+! 	// field with each FieldOffsetList to form one value in the
+! 	// output field.
+! 	sum(spokeFlux,
+! 	    nearestNeighbors(spokeFlux.centering(), disFace),
+! 	    disFace),
+! 	nearestNeighbors(disFace, totalFlux.centering()),
+! 	totalFlux.centering());
+  
+  
+    /* TERMINATION */
+Index: makefile
+===================================================================
+RCS file: /home/pooma/Repository/r2/examples/NewField/StatigraphicFlow/Attic/makefile,v
+retrieving revision 1.1.2.1
+diff -c -p -r1.1.2.1 makefile
+*** makefile	2001/08/04 02:19:06	1.1.2.1
+--- makefile	2001/08/16 20:26:07
+*************** $(ODIR)/StatigraphicFlow: $(ODIR)/Statig
+*** 44,49 ****
+--- 44,51 ----
+  
+  include $(SHARED_ROOT)/tail.mk
+  
++ RULE_INCLUDES += -I$(PROJECT_ROOT)/examples/NewField/StatigraphicFlow	# permit inclusion of the TNT linear algebra library
++ 
+  # ACL:rcsinfo
+  #  ----------------------------------------------------------------------
+  #  $RCSfile: makefile,v $   $Author: oldham $
+Index: tnt/A10x10.dat
+===================================================================
+RCS file: A10x10.dat
+diff -N A10x10.dat
+*** /dev/null	Tue May  5 14:32:27 1998
+--- A10x10.dat	Thu Aug 16 13:02:55 2001
+***************
+*** 0 ****
+--- 1,12 ----
++ 10 10
++ 0.218959 0.5297 0.526929 0.328234 0.0726859 0.166507 0.493977 0.464446 0.629543 0.845982 
++ 0.0470446 0.671149 0.0919649 0.632639 0.631635 0.486517 0.266145 0.94098 0.736225 0.412081 
++ 0.678865 0.00769819 0.653919 0.75641 0.884707 0.897656 0.0907329 0.050084 0.725412 0.841511 
++ 0.679296 0.383416 0.415999 0.991037 0.27271 0.909208 0.947764 0.761514 0.999458 0.269317 
++ 0.934693 0.0668422 0.701191 0.365339 0.436411 0.0605643 0.0737491 0.770205 0.888572 0.415395 
++ 0.383502 0.417486 0.910321 0.247039 0.766495 0.904653 0.500707 0.827817 0.233195 0.537304 
++ 0.519416 0.686773 0.762198 0.98255 0.477732 0.504523 0.384142 0.125365 0.306322 0.467917 
++ 0.830965 0.588977 0.262453 0.72266 0.237774 0.516292 0.277082 0.0158677 0.351015 0.287212 
++ 0.0345721 0.930436 0.0474645 0.753356 0.274907 0.319033 0.913817 0.688455 0.513274 0.178328 
++ 0.0534616 0.846167 0.736082 0.651519 0.359265 0.986642 0.529747 0.868247 0.591114 0.15372 
++ 
+Index: tnt/AB10x10.dat
+===================================================================
+RCS file: AB10x10.dat
+diff -N AB10x10.dat
+*** /dev/null	Tue May  5 14:32:27 1998
+--- AB10x10.dat	Thu Aug 16 13:02:55 2001
+***************
+*** 0 ****
+--- 1,24 ----
++ 10 10
++ 0.218959 0.5297 0.526929 0.328234 0.0726859 0.166507 0.493977 0.464446 0.629543 0.845982 
++ 0.0470446 0.671149 0.0919649 0.632639 0.631635 0.486517 0.266145 0.94098 0.736225 0.412081 
++ 0.678865 0.00769819 0.653919 0.75641 0.884707 0.897656 0.0907329 0.050084 0.725412 0.841511 
++ 0.679296 0.383416 0.415999 0.991037 0.27271 0.909208 0.947764 0.761514 0.999458 0.269317 
++ 0.934693 0.0668422 0.701191 0.365339 0.436411 0.0605643 0.0737491 0.770205 0.888572 0.415395 
++ 0.383502 0.417486 0.910321 0.247039 0.766495 0.904653 0.500707 0.827817 0.233195 0.537304 
++ 0.519416 0.686773 0.762198 0.98255 0.477732 0.504523 0.384142 0.125365 0.306322 0.467917 
++ 0.830965 0.588977 0.262453 0.72266 0.237774 0.516292 0.277082 0.0158677 0.351015 0.287212 
++ 0.0345721 0.930436 0.0474645 0.753356 0.274907 0.319033 0.913817 0.688455 0.513274 0.178328 
++ 0.0534616 0.846167 0.736082 0.651519 0.359265 0.986642 0.529747 0.868247 0.591114 0.15372 
++ 
++ 10 10
++ 0.571655 0.84204 0.70982 0.387725 0.408767 0.629269 0.901673 0.365339 0.215248 0.462245 
++ 0.802406 0.159768 0.937897 0.499741 0.14182 0.126712 0.426497 0.253057 0.679592 0.951367 
++ 0.0330538 0.212752 0.239911 0.147533 0.564899 0.651254 0.142021 0.135109 0.908922 0.632739 
++ 0.53445 0.71471 0.180896 0.587187 0.252126 0.621634 0.947487 0.783153 0.250126 0.43933 
++ 0.49848 0.130427 0.31754 0.845576 0.488515 0.803073 0.410313 0.455307 0.86086 0.824697 
++ 0.955361 0.0909903 0.886991 0.590109 0.464031 0.247842 0.131189 0.349524 0.471262 0.688981 
++ 0.748293 0.274588 0.652059 0.955409 0.961095 0.476432 0.885648 0.4523 0.505956 0.702207 
++ 0.554584 0.0029996 0.150335 0.556146 0.126031 0.389314 0.0921736 0.808945 0.600394 0.987145 
++ 0.890737 0.414293 0.681346 0.148152 0.199757 0.20325 0.162199 0.931674 0.817561 0.954415 
++ 0.624849 0.0268763 0.385815 0.983305 0.31925 0.0283752 0.0710636 0.651646 0.755844 0.85127 
++ 
+Index: tnt/Makefile
+===================================================================
+RCS file: Makefile
+diff -N Makefile
+*** /dev/null	Tue May  5 14:32:27 1998
+--- Makefile	Thu Aug 16 13:02:55 2001
+***************
+*** 0 ****
+--- 1,29 ----
++ ### Oldham, Jeffrey D.
++ ### 1999 Nov 22
++ ### programming
++ ###
++ ### Compile C++ Program
++ 
++ WCFLAGS=	-pedantic -Wall -W -Wstrict-prototypes -Wpointer-arith -Wbad-function-cast -Wcast-align -Wconversion -Wnested-externs -Wundef -Winline
++ CFLAGS=		-g $(WCFLAGS) -I.. # -DTIME -DSTATS
++ CC=		${HOME}/gcc-install/gcc1/bin/gcc
++ CXXFLAGS=	-DUSE_LIBGXX_INLINES $(CFLAGS)
++ CXX=		${HOME}/gcc-install/gcc1/bin/g++
++ LDFLAGS=	#-lm
++ 
++ CCSOURCES = main.cc
++ 
++ OBJECTS = $(CCSOURCES:%.cc=%.o)
++ 
++ 
++ %: %.o
++ 	$(CXX) $(CXXFLAGS) $^ $(LIBS) -o $@ $(LDFLAGS)
++ 
++ clean:
++ 	rm -f *.o
++ 
++ header-dependencies:
++ 	gcc -MM $(CFLAGS) $(CCSOURCES) $(CSOURCES)
++ 
++ ## ADD header file dependencies
++ ## Create them using &quot;gmake -k header-dependencies&quot;.
+Index: tnt/SPD10x10.dat
+===================================================================
+RCS file: SPD10x10.dat
+diff -N SPD10x10.dat
+*** /dev/null	Tue May  5 14:32:27 1998
+--- SPD10x10.dat	Thu Aug 16 13:02:55 2001
+***************
+*** 0 ****
+--- 1,11 ----
++   10 10 
++    2.3186576e+00   2.1294424e+00   2.1960039e+00   2.7464350e+00   2.0762250e+00   2.3053886e+00   2.1570514e+00   1.5808710e+00   2.0909577e+00   2.4191432e+00
++    2.1294424e+00   3.1651186e+00   2.5234253e+00   3.3847286e+00   2.2593036e+00   2.7678316e+00   2.3628136e+00   1.7825304e+00   2.7783113e+00   3.2137616e+00
++    2.1960039e+00   2.5234253e+00   4.2942805e+00   3.6189729e+00   2.8497810e+00   3.2440901e+00   3.1321684e+00   2.4829696e+00   1.8009041e+00   2.8701790e+00
++    2.7464350e+00   3.3847286e+00   3.6189729e+00   5.2143007e+00   3.1447822e+00   3.5583692e+00   3.3876913e+00   2.8527866e+00   3.4629890e+00   4.1031277e+00
++    2.0762250e+00   2.2593036e+00   2.8497810e+00   3.1447822e+00   3.2581495e+00   2.6091394e+00   2.2553001e+00   1.8630124e+00   1.6701147e+00   2.3741290e+00
++    2.3053886e+00   2.7678316e+00   3.2440901e+00   3.5583692e+00   2.6091394e+00   3.8960566e+00   2.8640541e+00   2.0193737e+00   2.3733266e+00   3.5771674e+00
++    2.1570514e+00   2.3628136e+00   3.1321684e+00   3.3876913e+00   2.2553001e+00   2.8640541e+00   3.2466334e+00   2.4706183e+00   2.4036480e+00   3.0448446e+00
++    1.5808710e+00   1.7825304e+00   2.4829696e+00   2.8527866e+00   1.8630124e+00   2.0193737e+00   2.4706183e+00   2.2343394e+00   1.8592024e+00   2.2138309e+00
++    2.0909577e+00   2.7783113e+00   1.8009041e+00   3.4629890e+00   1.6701147e+00   2.3733266e+00   2.4036480e+00   1.8592024e+00   3.2183447e+00   3.1411090e+00
++    2.4191432e+00   3.2137616e+00   2.8701790e+00   4.1031277e+00   2.3741290e+00   3.5771674e+00   3.0448446e+00   2.2138309e+00   3.1411090e+00   4.1952140e+00
+Index: tnt/cholesky.h
+===================================================================
+RCS file: cholesky.h
+diff -N cholesky.h
+*** /dev/null	Tue May  5 14:32:27 1998
+--- cholesky.h	Thu Aug 16 13:02:55 2001
+***************
+*** 0 ****
+--- 1,96 ----
++ /*
++ *
++ * Template Numerical Toolkit (TNT): Linear Algebra Module
++ *
++ * Mathematical and Computational Sciences Division
++ * National Institute of Technology,
++ * Gaithersburg, MD USA
++ *
++ *
++ * This software was developed at the National Institute of Standards and
++ * Technology (NIST) by employees of the Federal Government in the course
++ * of their official duties. Pursuant to title 17 Section 105 of the
++ * United States Code, this software is not subject to copyright protection
++ * and is in the public domain.  The Template Numerical Toolkit (TNT) is
++ * an experimental system.  NIST assumes no responsibility whatsoever for
++ * its use by other parties, and makes no guarantees, expressed or implied,
++ * about its quality, reliability, or any other characteristic.
++ *
++ * BETA VERSION INCOMPLETE AND SUBJECT TO CHANGE
++ * see <A HREF="http://math.nist.gov/tnt">http://math.nist.gov/tnt</A> for latest updates.
++ *
++ */
++ 
++ 
++ 
++ #ifndef CHOLESKY_H
++ #define CHOLESKY_H
++ 
++ #include &lt;cmath&gt;
++ 
++ // index method
++ 
++ namespace TNT
++ {
++ 
++ 
++ //
++ // Only upper part of A is used.  Cholesky factor is returned in
++ // lower part of L.  Returns 0 if successful, 1 otherwise.
++ //
++ template &lt;class SPDMatrix, class SymmMatrix&gt;
++ int Cholesky_upper_factorization(SPDMatrix &amp;A, SymmMatrix &amp;L)
++ {
++     Subscript M = A.dim(1);
++     Subscript N = A.dim(2);
++ 
++     assert(M == N);                 // make sure A is square
++ 
++     // readjust size of L, if necessary
++ 
++     if (M != L.dim(1) || N != L.dim(2))
++         L = SymmMatrix(N,N);
++ 
++     Subscript i,j,k;
++ 
++ 
++     typename SPDMatrix::element_type dot=0;
++ 
++ 
++     for (j=1; j&lt;=N; j++)                // form column j of L
++     {
++         dot= 0;
++ 
++         for (i=1; i&lt;j; i++)             // for k= 1 TO j-1
++             dot = dot +  L(j,i)*L(j,i);
++ 
++         L(j,j) = A(j,j) - dot;
++ 
++         for (i=j+1; i&lt;=N; i++)
++         {
++             dot = 0;
++             for (k=1; k&lt;j; k++)
++                 dot = dot +  L(i,k)*L(j,k);
++             L(i,j) = A(j,i) - dot;
++         }
++ 
++         if (L(j,j) &lt;= 0.0) return 1;
++ 
++         L(j,j) = sqrt( L(j,j) );
++ 
++         for (i=j+1; i&lt;=N; i++)
++             L(i,j) = L(i,j) / L(j,j);
++ 
++     }
++ 
++     return 0;
++ }
++ 
++ 
++ 
++ 
++ }  
++ // namespace TNT
++ 
++ #endif
++ // CHOLESKY_H
+Index: tnt/cmat.h
+===================================================================
+RCS file: cmat.h
+diff -N cmat.h
+*** /dev/null	Tue May  5 14:32:27 1998
+--- cmat.h	Thu Aug 16 13:02:55 2001
+***************
+*** 0 ****
+--- 1,605 ----
++ /*
++ *
++ * Template Numerical Toolkit (TNT): Linear Algebra Module
++ *
++ * Mathematical and Computational Sciences Division
++ * National Institute of Technology,
++ * Gaithersburg, MD USA
++ *
++ *
++ * This software was developed at the National Institute of Standards and
++ * Technology (NIST) by employees of the Federal Government in the course
++ * of their official duties. Pursuant to title 17 Section 105 of the
++ * United States Code, this software is not subject to copyright protection
++ * and is in the public domain.  The Template Numerical Toolkit (TNT) is
++ * an experimental system.  NIST assumes no responsibility whatsoever for
++ * its use by other parties, and makes no guarantees, expressed or implied,
++ * about its quality, reliability, or any other characteristic.
++ *
++ * BETA VERSION INCOMPLETE AND SUBJECT TO CHANGE
++ * see <A HREF="http://math.nist.gov/tnt">http://math.nist.gov/tnt</A> for latest updates.
++ *
++ */
++ 
++ 
++ 
++ // C compatible matrix: row-oriented, 0-based [i][j] and 1-based (i,j) indexing
++ //
++ 
++ #ifndef CMAT_H
++ #define CMAT_H
++ 
++ #include &quot;tnt/subscript.h&quot;
++ #include &quot;tnt/vec.h&quot;
++ #include &lt;cstdlib&gt;
++ #include &lt;cassert&gt;
++ #include &lt;iostream&gt;
++ #include &lt;sstream&gt;
++ #ifdef TNT_USE_REGIONS
++ #include &quot;tnt/region2d.h&quot;
++ #endif
++ 
++ namespace TNT
++ {
++ 
++ template &lt;class T&gt;
++ class Matrix 
++ {
++ 
++ 
++   public:
++ 
++     typedef Subscript   size_type;
++     typedef         T   value_type;
++     typedef         T   element_type;
++     typedef         T*  pointer;
++     typedef         T*  iterator;
++     typedef         T&amp;  reference;
++     typedef const   T*  const_iterator;
++     typedef const   T&amp;  const_reference;
++ 
++     Subscript lbound() const { return 1;}
++  
++   protected:
++     Subscript m_;
++     Subscript n_;
++     Subscript mn_;      // total size
++     T* v_;                  
++     T** row_;           
++     T* vm1_ ;       // these point to the same data, but are 1-based 
++     T** rowm1_;
++ 
++     // internal helper function to create the array
++     // of row pointers
++ 
++     void initialize(Subscript M, Subscript N)
++     {
++         mn_ = M*N;
++         m_ = M;
++         n_ = N;
++ 
++         v_ = new T[mn_]; 
++         row_ = new T*[M];
++         rowm1_ = new T*[M];
++ 
++         assert(v_  != NULL);
++         assert(row_  != NULL);
++         assert(rowm1_ != NULL);
++ 
++         T* p = v_;              
++         vm1_ = v_ - 1;
++         for (Subscript i=0; i&lt;M; i++)
++         {
++             row_[i] = p;
++             rowm1_[i] = p-1;
++             p += N ;
++             
++         }
++ 
++         rowm1_ -- ;     // compensate for 1-based offset
++     }
++    
++     void copy(const T*  v)
++     {
++         Subscript N = m_ * n_;
++         Subscript i;
++ 
++ #ifdef TNT_UNROLL_LOOPS
++         Subscript Nmod4 = N &amp; 3;
++         Subscript N4 = N - Nmod4;
++ 
++         for (i=0; i&lt;N4; i+=4)
++         {
++             v_[i] = v[i];
++             v_[i+1] = v[i+1];
++             v_[i+2] = v[i+2];
++             v_[i+3] = v[i+3];
++         }
++ 
++         for (i=N4; i&lt; N; i++)
++             v_[i] = v[i];
++ #else
++ 
++         for (i=0; i&lt; N; i++)
++             v_[i] = v[i];
++ #endif      
++     }
++ 
++     void set(const T&amp; val)
++     {
++         Subscript N = m_ * n_;
++         Subscript i;
++ 
++ #ifdef TNT_UNROLL_LOOPS
++         Subscript Nmod4 = N &amp; 3;
++         Subscript N4 = N - Nmod4;
++ 
++         for (i=0; i&lt;N4; i+=4)
++         {
++             v_[i] = val;
++             v_[i+1] = val;
++             v_[i+2] = val;
++             v_[i+3] = val; 
++         }
++ 
++         for (i=N4; i&lt; N; i++)
++             v_[i] = val;
++ #else
++ 
++         for (i=0; i&lt; N; i++)
++             v_[i] = val;
++         
++ #endif      
++     }
++     
++ 
++     
++     void destroy()
++     {     
++         /* do nothing, if no memory has been previously allocated */
++         if (v_ == NULL) return ;
++ 
++         /* if we are here, then matrix was previously allocated */
++         if (v_ != NULL) delete [] (v_);     
++         if (row_ != NULL) delete [] (row_);
++ 
++         /* return rowm1_ back to original value */
++         rowm1_ ++;
++         if (rowm1_ != NULL ) delete [] (rowm1_);
++     }
++ 
++ 
++   public:
++ 
++     operator T**(){ return  row_; }
++     operator T**() const { return row_; }
++ 
++ 
++     Subscript size() const { return mn_; }
++ 
++     // constructors
++ 
++     Matrix() : m_(0), n_(0), mn_(0), v_(0), row_(0), vm1_(0), rowm1_(0) {};
++ 
++     Matrix(const Matrix&lt;T&gt; &amp;A)
++     {
++         initialize(A.m_, A.n_);
++         copy(A.v_);
++     }
++ 
++     Matrix(Subscript M, Subscript N, const T&amp; value = T())
++     {
++         initialize(M,N);
++         set(value);
++     }
++ 
++     Matrix(Subscript M, Subscript N, const T* v)
++     {
++         initialize(M,N);
++         copy(v);
++     }
++ 
++     Matrix(Subscript M, Subscript N, const char *s)
++     {
++         initialize(M,N);
++         std::istringstream ins(s);
++ 
++         Subscript i, j;
++ 
++         for (i=0; i&lt;M; i++)
++             for (j=0; j&lt;N; j++)
++                 ins &gt;&gt; row_[i][j];
++     }
++ 
++     // destructor
++     //
++     ~Matrix()
++     {
++         destroy();
++     }
++ 
++ 
++     // reallocating
++     //
++     Matrix&lt;T&gt;&amp; newsize(Subscript M, Subscript N)
++     {
++         if (num_rows() == M &amp;&amp; num_cols() == N)
++             return *this;
++ 
++         destroy();
++         initialize(M,N);
++         
++         return *this;
++     }
++ 
++ 
++ 
++ 
++     // assignments
++     //
++     Matrix&lt;T&gt;&amp; operator=(const Matrix&lt;T&gt; &amp;A)
++     {
++         if (v_ == A.v_)
++             return *this;
++ 
++         if (m_ == A.m_  &amp;&amp; n_ == A.n_)      // no need to re-alloc
++             copy(A.v_);
++ 
++         else
++         {
++             destroy();
++             initialize(A.m_, A.n_);
++             copy(A.v_);
++         }
++ 
++         return *this;
++     }
++         
++     Matrix&lt;T&gt;&amp; operator=(const T&amp; scalar)
++     { 
++         set(scalar); 
++         return *this;
++     }
++ 
++ 
++     Subscript dim(Subscript d) const 
++     {
++ #ifdef TNT_BOUNDS_CHECK
++        assert( d &gt;= 1);
++         assert( d &lt;= 2);
++ #endif
++         return (d==1) ? m_ : ((d==2) ? n_ : 0); 
++     }
++ 
++     Subscript num_rows() const { return m_; }
++     Subscript num_cols() const { return n_; }
++ 
++ 
++ 
++ 
++     inline T* operator[](Subscript i)
++     {
++ #ifdef TNT_BOUNDS_CHECK
++         assert(0&lt;=i);
++         assert(i &lt; m_) ;
++ #endif
++         return row_[i];
++     }
++ 
++     inline const T* operator[](Subscript i) const
++     {
++ #ifdef TNT_BOUNDS_CHECK
++         assert(0&lt;=i);
++         assert(i &lt; m_) ;
++ #endif
++         return row_[i];
++     }
++ 
++     inline reference operator()(Subscript i)
++     { 
++ #ifdef TNT_BOUNDS_CHECK
++         assert(1&lt;=i);
++         assert(i &lt;= mn_) ;
++ #endif
++         return vm1_[i]; 
++     }
++ 
++     inline const_reference operator()(Subscript i) const
++     { 
++ #ifdef TNT_BOUNDS_CHECK
++         assert(1&lt;=i);
++         assert(i &lt;= mn_) ;
++ #endif
++         return vm1_[i]; 
++     }
++ 
++ 
++ 
++     inline reference operator()(Subscript i, Subscript j)
++     { 
++ #ifdef TNT_BOUNDS_CHECK
++         assert(1&lt;=i);
++         assert(i &lt;= m_) ;
++         assert(1&lt;=j);
++         assert(j &lt;= n_);
++ #endif
++         return  rowm1_[i][j]; 
++     }
++ 
++ 
++     
++     inline const_reference operator() (Subscript i, Subscript j) const
++     {
++ #ifdef TNT_BOUNDS_CHECK
++         assert(1&lt;=i);
++         assert(i &lt;= m_) ;
++         assert(1&lt;=j);
++         assert(j &lt;= n_);
++ #endif
++         return rowm1_[i][j]; 
++     }
++ 
++ 
++ 
++ #ifdef TNT_USE_REGIONS
++ 
++     typedef Region2D&lt;Matrix&lt;T&gt; &gt; Region;
++     
++ 
++     Region operator()(const Index1D &amp;I, const Index1D &amp;J)
++     {
++         return Region(*this, I,J);
++     }
++ 
++ 
++     typedef const_Region2D&lt; Matrix&lt;T&gt; &gt; const_Region;
++     const_Region operator()(const Index1D &amp;I, const Index1D &amp;J) const
++     {
++         return const_Region(*this, I,J);
++     }
++ 
++ #endif
++ 
++ 
++ };
++ 
++ 
++ /* ***************************  I/O  ********************************/
++ 
++ template &lt;class T&gt;
++ std::ostream&amp; operator&lt;&lt;(std::ostream &amp;s, const Matrix&lt;T&gt; &amp;A)
++ {
++     Subscript M=A.num_rows();
++     Subscript N=A.num_cols();
++ 
++     s &lt;&lt; M &lt;&lt; &quot; &quot; &lt;&lt; N &lt;&lt; &quot;\n&quot;;
++ 
++     for (Subscript i=0; i&lt;M; i++)
++     {
++         for (Subscript j=0; j&lt;N; j++)
++         {
++             s &lt;&lt; A[i][j] &lt;&lt; &quot; &quot;;
++         }
++         s &lt;&lt; &quot;\n&quot;;
++     }
++ 
++ 
++     return s;
++ }
++ 
++ template &lt;class T&gt;
++ std::istream&amp; operator&gt;&gt;(std::istream &amp;s, Matrix&lt;T&gt; &amp;A)
++ {
++ 
++     Subscript M, N;
++ 
++     s &gt;&gt; M &gt;&gt; N;
++ 
++     if ( !(M == A.num_rows() &amp;&amp; N == A.num_cols() ))
++     {
++         A.newsize(M,N);
++     }
++ 
++ 
++     for (Subscript i=0; i&lt;M; i++)
++         for (Subscript j=0; j&lt;N; j++)
++         {
++             s &gt;&gt;  A[i][j];
++         }
++ 
++ 
++     return s;
++ }
++ 
++ // *******************[ basic matrix algorithms ]***************************
++ 
++ 
++ template &lt;class T&gt;
++ Matrix&lt;T&gt; operator+(const Matrix&lt;T&gt; &amp;A, 
++     const Matrix&lt;T&gt; &amp;B)
++ {
++     Subscript M = A.num_rows();
++     Subscript N = A.num_cols();
++ 
++     assert(M==B.num_rows());
++     assert(N==B.num_cols());
++ 
++     Matrix&lt;T&gt; tmp(M,N);
++     Subscript i,j;
++ 
++     for (i=0; i&lt;M; i++)
++         for (j=0; j&lt;N; j++)
++             tmp[i][j] = A[i][j] + B[i][j];
++ 
++     return tmp;
++ }
++ 
++ template &lt;class T&gt;
++ Matrix&lt;T&gt; operator-(const Matrix&lt;T&gt; &amp;A, 
++     const Matrix&lt;T&gt; &amp;B)
++ {
++     Subscript M = A.num_rows();
++     Subscript N = A.num_cols();
++ 
++     assert(M==B.num_rows());
++     assert(N==B.num_cols());
++ 
++     Matrix&lt;T&gt; tmp(M,N);
++     Subscript i,j;
++ 
++     for (i=0; i&lt;M; i++)
++         for (j=0; j&lt;N; j++)
++             tmp[i][j] = A[i][j] - B[i][j];
++ 
++     return tmp;
++ }
++ 
++ template &lt;class T&gt;
++ Matrix&lt;T&gt; mult_element(const Matrix&lt;T&gt; &amp;A, 
++     const Matrix&lt;T&gt; &amp;B)
++ {
++     Subscript M = A.num_rows();
++     Subscript N = A.num_cols();
++ 
++     assert(M==B.num_rows());
++     assert(N==B.num_cols());
++ 
++     Matrix&lt;T&gt; tmp(M,N);
++     Subscript i,j;
++ 
++     for (i=0; i&lt;M; i++)
++         for (j=0; j&lt;N; j++)
++             tmp[i][j] = A[i][j] * B[i][j];
++ 
++     return tmp;
++ }
++ 
++ 
++ template &lt;class T&gt;
++ Matrix&lt;T&gt; transpose(const Matrix&lt;T&gt; &amp;A)
++ {
++     Subscript M = A.num_rows();
++     Subscript N = A.num_cols();
++ 
++     Matrix&lt;T&gt; S(N,M);
++     Subscript i, j;
++ 
++     for (i=0; i&lt;M; i++)
++         for (j=0; j&lt;N; j++)
++             S[j][i] = A[i][j];
++ 
++     return S;
++ }
++ 
++ 
++     
++ template &lt;class T&gt;
++ inline Matrix&lt;T&gt; matmult(const Matrix&lt;T&gt;  &amp;A, 
++     const Matrix&lt;T&gt; &amp;B)
++ {
++ 
++ #ifdef TNT_BOUNDS_CHECK
++     assert(A.num_cols() == B.num_rows());
++ #endif
++ 
++     Subscript M = A.num_rows();
++     Subscript N = A.num_cols();
++     Subscript K = B.num_cols();
++ 
++     Matrix&lt;T&gt; tmp(M,K);
++     T sum;
++ 
++     for (Subscript i=0; i&lt;M; i++)
++     for (Subscript k=0; k&lt;K; k++)
++     {
++         sum = 0;
++         for (Subscript j=0; j&lt;N; j++)
++             sum = sum +  A[i][j] * B[j][k];
++ 
++         tmp[i][k] = sum; 
++     }
++ 
++     return tmp;
++ }
++ 
++ template &lt;class T&gt;
++ inline Matrix&lt;T&gt; operator*(const Matrix&lt;T&gt;  &amp;A, 
++     const Matrix&lt;T&gt; &amp;B)
++ {
++     return matmult(A,B);
++ }
++ 
++ template &lt;class T&gt;
++ inline int matmult(Matrix&lt;T&gt;&amp; C, const Matrix&lt;T&gt;  &amp;A, 
++     const Matrix&lt;T&gt; &amp;B)
++ {
++ 
++     assert(A.num_cols() == B.num_rows());
++ 
++     Subscript M = A.num_rows();
++     Subscript N = A.num_cols();
++     Subscript K = B.num_cols();
++ 
++     C.newsize(M,K);
++ 
++     T sum;
++ 
++     const T* row_i;
++     const T* col_k;
++ 
++     for (Subscript i=0; i&lt;M; i++)
++     for (Subscript k=0; k&lt;K; k++)
++     {
++         row_i  = &amp;(A[i][0]);
++         col_k  = &amp;(B[0][k]);
++         sum = 0;
++         for (Subscript j=0; j&lt;N; j++)
++         {
++             sum  += *row_i * *col_k;
++             row_i++;
++             col_k += K;
++         }
++         C[i][k] = sum; 
++     }
++ 
++     return 0;
++ }
++ 
++ 
++ template &lt;class T&gt;
++ Vector&lt;T&gt; matmult(const Matrix&lt;T&gt;  &amp;A, const Vector&lt;T&gt; &amp;x)
++ {
++ 
++ #ifdef TNT_BOUNDS_CHECK
++     assert(A.num_cols() == x.dim());
++ #endif
++ 
++     Subscript M = A.num_rows();
++     Subscript N = A.num_cols();
++ 
++     Vector&lt;T&gt; tmp(M);
++     T sum;
++ 
++     for (Subscript i=0; i&lt;M; i++)
++     {
++         sum = 0;
++         const T* rowi = A[i];
++         for (Subscript j=0; j&lt;N; j++)
++             sum = sum +  rowi[j] * x[j];
++ 
++         tmp[i] = sum; 
++     }
++ 
++     return tmp;
++ }
++ 
++ template &lt;class T&gt;
++ inline Vector&lt;T&gt; operator*(const Matrix&lt;T&gt;  &amp;A, const Vector&lt;T&gt; &amp;x)
++ {
++     return matmult(A,x);
++ }
++ 
++ } // namespace TNT
++ 
++ #endif
++ // CMAT_H
+Index: tnt/fchol.cc
+===================================================================
+RCS file: fchol.cc
+diff -N fchol.cc
+*** /dev/null	Tue May  5 14:32:27 1998
+--- fchol.cc	Thu Aug 16 13:02:55 2001
+***************
+*** 0 ****
+--- 1,60 ----
++ 
++ 
++ 
++ // Test Cholesky module  
++ 
++ #include &lt;iostream&gt;
++ 
++ #include &quot;tnt/tnt.h&quot;
++ #include &quot;tnt/vec.h&quot;
++ #include &quot;tnt/fmat.h&quot;
++ #include &quot;tnt/cholesky.h&quot;
++ #include &quot;tnt/trisolve.h&quot;
++ #include &quot;tnt/transv.h&quot;         /* transpose views */
++ 
++ using namespace std;
++ using namespace TNT;
++ 
++ int main()
++ {
++     Fortran_Matrix&lt;double&gt; A;
++ 
++     cin &gt;&gt; A;                   /* A should be symmetric positive definite */
++ 
++     Subscript N = A.num_rows();
++     assert(N == A.num_cols());
++ 
++     Vector&lt;double&gt; b(N, 1.0);   // b= [1,1,1,...]
++     Fortran_Matrix&lt;double&gt; L(N, N);
++ 
++ 
++     cout &lt;&lt; &quot;A: &quot; &lt;&lt; A &lt;&lt; endl;
++     
++     if (Cholesky_upper_factorization(A, L) !=0)
++     {
++         cout &lt;&lt; &quot;Cholesky did not work.&quot; &lt;&lt; endl;
++         exit(1);
++     }
++     
++ 
++     cout &lt;&lt; L &lt;&lt; endl;
++ 
++     // solve Ax =b, as L*L'x =b
++     //
++     //  let y=L'x, then
++     //
++     //
++     //   solve L y = b;
++     //   solve L'x = y;
++ 
++     Vector&lt;double&gt; y = Lower_triangular_solve(L, b);
++     TNT::Transpose_View&lt;TNT::Fortran_Matrix&lt;double&gt; &gt; foo(L);
++     Vector&lt;double&gt; x1=
++       Upper_triangular_solve(Transpose_View&lt;Fortran_Matrix&lt;double&gt; &gt;(L), y);
++     Vector&lt;double&gt; x= Upper_triangular_solve(foo, y);
++ 
++     cout &lt;&lt; &quot;x: &quot; &lt;&lt; x &lt;&lt; endl;
++     cout &lt;&lt; &quot;Residual A*x-b: &quot; &lt;&lt; A*x-b &lt;&lt; endl;
++ 
++ 	return 0;
++ }
+Index: tnt/fcscmat.h
+===================================================================
+RCS file: fcscmat.h
+diff -N fcscmat.h
+*** /dev/null	Tue May  5 14:32:27 1998
+--- fcscmat.h	Thu Aug 16 13:02:55 2001
+***************
+*** 0 ****
+--- 1,165 ----
++ /*
++ *
++ * Template Numerical Toolkit (TNT): Linear Algebra Module
++ *
++ * Mathematical and Computational Sciences Division
++ * National Institute of Technology,
++ * Gaithersburg, MD USA
++ *
++ *
++ * This software was developed at the National Institute of Standards and
++ * Technology (NIST) by employees of the Federal Government in the course
++ * of their official duties. Pursuant to title 17 Section 105 of the
++ * United States Code, this software is not subject to copyright protection
++ * and is in the public domain.  The Template Numerical Toolkit (TNT) is
++ * an experimental system.  NIST assumes no responsibility whatsoever for
++ * its use by other parties, and makes no guarantees, expressed or implied,
++ * about its quality, reliability, or any other characteristic.
++ *
++ * BETA VERSION INCOMPLETE AND SUBJECT TO CHANGE
++ * see <A HREF="http://math.nist.gov/tnt">http://math.nist.gov/tnt</A> for latest updates.
++ *
++ */
++ 
++ 
++ 
++ //  Templated compressed sparse column matrix (Fortran conventions).
++ //  uses 1-based offsets in storing row indices.
++ //  Used primarily to interface with Fortran sparse matrix libaries.
++ //  (CANNOT BE USED AS AN STL CONTAINER.)
++ 
++ 
++ #ifndef FCSCMAT_H
++ #define FCSCMAT_H
++ 
++ #include &lt;iostream&gt;
++ #include &lt;cassert&gt;
++ #include &quot;tnt/tnt.h&quot;
++ #include &quot;tnt/vec.h&quot;
++ 
++ using namespace std;
++ 
++ namespace TNT
++ {
++ 
++ template &lt;class T&gt;
++ class Fortran_Sparse_Col_Matrix 
++ {
++ 
++    protected:
++ 
++        Vector&lt;T&gt;           val_;       // data values (nz_ elements)
++        Vector&lt;Subscript&gt;   rowind_;    // row_ind (nz_ elements)
++        Vector&lt;Subscript&gt;   colptr_;    // col_ptr (n_+1 elements)
++ 
++        int nz_;                   // number of nonzeros
++        Subscript m_;              // global dimensions
++        Subscript n_;
++   
++    public:
++ 
++ 
++        Fortran_Sparse_Col_Matrix(void);
++        Fortran_Sparse_Col_Matrix(const Fortran_Sparse_Col_Matrix&lt;T&gt; &amp;S)
++         : val_(S.val_), rowind_(S.rowind_), colptr_(S.colptr_), nz_(S.nz_),
++             m_(S.m_), n_(S.n_) {};
++        Fortran_Sparse_Col_Matrix(Subscript M, Subscript N, 
++             Subscript nz, const T  *val,  const Subscript *r, 
++             const Subscript *c) : val_(nz, val), rowind_(nz, r), 
++             colptr_(N+1, c), nz_(nz), m_(M), n_(N) {};
++ 
++        Fortran_Sparse_Col_Matrix(Subscript M, Subscript N, 
++             Subscript nz, char *val,  char  *r, 
++             char *c) : val_(nz, val), rowind_(nz, r), 
++             colptr_(N+1, c), nz_(nz), m_(M), n_(N) {};
++ 
++        Fortran_Sparse_Col_Matrix(Subscript M, Subscript N, 
++             Subscript nz, const T  *val, Subscript *r, Subscript *c)
++             : val_(nz, val), rowind_(nz, r), colptr_(N+1, c), nz_(nz), 
++                     m_(M), n_(N) {};
++     
++       ~Fortran_Sparse_Col_Matrix() {};
++         
++ 
++        T &amp;      val(Subscript i) { return val_(i); }
++        const T &amp;      val(Subscript i) const { return val_(i); }
++ 
++        Subscript &amp;   row_ind(Subscript i) { return rowind_(i); }
++        const Subscript &amp;   row_ind(Subscript i) const { return rowind_(i); }
++ 
++        Subscript    col_ptr(Subscript i) { return colptr_(i);}
++        const Subscript    col_ptr(Subscript i) const { return colptr_(i);}
++ 
++ 
++        Subscript    num_cols() const { return m_;}
++        Subscript    num_rows() const { return n_; }
++ 
++        Subscript          dim(Subscript i) const 
++        {
++ #ifdef TNT_BOUNDS_CHECK
++             assert( 1 &lt;= i );
++             assert( i &lt;= 2 );
++ #endif
++             if (i==1) return m_;
++             else if (i==2) return m_;
++             else return 0;
++         }
++ 
++        Subscript          num_nonzeros() const {return nz_;};
++        Subscript          lbound() const {return 1;}
++ 
++ 
++ 
++        Fortran_Sparse_Col_Matrix&amp; operator=(const 
++             Fortran_Sparse_Col_Matrix &amp;C)
++         {
++             val_ = C.val_;
++             rowind_ = C.rowind_;
++             colptr_ = C.colptr_;
++             nz_ = C.nz_;
++             m_ = C.m_;
++             n_ = C.n_;
++ 
++             return *this;
++         }
++ 
++        Fortran_Sparse_Col_Matrix&amp; newsize(Subscript M, Subscript N, 
++                 Subscript nz)
++         {
++             val_.newsize(nz);
++             rowind_.newsize(nz);
++             colptr_.newsize(N+1);
++             return *this;
++         }
++ };
++ 
++ template &lt;class T&gt;
++ ostream&amp; operator&lt;&lt;(ostream &amp;s, const Fortran_Sparse_Col_Matrix&lt;T&gt; &amp;A)
++ {
++     Subscript M=A.num_rows();
++     Subscript N=A.num_cols();
++ 
++     s &lt;&lt; M &lt;&lt; &quot; &quot; &lt;&lt; N &lt;&lt; &quot; &quot; &lt;&lt; A.num_nonzeros() &lt;&lt;  endl;
++ 
++ 
++     for (Subscript k=1; k&lt;=N; k++)
++     {
++         Subscript start = A.col_ptr(k);
++         Subscript end = A.col_ptr(k+1);
++ 
++         for (Subscript i= start; i&lt;end; i++)
++         {
++             s &lt;&lt; A.row_ind(i) &lt;&lt; &quot; &quot; &lt;&lt; k &lt;&lt; &quot; &quot; &lt;&lt; A.val(i) &lt;&lt; endl;
++         }
++     }
++ 
++     return s;
++ }
++ 
++ 
++ 
++ } // namespace TNT
++ 
++ #endif  
++ /* FCSCMAT_H */
++ 
+Index: tnt/fmat.h
+===================================================================
+RCS file: fmat.h
+diff -N fmat.h
+*** /dev/null	Tue May  5 14:32:27 1998
+--- fmat.h	Thu Aug 16 13:02:55 2001
+***************
+*** 0 ****
+--- 1,577 ----
++ /*
++ *
++ * Template Numerical Toolkit (TNT): Linear Algebra Module
++ *
++ * Mathematical and Computational Sciences Division
++ * National Institute of Technology,
++ * Gaithersburg, MD USA
++ *
++ *
++ * This software was developed at the National Institute of Standards and
++ * Technology (NIST) by employees of the Federal Government in the course
++ * of their official duties. Pursuant to title 17 Section 105 of the
++ * United States Code, this software is not subject to copyright protection
++ * and is in the public domain.  The Template Numerical Toolkit (TNT) is
++ * an experimental system.  NIST assumes no responsibility whatsoever for
++ * its use by other parties, and makes no guarantees, expressed or implied,
++ * about its quality, reliability, or any other characteristic.
++ *
++ * BETA VERSION INCOMPLETE AND SUBJECT TO CHANGE
++ * see <A HREF="http://math.nist.gov/tnt">http://math.nist.gov/tnt</A> for latest updates.
++ *
++ */
++ 
++ 
++ 
++ // Fortran-compatible matrix: column oriented, 1-based (i,j) indexing
++ 
++ #ifndef FMAT_H
++ #define FMAT_H
++ 
++ #include &quot;tnt/subscript.h&quot;
++ #include &quot;tnt/vec.h&quot;
++ #include &lt;cstdlib&gt;
++ #include &lt;cassert&gt;
++ #include &lt;iostream&gt;
++ #include &lt;sstream&gt;
++ #ifdef TNT_USE_REGIONS
++ #include &quot;tnt/region2d.h&quot;
++ #endif
++ 
++ // simple 1-based, column oriented Matrix class
++ 
++ namespace TNT
++ {
++ 
++ template &lt;class T&gt;
++ class Fortran_Matrix 
++ {
++ 
++ 
++   public:
++ 
++     typedef         T   value_type;
++     typedef         T   element_type;
++     typedef         T*  pointer;
++     typedef         T*  iterator;
++     typedef         T&amp;  reference;
++     typedef const   T*  const_iterator;
++     typedef const   T&amp;  const_reference;
++ 
++     Subscript lbound() const { return 1;}
++  
++   protected:
++     T* v_;                  // these are adjusted to simulate 1-offset
++     Subscript m_;
++     Subscript n_;
++     T** col_;           // these are adjusted to simulate 1-offset
++ 
++     // internal helper function to create the array
++     // of row pointers
++ 
++     void initialize(Subscript M, Subscript N)
++     {
++         // adjust col_[] pointers so that they are 1-offset:
++         //   col_[j][i] is really col_[j-1][i-1];
++         //
++         // v_[] is the internal contiguous array, it is still 0-offset
++         //
++         v_ = new T[M*N];
++         col_ = new T*[N];
++ 
++         assert(v_  != NULL);
++         assert(col_ != NULL);
++ 
++ 
++         m_ = M;
++         n_ = N;
++         T* p = v_ - 1;              
++         for (Subscript i=0; i&lt;N; i++)
++         {
++             col_[i] = p;
++             p += M ;
++             
++         }
++         col_ --; 
++     }
++    
++     void copy(const T*  v)
++     {
++         Subscript N = m_ * n_;
++         Subscript i;
++ 
++ #ifdef TNT_UNROLL_LOOPS
++         Subscript Nmod4 = N &amp; 3;
++         Subscript N4 = N - Nmod4;
++ 
++         for (i=0; i&lt;N4; i+=4)
++         {
++             v_[i] = v[i];
++             v_[i+1] = v[i+1];
++             v_[i+2] = v[i+2];
++             v_[i+3] = v[i+3];
++         }
++ 
++         for (i=N4; i&lt; N; i++)
++             v_[i] = v[i];
++ #else
++ 
++         for (i=0; i&lt; N; i++)
++             v_[i] = v[i];
++ #endif      
++     }
++ 
++     void set(const T&amp; val)
++     {
++         Subscript N = m_ * n_;
++         Subscript i;
++ 
++ #ifdef TNT_UNROLL_LOOPS
++         Subscript Nmod4 = N &amp; 3;
++         Subscript N4 = N - Nmod4;
++ 
++         for (i=0; i&lt;N4; i+=4)
++         {
++             v_[i] = val;
++             v_[i+1] = val;
++             v_[i+2] = val;
++             v_[i+3] = val; 
++         }
++ 
++         for (i=N4; i&lt; N; i++)
++             v_[i] = val;
++ #else
++ 
++         for (i=0; i&lt; N; i++)
++             v_[i] = val;
++         
++ #endif      
++     }
++     
++ 
++ 
++     void destroy()
++     {     
++         /* do nothing, if no memory has been previously allocated */
++         if (v_ == NULL) return ;
++ 
++         /* if we are here, then matrix was previously allocated */
++         delete [] (v_);     
++         col_ ++;                // changed back to 0-offset
++         delete [] (col_);
++     }
++ 
++ 
++   public:
++ 
++     T* begin() { return v_; }
++     const T* begin() const { return v_;}
++ 
++     T* end() { return v_ + m_*n_; }
++     const T* end() const { return v_ + m_*n_; }
++ 
++ 
++     // constructors
++ 
++     Fortran_Matrix() : v_(0), m_(0), n_(0), col_(0)  {};
++     Fortran_Matrix(const Fortran_Matrix&lt;T&gt; &amp;A)
++     {
++         initialize(A.m_, A.n_);
++         copy(A.v_);
++     }
++ 
++     Fortran_Matrix(Subscript M, Subscript N, const T&amp; value = T())
++     {
++         initialize(M,N);
++         set(value);
++     }
++ 
++     Fortran_Matrix(Subscript M, Subscript N, const T* v)
++     {
++         initialize(M,N);
++         copy(v);
++     }
++ 
++ 
++     Fortran_Matrix(Subscript M, Subscript N, char *s)
++     {
++         initialize(M,N);
++         std::istringstream ins(s);
++ 
++         Subscript i, j;
++ 
++         for (i=1; i&lt;=M; i++)
++             for (j=1; j&lt;=N; j++)
++                 ins &gt;&gt; (*this)(i,j);
++     }
++ 
++     // destructor
++     ~Fortran_Matrix()
++     {
++         destroy();
++     }
++ 
++ 
++     // assignments
++     //
++     Fortran_Matrix&lt;T&gt;&amp; operator=(const Fortran_Matrix&lt;T&gt; &amp;A)
++     {
++         if (v_ == A.v_)
++             return *this;
++ 
++         if (m_ == A.m_  &amp;&amp; n_ == A.n_)      // no need to re-alloc
++             copy(A.v_);
++ 
++         else
++         {
++             destroy();
++             initialize(A.m_, A.n_);
++             copy(A.v_);
++         }
++ 
++         return *this;
++     }
++         
++     Fortran_Matrix&lt;T&gt;&amp; operator=(const T&amp; scalar)
++     { 
++         set(scalar); 
++         return *this;
++     }
++ 
++ 
++     Subscript dim(Subscript d) const 
++     {
++ #ifdef TNT_BOUNDS_CHECK
++        assert( d &gt;= 1);
++         assert( d &lt;= 2);
++ #endif
++         return (d==1) ? m_ : ((d==2) ? n_ : 0); 
++     }
++ 
++     Subscript num_rows() const { return m_; }
++     Subscript num_cols() const { return n_; }
++ 
++     Fortran_Matrix&lt;T&gt;&amp; newsize(Subscript M, Subscript N)
++     {
++         if (num_rows() == M &amp;&amp; num_cols() == N)
++             return *this;
++ 
++         destroy();
++         initialize(M,N);
++ 
++         return *this;
++     }
++ 
++ 
++ 
++     // 1-based element access
++     //
++     inline reference operator()(Subscript i, Subscript j)
++     { 
++ #ifdef TNT_BOUNDS_CHECK
++         assert(1&lt;=i);
++         assert(i &lt;= m_) ;
++         assert(1&lt;=j);
++         assert(j &lt;= n_);
++ #endif
++         return col_[j][i]; 
++     }
++ 
++     inline const_reference operator() (Subscript i, Subscript j) const
++     {
++ #ifdef TNT_BOUNDS_CHECK
++         assert(1&lt;=i);
++         assert(i &lt;= m_) ;
++         assert(1&lt;=j);
++         assert(j &lt;= n_);
++ #endif
++         return col_[j][i]; 
++     }
++ 
++ 
++ #ifdef TNT_USE_REGIONS
++ 
++     typedef Region2D&lt;Fortran_Matrix&lt;T&gt; &gt; Region;
++     typedef const_Region2D&lt; Fortran_Matrix&lt;T&gt; &gt; const_Region;
++ 
++     Region operator()(const Index1D &amp;I, const Index1D &amp;J)
++     {
++         return Region(*this, I,J);
++     }
++ 
++     const_Region operator()(const Index1D &amp;I, const Index1D &amp;J) const
++     {
++         return const_Region(*this, I,J);
++     }
++ 
++ #endif
++ 
++ 
++ };
++ 
++ 
++ /* ***************************  I/O  ********************************/
++ 
++ template &lt;class T&gt;
++ std::ostream&amp; operator&lt;&lt;(std::ostream &amp;s, const Fortran_Matrix&lt;T&gt; &amp;A)
++ {
++     Subscript M=A.num_rows();
++     Subscript N=A.num_cols();
++ 
++     s &lt;&lt; M &lt;&lt; &quot; &quot; &lt;&lt; N &lt;&lt; &quot;\n&quot;;
++ 
++     for (Subscript i=1; i&lt;=M; i++)
++     {
++         for (Subscript j=1; j&lt;=N; j++)
++         {
++             s &lt;&lt; A(i,j) &lt;&lt; &quot; &quot;;
++         }
++         s &lt;&lt; &quot;\n&quot;;
++     }
++ 
++ 
++     return s;
++ }
++ 
++ template &lt;class T&gt;
++ std::istream&amp; operator&gt;&gt;(std::istream &amp;s, Fortran_Matrix&lt;T&gt; &amp;A)
++ {
++ 
++     Subscript M, N;
++ 
++     s &gt;&gt; M &gt;&gt; N;
++ 
++     if ( !(M == A.num_rows() &amp;&amp; N == A.num_cols()))
++     {
++         A.newsize(M,N);
++     }
++ 
++ 
++     for (Subscript i=1; i&lt;=M; i++)
++         for (Subscript j=1; j&lt;=N; j++)
++         {
++             s &gt;&gt;  A(i,j);
++         }
++ 
++ 
++     return s;
++ }
++ 
++ // *******************[ basic matrix algorithms ]***************************
++ 
++ 
++ template &lt;class T&gt;
++ Fortran_Matrix&lt;T&gt; operator+(const Fortran_Matrix&lt;T&gt; &amp;A, 
++     const Fortran_Matrix&lt;T&gt; &amp;B)
++ {
++     Subscript M = A.num_rows();
++     Subscript N = A.num_cols();
++ 
++     assert(M==B.num_rows());
++     assert(N==B.num_cols());
++ 
++     Fortran_Matrix&lt;T&gt; tmp(M,N);
++     Subscript i,j;
++ 
++     for (i=1; i&lt;=M; i++)
++         for (j=1; j&lt;=N; j++)
++             tmp(i,j) = A(i,j) + B(i,j);
++ 
++     return tmp;
++ }
++ 
++ template &lt;class T&gt;
++ Fortran_Matrix&lt;T&gt; operator-(const Fortran_Matrix&lt;T&gt; &amp;A, 
++     const Fortran_Matrix&lt;T&gt; &amp;B)
++ {
++     Subscript M = A.num_rows();
++     Subscript N = A.num_cols();
++ 
++     assert(M==B.num_rows());
++     assert(N==B.num_cols());
++ 
++     Fortran_Matrix&lt;T&gt; tmp(M,N);
++     Subscript i,j;
++ 
++     for (i=1; i&lt;=M; i++)
++         for (j=1; j&lt;=N; j++)
++             tmp(i,j) = A(i,j) - B(i,j);
++ 
++     return tmp;
++ }
++ 
++ // element-wise multiplication  (use matmult() below for matrix
++ // multiplication in the linear algebra sense.)
++ //
++ //
++ template &lt;class T&gt;
++ Fortran_Matrix&lt;T&gt; mult_element(const Fortran_Matrix&lt;T&gt; &amp;A, 
++     const Fortran_Matrix&lt;T&gt; &amp;B)
++ {
++     Subscript M = A.num_rows();
++     Subscript N = A.num_cols();
++ 
++     assert(M==B.num_rows());
++     assert(N==B.num_cols());
++ 
++     Fortran_Matrix&lt;T&gt; tmp(M,N);
++     Subscript i,j;
++ 
++     for (i=1; i&lt;=M; i++)
++         for (j=1; j&lt;=N; j++)
++             tmp(i,j) = A(i,j) * B(i,j);
++ 
++     return tmp;
++ }
++ 
++ 
++ template &lt;class T&gt;
++ Fortran_Matrix&lt;T&gt; transpose(const Fortran_Matrix&lt;T&gt; &amp;A)
++ {
++     Subscript M = A.num_rows();
++     Subscript N = A.num_cols();
++ 
++     Fortran_Matrix&lt;T&gt; S(N,M);
++     Subscript i, j;
++ 
++     for (i=1; i&lt;=M; i++)
++         for (j=1; j&lt;=N; j++)
++             S(j,i) = A(i,j);
++ 
++     return S;
++ }
++ 
++ 
++     
++ template &lt;class T&gt;
++ inline Fortran_Matrix&lt;T&gt; matmult(const Fortran_Matrix&lt;T&gt;  &amp;A, 
++     const Fortran_Matrix&lt;T&gt; &amp;B)
++ {
++ 
++ #ifdef TNT_BOUNDS_CHECK
++     assert(A.num_cols() == B.num_rows());
++ #endif
++ 
++     Subscript M = A.num_rows();
++     Subscript N = A.num_cols();
++     Subscript K = B.num_cols();
++ 
++     Fortran_Matrix&lt;T&gt; tmp(M,K);
++     T sum;
++ 
++     for (Subscript i=1; i&lt;=M; i++)
++     for (Subscript k=1; k&lt;=K; k++)
++     {
++         sum = 0;
++         for (Subscript j=1; j&lt;=N; j++)
++             sum = sum +  A(i,j) * B(j,k);
++ 
++         tmp(i,k) = sum; 
++     }
++ 
++     return tmp;
++ }
++ 
++ template &lt;class T&gt;
++ inline Fortran_Matrix&lt;T&gt; operator*(const Fortran_Matrix&lt;T&gt; &amp;A, 
++     const Fortran_Matrix&lt;T&gt; &amp;B)
++ {
++     return matmult(A,B);
++ }
++ 
++ template &lt;class T&gt;
++ inline int matmult(Fortran_Matrix&lt;T&gt;&amp; C, const Fortran_Matrix&lt;T&gt;  &amp;A, 
++     const Fortran_Matrix&lt;T&gt; &amp;B)
++ {
++ 
++     assert(A.num_cols() == B.num_rows());
++ 
++     Subscript M = A.num_rows();
++     Subscript N = A.num_cols();
++     Subscript K = B.num_cols();
++ 
++     C.newsize(M,K);         // adjust shape of C, if necessary
++ 
++ 
++     T sum; 
++ 
++     const T* row_i;
++     const T* col_k;
++ 
++     for (Subscript i=1; i&lt;=M; i++)
++     {
++         for (Subscript k=1; k&lt;=K; k++)
++         {
++             row_i = &amp;A(i,1);
++             col_k = &amp;B(1,k);
++             sum = 0;
++             for (Subscript j=1; j&lt;=N; j++)
++             {
++                 sum +=  *row_i * *col_k;
++                 row_i += M;
++                 col_k ++;
++             }
++         
++             C(i,k) = sum; 
++         }
++ 
++     }
++ 
++     return 0;
++ }
++ 
++ 
++ template &lt;class T&gt;
++ Vector&lt;T&gt; matmult(const Fortran_Matrix&lt;T&gt;  &amp;A, const Vector&lt;T&gt; &amp;x)
++ {
++ 
++ #ifdef TNT_BOUNDS_CHECK
++     assert(A.num_cols() == x.dim());
++ #endif
++ 
++     Subscript M = A.num_rows();
++     Subscript N = A.num_cols();
++ 
++     Vector&lt;T&gt; tmp(M);
++     T sum;
++ 
++     for (Subscript i=1; i&lt;=M; i++)
++     {
++         sum = 0;
++         for (Subscript j=1; j&lt;=N; j++)
++             sum = sum +  A(i,j) * x(j);
++ 
++         tmp(i) = sum; 
++     }
++ 
++     return tmp;
++ }
++ 
++ template &lt;class T&gt;
++ inline Vector&lt;T&gt; operator*(const Fortran_Matrix&lt;T&gt;  &amp;A, const Vector&lt;T&gt; &amp;x)
++ {
++     return matmult(A,x);
++ }
++ 
++ template &lt;class T&gt;
++ inline Fortran_Matrix&lt;T&gt; operator*(const Fortran_Matrix&lt;T&gt;  &amp;A, const T &amp;x)
++ {
++     Subscript M = A.num_rows();
++     Subscript N = A.num_cols();
++ 
++     Subscript MN = M*N; 
++ 
++     Fortran_Matrix&lt;T&gt; res(M,N);
++     const T* a = A.begin();
++     T* t = res.begin();
++     T* tend = res.end();
++ 
++     for (t=res.begin(); t &lt; tend; t++, a++)
++         *t = *a * x;
++ 
++     return res;
++ } 
++ 
++ }  // namespace TNT
++ #endif
++ // FMAT_H
+Index: tnt/fortran.h
+===================================================================
+RCS file: fortran.h
+diff -N fortran.h
+*** /dev/null	Tue May  5 14:32:27 1998
+--- fortran.h	Thu Aug 16 13:02:55 2001
+***************
+*** 0 ****
+--- 1,67 ----
++ /*
++ *
++ * Template Numerical Toolkit (TNT): Linear Algebra Module
++ *
++ * Mathematical and Computational Sciences Division
++ * National Institute of Technology,
++ * Gaithersburg, MD USA
++ *
++ *
++ * This software was developed at the National Institute of Standards and
++ * Technology (NIST) by employees of the Federal Government in the course
++ * of their official duties. Pursuant to title 17 Section 105 of the
++ * United States Code, this software is not subject to copyright protection
++ * and is in the public domain.  The Template Numerical Toolkit (TNT) is
++ * an experimental system.  NIST assumes no responsibility whatsoever for
++ * its use by other parties, and makes no guarantees, expressed or implied,
++ * about its quality, reliability, or any other characteristic.
++ *
++ * BETA VERSION INCOMPLETE AND SUBJECT TO CHANGE
++ * see <A HREF="http://math.nist.gov/tnt">http://math.nist.gov/tnt</A> for latest updates.
++ *
++ */
++ 
++ 
++ 
++ // Header file to define C/Fortran conventions (Platform specific)
++ 
++ #ifndef FORTRAN_H
++ #define FORTRAN_H
++ 
++ // help map between C/C++ data types and Fortran types
++ 
++ typedef int     Fortran_integer;
++ typedef float   Fortran_float;
++ typedef double  Fortran_double;
++ 
++ 
++ typedef Fortran_double *fda_;        // (in/out) double precision array
++ typedef const Fortran_double *cfda_; // (in) double precsion array
++ 
++ typedef Fortran_double *fd_;        // (in/out)  single double precision
++ typedef const Fortran_double *cfd_; // (in) single double precision
++ 
++ typedef Fortran_float *ffa_;        // (in/out) float precision array
++ typedef const Fortran_float *cffa_; // (in) float precsion array
++ 
++ typedef Fortran_float *ff_;         // (in/out)  single float precision
++ typedef const Fortran_float *cff_;  // (in) single float precision
++ 
++ typedef Fortran_integer *fia_;          // (in/out)  single integer array
++ typedef const Fortran_integer *cfia_;   // (in) single integer array
++ 
++ typedef Fortran_integer *fi_;           // (in/out)  single integer
++ typedef const Fortran_integer *cfi_;    // (in) single integer
++ 
++ typedef char *fch_;                // (in/out) single character
++ typedef char *cfch_;               // (in) single character
++ 
++ 
++ 
++ #ifndef TNT_SUBSCRIPT_TYPE
++ #define TNT_SUBSCRIPT_TYPE TNT::Fortran_integer
++ #endif
++ 
++ 
++ #endif
++ // FORTRAN_H
+Index: tnt/fspvec.h
+===================================================================
+RCS file: fspvec.h
+diff -N fspvec.h
+*** /dev/null	Tue May  5 14:32:27 1998
+--- fspvec.h	Thu Aug 16 13:02:55 2001
+***************
+*** 0 ****
+--- 1,168 ----
++ /*
++ *
++ * Template Numerical Toolkit (TNT): Linear Algebra Module
++ *
++ * Mathematical and Computational Sciences Division
++ * National Institute of Technology,
++ * Gaithersburg, MD USA
++ *
++ *
++ * This software was developed at the National Institute of Standards and
++ * Technology (NIST) by employees of the Federal Government in the course
++ * of their official duties. Pursuant to title 17 Section 105 of the
++ * United States Code, this software is not subject to copyright protection
++ * and is in the public domain.  The Template Numerical Toolkit (TNT) is
++ * an experimental system.  NIST assumes no responsibility whatsoever for
++ * its use by other parties, and makes no guarantees, expressed or implied,
++ * about its quality, reliability, or any other characteristic.
++ *
++ * BETA VERSION INCOMPLETE AND SUBJECT TO CHANGE
++ * see <A HREF="http://math.nist.gov/tnt">http://math.nist.gov/tnt</A> for latest updates.
++ *
++ */
++ 
++ 
++ //  Templated sparse vector (Fortran conventions).
++ //  Used primarily to interface with Fortran sparse matrix libaries.
++ //  (CANNOT BE USED AS AN STL CONTAINER.)
++ 
++ #ifndef FSPVEC_H
++ #define FSPVEC_H
++ 
++ #include &quot;tnt/tnt.h&quot;
++ #include &quot;tnt/vec.h&quot;
++ #include &lt;cstdlib&gt;
++ #include &lt;cassert&gt;
++ #include &lt;iostream&gt;
++ #include &lt;sstream&gt;
++ 
++ using namespace std;
++ 
++ namespace TNT
++ {
++ 
++ template &lt;class T&gt;
++ class Fortran_Sparse_Vector 
++ {
++ 
++ 
++   public:
++ 
++     typedef Subscript   size_type;
++     typedef         T   value_type;
++     typedef         T   element_type;
++     typedef         T*  pointer;
++     typedef         T*  iterator;
++     typedef         T&amp;  reference;
++     typedef const   T*  const_iterator;
++     typedef const   T&amp;  const_reference;
++ 
++     Subscript lbound() const { return 1;}
++  
++   protected:
++     Vector&lt;T&gt;   val_;
++     Vector&lt;Subscript&gt; index_;
++     Subscript dim_;                  // prescribed dimension
++ 
++ 
++   public:
++ 
++     // size and shape information
++ 
++     Subscript dim() const { return dim_; }
++     Subscript num_nonzeros() const { return val_.dim(); }
++ 
++     // access
++ 
++     T&amp; val(Subscript i) { return val_(i); }
++     const T&amp; val(Subscript i) const { return val_(i); }
++ 
++     Subscript &amp;index(Subscript i) { return index_(i); }
++     const Subscript &amp;index(Subscript i) const { return index_(i); }
++ 
++     // constructors
++ 
++     Fortran_Sparse_Vector() : val_(), index_(), dim_(0)  {};
++     Fortran_Sparse_Vector(Subscript N, Subscript nz) : val_(nz), 
++             index_(nz), dim_(N)  {};
++     Fortran_Sparse_Vector(Subscript N, Subscript nz, const T *values,
++         const Subscript *indices): val_(nz, values), index_(nz, indices),
++             dim_(N) {}
++ 
++     Fortran_Sparse_Vector(const Fortran_Sparse_Vector&lt;T&gt; &amp;S): 
++         val_(S.val_), index_(S.index_), dim_(S.dim_) {}
++ 
++     // initialize from string, e.g.
++     //
++     //  Fortran_Sparse_Vector&lt;T&gt; A(N, 2, &quot;1.0 2.1&quot;, &quot;1 3&quot;);
++     //
++     Fortran_Sparse_Vector(Subscript N, Subscript nz, char *v,
++         char *ind) : val_(nz, v), index_(nz, ind), dim_(N) {}
++     
++     // assignments
++ 
++     Fortran_Sparse_Vector&lt;T&gt; &amp; newsize(Subscript N, Subscript nz)
++     {
++         val_.newsize(nz);
++         index_.newsize(nz);
++         dim_ = N;
++         return *this;
++     }
++ 
++     Fortran_Sparse_Vector&lt;T&gt; &amp; operator=( const Fortran_Sparse_Vector&lt;T&gt; &amp;A)
++     {
++         val_ = A.val_;
++         index_ = A.index_;
++         dim_ = A.dim_;
++ 
++         return *this;
++     }
++ 
++     // methods
++ 
++ 
++ 
++ };
++ 
++ 
++ /* ***************************  I/O  ********************************/
++ 
++ template &lt;class T&gt;
++ ostream&amp; operator&lt;&lt;(ostream &amp;s, const Fortran_Sparse_Vector&lt;T&gt; &amp;A)
++ {
++     // output format is :   N nz val1 ind1 val2 ind2 ... 
++     Subscript nz=A.num_nonzeros();
++ 
++     s &lt;&lt;  A.dim() &lt;&lt; &quot; &quot; &lt;&lt; nz &lt;&lt; endl;
++ 
++     for (Subscript i=1; i&lt;=nz; i++)
++         s   &lt;&lt; A.val(i) &lt;&lt; &quot;  &quot; &lt;&lt; A.index(i) &lt;&lt; endl;
++     s &lt;&lt; endl;
++ 
++     return s;
++ }
++ 
++ 
++ template &lt;class T&gt;
++ istream&amp; operator&gt;&gt;(istream &amp;s, Fortran_Sparse_Vector&lt;T&gt; &amp;A)
++ {
++     // output format is :   N nz val1 ind1 val2 ind2 ... 
++ 
++     Subscript N;
++     Subscript nz;
++ 
++     s &gt;&gt; N &gt;&gt; nz;
++ 
++     A.newsize(N, nz);
++ 
++     for (Subscript i=1; i&lt;=nz; i++)
++             s &gt;&gt;  A.val(i) &gt;&gt; A.index(i);
++ 
++ 
++     return s;
++ }
++ 
++ } // namespace TNT
++ 
++ #endif
++ // FSPVEC_H
+Index: tnt/index.h
+===================================================================
+RCS file: index.h
+diff -N index.h
+*** /dev/null	Tue May  5 14:32:27 1998
+--- index.h	Thu Aug 16 13:02:55 2001
+***************
+*** 0 ****
+--- 1,83 ----
++ /*
++ *
++ * Template Numerical Toolkit (TNT): Linear Algebra Module
++ *
++ * Mathematical and Computational Sciences Division
++ * National Institute of Technology,
++ * Gaithersburg, MD USA
++ *
++ *
++ * This software was developed at the National Institute of Standards and
++ * Technology (NIST) by employees of the Federal Government in the course
++ * of their official duties. Pursuant to title 17 Section 105 of the
++ * United States Code, this software is not subject to copyright protection
++ * and is in the public domain.  The Template Numerical Toolkit (TNT) is
++ * an experimental system.  NIST assumes no responsibility whatsoever for
++ * its use by other parties, and makes no guarantees, expressed or implied,
++ * about its quality, reliability, or any other characteristic.
++ *
++ * BETA VERSION INCOMPLETE AND SUBJECT TO CHANGE
++ * see <A HREF="http://math.nist.gov/tnt">http://math.nist.gov/tnt</A> for latest updates.
++ *
++ */
++ 
++ 
++ 
++ // Vector/Matrix/Array Index Module  
++ 
++ #ifndef INDEX_H
++ #define INDEX_H
++ 
++ #include &quot;tnt/subscript.h&quot;
++ 
++ namespace TNT
++ {
++ 
++ class Index1D
++ {
++     Subscript lbound_;
++     Subscript ubound_;
++ 
++     public:
++ 
++     Subscript lbound() const { return lbound_; }
++     Subscript ubound() const { return ubound_; }
++ 
++     Index1D(const Index1D &amp;D) : lbound_(D.lbound_), ubound_(D.ubound_) {}
++     Index1D(Subscript i1, Subscript i2) : lbound_(i1), ubound_(i2) {}
++ 
++     Index1D &amp; operator=(const Index1D &amp;D)
++     {
++         lbound_ = D.lbound_;
++         ubound_ = D.ubound_;
++         return *this;
++     }
++ 
++ };
++ 
++ inline Index1D operator+(const Index1D &amp;D, Subscript i)
++ {
++     return Index1D(i+D.lbound(), i+D.ubound());
++ }
++ 
++ inline Index1D operator+(Subscript i, const Index1D &amp;D)
++ {
++     return Index1D(i+D.lbound(), i+D.ubound());
++ }
++ 
++ 
++ 
++ inline Index1D operator-(Index1D &amp;D, Subscript i)
++ {
++     return Index1D(D.lbound()-i, D.ubound()-i);
++ }
++ 
++ inline Index1D operator-(Subscript i, Index1D &amp;D)
++ {
++     return Index1D(i-D.lbound(), i-D.ubound());
++ }
++ 
++ } // namespace TNT
++ 
++ #endif
++ 
+Index: tnt/lapack.h
+===================================================================
+RCS file: lapack.h
+diff -N lapack.h
+*** /dev/null	Tue May  5 14:32:27 1998
+--- lapack.h	Thu Aug 16 13:02:55 2001
+***************
+*** 0 ****
+--- 1,193 ----
++ /*
++ *
++ * Template Numerical Toolkit (TNT): Linear Algebra Module
++ *
++ * Mathematical and Computational Sciences Division
++ * National Institute of Technology,
++ * Gaithersburg, MD USA
++ *
++ *
++ * This software was developed at the National Institute of Standards and
++ * Technology (NIST) by employees of the Federal Government in the course
++ * of their official duties. Pursuant to title 17 Section 105 of the
++ * United States Code, this software is not subject to copyright protection
++ * and is in the public domain.  The Template Numerical Toolkit (TNT) is
++ * an experimental system.  NIST assumes no responsibility whatsoever for
++ * its use by other parties, and makes no guarantees, expressed or implied,
++ * about its quality, reliability, or any other characteristic.
++ *
++ * BETA VERSION INCOMPLETE AND SUBJECT TO CHANGE
++ * see <A HREF="http://math.nist.gov/tnt">http://math.nist.gov/tnt</A> for latest updates.
++ *
++ */
++ 
++ 
++ 
++ // Header file for Fortran Lapack
++ 
++ #ifndef LAPACK_H
++ #define LAPACK_H
++ 
++ // This file incomplete and included here to only demonstrate the
++ // basic framework for linking with the Fortran Lapack routines.
++ 
++ #include &quot;tnt/fortran.h&quot;
++ #include &quot;tnt/vec.h&quot;
++ #include &quot;tnt/fmat.h&quot;
++ 
++ 
++ #define F77_DGESV   dgesv_
++ #define F77_DGELS   dgels_
++ #define F77_DSYEV   dsyev_
++ #define F77_DGEEV   dgeev_
++ 
++ extern &quot;C&quot;
++ {
++ 
++     // linear equations (general) using LU factorizaiton
++     //
++     void F77_DGESV(cfi_ N, cfi_ nrhs, fda_ A, cfi_ lda,
++         fia_ ipiv, fda_ b, cfi_ ldb, fi_ info);
++ 
++     // solve linear least squares using QR or LU factorization
++     //
++     void F77_DGELS(cfch_ trans, cfi_ M, 
++         cfi_ N, cfi_ nrhs, fda_ A, cfi_ lda, fda_ B, cfi_ ldb, fda_ work, 
++             cfi_ lwork, fi_ info);
++ 
++     // solve symmetric eigenvalues
++     //
++     void F77_DSYEV( cfch_ jobz, cfch_ uplo, cfi_ N, fda_  A, cfi_ lda, 
++         fda_ W, fda_ work, cfi_ lwork, fi_ info);
++ 
++     // solve unsymmetric eigenvalues
++     //
++     void F77_DGEEV(cfch_ jobvl, cfch_ jobvr, cfi_ N, fda_ A, cfi_ lda,
++         fda_ wr, fda_ wi, fda_ vl, cfi_ ldvl, fda_ vr, 
++         cfi_ ldvr, fda_ work, cfi_ lwork, fi_ info);
++ 
++ }
++ 
++ // solve linear equations using LU factorization
++ 
++ using namespace TNT;
++ 
++ Vector&lt;double&gt; Lapack_LU_linear_solve(const Fortran_Matrix&lt;double&gt; &amp;A,
++     const Vector&lt;double&gt; &amp;b)
++ {
++     const Fortran_integer one=1;
++     Subscript M=A.num_rows();
++     Subscript N=A.num_cols();
++ 
++     Fortran_Matrix&lt;double&gt; Tmp(A);
++     Vector&lt;double&gt; x(b);
++     Vector&lt;Fortran_integer&gt; index(M);
++     Fortran_integer info = 0;
++ 
++     F77_DGESV(&amp;N, &amp;one, &amp;Tmp(1,1), &amp;M, &amp;index(1), &amp;x(1), &amp;M, &amp;info);    
++ 
++     if (info != 0) return Vector&lt;double&gt;(0);
++     else
++         return x;
++ }
++ 
++ // solve linear least squares problem using QR factorization
++ //
++ Vector&lt;double&gt; Lapack_LLS_QR_linear_solve(const Fortran_Matrix&lt;double&gt; &amp;A,
++     const Vector&lt;double&gt; &amp;b)
++ {
++     const Fortran_integer one=1;
++     Subscript M=A.num_rows();
++     Subscript N=A.num_cols();
++ 
++     Fortran_Matrix&lt;double&gt; Tmp(A);
++     Vector&lt;double&gt; x(b);
++     Fortran_integer info = 0;
++ 
++     char transp = 'N';
++     Fortran_integer lwork = 5 * (M+N);      // temporary work space
++     Vector&lt;double&gt; work(lwork);
++ 
++     F77_DGELS(&amp;transp, &amp;M, &amp;N, &amp;one, &amp;Tmp(1,1), &amp;M, &amp;x(1), &amp;M,  &amp;work(1),
++         &amp;lwork, &amp;info); 
++ 
++     if (info != 0) return Vector&lt;double&gt;(0);
++     else
++         return x;
++ }
++ 
++ // *********************** Eigenvalue problems *******************
++ 
++ // solve symmetric eigenvalue problem (eigenvalues only)
++ //
++ Vector&lt;double&gt; Upper_symmetric_eigenvalue_solve(const Fortran_Matrix&lt;double&gt; &amp;A)
++ {
++     char jobz = 'N';
++     char uplo = 'U';
++     Subscript N = A.num_rows();
++ 
++     assert(N == A.num_cols());
++ 
++     Vector&lt;double&gt; eigvals(N);
++     Fortran_integer worksize = 3*N;
++     Fortran_integer info = 0;
++     Vector&lt;double&gt; work(worksize);
++     Fortran_Matrix&lt;double&gt; Tmp = A;
++ 
++     F77_DSYEV(&amp;jobz, &amp;uplo, &amp;N, &amp;Tmp(1,1), &amp;N, eigvals.begin(), work.begin(),
++         &amp;worksize, &amp;info);
++ 
++     if (info != 0) return Vector&lt;double&gt;();
++     else
++         return eigvals;
++ }
++ 
++ 
++ // solve unsymmetric eigenvalue problems 
++ //
++ int eigenvalue_solve(const Fortran_Matrix&lt;double&gt; &amp;A, 
++         Vector&lt;double&gt; &amp;wr, Vector&lt;double&gt; &amp;wi)
++ {
++     char jobvl = 'N';
++     char jobvr = 'N';
++ 
++     Fortran_integer N = A.num_rows();
++ 
++ 
++     assert(N == A.num_cols());
++     
++     if (N&lt;1) return 1;
++ 
++     Fortran_Matrix&lt;double&gt; vl(1,N);  /* should be NxN ? **** */
++     Fortran_Matrix&lt;double&gt; vr(1,N);  
++     Fortran_integer one = 1;
++ 
++     Fortran_integer worksize = 5*N;
++     Fortran_integer info = 0;
++     Vector&lt;double&gt; work(worksize, 0.0);
++     Fortran_Matrix&lt;double&gt; Tmp = A;
++ 
++     wr.newsize(N);
++     wi.newsize(N);
++ 
++ //  void F77_DGEEV(cfch_ jobvl, cfch_ jobvr, cfi_ N, fda_ A, cfi_ lda,
++ //      fda_ wr, fda_ wi, fda_ vl, cfi_ ldvl, fda_ vr, 
++ //      cfi_ ldvr, fda_ work, cfi_ lwork, fi_ info);
++ 
++     F77_DGEEV(&amp;jobvl, &amp;jobvr, &amp;N, &amp;Tmp(1,1), &amp;N, &amp;(wr(1)),
++         &amp;(wi(1)), &amp;(vl(1,1)), &amp;one, &amp;(vr(1,1)), &amp;one,
++         &amp;(work(1)), &amp;worksize, &amp;info);
++ 
++     return (info==0 ? 0: 1);
++ }
++ 
++ 
++ 
++ 
++ 
++ #endif
++ // LAPACK_H
++ 
++ 
++ 
++ 
+Index: tnt/lu-C.cc
+===================================================================
+RCS file: lu-C.cc
+diff -N lu-C.cc
+*** /dev/null	Tue May  5 14:32:27 1998
+--- lu-C.cc	Thu Aug 16 13:02:55 2001
+***************
+*** 0 ****
+--- 1,57 ----
++ // Solve a linear system using LU factorization.
++ //
++ // Usage: a.out &lt; matrix.dat
++ //
++ // where matrix.dat is an ASCII file consisting of the
++ // matrix size (M,N) followed by its values.  For example,
++ //
++ //  3  3
++ //  8.1  1.2  4.3
++ //  1.3  4.3  2.9
++ //  0.4  1.3  6.1
++ 
++ #include &lt;iostream&gt;
++ 
++ #include &quot;tnt/tnt.h&quot;
++ #include &quot;tnt/vec.h&quot;
++ #include &quot;tnt/cmat.h&quot;
++ #include &quot;tnt/lu.h&quot;
++ 
++ using namespace std;
++ using namespace TNT;
++ 
++ int main()
++ {
++   Matrix&lt;double&gt; A;
++ 
++   cin &gt;&gt; A;
++ 
++   Subscript N = A.dim(1);
++   assert(N == A.dim(2));
++ 
++   Vector&lt;double&gt; b(N, 1.0);   // b= [1,1,1,...]
++   Vector&lt;Subscript&gt; index(N);
++ 
++   cout &lt;&lt; &quot;Original Matrix A: &quot; &lt;&lt; A &lt;&lt; endl;
++     
++   Matrix&lt;double&gt; T(A);
++   if (LU_factor(T, index) !=0)
++     {
++       cout &lt;&lt; &quot;LU_factor() failed.&quot; &lt;&lt; endl;
++       exit(1);
++     }
++ 
++   Vector&lt;double&gt; x(b);
++   if (LU_solve(T, index, x) != 0)
++     {
++       cout &lt;&lt; &quot;LU_Solve() failed.&quot; &lt;&lt; endl;
++       exit(1);
++     }
++   cout &lt;&lt; &quot;Solution x for Ax=b, where b=[1,1,...] &quot; &lt;&lt;endl;
++   cout &lt;&lt; &quot; x: &quot; &lt;&lt; x &lt;&lt; endl;
++ 
++   cout &lt;&lt; &quot;A*x should be the vector [1,1,...] &quot;  &lt;&lt;endl;
++   cout     &lt;&lt; &quot;residual [A*x - b]: &quot; &lt;&lt; matmult(A, x)  - b &lt;&lt; endl;
++     
++   return 0;
++ }
+Index: tnt/lu.cc
+===================================================================
+RCS file: lu.cc
+diff -N lu.cc
+*** /dev/null	Tue May  5 14:32:27 1998
+--- lu.cc	Thu Aug 16 13:02:55 2001
+***************
+*** 0 ****
+--- 1,64 ----
++ 
++ 
++ // Solve a linear system using LU factorization.
++ //
++ // Usage: a.out &lt; matrix.dat
++ //
++ // where matrix.dat is an ASCII file consisting of the
++ // matrix size (M,N) followed by its values.  For example,
++ //
++ //  3  3
++ //  8.1  1.2  4.3
++ //  1.3  4.3  2.9
++ //  0.4  1.3  6.1
++ //
++ 
++ 
++ #include &lt;iostream&gt;
++ 
++ #include &quot;tnt/tnt.h&quot;
++ #include &quot;tnt/vec.h&quot;
++ #include &quot;tnt/fmat.h&quot;
++ #include &quot;tnt/lu.h&quot;
++ 
++ using namespace std;
++ using namespace TNT;
++ 
++ int main()
++ {
++     Fortran_Matrix&lt;double&gt; A;
++ 
++     cin &gt;&gt; A;
++ 
++ 
++     Subscript N = A.dim(1);
++     assert(N == A.dim(2));
++ 
++     Vector&lt;double&gt; b(N, 1.0);   // b= [1,1,1,...]
++     Vector&lt;Subscript&gt; index(N);
++ 
++ 
++ 
++     cout &lt;&lt; &quot;Original Matrix A: &quot; &lt;&lt; A &lt;&lt; endl;
++     
++     Fortran_Matrix&lt;double&gt; T(A);
++     if (LU_factor(T, index) !=0)
++     {
++         cout &lt;&lt; &quot;LU_factor() failed.&quot; &lt;&lt; endl;
++         exit(1);
++     }
++ 
++     Vector&lt;double&gt; x(b);
++     if (LU_solve(T, index, x) != 0)
++     {
++         cout &lt;&lt; &quot;LU_Solve() failed.&quot; &lt;&lt; endl;
++         exit(1);
++     }
++     cout &lt;&lt; &quot;Solution x for Ax=b, where b=[1,1,...] &quot; &lt;&lt;endl;
++     cout &lt;&lt; &quot; x: &quot; &lt;&lt; x &lt;&lt; endl;
++ 
++     cout &lt;&lt; &quot;A*x should be the vector [1,1,...] &quot;  &lt;&lt;endl;
++     cout     &lt;&lt; &quot;residual [A*x - b]: &quot; &lt;&lt; matmult(A, x)  - b &lt;&lt; endl;
++     
++ 	return 0;
++ }
+Index: tnt/lu.h
+===================================================================
+RCS file: lu.h
+diff -N lu.h
+*** /dev/null	Tue May  5 14:32:27 1998
+--- lu.h	Thu Aug 16 13:02:56 2001
+***************
+*** 0 ****
+--- 1,204 ----
++ /*
++ *
++ * Template Numerical Toolkit (TNT): Linear Algebra Module
++ *
++ * Mathematical and Computational Sciences Division
++ * National Institute of Technology,
++ * Gaithersburg, MD USA
++ *
++ *
++ * This software was developed at the National Institute of Standards and
++ * Technology (NIST) by employees of the Federal Government in the course
++ * of their official duties. Pursuant to title 17 Section 105 of the
++ * United States Code, this software is not subject to copyright protection
++ * and is in the public domain.  The Template Numerical Toolkit (TNT) is
++ * an experimental system.  NIST assumes no responsibility whatsoever for
++ * its use by other parties, and makes no guarantees, expressed or implied,
++ * about its quality, reliability, or any other characteristic.
++ *
++ * BETA VERSION INCOMPLETE AND SUBJECT TO CHANGE
++ * see <A HREF="http://math.nist.gov/tnt">http://math.nist.gov/tnt</A> for latest updates.
++ *
++ */
++ 
++ 
++ 
++ #ifndef LU_H
++ #define LU_H
++ 
++ // Solve system of linear equations Ax = b.
++ //
++ //  Typical usage:
++ //
++ //    Matrix&lt;double&gt; A;
++ //    Vector&lt;Subscript&gt; ipiv;
++ //    Vector&lt;double&gt; b;
++ //
++ //    1)  LU_factor(A,ipiv);
++ //    2)  LU_solve(A,ipiv,b);
++ //
++ //   Now b has the solution x.  Note that both A and b
++ //   are overwritten.  If these values need to be preserved, 
++ //   one can make temporary copies, as in 
++ //
++ //    O)  Matrix&lt;double&gt; T = A;
++ //    1)  LU_factor(T,ipiv);
++ //    1a) Vector&lt;double&gt; x=b;
++ //    2)  LU_solve(T,ipiv,x);
++ //
++ //   See details below.
++ //
++ 
++ 
++ // for fabs() 
++ //
++ #include &lt;cmath&gt;
++ 
++ // right-looking LU factorization algorithm (unblocked)
++ //
++ //   Factors matrix A into lower and upper triangular matrices 
++ //   (L and U respectively) in solving the linear equation Ax=b.  
++ //
++ //
++ // Args:
++ //
++ // A        (input/output) Matrix(1:n, 1:n)  In input, matrix to be
++ //                  factored.  On output, overwritten with lower and 
++ //                  upper triangular factors.
++ //
++ // indx     (output) Vector(1:n)    Pivot vector. Describes how
++ //                  the rows of A were reordered to increase
++ //                  numerical stability.
++ //
++ // Return value:
++ //
++ // int      (0 if successful, 1 otherwise)
++ //
++ //
++ 
++ 
++ namespace TNT
++ {
++ 
++ template &lt;class MaTRiX, class VecToRSubscript&gt;
++ int LU_factor( MaTRiX &amp;A, VecToRSubscript &amp;indx)
++ {
++     assert(A.lbound() == 1);                // currently for 1-offset
++     assert(indx.lbound() == 1);             // vectors and matrices
++ 
++     Subscript M = A.num_rows();
++     Subscript N = A.num_cols();
++ 
++     if (M == 0 || N==0) return 0;
++     if (indx.dim() != M)
++         indx.newsize(M);
++ 
++     Subscript i=0,j=0,k=0;
++     Subscript jp=0;
++ 
++     typename MaTRiX::element_type t;
++ 
++     Subscript minMN = (M &lt; N ? M : N) ;        // min(M,N);
++ 
++     for (j=1; j&lt;= minMN; j++)
++     {
++ 
++         // find pivot in column j and  test for singularity.
++ 
++         jp = j;
++         t = fabs(A(j,j));
++         for (i=j+1; i&lt;=M; i++)
++             if ( fabs(A(i,j)) &gt; t)
++             {
++                 jp = i;
++                 t = fabs(A(i,j));
++             }
++ 
++         indx(j) = jp;
++ 
++         // jp now has the index of maximum element 
++         // of column j, below the diagonal
++ 
++         if ( A(jp,j) == 0 )                 
++             return 1;       // factorization failed because of zero pivot
++ 
++ 
++         if (jp != j)            // swap rows j and jp
++             for (k=1; k&lt;=N; k++)
++             {
++                 t = A(j,k);
++                 A(j,k) = A(jp,k);
++                 A(jp,k) =t;
++             }
++ 
++         if (j&lt;M)                // compute elements j+1:M of jth column
++         {
++             // note A(j,j), was A(jp,p) previously which was
++             // guarranteed not to be zero (Label #1)
++             //
++             typename MaTRiX::element_type recp =  1.0 / A(j,j);
++ 
++             for (k=j+1; k&lt;=M; k++)
++                 A(k,j) *= recp;
++         }
++ 
++ 
++         if (j &lt; minMN)
++         {
++             // rank-1 update to trailing submatrix:   E = E - x*y;
++             //
++             // E is the region A(j+1:M, j+1:N)
++             // x is the column vector A(j+1:M,j)
++             // y is row vector A(j,j+1:N)
++ 
++             Subscript ii,jj;
++ 
++             for (ii=j+1; ii&lt;=M; ii++)
++                 for (jj=j+1; jj&lt;=N; jj++)
++                     A(ii,jj) -= A(ii,j)*A(j,jj);
++         }
++     }
++ 
++     return 0;
++ }   
++ 
++ 
++ 
++ 
++ template &lt;class MaTRiX, class VecToR, class VecToRSubscripts&gt;
++ int LU_solve(const MaTRiX &amp;A, const VecToRSubscripts &amp;indx, VecToR &amp;b)
++ {
++     assert(A.lbound() == 1);                // currently for 1-offset
++     assert(indx.lbound() == 1);             // vectors and matrices
++     assert(b.lbound() == 1);
++ 
++     Subscript i,ii=0,ip,j;
++     Subscript n = b.dim();
++     typename MaTRiX::element_type sum = 0.0;
++ 
++     for (i=1;i&lt;=n;i++) 
++     {
++         ip=indx(i);
++         sum=b(ip);
++         b(ip)=b(i);
++         if (ii)
++             for (j=ii;j&lt;=i-1;j++) 
++                 sum -= A(i,j)*b(j);
++         else if (sum) ii=i;
++             b(i)=sum;
++     }
++     for (i=n;i&gt;=1;i--) 
++     {
++         sum=b(i);
++         for (j=i+1;j&lt;=n;j++) 
++             sum -= A(i,j)*b(j);
++         b(i)=sum/A(i,i);
++     }
++ 
++     return 0;
++ }
++ 
++ } // namespace TNT
++ 
++ #endif
++ // LU_H
+Index: tnt/matrix.dat
+===================================================================
+RCS file: matrix.dat
+diff -N matrix.dat
+*** /dev/null	Tue May  5 14:32:27 1998
+--- matrix.dat	Thu Aug 16 13:02:56 2001
+***************
+*** 0 ****
+--- 1,4 ----
++ 3  3
++ 8.1  1.2  4.3
++ 1.3  4.3  2.9
++ 0.4  1.3  6.1
+Index: tnt/qr.cc
+===================================================================
+RCS file: qr.cc
+diff -N qr.cc
+*** /dev/null	Tue May  5 14:32:27 1998
+--- qr.cc	Thu Aug 16 13:02:56 2001
+***************
+*** 0 ****
+--- 1,66 ----
++ 
++ 
++ 
++ // Solve a linear system using QR factorization.
++ //
++ // Usage: a.out &lt; matrix.dat
++ //
++ // where matrix.dat is an ASCII file consisting of the
++ // matrix size (M,N) followed by its values.  For example,
++ //
++ //  3  2
++ //  8.1  1.2  4.3
++ //  1.3  4.3  2.9
++ //  0.4  1.3  6.1
++ //
++ // 
++ 
++ #include &lt;iostream&gt;
++ 
++ #include &quot;tnt/tnt.h&quot;
++ #include &quot;tnt/vec.h&quot;
++ #include &quot;tnt/fmat.h&quot;
++ #include &quot;tnt/qr.h&quot;
++ 
++ using namespace std;
++ using namespace TNT;
++ 
++ int main()
++ 
++ {
++     Fortran_Matrix&lt;double&gt; A;
++ 
++     cin &gt;&gt; A;
++ 
++     Subscript N = A.num_rows();
++     assert(N == A.num_cols());
++ 
++     Vector&lt;double&gt; b(N, 1.0);   // b= [1,1,1,...]
++     Vector&lt;double&gt; C(N), D(N);
++ 
++ 
++     cout &lt;&lt; &quot;A: &quot; &lt;&lt; A &lt;&lt; endl;
++ 
++     Fortran_Matrix&lt;double&gt; T(A);
++ 
++     if (QR_factor(T, C, D) !=0)
++     {
++         cout &lt;&lt; &quot;QR failed.&quot;  &lt;&lt; endl;
++         cout &lt;&lt; &quot;   returned: \n&quot; &lt;&lt; T &lt;&lt; endl;
++         exit(1);
++     }
++ 
++     Vector&lt;double&gt; x(b);
++     if (QR_solve(T, C, D, x) == 1)
++     {
++         cout &lt;&lt; &quot;QR_Solve did not work.&quot; &lt;&lt; endl;
++         exit(1);
++     }
++ 
++     cout &lt;&lt; &quot;Solution x for Ax=b, where b=[1,1,...] &quot; &lt;&lt;endl;
++     cout &lt;&lt; &quot; x: &quot; &lt;&lt; x &lt;&lt; endl;
++ 
++     cout     &lt;&lt; &quot;residual [A*x - b]: &quot; &lt;&lt; A*x  - b &lt;&lt; endl;
++ 
++ 	return 0;
++ }
+Index: tnt/qr.h
+===================================================================
+RCS file: qr.h
+diff -N qr.h
+*** /dev/null	Tue May  5 14:32:27 1998
+--- qr.h	Thu Aug 16 13:02:56 2001
+***************
+*** 0 ****
+--- 1,229 ----
++ /*
++ *
++ * Template Numerical Toolkit (TNT): Linear Algebra Module
++ *
++ * Mathematical and Computational Sciences Division
++ * National Institute of Technology,
++ * Gaithersburg, MD USA
++ *
++ *
++ * This software was developed at the National Institute of Standards and
++ * Technology (NIST) by employees of the Federal Government in the course
++ * of their official duties. Pursuant to title 17 Section 105 of the
++ * United States Code, this software is not subject to copyright protection
++ * and is in the public domain.  The Template Numerical Toolkit (TNT) is
++ * an experimental system.  NIST assumes no responsibility whatsoever for
++ * its use by other parties, and makes no guarantees, expressed or implied,
++ * about its quality, reliability, or any other characteristic.
++ *
++ * BETA VERSION INCOMPLETE AND SUBJECT TO CHANGE
++ * see <A HREF="http://math.nist.gov/tnt">http://math.nist.gov/tnt</A> for latest updates.
++ *
++ */
++ 
++ 
++ #ifndef QR_H
++ #define QR_H
++ 
++ // Classical QR factorization example, based on Stewart[1973].
++ //
++ //
++ // This algorithm computes the factorization of a matrix A
++ // into a product of an orthognal matrix (Q) and an upper triangular 
++ // matrix (R), such that QR = A.
++ //
++ // Parameters:
++ //
++ //  A   (in):       Matrix(1:N, 1:N)
++ //
++ //  Q   (output):   Matrix(1:N, 1:N), collection of Householder
++ //                      column vectors Q1, Q2, ... QN
++ //
++ //  R   (output):   upper triangular Matrix(1:N, 1:N)
++ //
++ // Returns:  
++ //
++ //  0 if successful, 1 if A is detected to be singular
++ //
++ 
++ 
++ #include &lt;cmath&gt;      //for sqrt() &amp; fabs()
++ #include &quot;tnt/tntmath.h&quot;  // for sign()
++ 
++ // Classical QR factorization, based on Stewart[1973].
++ //
++ //
++ // This algorithm computes the factorization of a matrix A
++ // into a product of an orthognal matrix (Q) and an upper triangular 
++ // matrix (R), such that QR = A.
++ //
++ // Parameters:
++ //
++ //  A   (in/out):  On input, A is square, Matrix(1:N, 1:N), that represents
++ //                  the matrix to be factored.
++ //
++ //                 On output, Q and R is encoded in the same Matrix(1:N,1:N)
++ //                 in the following manner:
++ //
++ //                  R is contained in the upper triangular section of A,
++ //                  except that R's main diagonal is in D.  The lower
++ //                  triangular section of A represents Q, where each
++ //                  column j is the vector  Qj = I - uj*uj'/pi_j.
++ //
++ //  C  (output):    vector of Pi[j]
++ //  D  (output):    main diagonal of R, i.e. D(i) is R(i,i)
++ //
++ // Returns:  
++ //
++ //  0 if successful, 1 if A is detected to be singular
++ //
++ 
++ namespace TNT
++ {
++ 
++ template &lt;class MaTRiX, class Vector&gt;
++ int QR_factor(MaTRiX &amp;A, Vector&amp; C, Vector &amp;D)
++ {
++     assert(A.lbound() == 1);        // ensure these are all 
++     assert(C.lbound() == 1);        // 1-based arrays and vectors
++     assert(D.lbound() == 1);
++ 
++     Subscript M = A.num_rows();
++     Subscript N = A.num_cols(); 
++ 
++     assert(M == N);                 // make sure A is square
++ 
++     Subscript i,j,k;
++     typename MaTRiX::element_type eta, sigma, sum;
++ 
++     // adjust the shape of C and D, if needed...
++ 
++     if (N != C.size())  C.newsize(N);
++     if (N != D.size())  D.newsize(N);
++ 
++     for (k=1; k&lt;N; k++)
++     {
++         // eta = max |M(i,k)|,  for k &lt;= i &lt;= n
++         //
++         eta = 0;
++         for (i=k; i&lt;=N; i++)
++         {
++             double absA = fabs(A(i,k));
++             eta = ( absA &gt;  eta ? absA : eta ); 
++         }
++ 
++         if (eta == 0)           // matrix is singular
++         {
++             cerr &lt;&lt; &quot;QR: k=&quot; &lt;&lt; k &lt;&lt; &quot;\n&quot;;
++             return 1;
++         }
++ 
++         // form Qk and premiltiply M by it
++         //
++         for(i=k; i&lt;=N; i++)
++             A(i,k)  = A(i,k) / eta;
++ 
++         sum = 0;
++         for (i=k; i&lt;=N; i++)
++             sum = sum + A(i,k)*A(i,k);
++         sigma = sign(A(k,k)) *  sqrt(sum);
++ 
++ 
++         A(k,k) = A(k,k) + sigma;
++         C(k) = sigma * A(k,k);
++         D(k) = -eta * sigma;
++ 
++         for (j=k+1; j&lt;=N; j++)
++         {
++             sum = 0;
++             for (i=k; i&lt;=N; i++)
++                 sum = sum + A(i,k)*A(i,j);
++             sum = sum / C(k);
++ 
++             for (i=k; i&lt;=N; i++)
++                 A(i,j) = A(i,j) - sum * A(i,k);
++         }
++ 
++         D(N) = A(N,N);
++     }
++ 
++     return 0;
++ }
++ 
++ // modified form of upper triangular solve, except that the main diagonal
++ // of R (upper portion of A) is in D.
++ //
++ template &lt;class MaTRiX, class Vector&gt;
++ int R_solve(const MaTRiX &amp;A, /*const*/ Vector &amp;D, Vector &amp;b)
++ {
++     assert(A.lbound() == 1);        // ensure these are all 
++     assert(D.lbound() == 1);        // 1-based arrays and vectors
++     assert(b.lbound() == 1);
++ 
++     Subscript i,j;
++     Subscript N = A.num_rows();
++ 
++     assert(N == A.num_cols());
++     assert(N == D.dim());
++     assert(N == b.dim());
++ 
++     typename MaTRiX::element_type sum;
++ 
++     if (D(N) == 0)
++         return 1;
++ 
++     b(N) = b(N) / 
++             D(N);
++ 
++     for (i=N-1; i&gt;=1; i--)
++     {
++         if (D(i) == 0)
++             return 1;
++         sum = 0;
++         for (j=i+1; j&lt;=N; j++)
++             sum = sum + A(i,j)*b(j);
++         b(i) = ( b(i) - sum ) / 
++             D(i);
++     }
++ 
++     return 0;
++ }
++ 
++ 
++ template &lt;class MaTRiX, class Vector&gt;
++ int QR_solve(const MaTRiX &amp;A, const Vector &amp;c, /*const*/ Vector &amp;d, 
++         Vector &amp;b)
++ {
++     assert(A.lbound() == 1);        // ensure these are all 
++     assert(c.lbound() == 1);        // 1-based arrays and vectors
++     assert(d.lbound() == 1);
++ 
++     Subscript N=A.num_rows();
++ 
++     assert(N == A.num_cols());
++     assert(N == c.dim());
++     assert(N == d.dim());
++     assert(N == b.dim());
++ 
++     Subscript i,j;
++     typename MaTRiX::element_type sum, tau;
++ 
++     for (j=1; j&lt;N; j++)
++     {
++         // form Q'*b
++         sum = 0;
++         for (i=j; i&lt;=N; i++)
++             sum = sum + A(i,j)*b(i);
++         if (c(j) == 0)
++             return 1;
++         tau = sum / c(j);
++        for (i=j; i&lt;=N; i++)
++             b(i) = b(i) - tau * A(i,j);
++     }
++     return R_solve(A, d, b);        // solve Rx = Q'b
++ }
++ 
++ } // namespace TNT
++ 
++ #endif
++ // QR_H
+Index: tnt/region1d.h
+===================================================================
+RCS file: region1d.h
+diff -N region1d.h
+*** /dev/null	Tue May  5 14:32:27 1998
+--- region1d.h	Thu Aug 16 13:02:56 2001
+***************
+*** 0 ****
+--- 1,371 ----
++ /*
++ *
++ * Template Numerical Toolkit (TNT): Linear Algebra Module
++ *
++ * Mathematical and Computational Sciences Division
++ * National Institute of Technology,
++ * Gaithersburg, MD USA
++ *
++ *
++ * This software was developed at the National Institute of Standards and
++ * Technology (NIST) by employees of the Federal Government in the course
++ * of their official duties. Pursuant to title 17 Section 105 of the
++ * United States Code, this software is not subject to copyright protection
++ * and is in the public domain.  The Template Numerical Toolkit (TNT) is
++ * an experimental system.  NIST assumes no responsibility whatsoever for
++ * its use by other parties, and makes no guarantees, expressed or implied,
++ * about its quality, reliability, or any other characteristic.
++ *
++ * BETA VERSION INCOMPLETE AND SUBJECT TO CHANGE
++ * see <A HREF="http://math.nist.gov/tnt">http://math.nist.gov/tnt</A> for latest updates.
++ *
++ */
++ 
++ 
++ 
++ 
++ #ifndef REGION1D_H
++ #define REGION1D_H
++ 
++ 
++ #include &quot;tnt/subscript.h&quot;
++ #include &quot;tnt/index.h&quot;
++ #include &lt;iostream&gt;
++ #include &lt;cassert&gt;
++ 
++ namespace TNT
++ {
++ 
++ template &lt;class Array1D&gt;
++ class const_Region1D;
++ 
++ template &lt;class Array1D&gt;
++ class Region1D
++ {
++     protected:
++ 
++         Array1D &amp;  A_;
++         Subscript offset_;          // 0-based
++         Subscript dim_;
++ 
++         typedef typename Array1D::element_type T;
++ 
++     public:
++         const Array1D &amp; array()  const { return A_; }
++ 
++         Subscript offset() const { return offset_;}
++         Subscript dim() const { return dim_; }
++ 
++         Subscript offset(Subscript i) const
++         {
++ #ifdef TNT_BOUNDS_CHECK
++             assert(i==TNT_BASE_OFFSET);
++ #endif
++             return offset_;
++         }
++ 
++         Subscript dim(Subscript i) const
++         {
++ #ifdef TNT_BOUNDS_CHECK
++             assert(i== TNT_BASE_OFFSET);
++ #endif
++             return offset_;
++         }
++ 
++ 
++         Region1D(Array1D &amp;A, Subscript i1, Subscript i2) : A_(A)
++         {
++ #ifdef TNT_BOUNDS_CHECK
++             assert(TNT_BASE_OFFSET &lt;= i1 );
++             assert(i2 &lt;= A.dim() + (TNT_BASE_OFFSET-1));
++             assert(i1 &lt;= i2);
++ #endif
++             offset_ = i1 - TNT_BASE_OFFSET;
++             dim_ = i2-i1 + 1;
++         }
++ 
++         Region1D(Array1D &amp;A, const Index1D &amp;I) : A_(A)
++         {
++ #ifdef TNT_BOUNDS_CHECK
++             assert(TNT_BASE_OFFSET &lt;=I.lbound());
++             assert(I.ubound() &lt;= A.dim() + (TNT_BASE_OFFSET-1));
++             assert(I.lbound() &lt;= I.ubound());
++ #endif
++             offset_ = I.lbound() - TNT_BASE_OFFSET;
++             dim_ = I.ubound() - I.lbound() + 1;
++         }
++ 
++         Region1D(Region1D&lt;Array1D&gt; &amp;A, Subscript i1, Subscript i2) :
++                 A_(A.A_)
++         {
++ #ifdef TNT_BOUNDS_CHECK
++             assert(TNT_BASE_OFFSET &lt;= i1 );
++             assert(i2 &lt;= A.dim() + (TNT_BASE_OFFSET - 1));
++             assert(i1 &lt;= i2);
++ #endif
++                     //     (old-offset)        (new-offset)
++                     //
++             offset_ =  (i1 - TNT_BASE_OFFSET) + A.offset_;
++             dim_ = i2-i1 + 1;
++         }
++ 
++         Region1D&lt;Array1D&gt; operator()(Subscript i1, Subscript i2)
++         {
++ #ifdef TNT_BOUNDS_CHECK
++             assert(TNT_BASE_OFFSET &lt;= i1);
++             assert(i2 &lt;= dim() + (TNT_BASE_OFFSET -1));
++             assert(i1 &lt;= i2);
++ #endif
++                     // offset_ is 0-based, so no need for
++                     //  ( - TNT_BASE_OFFSET)
++                     //
++             return Region1D&lt;Array1D&gt;(A_, i1+offset_,
++                     offset_ + i2);
++         }
++ 
++ 
++         Region1D&lt;Array1D&gt; operator()(const Index1D &amp;I)
++         {
++ #ifdef TNT_BOUNDS_CHECK
++             assert(TNT_BASE_OFFSET&lt;=I.lbound());
++             assert(I.ubound() &lt;= dim() + (TNT_BASE_OFFSET-1));
++             assert(I.lbound() &lt;= I.ubound());
++ #endif
++             return Region1D&lt;Array1D&gt;(A_, I.lbound()+offset_,
++                 offset_ + I.ubound());
++         }
++ 
++ 
++ 
++ 
++         T &amp; operator()(Subscript i)
++         {
++ #ifdef TNT_BOUNDS_CHECK
++             assert(TNT_BASE_OFFSET &lt;= i);
++             assert(i &lt;=  dim() + (TNT_BASE_OFFSET-1));
++ #endif
++             return A_(i+offset_);
++         }
++ 
++         const T &amp; operator() (Subscript i) const
++         {
++ #ifdef TNT_BOUNDS_CHECK
++             assert(TNT_BASE_OFFSET &lt;= i);
++             assert(i &lt;= dim() + (TNT_BASE_OFFSET-1));
++ #endif
++             return A_(i+offset_);
++         }
++ 
++ 
++         Region1D&lt;Array1D&gt; &amp; operator=(const Region1D&lt;Array1D&gt; &amp;R)
++         {
++             // make sure both sides conform
++             assert(dim() == R.dim());
++ 
++             Subscript N = dim();
++             Subscript i;
++             Subscript istart = TNT_BASE_OFFSET;
++             Subscript iend = istart + N-1;
++ 
++             for (i=istart; i&lt;=iend; i++)
++                 (*this)(i) = R(i);
++ 
++             return *this;
++         }
++ 
++ 
++ 
++         Region1D&lt;Array1D&gt; &amp; operator=(const const_Region1D&lt;Array1D&gt; &amp;R)
++         {
++             // make sure both sides conform
++             assert(dim() == R.dim());
++ 
++             Subscript N = dim();
++             Subscript i;
++             Subscript istart = TNT_BASE_OFFSET;
++             Subscript iend = istart + N-1;
++ 
++             for (i=istart; i&lt;=iend; i++)
++                 (*this)(i) = R(i);
++ 
++             return *this;
++ 
++         }
++ 
++ 
++         Region1D&lt;Array1D&gt; &amp; operator=(const T&amp; t)
++         {
++             Subscript N=dim();
++             Subscript i;
++             Subscript istart = TNT_BASE_OFFSET;
++             Subscript iend = istart + N-1;
++ 
++             for (i=istart; i&lt;= iend; i++)
++                 (*this)(i) = t;
++ 
++             return *this;
++ 
++         }
++ 
++ 
++         Region1D&lt;Array1D&gt; &amp; operator=(const Array1D &amp;R)
++         {
++             // make sure both sides conform
++             Subscript N = dim();
++             assert(dim() == R.dim());
++ 
++             Subscript i;
++             Subscript istart = TNT_BASE_OFFSET;
++             Subscript iend = istart + N-1;
++ 
++             for (i=istart; i&lt;=iend; i++)
++                 (*this)(i) = R(i);
++ 
++             return *this;
++ 
++         }
++ 
++ };
++ 
++ template &lt;class Array1D&gt;
++ std::ostream&amp; operator&lt;&lt;(std::ostream &amp;s, Region1D&lt;Array1D&gt; &amp;A)
++ {
++     Subscript N=A.dim();
++     Subscript istart = TNT_BASE_OFFSET;
++     Subscript iend = N - 1 + TNT_BASE_OFFSET;
++ 
++     for (Subscript i=istart; i&lt;=iend; i++)
++         s &lt;&lt; A(i) &lt;&lt; endl;
++ 
++     return s;
++ }
++ 
++ 
++ /*  ---------  class const_Region1D ------------ */
++ 
++ template &lt;class Array1D&gt;
++ class const_Region1D
++ {
++     protected:
++ 
++         const Array1D &amp;  A_;
++         Subscript offset_;          // 0-based
++         Subscript dim_;
++        typedef typename Array1D::element_type T;
++ 
++     public:
++         const Array1D &amp; array()  const { return A_; }
++ 
++         Subscript offset() const { return offset_;}
++         Subscript dim() const { return dim_; }
++ 
++         Subscript offset(Subscript i) const
++         {
++ #ifdef TNT_BOUNDS_CHECK
++             assert(i==TNT_BASE_OFFSET);
++ #endif
++             return offset_;
++         }
++ 
++         Subscript dim(Subscript i) const
++         {
++ #ifdef TNT_BOUNDS_CHECK
++             assert(i== TNT_BASE_OFFSET);
++ #endif
++             return offset_;
++         }
++ 
++ 
++         const_Region1D(const Array1D &amp;A, Subscript i1, Subscript i2) : A_(A)
++         {
++ #ifdef TNT_BOUNDS_CHECK
++             assert(TNT_BASE_OFFSET &lt;= i1 );
++             assert(i2 &lt;= A.dim() + (TNT_BASE_OFFSET-1));
++             assert(i1 &lt;= i2);
++ #endif
++             offset_ = i1 - TNT_BASE_OFFSET;
++             dim_ = i2-i1 + 1;
++         }
++ 
++         const_Region1D(const Array1D &amp;A, const Index1D &amp;I) : A_(A)
++         {
++ #ifdef TNT_BOUNDS_CHECK
++             assert(TNT_BASE_OFFSET &lt;=I.lbound());
++             assert(I.ubound() &lt;= A.dim() + (TNT_BASE_OFFSET-1));
++             assert(I.lbound() &lt;= I.ubound());
++ #endif
++             offset_ = I.lbound() - TNT_BASE_OFFSET;
++             dim_ = I.ubound() - I.lbound() + 1;
++         }
++ 
++         const_Region1D(const_Region1D&lt;Array1D&gt; &amp;A, Subscript i1, Subscript i2) :
++                 A_(A.A_)
++         {
++ #ifdef TNT_BOUNDS_CHECK
++             assert(TNT_BASE_OFFSET &lt;= i1 );
++             assert(i2 &lt;= A.dim() + (TNT_BASE_OFFSET - 1));
++             assert(i1 &lt;= i2);
++ #endif
++                     //     (old-offset)        (new-offset)
++                     //
++             offset_ =  (i1 - TNT_BASE_OFFSET) + A.offset_;
++             dim_ = i2-i1 + 1;
++         }
++ 
++         const_Region1D&lt;Array1D&gt; operator()(Subscript i1, Subscript i2)
++         {
++ #ifdef TNT_BOUNDS_CHECK
++             assert(TNT_BASE_OFFSET &lt;= i1);
++             assert(i2 &lt;= dim() + (TNT_BASE_OFFSET -1));
++             assert(i1 &lt;= i2);
++ #endif
++                     // offset_ is 0-based, so no need for
++                     //  ( - TNT_BASE_OFFSET)
++                     //
++             return const_Region1D&lt;Array1D&gt;(A_, i1+offset_,
++                     offset_ + i2);
++         }
++ 
++ 
++         const_Region1D&lt;Array1D&gt; operator()(const Index1D &amp;I)
++         {
++ #ifdef TNT_BOUNDS_CHECK
++             assert(TNT_BASE_OFFSET&lt;=I.lbound());
++             assert(I.ubound() &lt;= dim() + (TNT_BASE_OFFSET-1));
++             assert(I.lbound() &lt;= I.ubound());
++ #endif
++             return const_Region1D&lt;Array1D&gt;(A_, I.lbound()+offset_,
++                 offset_ + I.ubound());
++         }
++ 
++ 
++         const T &amp; operator() (Subscript i) const
++         {
++ #ifdef TNT_BOUNDS_CHECK
++             assert(TNT_BASE_OFFSET &lt;= i);
++             assert(i &lt;= dim() + (TNT_BASE_OFFSET-1));
++ #endif
++             return A_(i+offset_);
++         }
++ 
++ 
++ 
++ 
++ };
++ 
++ template &lt;class Array1D&gt;
++ std::ostream&amp; operator&lt;&lt;(std::ostream &amp;s, const_Region1D&lt;Array1D&gt; &amp;A)
++ {
++     Subscript N=A.dim();
++ 
++     for (Subscript i=1; i&lt;=N; i++)
++         s &lt;&lt; A(i) &lt;&lt; endl;
++ 
++     return s;
++ }
++ 
++ 
++ } // namespace TNT
++ 
++ #endif
++ // const_Region1D_H
+Index: tnt/region2d.h
+===================================================================
+RCS file: region2d.h
+diff -N region2d.h
+*** /dev/null	Tue May  5 14:32:27 1998
+--- region2d.h	Thu Aug 16 13:02:56 2001
+***************
+*** 0 ****
+--- 1,467 ----
++ /*
++ *
++ * Template Numerical Toolkit (TNT): Linear Algebra Module
++ *
++ * Mathematical and Computational Sciences Division
++ * National Institute of Technology,
++ * Gaithersburg, MD USA
++ *
++ *
++ * This software was developed at the National Institute of Standards and
++ * Technology (NIST) by employees of the Federal Government in the course
++ * of their official duties. Pursuant to title 17 Section 105 of the
++ * United States Code, this software is not subject to copyright protection
++ * and is in the public domain.  The Template Numerical Toolkit (TNT) is
++ * an experimental system.  NIST assumes no responsibility whatsoever for
++ * its use by other parties, and makes no guarantees, expressed or implied,
++ * about its quality, reliability, or any other characteristic.
++ *
++ * BETA VERSION INCOMPLETE AND SUBJECT TO CHANGE
++ * see <A HREF="http://math.nist.gov/tnt">http://math.nist.gov/tnt</A> for latest updates.
++ *
++ */
++ 
++ 
++ // 2D Regions for arrays and matrices
++ 
++ #ifndef REGION2D_H
++ #define REGION2D_H
++ 
++ #include &quot;tnt/index.h&quot;
++ #include &lt;iostream&gt;
++ #include &lt;cassert&gt;
++ 
++ namespace TNT
++ {
++ 
++ template &lt;class Array2D&gt;
++ class const_Region2D;
++ 
++ 
++ template &lt;class Array2D&gt;
++ class Region2D
++ {
++     protected:
++ 
++         Array2D &amp;  A_;
++         Subscript offset_[2];       // 0-offset internally
++         Subscript dim_[2];
++ 
++     public:
++         typedef typename Array2D::value_type T;
++         typedef Subscript   size_type;
++         typedef         T   value_type;
++         typedef         T   element_type;
++         typedef         T*  pointer;
++         typedef         T*  iterator;
++         typedef         T&amp;  reference;
++         typedef const   T*  const_iterator;
++         typedef const   T&amp;  const_reference;
++ 
++         Array2D &amp; array() { return A_; }
++         const Array2D &amp; array()  const { return A_; }
++         Subscript lbound() const { return A_.lbound(); }
++         Subscript num_rows() const { return dim_[0]; }
++         Subscript num_cols() const { return dim_[1]; }
++         Subscript offset(Subscript i) const                 // 1-offset
++         {
++ #ifdef TNT_BOUNDS_CHECK
++             assert( A_.lbound() &lt;= i);
++             assert( i&lt;= dim_[0] + A_.lbound()-1);
++ #endif
++             return offset_[i-A_.lbound()];
++         }
++ 
++         Subscript dim(Subscript i) const
++         {
++ #ifdef TNT_BOUNDS_CHECK
++             assert( A_.lbound() &lt;= i);
++             assert( i&lt;= dim_[0] + A_.lbound()-1);
++ #endif
++             return dim_[i-A_.lbound()];
++         }
++ 
++ 
++ 
++         Region2D(Array2D &amp;A, Subscript i1, Subscript i2, Subscript j1,
++                 Subscript j2) : A_(A)
++         {
++ #ifdef TNT_BOUNDS_CHECK
++             assert( i1 &lt;= i2 );
++             assert( j1 &lt;= j2);
++             assert( A.lbound() &lt;= i1);
++             assert( i2&lt;= A.dim(A.lbound()) + A.lbound()-1);
++             assert( A.lbound() &lt;= j1);
++             assert( j2&lt;= A.dim(A.lbound()+1) + A.lbound()-1 );
++ #endif
++ 
++ 
++             offset_[0] = i1-A.lbound();
++             offset_[1] = j1-A.lbound();
++             dim_[0] = i2-i1+1;
++             dim_[1] = j2-j1+1;
++         }
++ 
++         Region2D(Array2D &amp;A, const Index1D &amp;I, const Index1D &amp;J) : A_(A)
++         {
++ #ifdef TNT_BOUNDS_CHECK
++             assert( I.lbound() &lt;= I.ubound() );
++             assert( J.lbound() &lt;= J.ubound() );
++             assert( A.lbound() &lt;= I.lbound());
++             assert( I.ubound()&lt;= A.dim(A.lbound()) + A.lbound()-1);
++             assert( A.lbound() &lt;= J.lbound());
++             assert( J.ubound() &lt;= A.dim(A.lbound()+1) + A.lbound()-1 );
++ #endif
++ 
++             offset_[0] = I.lbound()-A.lbound();
++             offset_[1] = J.lbound()-A.lbound();
++             dim_[0] = I.ubound() - I.lbound() + 1;
++             dim_[1] = J.ubound() - J.lbound() + 1;
++         }
++ 
++         Region2D(Region2D&lt;Array2D&gt; &amp;A, Subscript i1, Subscript i2,
++             Subscript j1, Subscript j2) : A_(A.A_)
++         {
++ #ifdef TNT_BOUNDS_CHECK
++             assert( i1 &lt;= i2 );
++             assert( j1 &lt;= j2);
++             assert( A.lbound() &lt;= i1);
++             assert( i2&lt;= A.dim(A.lbound()) + A.lbound()-1);
++             assert( A.lbound() &lt;= j1);
++             assert( j2&lt;= A.dim(A.lbound()+1) + A.lbound()-1 );
++ #endif
++             offset_[0] = (i1 - A.lbound()) + A.offset_[0];
++             offset_[1] = (j1 - A.lbound()) + A.offset_[1];
++             dim_[0] = i2-i1 + 1;
++             dim_[1] = j2-j1+1;
++         }
++ 
++         Region2D&lt;Array2D&gt; operator()(Subscript i1, Subscript i2,
++                 Subscript j1, Subscript j2)
++         {
++ #ifdef TNT_BOUNDS_CHECK
++             assert( i1 &lt;= i2 );
++             assert( j1 &lt;= j2);
++             assert( A_.lbound() &lt;= i1);
++             assert( i2&lt;= dim_[0] + A_.lbound()-1);
++             assert( A_.lbound() &lt;= j1);
++             assert( j2&lt;= dim_[1] + A_.lbound()-1 );
++ #endif
++             return Region2D&lt;Array2D&gt;(A_, 
++                     i1+offset_[0], offset_[0] + i2, 
++                     j1+offset_[1], offset_[1] + j2);
++         }
++ 
++ 
++         Region2D&lt;Array2D&gt; operator()(const Index1D &amp;I,
++                 const Index1D &amp;J)
++         {
++ #ifdef TNT_BOUNDS_CHECK
++             assert( I.lbound() &lt;= I.ubound() );
++             assert( J.lbound() &lt;= J.ubound() );
++             assert( A_.lbound() &lt;= I.lbound());
++             assert( I.ubound()&lt;= dim_[0] + A_.lbound()-1);
++             assert( A_.lbound() &lt;= J.lbound());
++             assert( J.ubound() &lt;= dim_[1] + A_.lbound()-1 );
++ #endif
++ 
++             return Region2D&lt;Array2D&gt;(A_, I.lbound()+offset_[0],
++                 offset_[0] + I.ubound(), offset_[1]+J.lbound(),
++                 offset_[1] + J.ubound());
++         }
++ 
++         inline T &amp; operator()(Subscript i, Subscript j)
++         {
++ #ifdef TNT_BOUNDS_CHECK
++             assert( A_.lbound() &lt;= i);
++             assert( i&lt;= dim_[0] + A_.lbound()-1);
++             assert( A_.lbound() &lt;= j);
++             assert( j&lt;= dim_[1] + A_.lbound()-1 );
++ #endif
++             return A_(i+offset_[0], j+offset_[1]);
++         }
++ 
++         inline const T &amp; operator() (Subscript i, Subscript j) const
++         {
++ #ifdef TNT_BOUNDS_CHECK
++             assert( A_.lbound() &lt;= i);
++             assert( i&lt;= dim_[0] + A_.lbound()-1);
++             assert( A_.lbound() &lt;= j);
++             assert( j&lt;= dim_[1] + A_.lbound()-1 );
++ #endif
++             return A_(i+offset_[0], j+offset_[1]);
++         }
++ 
++ 
++         Region2D&lt;Array2D&gt; &amp; operator=(const Region2D&lt;Array2D&gt; &amp;R)
++         {
++             Subscript M = num_rows(); 
++             Subscript N = num_cols();
++ 
++             // make sure both sides conform
++             assert(M == R.num_rows());
++             assert(N == R.num_cols());
++ 
++ 
++             Subscript start = R.lbound();
++             Subscript Mend =  start + M - 1;
++             Subscript Nend =  start + N - 1;
++             for (Subscript i=start; i&lt;=Mend; i++)
++               for (Subscript j=start; j&lt;=Nend; j++)
++                 (*this)(i,j) = R(i,j);
++ 
++             return *this;
++         }
++ 
++         Region2D&lt;Array2D&gt; &amp; operator=(const const_Region2D&lt;Array2D&gt; &amp;R)
++         {
++             Subscript M = num_rows(); 
++             Subscript N = num_cols();
++ 
++             // make sure both sides conform
++             assert(M == R.num_rows());
++             assert(N == R.num_cols());
++ 
++ 
++             Subscript start = R.lbound();
++             Subscript Mend =  start + M - 1;
++             Subscript Nend =  start + N - 1;
++             for (Subscript i=start; i&lt;=Mend; i++)
++               for (Subscript j=start; j&lt;=Nend; j++)
++                 (*this)(i,j) = R(i,j);
++ 
++             return *this;
++         }
++ 
++         Region2D&lt;Array2D&gt; &amp; operator=(const Array2D &amp;R)
++         {
++             Subscript M = num_rows(); 
++             Subscript N = num_cols();
++ 
++             // make sure both sides conform
++             assert(M == R.num_rows());
++             assert(N == R.num_cols());
++ 
++ 
++             Subscript start = R.lbound();
++             Subscript Mend =  start + M - 1;
++             Subscript Nend =  start + N - 1;
++             for (Subscript i=start; i&lt;=Mend; i++)
++               for (Subscript j=start; j&lt;=Nend; j++)
++                 (*this)(i,j) = R(i,j);
++ 
++             return *this;
++         }
++ 
++         Region2D&lt;Array2D&gt; &amp; operator=(const  T &amp;scalar)
++         {
++             Subscript start = lbound();
++             Subscript Mend = lbound() + num_rows() - 1;
++             Subscript Nend = lbound() + num_cols() - 1;
++ 
++ 
++             for (Subscript i=start; i&lt;=Mend; i++)
++               for (Subscript j=start; j&lt;=Nend; j++)
++                 (*this)(i,j) = scalar;
++ 
++             return *this;
++         }
++ 
++ };
++ 
++ //************************
++ 
++ template &lt;class Array2D&gt;
++ class const_Region2D
++ {
++     protected:
++ 
++         const Array2D &amp;  A_;
++         Subscript offset_[2];       // 0-offset internally
++         Subscript dim_[2];
++ 
++     public:
++     typedef typename Array2D::value_type T;
++         typedef         T   value_type;
++         typedef         T   element_type;
++         typedef const   T*  const_iterator;
++         typedef const   T&amp;  const_reference;
++ 
++         const Array2D &amp; array() const { return A_; }
++         Subscript lbound() const { return A_.lbound(); }
++         Subscript num_rows() const { return dim_[0]; }
++         Subscript num_cols() const { return dim_[1]; }
++         Subscript offset(Subscript i) const                 // 1-offset
++         {
++ #ifdef TNT_BOUNDS_CHECK
++             assert( TNT_BASE_OFFSET &lt;= i);
++             assert( i&lt;= dim_[0] + TNT_BASE_OFFSET-1);
++ #endif
++             return offset_[i-TNT_BASE_OFFSET];
++         }
++ 
++         Subscript dim(Subscript i) const
++         {
++ #ifdef TNT_BOUNDS_CHECK
++             assert( TNT_BASE_OFFSET &lt;= i);
++             assert( i&lt;= dim_[0] + TNT_BASE_OFFSET-1);
++ #endif
++             return dim_[i-TNT_BASE_OFFSET];
++         }
++ 
++ 
++         const_Region2D(const Array2D &amp;A, Subscript i1, Subscript i2, 
++                 Subscript j1, Subscript j2) : A_(A)
++         {
++ #ifdef TNT_BOUNDS_CHECK
++             assert( i1 &lt;= i2 );
++             assert( j1 &lt;= j2);
++             assert( TNT_BASE_OFFSET &lt;= i1);
++             assert( i2&lt;= A.dim(TNT_BASE_OFFSET) + TNT_BASE_OFFSET-1);
++             assert( TNT_BASE_OFFSET &lt;= j1);
++             assert( j2&lt;= A.dim(TNT_BASE_OFFSET+1) + TNT_BASE_OFFSET-1 );
++ #endif
++ 
++             offset_[0] = i1-TNT_BASE_OFFSET;
++             offset_[1] = j1-TNT_BASE_OFFSET;
++             dim_[0] = i2-i1+1;
++             dim_[1] = j2-j1+1;
++         }
++ 
++         const_Region2D(const Array2D &amp;A, const Index1D &amp;I, const Index1D &amp;J) 
++                 : A_(A)
++         {
++ #ifdef TNT_BOUNDS_CHECK
++             assert( I.lbound() &lt;= I.ubound() );
++             assert( J.lbound() &lt;= J.ubound() );
++             assert( TNT_BASE_OFFSET &lt;= I.lbound());
++             assert( I.ubound()&lt;= A.dim(TNT_BASE_OFFSET) + TNT_BASE_OFFSET-1);
++             assert( TNT_BASE_OFFSET &lt;= J.lbound());
++             assert( J.ubound() &lt;= A.dim(TNT_BASE_OFFSET+1) + TNT_BASE_OFFSET-1 );
++ #endif
++ 
++             offset_[0] = I.lbound()-TNT_BASE_OFFSET;
++             offset_[1] = J.lbound()-TNT_BASE_OFFSET;
++             dim_[0] = I.ubound() - I.lbound() + 1;
++             dim_[1] = J.ubound() - J.lbound() + 1;
++         }
++ 
++ 
++         const_Region2D(const_Region2D&lt;Array2D&gt; &amp;A, Subscript i1, 
++                 Subscript i2,
++             Subscript j1, Subscript j2) : A_(A.A_)
++         {
++ #ifdef TNT_BOUNDS_CHECK
++             assert( i1 &lt;= i2 );
++             assert( j1 &lt;= j2);
++             assert( TNT_BASE_OFFSET &lt;= i1);
++             assert( i2&lt;= A.dim(TNT_BASE_OFFSET) + TNT_BASE_OFFSET-1);
++             assert( TNT_BASE_OFFSET &lt;= j1);
++             assert( j2&lt;= A.dim(TNT_BASE_OFFSET+1) + TNT_BASE_OFFSET-1 );
++ #endif
++             offset_[0] = (i1 - TNT_BASE_OFFSET) + A.offset_[0];
++             offset_[1] = (j1 - TNT_BASE_OFFSET) + A.offset_[1];
++             dim_[0] = i2-i1 + 1;
++             dim_[1] = j2-j1+1;
++         }
++ 
++         const_Region2D&lt;Array2D&gt; operator()(Subscript i1, Subscript i2,
++                 Subscript j1, Subscript j2)
++         {
++ #ifdef TNT_BOUNDS_CHECK
++             assert( i1 &lt;= i2 );
++             assert( j1 &lt;= j2);
++             assert( TNT_BASE_OFFSET &lt;= i1);
++             assert( i2&lt;= dim_[0] + TNT_BASE_OFFSET-1);
++             assert( TNT_BASE_OFFSET &lt;= j1);
++             assert( j2&lt;= dim_[0] + TNT_BASE_OFFSET-1 );
++ #endif
++             return const_Region2D&lt;Array2D&gt;(A_, 
++                     i1+offset_[0], offset_[0] + i2, 
++                     j1+offset_[1], offset_[1] + j2);
++         }
++ 
++ 
++         const_Region2D&lt;Array2D&gt; operator()(const Index1D &amp;I,
++                 const Index1D &amp;J)
++         {
++ #ifdef TNT_BOUNDS_CHECK
++             assert( I.lbound() &lt;= I.ubound() );
++             assert( J.lbound() &lt;= J.ubound() );
++             assert( TNT_BASE_OFFSET &lt;= I.lbound());
++             assert( I.ubound()&lt;= dim_[0] + TNT_BASE_OFFSET-1);
++             assert( TNT_BASE_OFFSET &lt;= J.lbound());
++             assert( J.ubound() &lt;= dim_[1] + TNT_BASE_OFFSET-1 );
++ #endif
++ 
++             return const_Region2D&lt;Array2D&gt;(A_, I.lbound()+offset_[0],
++                 offset_[0] + I.ubound(), offset_[1]+J.lbound(),
++                 offset_[1] + J.ubound());
++         }
++ 
++ 
++         inline const T &amp; operator() (Subscript i, Subscript j) const
++         {
++ #ifdef TNT_BOUNDS_CHECK
++             assert( TNT_BASE_OFFSET &lt;= i);
++             assert( i&lt;= dim_[0] + TNT_BASE_OFFSET-1);
++             assert( TNT_BASE_OFFSET &lt;= j);
++             assert( j&lt;= dim_[1] + TNT_BASE_OFFSET-1 );
++ #endif
++             return A_(i+offset_[0], j+offset_[1]);
++         }
++ 
++ };
++ 
++ 
++ //  ************** std::ostream algorithms *******************************
++ 
++ template &lt;class Array2D&gt;
++ std::ostream&amp; operator&lt;&lt;(std::ostream &amp;s, const const_Region2D&lt;Array2D&gt; &amp;A)
++ {
++     Subscript start = A.lbound();
++     Subscript Mend=A.lbound()+ A.num_rows() - 1;
++     Subscript Nend=A.lbound() + A.num_cols() - 1;
++ 
++ 
++     s &lt;&lt; A.num_rows() &lt;&lt; &quot;  &quot; &lt;&lt; A.num_cols() &lt;&lt; &quot;\n&quot;;
++     for (Subscript i=start; i&lt;=Mend; i++)
++     {
++         for (Subscript j=start; j&lt;=Nend; j++)
++         {
++             s &lt;&lt; A(i,j) &lt;&lt; &quot; &quot;;
++         }
++         s &lt;&lt; &quot;\n&quot;;
++     }
++ 
++ 
++     return s;
++ }
++ 
++ template &lt;class Array2D&gt;
++ std::ostream&amp; operator&lt;&lt;(std::ostream &amp;s, const Region2D&lt;Array2D&gt; &amp;A)
++ {
++     Subscript start = A.lbound();
++     Subscript Mend=A.lbound()+ A.num_rows() - 1;
++     Subscript Nend=A.lbound() + A.num_cols() - 1;
++ 
++ 
++     s &lt;&lt; A.num_rows() &lt;&lt; &quot;  &quot; &lt;&lt; A.num_cols() &lt;&lt; &quot;\n&quot;;
++     for (Subscript i=start; i&lt;=Mend; i++)
++     {
++         for (Subscript j=start; j&lt;=Nend; j++)
++         {
++             s &lt;&lt; A(i,j) &lt;&lt; &quot; &quot;;
++         }
++         s &lt;&lt; &quot;\n&quot;;
++     }
++ 
++ 
++     return s;
++ 
++ }
++ 
++ } // namespace TNT
++ 
++ #endif
++ // REGION2D_H
+Index: tnt/stopwatch.h
+===================================================================
+RCS file: stopwatch.h
+diff -N stopwatch.h
+*** /dev/null	Tue May  5 14:32:27 1998
+--- stopwatch.h	Thu Aug 16 13:02:56 2001
+***************
+*** 0 ****
+--- 1,83 ----
++ /*
++ *
++ * Template Numerical Toolkit (TNT): Linear Algebra Module
++ *
++ * Mathematical and Computational Sciences Division
++ * National Institute of Technology,
++ * Gaithersburg, MD USA
++ *
++ *
++ * This software was developed at the National Institute of Standards and
++ * Technology (NIST) by employees of the Federal Government in the course
++ * of their official duties. Pursuant to title 17 Section 105 of the
++ * United States Code, this software is not subject to copyright protection
++ * and is in the public domain.  The Template Numerical Toolkit (TNT) is
++ * an experimental system.  NIST assumes no responsibility whatsoever for
++ * its use by other parties, and makes no guarantees, expressed or implied,
++ * about its quality, reliability, or any other characteristic.
++ *
++ * BETA VERSION INCOMPLETE AND SUBJECT TO CHANGE
++ * see <A HREF="http://math.nist.gov/tnt">http://math.nist.gov/tnt</A> for latest updates.
++ *
++ */
++ 
++ 
++ 
++ #ifndef STPWATCH_H
++ #define STPWATCH_H
++ 
++ // for clock() and CLOCKS_PER_SEC
++ #include &lt;ctime&gt;
++ 
++ namespace TNT
++ {
++ 
++ /*  Simple stopwatch object:
++ 
++         void    start()     : start timing
++         double  stop()      : stop timing
++         void    reset()     : set elapsed time to 0.0
++         double  read()      : read elapsed time (in seconds)
++ 
++ */
++ 
++ inline double seconds(void)
++ {
++     static const double secs_per_tick = 1.0 / CLOCKS_PER_SEC;
++     return ( (double) clock() ) * secs_per_tick;
++ }
++ 
++ 
++ class stopwatch {
++     private:
++         int running;
++         double last_time;
++         double total;
++ 
++     public:
++         stopwatch() : running(0), last_time(0.0), total(0.0) {}
++         void reset() { running = 0; last_time = 0.0; total=0.0; }
++         void start() { if (!running) { last_time = seconds(); running = 1;}}
++         double stop()  { if (running) 
++                             {
++                                 total += seconds() - last_time; 
++                                 running = 0;
++                              }
++                           return total; 
++                         }
++         double read()   {  if (running) 
++                             {
++                                 total+= seconds() - last_time;
++                                 last_time = seconds();
++                             }
++                            return total;
++                         }       
++                             
++ };
++ 
++ } // namespace TNT
++ 
++ #endif
++     
++ 
++             
+Index: tnt/subscript.h
+===================================================================
+RCS file: subscript.h
+diff -N subscript.h
+*** /dev/null	Tue May  5 14:32:27 1998
+--- subscript.h	Thu Aug 16 13:02:56 2001
+***************
+*** 0 ****
+--- 1,58 ----
++ /*
++ *
++ * Template Numerical Toolkit (TNT): Linear Algebra Module
++ *
++ * Mathematical and Computational Sciences Division
++ * National Institute of Technology,
++ * Gaithersburg, MD USA
++ *
++ *
++ * This software was developed at the National Institute of Standards and
++ * Technology (NIST) by employees of the Federal Government in the course
++ * of their official duties. Pursuant to title 17 Section 105 of the
++ * United States Code, this software is not subject to copyright protection
++ * and is in the public domain.  The Template Numerical Toolkit (TNT) is
++ * an experimental system.  NIST assumes no responsibility whatsoever for
++ * its use by other parties, and makes no guarantees, expressed or implied,
++ * about its quality, reliability, or any other characteristic.
++ *
++ * BETA VERSION INCOMPLETE AND SUBJECT TO CHANGE
++ * see <A HREF="http://math.nist.gov/tnt">http://math.nist.gov/tnt</A> for latest updates.
++ *
++ */
++ 
++ 
++ #ifndef SUBSCRPT_H
++ #define SUBSCRPT_H
++ 
++ 
++ //---------------------------------------------------------------------
++ // This definition describes the default TNT data type used for
++ // indexing into TNT matrices and vectors.  The data type should
++ // be wide enough to index into large arrays.  It defaults to an
++ // &quot;int&quot;, but can be overriden at compile time redefining TNT_SUBSCRIPT_TYPE,
++ // e.g.
++ // 
++ //      g++ -DTNT_SUBSCRIPT_TYPE='unsigned int'  ...
++ //
++ //---------------------------------------------------------------------
++ //
++ 
++ #ifndef TNT_SUBSCRIPT_TYPE
++ #define TNT_SUBSCRIPT_TYPE int
++ #endif
++ 
++ namespace TNT
++ {
++     typedef TNT_SUBSCRIPT_TYPE Subscript;
++ }
++ 
++ 
++ // () indexing in TNT means 1-offset, i.e. x(1) and A(1,1) are the
++ // first elements.  This offset is left as a macro for future
++ // purposes, but should not be changed in the current release.
++ //
++ //
++ #define TNT_BASE_OFFSET (1)
++ 
++ #endif
+Index: tnt/tnt.h
+===================================================================
+RCS file: tnt.h
+diff -N tnt.h
+*** /dev/null	Tue May  5 14:32:27 1998
+--- tnt.h	Thu Aug 16 13:02:56 2001
+***************
+*** 0 ****
+--- 1,90 ----
++ /*
++ *
++ * Template Numerical Toolkit (TNT): Linear Algebra Module
++ *
++ * Mathematical and Computational Sciences Division
++ * National Institute of Technology,
++ * Gaithersburg, MD USA
++ *
++ *
++ * This software was developed at the National Institute of Standards and
++ * Technology (NIST) by employees of the Federal Government in the course
++ * of their official duties. Pursuant to title 17 Section 105 of the
++ * United States Code, this software is not subject to copyright protection
++ * and is in the public domain.  The Template Numerical Toolkit (TNT) is
++ * an experimental system.  NIST assumes no responsibility whatsoever for
++ * its use by other parties, and makes no guarantees, expressed or implied,
++ * about its quality, reliability, or any other characteristic.
++ *
++ * BETA VERSION INCOMPLETE AND SUBJECT TO CHANGE
++ * see <A HREF="http://math.nist.gov/tnt">http://math.nist.gov/tnt</A> for latest updates.
++ *
++ */
++ 
++ 
++ #ifndef TNT_H
++ #define TNT_H
++ 
++ //---------------------------------------------------------------------
++ //  tnt.h       TNT general header file.  Defines default types
++ //              and conventions.
++ //---------------------------------------------------------------------
++ 
++ //---------------------------------------------------------------------
++ //  Include current version 
++ //---------------------------------------------------------------------
++ #include &quot;tnt/version.h&quot;
++ 
++ //---------------------------------------------------------------------
++ // Define the data type used for matrix and vector Subscripts.
++ // This will default to &quot;int&quot;, but it can be overridden at compile time,
++ // e.g.
++ // 
++ //      g++ -DTNT_SUBSCRIPT_TYPE='unsigned long' ...
++ //
++ // See subscript.h for details.
++ //---------------------------------------------------------------------
++ 
++ #include &quot;tnt/subscript.h&quot;
++ 
++ 
++ 
++ //---------------------------------------------------------------------
++ // Define this macro if you want TNT to ensure all refernces
++ // are within the bounds of the array.  This encurs a run-time
++ // overhead, of course, but is recommended while developing
++ // code.  It can be turned off for production runs.
++ // 
++ //       #define TNT_BOUNDS_CHECK
++ //---------------------------------------------------------------------
++ //
++ #define TNT_BOUNDS_CHECK
++ #ifdef TNT_NO_BOUNDS_CHECK
++ #undef TNT_BOUNDS_CHECK
++ #endif
++ 
++ //---------------------------------------------------------------------
++ // Define this macro if you want to utilize matrix and vector
++ // regions.  This is typically on, but you can save some
++ // compilation time by turning it off.  If you do this and
++ // attempt to use regions you will get an error message.
++ //
++ //       #define TNT_USE_REGIONS
++ //---------------------------------------------------------------------
++ //
++ #define TNT_USE_REGIONS
++ 
++ //---------------------------------------------------------------------
++ //  
++ //---------------------------------------------------------------------
++ // If your system doesn't have abs(), min(), and max() uncomment the following.
++ //---------------------------------------------------------------------
++ //
++ // 
++ //#define __NEED_ABS_MIN_MAX_
++ 
++ #include &quot;tnt/tntmath.h&quot;
++ 
++ 
++ #endif
++ // TNT_H
+Index: tnt/tnt.h.patch
+===================================================================
+RCS file: tnt.h.patch
+diff -N tnt.h.patch
+*** /dev/null	Tue May  5 14:32:27 1998
+--- tnt.h.patch	Thu Aug 16 13:02:56 2001
+***************
+*** 0 ****
+--- 1,47 ----
++ *** tnt.h.~1~	Sun Aug  6 21:52:04 2000
++ --- tnt.h	Tue Aug  7 19:27:13 2001
++ ***************
++ *** 38,45 ****
++   //---------------------------------------------------------------------
++   // Define the data type used for matrix and vector Subscripts.
++ ! // This will default to &quot;int&quot;, but it can be overriden at compile time,
++   // e.g.
++   // 
++ ! //      g++ -DTNT_SUBSCRIPT_TYPE='unsinged long' ...
++   //
++   // See subscript.h for details.
++ --- 38,45 ----
++   //---------------------------------------------------------------------
++   // Define the data type used for matrix and vector Subscripts.
++ ! // This will default to &quot;int&quot;, but it can be overridden at compile time,
++   // e.g.
++   // 
++ ! //      g++ -DTNT_SUBSCRIPT_TYPE='unsigned long' ...
++   //
++   // See subscript.h for details.
++ ***************
++ *** 51,55 ****
++   
++   //---------------------------------------------------------------------
++ ! // Define this macro if you want  TNT to ensure all refernces
++   // are within the bounds of the array.  This encurs a run-time
++   // overhead, of course, but is recommended while developing
++ --- 51,55 ----
++   
++   //---------------------------------------------------------------------
++ ! // Define this macro if you want TNT to ensure all refernces
++   // are within the bounds of the array.  This encurs a run-time
++   // overhead, of course, but is recommended while developing
++ ***************
++ *** 78,82 ****
++   //  
++   //---------------------------------------------------------------------
++ ! // if your system doesn't have abs() min(), and max() uncoment the following
++   //---------------------------------------------------------------------
++   //
++ --- 78,82 ----
++   //  
++   //---------------------------------------------------------------------
++ ! // If your system doesn't have abs(), min(), and max() uncomment the following.
++   //---------------------------------------------------------------------
++   //
+Index: tnt/tntmath.h
+===================================================================
+RCS file: tntmath.h
+diff -N tntmath.h
+*** /dev/null	Tue May  5 14:32:27 1998
+--- tntmath.h	Thu Aug 16 13:02:56 2001
+***************
+*** 0 ****
+--- 1,85 ----
++ /*
++ *
++ * Template Numerical Toolkit (TNT): Linear Algebra Module
++ *
++ * Mathematical and Computational Sciences Division
++ * National Institute of Technology,
++ * Gaithersburg, MD USA
++ *
++ *
++ * This software was developed at the National Institute of Standards and
++ * Technology (NIST) by employees of the Federal Government in the course
++ * of their official duties. Pursuant to title 17 Section 105 of the
++ * United States Code, this software is not subject to copyright protection
++ * and is in the public domain.  The Template Numerical Toolkit (TNT) is
++ * an experimental system.  NIST assumes no responsibility whatsoever for
++ * its use by other parties, and makes no guarantees, expressed or implied,
++ * about its quality, reliability, or any other characteristic.
++ *
++ * BETA VERSION INCOMPLETE AND SUBJECT TO CHANGE
++ * see <A HREF="http://math.nist.gov/tnt">http://math.nist.gov/tnt</A> for latest updates.
++ *
++ */
++ 
++ 
++ 
++ // Header file for scalar math functions
++ 
++ #ifndef TNTMATH_H
++ #define TNTMATH_H
++ 
++ // conventional functions required by several matrix algorithms
++ 
++ 
++ 
++ namespace TNT 
++ {
++ 
++ inline double abs(double t)
++ {
++     return ( t &gt; 0 ? t : -t);
++ }
++ 
++ inline double min(double a, double b)
++ {
++     return (a &lt; b ? a : b);
++ }
++ 
++ inline double max(double a, double b)
++ {
++     return (a &gt; b ? a : b);
++ }
++ 
++ inline float abs(float t)
++ {
++     return ( t &gt; 0 ? t : -t);
++ }
++ 
++ inline float min(float a, float b)
++ {
++     return (a &lt; b ? a : b);
++ }
++ 
++ inline float max(float a, float b)
++ {
++     return (a &gt; b ? a : b);
++ }
++ 
++ inline double sign(double a)
++ {
++     return (a &gt; 0 ? 1.0 : -1.0);
++ }
++ 
++ 
++ 
++ inline float sign(float a)
++ {
++     return (a &gt; 0.0 ? 1.0f : -1.0f);
++ }
++ 
++ } /* namespace TNT */
++ 
++ 
++ #endif
++ /* TNTMATH_H */
++ 
+Index: tnt/tntreqs.h
+===================================================================
+RCS file: tntreqs.h
+diff -N tntreqs.h
+*** /dev/null	Tue May  5 14:32:27 1998
+--- tntreqs.h	Thu Aug 16 13:02:56 2001
+***************
+*** 0 ****
+--- 1,70 ----
++ /*
++ *
++ * Template Numerical Toolkit (TNT): Linear Algebra Module
++ *
++ * Mathematical and Computational Sciences Division
++ * National Institute of Technology,
++ * Gaithersburg, MD USA
++ *
++ *
++ * This software was developed at the National Institute of Standards and
++ * Technology (NIST) by employees of the Federal Government in the course
++ * of their official duties. Pursuant to title 17 Section 105 of the
++ * United States Code, this software is not subject to copyright protection
++ * and is in the public domain.  The Template Numerical Toolkit (TNT) is
++ * an experimental system.  NIST assumes no responsibility whatsoever for
++ * its use by other parties, and makes no guarantees, expressed or implied,
++ * about its quality, reliability, or any other characteristic.
++ *
++ * BETA VERSION INCOMPLETE AND SUBJECT TO CHANGE
++ * see <A HREF="http://math.nist.gov/tnt">http://math.nist.gov/tnt</A> for latest updates.
++ *
++ */
++ 
++ 
++ 
++ // The requirements for a bare-bones vector class:
++ //
++ //
++ //   o) must have 0-based [] indexing for const and
++ //          non-const objects  (i.e. operator[] defined)
++ //
++ //   o) must have size() method to denote the number of
++ //          elements
++ //   o) must clean up after itself when destructed
++ //          (i.e. no memory leaks)
++ //
++ //   -) must have begin() and end() methods  (The begin()
++ //          method is necessary, because relying on 
++ //          &amp;v_[0] may not work on a empty vector (i.e. v_ is NULL.)
++ //
++ //   o) must be templated
++ //   o) must have X::value_type defined to be the types of elements
++ //   o) must have X::X(const &amp;x) copy constructor (by *value*)
++ //   o) must have X::X(int N) constructor to N-length vector
++ //          (NOTE: this constructor need *NOT* initalize elements)
++ //
++ //   -) must have X::X(int N, T scalar) constructor to initalize
++ //          elements to value of &quot;scalar&quot;.
++ //
++ //       ( removed, because valarray&lt;&gt; class uses (scalar, N)  rather
++ //              than (N, scalar) )
++ //   -) must have X::X(int N, const T* scalars) constructor to copy from
++ //              any C linear array
++ //
++ //         ( removed, because of same reverse order of valarray&lt;&gt; )
++ //
++ //   o) must have assignment A=B, by value
++ //
++ //  NOTE: this class is *NOT* meant to be derived from,
++ //  so its methods (particularly indexing) need not be
++ //  declared virtual.
++ //
++ //
++ //  Some things it *DOES NOT* need to do are
++ //
++ //  o) bounds checking
++ //  o) array referencing (e.g. reference counting)
++ //  o) support () indexing
++ //  o) I/O 
++ //
+Index: tnt/transv.h
+===================================================================
+RCS file: transv.h
+diff -N transv.h
+*** /dev/null	Tue May  5 14:32:27 1998
+--- transv.h	Thu Aug 16 13:02:56 2001
+***************
+*** 0 ****
+--- 1,160 ----
++ /*
++ *
++ * Template Numerical Toolkit (TNT): Linear Algebra Module
++ *
++ * Mathematical and Computational Sciences Division
++ * National Institute of Technology,
++ * Gaithersburg, MD USA
++ *
++ *
++ * This software was developed at the National Institute of Standards and
++ * Technology (NIST) by employees of the Federal Government in the course
++ * of their official duties. Pursuant to title 17 Section 105 of the
++ * United States Code, this software is not subject to copyright protection
++ * and is in the public domain.  The Template Numerical Toolkit (TNT) is
++ * an experimental system.  NIST assumes no responsibility whatsoever for
++ * its use by other parties, and makes no guarantees, expressed or implied,
++ * about its quality, reliability, or any other characteristic.
++ *
++ * BETA VERSION INCOMPLETE AND SUBJECT TO CHANGE
++ * see <A HREF="http://math.nist.gov/tnt">http://math.nist.gov/tnt</A> for latest updates.
++ *
++ */
++ 
++ 
++ 
++ // Matrix Transpose Views
++ 
++ #ifndef TRANSV_H
++ #define TRANSV_H
++ 
++ #include &lt;iostream&gt;
++ #include &lt;cassert&gt;
++ #include &quot;tnt/vec.h&quot;
++ 
++ namespace TNT
++ {
++ 
++ template &lt;class Array2D&gt;
++ class Transpose_View
++ {
++     protected:
++ 
++         const Array2D &amp;  A_;
++ 
++     public:
++ 
++         typedef typename Array2D::element_type T;
++         typedef         T   value_type;
++         typedef         T   element_type;
++         typedef         T*  pointer;
++         typedef         T*  iterator;
++         typedef         T&amp;  reference;
++         typedef const   T*  const_iterator;
++         typedef const   T&amp;  const_reference;
++ 
++ 
++         const Array2D &amp; array()  const { return A_; }
++         Subscript num_rows() const { return A_.num_cols();}
++         Subscript num_cols() const { return A_.num_rows();}
++         Subscript lbound() const { return A_.lbound(); }
++         Subscript dim(Subscript i) const
++         {
++ #ifdef TNT_BOUNDS_CHECK
++             assert( A_.lbound() &lt;= i);
++             assert( i&lt;= A_.lbound()+1);
++ #endif
++             if (i== A_.lbound())
++                 return num_rows();
++             else
++                 return num_cols();
++         }
++ 
++ 
++         Transpose_View(const Transpose_View&lt;Array2D&gt; &amp;A) : A_(A.A_) {};
++         Transpose_View(const Array2D &amp;A) : A_(A) {};
++ 
++ 
++         inline const typename Array2D::element_type &amp; operator()(
++             Subscript i, Subscript j) const
++         {
++ #ifdef TNT_BOUNDS_CHECK
++         assert(lbound()&lt;=i);
++         assert(i&lt;=A_.num_cols() + lbound() - 1);
++         assert(lbound()&lt;=j);
++         assert(j&lt;=A_.num_rows() + lbound() - 1);
++ #endif
++ 
++             return A_(j,i);
++         }
++ 
++ 
++ };
++ 
++ template &lt;class Matrix&gt;
++ Transpose_View&lt;Matrix&gt; Transpose_view(const Matrix &amp;A)
++ {
++     return Transpose_View&lt;Matrix&gt;(A);
++ }
++ 
++ template &lt;class Matrix, class T&gt;
++ Vector&lt;T&gt; matmult(
++     const Transpose_View&lt;Matrix&gt; &amp; A, 
++     const Vector&lt;T&gt; &amp;B)
++ {
++     Subscript  M = A.num_rows();
++     Subscript  N = A.num_cols();
++ 
++     assert(B.dim() == N);
++ 
++     Vector&lt;T&gt; x(N);
++ 
++     Subscript i, j;
++     T tmp = 0;
++ 
++     for (i=1; i&lt;=M; i++)
++     {
++         tmp = 0;
++         for (j=1; j&lt;=N; j++)
++             tmp += A(i,j) * B(j);
++         x(i) = tmp;
++     }
++ 
++     return x;
++ }
++ 
++ template &lt;class Matrix, class T&gt;
++ inline Vector&lt;T&gt; operator*(const Transpose_View&lt;Matrix&gt; &amp; A, const Vector&lt;T&gt; &amp;B)
++ {
++     return matmult(A,B);
++ }
++ 
++ 
++ template &lt;class Matrix&gt;
++ std::ostream&amp; operator&lt;&lt;(std::ostream &amp;s, const Transpose_View&lt;Matrix&gt; &amp;A)
++ {
++     Subscript M=A.num_rows();
++     Subscript N=A.num_cols();
++ 
++     Subscript start = A.lbound();
++     Subscript Mend = M + A.lbound() - 1;
++     Subscript Nend = N + A.lbound() - 1;
++ 
++     s &lt;&lt; M &lt;&lt; &quot;  &quot; &lt;&lt; N &lt;&lt; endl;
++     for (Subscript i=start; i&lt;=Mend; i++)
++     {
++         for (Subscript j=start; j&lt;=Nend; j++)
++         {
++             s &lt;&lt; A(i,j) &lt;&lt; &quot; &quot;;
++         }
++         s &lt;&lt; endl;
++     }
++ 
++ 
++     return s;
++ }
++ 
++ } // namespace TNT
++ 
++ #endif
++ // TRANSV_H
+Index: tnt/triang.h
+===================================================================
+RCS file: triang.h
+diff -N triang.h
+*** /dev/null	Tue May  5 14:32:27 1998
+--- triang.h	Thu Aug 16 13:02:56 2001
+***************
+*** 0 ****
+--- 1,638 ----
++ /*
++ *
++ * Template Numerical Toolkit (TNT): Linear Algebra Module
++ *
++ * Mathematical and Computational Sciences Division
++ * National Institute of Technology,
++ * Gaithersburg, MD USA
++ *
++ *
++ * This software was developed at the National Institute of Standards and
++ * Technology (NIST) by employees of the Federal Government in the course
++ * of their official duties. Pursuant to title 17 Section 105 of the
++ * United States Code, this software is not subject to copyright protection
++ * and is in the public domain.  The Template Numerical Toolkit (TNT) is
++ * an experimental system.  NIST assumes no responsibility whatsoever for
++ * its use by other parties, and makes no guarantees, expressed or implied,
++ * about its quality, reliability, or any other characteristic.
++ *
++ * BETA VERSION INCOMPLETE AND SUBJECT TO CHANGE
++ * see <A HREF="http://math.nist.gov/tnt">http://math.nist.gov/tnt</A> for latest updates.
++ *
++ */
++ 
++ 
++ 
++ // Triangular Matrices (Views and Adpators)
++ 
++ #ifndef TRIANG_H
++ #define TRIANG_H
++ 
++ // default to use lower-triangular portions of arrays
++ // for symmetric matrices.
++ 
++ namespace TNT
++ {
++ 
++ template &lt;class MaTRiX&gt;
++ class LowerTriangularView
++ {
++     protected:
++ 
++ 
++         const MaTRiX  &amp;A_;
++         const typename MaTRiX::element_type zero_;
++ 
++     public:
++ 
++ 
++     typedef typename MaTRiX::const_reference const_reference;
++     typedef const typename MaTRiX::element_type element_type;
++     typedef const typename MaTRiX::element_type value_type;
++     typedef element_type T;
++ 
++     Subscript dim(Subscript d) const {  return A_.dim(d); }
++     Subscript lbound() const { return A_.lbound(); }
++     Subscript num_rows() const { return A_.num_rows(); }
++     Subscript num_cols() const { return A_.num_cols(); }
++     
++     
++     // constructors
++ 
++     LowerTriangularView(/*const*/ MaTRiX &amp;A) : A_(A),  zero_(0) {}
++ 
++ 
++     inline const_reference get(Subscript i, Subscript j) const
++     { 
++ #ifdef TNT_BOUNDS_CHECK
++         assert(lbound()&lt;=i);
++         assert(i&lt;=A_.num_rows() + lbound() - 1);
++         assert(lbound()&lt;=j);
++         assert(j&lt;=A_.num_cols() + lbound() - 1);
++ #endif
++         if (i&lt;j) 
++             return zero_;
++         else
++             return A_(i,j);
++     }
++ 
++ 
++     inline const_reference operator() (Subscript i, Subscript j) const
++     {
++ #ifdef TNT_BOUNDS_CHECK
++         assert(lbound()&lt;=i);
++         assert(i&lt;=A_.num_rows() + lbound() - 1);
++         assert(lbound()&lt;=j);
++         assert(j&lt;=A_.num_cols() + lbound() - 1);
++ #endif
++         if (i&lt;j) 
++             return zero_;
++         else
++             return A_(i,j);
++     }
++ 
++ #ifdef TNT_USE_REGIONS 
++ 
++     typedef const_Region2D&lt; LowerTriangularView&lt;MaTRiX&gt; &gt; 
++                     const_Region;
++ 
++     const_Region operator()(/*const*/ Index1D &amp;I,
++             /*const*/ Index1D &amp;J) const
++     {
++         return const_Region(*this, I, J);
++     }
++ 
++     const_Region operator()(Subscript i1, Subscript i2,
++             Subscript j1, Subscript j2) const
++     {
++         return const_Region(*this, i1, i2, j1, j2);
++     }
++ 
++ 
++ 
++ #endif
++ // TNT_USE_REGIONS
++ 
++ };
++ 
++ 
++ /* *********** Lower_triangular_view() algorithms ****************** */
++ 
++ template &lt;class MaTRiX, class VecToR&gt;
++ VecToR matmult(/*const*/ LowerTriangularView&lt;MaTRiX&gt; &amp;A, VecToR &amp;x)
++ {
++     Subscript M = A.num_rows();
++     Subscript N = A.num_cols();
++ 
++     assert(N == x.dim());
++ 
++     Subscript i, j;
++     typename MaTRiX::element_type sum=0.0;
++     VecToR result(M);
++ 
++     Subscript start = A.lbound();
++     Subscript Mend = M + A.lbound() -1 ;
++ 
++     for (i=start; i&lt;=Mend; i++)
++     {
++         sum = 0.0;
++         for (j=start; j&lt;=i; j++)
++             sum = sum + A(i,j)*x(j);
++         result(i) = sum;
++     }
++ 
++     return result;
++ }
++ 
++ template &lt;class MaTRiX, class VecToR&gt;
++ inline VecToR operator*(/*const*/ LowerTriangularView&lt;MaTRiX&gt; &amp;A, VecToR &amp;x)
++ {
++     return matmult(A,x);
++ }
++ 
++ template &lt;class MaTRiX&gt;
++ class UnitLowerTriangularView
++ {
++     protected:
++ 
++         const MaTRiX  &amp;A_;
++         const typename MaTRiX::element_type zero;
++         const typename MaTRiX::element_type one;
++ 
++     public:
++ 
++     typedef typename MaTRiX::const_reference const_reference;
++     typedef typename MaTRiX::element_type element_type;
++     typedef typename MaTRiX::element_type value_type;
++     typedef element_type T;
++ 
++     Subscript lbound() const { return 1; }
++     Subscript dim(Subscript d) const {  return A_.dim(d); }
++     Subscript num_rows() const { return A_.num_rows(); }
++     Subscript num_cols() const { return A_.num_cols(); }
++ 
++     
++     // constructors
++ 
++     UnitLowerTriangularView(/*const*/ MaTRiX &amp;A) : A_(A), zero(0), one(1) {}
++ 
++ 
++     inline const_reference get(Subscript i, Subscript j) const
++     { 
++ #ifdef TNT_BOUNDS_CHECK
++         assert(1&lt;=i);
++         assert(i&lt;=A_.dim(1));
++         assert(1&lt;=j);
++         assert(j&lt;=A_.dim(2));
++         assert(0&lt;=i &amp;&amp; i&lt;A_.dim(0) &amp;&amp; 0&lt;=j &amp;&amp; j&lt;A_.dim(1));
++ #endif
++         if (i&gt;j)
++             return A_(i,j);
++         else if (i==j)
++             return one;
++         else 
++             return zero;
++     }
++ 
++ 
++     inline const_reference operator() (Subscript i, Subscript j) const
++     {
++ #ifdef TNT_BOUNDS_CHECK
++         assert(1&lt;=i);
++         assert(i&lt;=A_.dim(1));
++         assert(1&lt;=j);
++         assert(j&lt;=A_.dim(2));
++ #endif
++         if (i&gt;j)
++             return A_(i,j);
++         else if (i==j)
++             return one;
++         else 
++             return zero;
++     }
++ 
++ 
++ #ifdef TNT_USE_REGIONS 
++   // These are the &quot;index-aware&quot; features
++ 
++     typedef const_Region2D&lt; UnitLowerTriangularView&lt;MaTRiX&gt; &gt; 
++                     const_Region;
++ 
++     const_Region operator()(/*const*/ Index1D &amp;I,
++             /*const*/ Index1D &amp;J) const
++     {
++         return const_Region(*this, I, J);
++     }
++ 
++     const_Region operator()(Subscript i1, Subscript i2,
++             Subscript j1, Subscript j2) const
++     {
++         return const_Region(*this, i1, i2, j1, j2);
++     }
++ #endif
++ // TNT_USE_REGIONS
++ };
++ 
++ template &lt;class MaTRiX&gt;
++ LowerTriangularView&lt;MaTRiX&gt; Lower_triangular_view(
++     /*const*/ MaTRiX &amp;A)
++ {
++     return LowerTriangularView&lt;MaTRiX&gt;(A);
++ }
++ 
++ 
++ template &lt;class MaTRiX&gt;
++ UnitLowerTriangularView&lt;MaTRiX&gt; Unit_lower_triangular_view(
++     /*const*/ MaTRiX &amp;A)
++ {
++     return UnitLowerTriangularView&lt;MaTRiX&gt;(A);
++ }
++ 
++ template &lt;class MaTRiX, class VecToR&gt;
++ VecToR matmult(/*const*/ UnitLowerTriangularView&lt;MaTRiX&gt; &amp;A, VecToR &amp;x)
++ {
++     Subscript M = A.num_rows();
++     Subscript N = A.num_cols();
++ 
++     assert(N == x.dim());
++ 
++     Subscript i, j;
++     typename MaTRiX::element_type sum=0.0;
++     VecToR result(M);
++ 
++     Subscript start = A.lbound();
++     Subscript Mend = M + A.lbound() -1 ;
++ 
++     for (i=start; i&lt;=Mend; i++)
++     {
++         sum = 0.0;
++         for (j=start; j&lt;i; j++)
++             sum = sum + A(i,j)*x(j);
++         result(i) = sum + x(i);
++     }
++ 
++     return result;
++ }
++ 
++ template &lt;class MaTRiX, class VecToR&gt;
++ inline VecToR operator*(/*const*/ UnitLowerTriangularView&lt;MaTRiX&gt; &amp;A, VecToR &amp;x)
++ {
++     return matmult(A,x);
++ }
++ 
++ 
++ //********************** Algorithms *************************************
++ 
++ 
++ 
++ template &lt;class MaTRiX&gt;
++ std::ostream&amp; operator&lt;&lt;(std::ostream &amp;s, const LowerTriangularView&lt;MaTRiX&gt;&amp;A)
++ {
++     Subscript M=A.num_rows();
++     Subscript N=A.num_cols();
++ 
++     s &lt;&lt; M &lt;&lt; &quot; &quot; &lt;&lt; N &lt;&lt; endl;
++ 
++     for (Subscript i=1; i&lt;=M; i++)
++     {
++         for (Subscript j=1; j&lt;=N; j++)
++         {
++             s &lt;&lt; A(i,j) &lt;&lt; &quot; &quot;;
++         }
++         s &lt;&lt; endl;
++     }
++ 
++ 
++     return s;
++ }
++ 
++ template &lt;class MaTRiX&gt;
++ std::ostream&amp; operator&lt;&lt;(std::ostream &amp;s, 
++     const UnitLowerTriangularView&lt;MaTRiX&gt;&amp;A)
++ {
++     Subscript M=A.num_rows();
++     Subscript N=A.num_cols();
++ 
++     s &lt;&lt; M &lt;&lt; &quot; &quot; &lt;&lt; N &lt;&lt; endl;
++ 
++     for (Subscript i=1; i&lt;=M; i++)
++     {
++         for (Subscript j=1; j&lt;=N; j++)
++         {
++             s &lt;&lt; A(i,j) &lt;&lt; &quot; &quot;;
++         }
++         s &lt;&lt; endl;
++     }
++ 
++ 
++     return s;
++ }
++ 
++ 
++ 
++ // ******************* Upper Triangular Section **************************
++ 
++ template &lt;class MaTRiX&gt;
++ class UpperTriangularView
++ {
++     protected:
++ 
++ 
++         /*const*/ MaTRiX  &amp;A_;
++         /*const*/ typename MaTRiX::element_type zero_;
++ 
++     public:
++ 
++ 
++     typedef typename MaTRiX::const_reference const_reference;
++     typedef /*const*/ typename MaTRiX::element_type element_type;
++     typedef /*const*/ typename MaTRiX::element_type value_type;
++     typedef element_type T;
++ 
++     Subscript dim(Subscript d) const {  return A_.dim(d); }
++     Subscript lbound() const { return A_.lbound(); }
++     Subscript num_rows() const { return A_.num_rows(); }
++     Subscript num_cols() const { return A_.num_cols(); }
++     
++     
++     // constructors
++ 
++     UpperTriangularView(/*const*/ MaTRiX &amp;A) : A_(A),  zero_(0) {}
++ 
++ 
++     inline const_reference get(Subscript i, Subscript j) const
++     { 
++ #ifdef TNT_BOUNDS_CHECK
++         assert(lbound()&lt;=i);
++         assert(i&lt;=A_.num_rows() + lbound() - 1);
++         assert(lbound()&lt;=j);
++         assert(j&lt;=A_.num_cols() + lbound() - 1);
++ #endif
++         if (i&gt;j) 
++             return zero_;
++         else
++             return A_(i,j);
++     }
++ 
++ 
++     inline const_reference operator() (Subscript i, Subscript j) const
++     {
++ #ifdef TNT_BOUNDS_CHECK
++         assert(lbound()&lt;=i);
++         assert(i&lt;=A_.num_rows() + lbound() - 1);
++         assert(lbound()&lt;=j);
++         assert(j&lt;=A_.num_cols() + lbound() - 1);
++ #endif
++         if (i&gt;j) 
++             return zero_;
++         else
++             return A_(i,j);
++     }
++ 
++ #ifdef TNT_USE_REGIONS 
++ 
++     typedef const_Region2D&lt; UpperTriangularView&lt;MaTRiX&gt; &gt; 
++                     const_Region;
++ 
++     const_Region operator()(const Index1D &amp;I,
++             const Index1D &amp;J) const
++     {
++         return const_Region(*this, I, J);
++     }
++ 
++     const_Region operator()(Subscript i1, Subscript i2,
++             Subscript j1, Subscript j2) const
++     {
++         return const_Region(*this, i1, i2, j1, j2);
++     }
++ 
++ 
++ 
++ #endif
++ // TNT_USE_REGIONS
++ 
++ };
++ 
++ 
++ /* *********** Upper_triangular_view() algorithms ****************** */
++ 
++ template &lt;class MaTRiX, class VecToR&gt;
++ VecToR matmult(/*const*/ UpperTriangularView&lt;MaTRiX&gt; &amp;A, VecToR &amp;x)
++ {
++     Subscript M = A.num_rows();
++     Subscript N = A.num_cols();
++ 
++     assert(N == x.dim());
++ 
++     Subscript i, j;
++     typename VecToR::element_type sum=0.0;
++     VecToR result(M);
++ 
++     Subscript start = A.lbound();
++     Subscript Mend = M + A.lbound() -1 ;
++ 
++     for (i=start; i&lt;=Mend; i++)
++     {
++         sum = 0.0;
++         for (j=i; j&lt;=N; j++)
++             sum = sum + A(i,j)*x(j);
++         result(i) = sum;
++     }
++ 
++     return result;
++ }
++ 
++ template &lt;class MaTRiX, class VecToR&gt;
++ inline VecToR operator*(/*const*/ UpperTriangularView&lt;MaTRiX&gt; &amp;A, VecToR &amp;x)
++ {
++     return matmult(A,x);
++ }
++ 
++ template &lt;class MaTRiX&gt;
++ class UnitUpperTriangularView
++ {
++     protected:
++ 
++         const MaTRiX  &amp;A_;
++         const typename MaTRiX::element_type zero;
++         const typename MaTRiX::element_type one;
++ 
++     public:
++ 
++     typedef typename MaTRiX::const_reference const_reference;
++     typedef typename MaTRiX::element_type element_type;
++     typedef typename MaTRiX::element_type value_type;
++     typedef element_type T;
++ 
++     Subscript lbound() const { return 1; }
++     Subscript dim(Subscript d) const {  return A_.dim(d); }
++     Subscript num_rows() const { return A_.num_rows(); }
++     Subscript num_cols() const { return A_.num_cols(); }
++ 
++     
++     // constructors
++ 
++     UnitUpperTriangularView(/*const*/ MaTRiX &amp;A) : A_(A), zero(0), one(1) {}
++ 
++ 
++     inline const_reference get(Subscript i, Subscript j) const
++     { 
++ #ifdef TNT_BOUNDS_CHECK
++         assert(1&lt;=i);
++         assert(i&lt;=A_.dim(1));
++         assert(1&lt;=j);
++         assert(j&lt;=A_.dim(2));
++         assert(0&lt;=i &amp;&amp; i&lt;A_.dim(0) &amp;&amp; 0&lt;=j &amp;&amp; j&lt;A_.dim(1));
++ #endif
++         if (i&lt;j)
++             return A_(i,j);
++         else if (i==j)
++             return one;
++         else 
++             return zero;
++     }
++ 
++ 
++     inline const_reference operator() (Subscript i, Subscript j) const
++     {
++ #ifdef TNT_BOUNDS_CHECK
++         assert(1&lt;=i);
++         assert(i&lt;=A_.dim(1));
++         assert(1&lt;=j);
++         assert(j&lt;=A_.dim(2));
++ #endif
++         if (i&lt;j)
++             return A_(i,j);
++         else if (i==j)
++             return one;
++         else 
++             return zero;
++     }
++ 
++ 
++ #ifdef TNT_USE_REGIONS 
++   // These are the &quot;index-aware&quot; features
++ 
++     typedef const_Region2D&lt; UnitUpperTriangularView&lt;MaTRiX&gt; &gt; 
++                     const_Region;
++ 
++     const_Region operator()(const Index1D &amp;I,
++             const Index1D &amp;J) const
++     {
++         return const_Region(*this, I, J);
++     }
++ 
++     const_Region operator()(Subscript i1, Subscript i2,
++             Subscript j1, Subscript j2) const
++     {
++         return const_Region(*this, i1, i2, j1, j2);
++     }
++ #endif
++ // TNT_USE_REGIONS
++ };
++ 
++ template &lt;class MaTRiX&gt;
++ UpperTriangularView&lt;MaTRiX&gt; Upper_triangular_view(
++     /*const*/ MaTRiX &amp;A)
++ {
++     return UpperTriangularView&lt;MaTRiX&gt;(A);
++ }
++ 
++ 
++ template &lt;class MaTRiX&gt;
++ UnitUpperTriangularView&lt;MaTRiX&gt; Unit_upper_triangular_view(
++     /*const*/ MaTRiX &amp;A)
++ {
++     return UnitUpperTriangularView&lt;MaTRiX&gt;(A);
++ }
++ 
++ template &lt;class MaTRiX, class VecToR&gt;
++ VecToR matmult(/*const*/ UnitUpperTriangularView&lt;MaTRiX&gt; &amp;A, VecToR &amp;x)
++ {
++     Subscript M = A.num_rows();
++     Subscript N = A.num_cols();
++ 
++     assert(N == x.dim());
++ 
++     Subscript i, j;
++     typename VecToR::element_type sum=0.0;
++     VecToR result(M);
++ 
++     Subscript start = A.lbound();
++     Subscript Mend = M + A.lbound() -1 ;
++ 
++     for (i=start; i&lt;=Mend; i++)
++     {
++         sum = x(i);
++         for (j=i+1; j&lt;=N; j++)
++             sum = sum + A(i,j)*x(j);
++         result(i) = sum + x(i);
++     }
++ 
++     return result;
++ }
++ 
++ template &lt;class MaTRiX, class VecToR&gt;
++ inline VecToR operator*(/*const*/ UnitUpperTriangularView&lt;MaTRiX&gt; &amp;A, VecToR &amp;x)
++ {
++     return matmult(A,x);
++ }
++ 
++ 
++ //********************** Algorithms *************************************
++ 
++ 
++ 
++ template &lt;class MaTRiX&gt;
++ std::ostream&amp; operator&lt;&lt;(std::ostream &amp;s, 
++     /*const*/ UpperTriangularView&lt;MaTRiX&gt;&amp;A)
++ {
++     Subscript M=A.num_rows();
++     Subscript N=A.num_cols();
++ 
++     s &lt;&lt; M &lt;&lt; &quot; &quot; &lt;&lt; N &lt;&lt; endl;
++ 
++     for (Subscript i=1; i&lt;=M; i++)
++     {
++         for (Subscript j=1; j&lt;=N; j++)
++         {
++             s &lt;&lt; A(i,j) &lt;&lt; &quot; &quot;;
++         }
++         s &lt;&lt; endl;
++     }
++ 
++ 
++     return s;
++ }
++ 
++ template &lt;class MaTRiX&gt;
++ std::ostream&amp; operator&lt;&lt;(std::ostream &amp;s, 
++         /*const*/ UnitUpperTriangularView&lt;MaTRiX&gt;&amp;A)
++ {
++     Subscript M=A.num_rows();
++     Subscript N=A.num_cols();
++ 
++     s &lt;&lt; M &lt;&lt; &quot; &quot; &lt;&lt; N &lt;&lt; endl;
++ 
++     for (Subscript i=1; i&lt;=M; i++)
++     {
++         for (Subscript j=1; j&lt;=N; j++)
++         {
++             s &lt;&lt; A(i,j) &lt;&lt; &quot; &quot;;
++         }
++         s &lt;&lt; endl;
++     }
++ 
++ 
++     return s;
++ }
++ 
++ } // namespace TNT
++ 
++ 
++ 
++ 
++ 
++ #endif 
++ //TRIANG_H
++ 
+Index: tnt/trisolve.h
+===================================================================
+RCS file: trisolve.h
+diff -N trisolve.h
+*** /dev/null	Tue May  5 14:32:27 1998
+--- trisolve.h	Thu Aug 16 13:02:56 2001
+***************
+*** 0 ****
+--- 1,184 ----
++ /*
++ *
++ * Template Numerical Toolkit (TNT): Linear Algebra Module
++ *
++ * Mathematical and Computational Sciences Division
++ * National Institute of Technology,
++ * Gaithersburg, MD USA
++ *
++ *
++ * This software was developed at the National Institute of Standards and
++ * Technology (NIST) by employees of the Federal Government in the course
++ * of their official duties. Pursuant to title 17 Section 105 of the
++ * United States Code, this software is not subject to copyright protection
++ * and is in the public domain.  The Template Numerical Toolkit (TNT) is
++ * an experimental system.  NIST assumes no responsibility whatsoever for
++ * its use by other parties, and makes no guarantees, expressed or implied,
++ * about its quality, reliability, or any other characteristic.
++ *
++ * BETA VERSION INCOMPLETE AND SUBJECT TO CHANGE
++ * see <A HREF="http://math.nist.gov/tnt">http://math.nist.gov/tnt</A> for latest updates.
++ *
++ */
++ 
++ 
++ 
++ // Triangular Solves
++ 
++ #ifndef TRISLV_H
++ #define TRISLV_H
++ 
++ 
++ #include &quot;triang.h&quot;
++ 
++ namespace TNT
++ {
++ 
++ template &lt;class MaTriX, class VecToR&gt;
++ VecToR Lower_triangular_solve(/*const*/ MaTriX &amp;A, /*const*/ VecToR &amp;b)
++ {
++     Subscript N = A.num_rows();
++ 
++     // make sure matrix sizes agree; A must be square
++ 
++     assert(A.num_cols() == N);
++     assert(b.dim() == N);
++ 
++     VecToR x(N);
++ 
++     Subscript i;
++     for (i=1; i&lt;=N; i++)
++     {
++         typename MaTriX::element_type tmp=0;
++ 
++         for (Subscript j=1; j&lt;i; j++)
++                 tmp = tmp + A(i,j)*x(j);
++ 
++         x(i) =  (b(i) - tmp)/ A(i,i);
++     }
++ 
++     return x;
++ }
++ 
++ 
++ template &lt;class MaTriX, class VecToR&gt;
++ VecToR Unit_lower_triangular_solve(/*const*/ MaTriX &amp;A, /*const*/ VecToR &amp;b)
++ {
++     Subscript N = A.num_rows();
++ 
++     // make sure matrix sizes agree; A must be square
++ 
++     assert(A.num_cols() == N);
++     assert(b.dim() == N);
++ 
++     VecToR x(N);
++ 
++     Subscript i;
++     for (i=1; i&lt;=N; i++)
++     {
++ 
++         typename MaTriX::element_type tmp=0;
++ 
++         for (Subscript j=1; j&lt;i; j++)
++                 tmp = tmp + A(i,j)*x(j);
++ 
++         x(i) =  b(i) - tmp;
++     }
++ 
++     return x;
++ }
++ 
++ 
++ template &lt;class MaTriX, class VecToR&gt;
++ VecToR linear_solve(/*const*/ LowerTriangularView&lt;MaTriX&gt; &amp;A, 
++             /*const*/ VecToR &amp;b)
++ {
++     return Lower_triangular_solve(A, b);
++ }
++     
++ template &lt;class MaTriX, class VecToR&gt;
++ VecToR linear_solve(/*const*/ UnitLowerTriangularView&lt;MaTriX&gt; &amp;A, 
++         /*const*/ VecToR &amp;b)
++ {
++     return Unit_lower_triangular_solve(A, b);
++ }
++     
++ 
++ 
++ //********************** Upper triangular section ****************
++ 
++ template &lt;class MaTriX, class VecToR&gt;
++ VecToR Upper_triangular_solve(/*const*/ MaTriX &amp;A, /*const*/ VecToR &amp;b)
++ {
++     Subscript N = A.num_rows();
++ 
++     // make sure matrix sizes agree; A must be square
++ 
++     assert(A.num_cols() == N);
++     assert(b.dim() == N);
++ 
++     VecToR x(N);
++ 
++     Subscript i;
++     for (i=N; i&gt;=1; i--)
++     {
++ 
++         typename MaTriX::element_type tmp=0;
++ 
++         for (Subscript j=i+1; j&lt;=N; j++)
++                 tmp = tmp + A(i,j)*x(j);
++ 
++         x(i) =  (b(i) - tmp)/ A(i,i);
++     }
++ 
++     return x;
++ }
++ 
++ 
++ template &lt;class MaTriX, class VecToR&gt;
++ VecToR Unit_upper_triangular_solve(/*const*/ MaTriX &amp;A, /*const*/ VecToR &amp;b)
++ {
++     Subscript N = A.num_rows();
++ 
++     // make sure matrix sizes agree; A must be square
++ 
++     assert(A.num_cols() == N);
++     assert(b.dim() == N);
++ 
++     VecToR x(N);
++ 
++     Subscript i;
++     for (i=N; i&gt;=1; i--)
++     {
++ 
++         typename MaTriX::element_type tmp=0;
++ 
++         for (Subscript j=i+1; j&lt;i; j++)
++                 tmp = tmp + A(i,j)*x(j);
++ 
++         x(i) =  b(i) - tmp;
++     }
++ 
++     return x;
++ }
++ 
++ 
++ template &lt;class MaTriX, class VecToR&gt;
++ VecToR linear_solve(/*const*/ UpperTriangularView&lt;MaTriX&gt; &amp;A, 
++         /*const*/ VecToR &amp;b)
++ {
++     return Upper_triangular_solve(A, b);
++ }
++     
++ template &lt;class MaTriX, class VecToR&gt;
++ VecToR linear_solve(/*const*/ UnitUpperTriangularView&lt;MaTriX&gt; &amp;A, 
++     /*const*/ VecToR &amp;b)
++ {
++     return Unit_upper_triangular_solve(A, b);
++ }
++ 
++ 
++ } // namespace TNT
++ 
++ #endif
++ // TRISLV_H
+Index: tnt/vec.h
+===================================================================
+RCS file: vec.h
+diff -N vec.h
+*** /dev/null	Tue May  5 14:32:27 1998
+--- vec.h	Thu Aug 16 13:02:56 2001
+***************
+*** 0 ****
+--- 1,403 ----
++ /*
++ *
++ * Template Numerical Toolkit (TNT): Linear Algebra Module
++ *
++ * Mathematical and Computational Sciences Division
++ * National Institute of Technology,
++ * Gaithersburg, MD USA
++ *
++ *
++ * This software was developed at the National Institute of Standards and
++ * Technology (NIST) by employees of the Federal Government in the course
++ * of their official duties. Pursuant to title 17 Section 105 of the
++ * United States Code, this software is not subject to copyright protection
++ * and is in the public domain.  The Template Numerical Toolkit (TNT) is
++ * an experimental system.  NIST assumes no responsibility whatsoever for
++ * its use by other parties, and makes no guarantees, expressed or implied,
++ * about its quality, reliability, or any other characteristic.
++ *
++ * BETA VERSION INCOMPLETE AND SUBJECT TO CHANGE
++ * see <A HREF="http://math.nist.gov/tnt">http://math.nist.gov/tnt</A> for latest updates.
++ *
++ */
++ 
++ 
++ // Basic TNT  numerical vector (0-based [i] AND 1-based (i) indexing )
++ //
++ 
++ #ifndef VEC_H
++ #define VEC_H
++ 
++ #include &quot;tnt/subscript.h&quot;
++ #include &lt;cstdlib&gt;
++ #include &lt;cassert&gt;
++ #include &lt;iostream&gt;
++ #include &lt;sstream&gt;
++ 
++ namespace TNT
++ {
++ 
++ template &lt;class T&gt;
++ class Vector 
++ {
++ 
++ 
++   public:
++ 
++     typedef Subscript   size_type;
++     typedef         T   value_type;
++     typedef         T   element_type;
++     typedef         T*  pointer;
++     typedef         T*  iterator;
++     typedef         T&amp;  reference;
++     typedef const   T*  const_iterator;
++     typedef const   T&amp;  const_reference;
++ 
++     Subscript lbound() const { return 1;}
++  
++   protected:
++     T* v_;                  
++     T* vm1_;        // pointer adjustment for optimized 1-offset indexing
++     Subscript n_;
++ 
++     // internal helper function to create the array
++     // of row pointers
++ 
++     void initialize(Subscript N)
++     {
++         // adjust pointers so that they are 1-offset:
++         // v_[] is the internal contiguous array, it is still 0-offset
++         //
++         assert(v_ == NULL);
++         v_ = new T[N];
++         assert(v_  != NULL);
++         vm1_ = v_-1;
++         n_ = N;
++     }
++    
++     void copy(const T*  v)
++     {
++         Subscript N = n_;
++         Subscript i;
++ 
++ #ifdef TNT_UNROLL_LOOPS
++         Subscript Nmod4 = N &amp; 3;
++         Subscript N4 = N - Nmod4;
++ 
++         for (i=0; i&lt;N4; i+=4)
++         {
++             v_[i] = v[i];
++             v_[i+1] = v[i+1];
++             v_[i+2] = v[i+2];
++             v_[i+3] = v[i+3];
++         }
++ 
++         for (i=N4; i&lt; N; i++)
++             v_[i] = v[i];
++ #else
++ 
++         for (i=0; i&lt; N; i++)
++             v_[i] = v[i];
++ #endif      
++     }
++ 
++     void set(const T&amp; val)
++     {
++         Subscript N = n_;
++         Subscript i;
++ 
++ #ifdef TNT_UNROLL_LOOPS
++         Subscript Nmod4 = N &amp; 3;
++         Subscript N4 = N - Nmod4;
++ 
++         for (i=0; i&lt;N4; i+=4)
++         {
++             v_[i] = val;
++             v_[i+1] = val;
++             v_[i+2] = val;
++             v_[i+3] = val; 
++         }
++ 
++         for (i=N4; i&lt; N; i++)
++             v_[i] = val;
++ #else
++ 
++         for (i=0; i&lt; N; i++)
++             v_[i] = val;
++         
++ #endif      
++     }
++     
++ 
++ 
++     void destroy()
++     {     
++         /* do nothing, if no memory has been previously allocated */
++         if (v_ == NULL) return ;
++ 
++         /* if we are here, then matrix was previously allocated */
++         delete [] (v_);     
++ 
++         v_ = NULL;
++         vm1_ = NULL;
++     }
++ 
++ 
++   public:
++ 
++     // access
++ 
++     iterator begin() { return v_;}
++     iterator end()   { return v_ + n_; }
++     const iterator begin() const { return v_;}
++     const iterator end() const  { return v_ + n_; }
++ 
++     // destructor
++ 
++     ~Vector() 
++     {
++         destroy();
++     }
++ 
++     // constructors
++ 
++     Vector() : v_(0), vm1_(0), n_(0)  {};
++ 
++     Vector(const Vector&lt;T&gt; &amp;A) : v_(0), vm1_(0), n_(0)
++     {
++         initialize(A.n_);
++         copy(A.v_);
++     }
++ 
++     Vector(Subscript N, const T&amp; value = T()) :  v_(0), vm1_(0), n_(0)
++     {
++         initialize(N);
++         set(value);
++     }
++ 
++     Vector(Subscript N, const T* v) :  v_(0), vm1_(0), n_(0)
++     {
++         initialize(N);
++         copy(v);
++     }
++ 
++     Vector(Subscript N, const char *s) :  v_(0), vm1_(0), n_(0)
++     {
++         initialize(N);
++         std::istringstream ins(s);
++ 
++         Subscript i;
++ 
++         for (i=0; i&lt;N; i++)
++                 ins &gt;&gt; v_[i];
++     }
++ 
++ 
++     // methods
++     // 
++     Vector&lt;T&gt;&amp; newsize(Subscript N)
++     {
++         if (n_ == N) return *this;
++ 
++         destroy();
++         initialize(N);
++ 
++         return *this;
++     }
++ 
++ 
++     // assignments
++     //
++     Vector&lt;T&gt;&amp; operator=(const Vector&lt;T&gt; &amp;A)
++     {
++         if (v_ == A.v_)
++             return *this;
++ 
++         if (n_ == A.n_)         // no need to re-alloc
++             copy(A.v_);
++ 
++         else
++         {
++             destroy();
++             initialize(A.n_);
++             copy(A.v_);
++         }
++ 
++         return *this;
++     }
++         
++     Vector&lt;T&gt;&amp; operator=(const T&amp; scalar)
++     { 
++         set(scalar);  
++         return *this;
++     }
++ 
++     inline Subscript dim() const 
++     {
++         return  n_; 
++     }
++ 
++     inline Subscript size() const 
++     {
++         return  n_; 
++     }
++ 
++ 
++     inline reference operator()(Subscript i)
++     { 
++ #ifdef TNT_BOUNDS_CHECK
++         assert(1&lt;=i);
++         assert(i &lt;= n_) ;
++ #endif
++         return vm1_[i]; 
++     }
++ 
++     inline const_reference operator() (Subscript i) const
++     {
++ #ifdef TNT_BOUNDS_CHECK
++         assert(1&lt;=i);
++         assert(i &lt;= n_) ;
++ #endif
++         return vm1_[i]; 
++     }
++ 
++     inline reference operator[](Subscript i)
++     { 
++ #ifdef TNT_BOUNDS_CHECK
++         assert(0&lt;=i);
++         assert(i &lt; n_) ;
++ #endif
++         return v_[i]; 
++     }
++ 
++     inline const_reference operator[](Subscript i) const
++     {
++ #ifdef TNT_BOUNDS_CHECK
++         assert(0&lt;=i);
++ 
++ 
++ 
++ 
++ 
++ 
++         assert(i &lt; n_) ;
++ #endif
++         return v_[i]; 
++     }
++ 
++ 
++ 
++ };
++ 
++ 
++ /* ***************************  I/O  ********************************/
++ 
++ template &lt;class T&gt;
++ std::ostream&amp; operator&lt;&lt;(std::ostream &amp;s, const Vector&lt;T&gt; &amp;A)
++ {
++     Subscript N=A.dim();
++ 
++     s &lt;&lt;  N &lt;&lt; endl;
++ 
++     for (Subscript i=0; i&lt;N; i++)
++         s   &lt;&lt; A[i] &lt;&lt; &quot; &quot; &lt;&lt; endl;
++     s &lt;&lt; endl;
++ 
++     return s;
++ }
++ 
++ template &lt;class T&gt;
++ std::istream &amp; operator&gt;&gt;(std::istream &amp;s, Vector&lt;T&gt; &amp;A)
++ {
++ 
++     Subscript N;
++ 
++     s &gt;&gt; N;
++ 
++     if ( !(N == A.size() ))
++     {
++         A.newsize(N);
++     }
++ 
++ 
++     for (Subscript i=0; i&lt;N; i++)
++             s &gt;&gt;  A[i];
++ 
++ 
++     return s;
++ }
++ 
++ // *******************[ basic matrix algorithms ]***************************
++ 
++ 
++ template &lt;class T&gt;
++ Vector&lt;T&gt; operator+(const Vector&lt;T&gt; &amp;A, 
++     const Vector&lt;T&gt; &amp;B)
++ {
++     Subscript N = A.dim();
++ 
++     assert(N==B.dim());
++ 
++     Vector&lt;T&gt; tmp(N);
++     Subscript i;
++ 
++     for (i=0; i&lt;N; i++)
++             tmp[i] = A[i] + B[i];
++ 
++     return tmp;
++ }
++ 
++ template &lt;class T&gt;
++ Vector&lt;T&gt; operator-(const Vector&lt;T&gt; &amp;A, 
++     const Vector&lt;T&gt; &amp;B)
++ {
++     Subscript N = A.dim();
++ 
++     assert(N==B.dim());
++ 
++     Vector&lt;T&gt; tmp(N);
++     Subscript i;
++ 
++     for (i=0; i&lt;N; i++)
++             tmp[i] = A[i] - B[i];
++ 
++     return tmp;
++ }
++ 
++ template &lt;class T&gt;
++ Vector&lt;T&gt; operator*(const Vector&lt;T&gt; &amp;A, 
++     const Vector&lt;T&gt; &amp;B)
++ {
++     Subscript N = A.dim();
++ 
++     assert(N==B.dim());
++ 
++     Vector&lt;T&gt; tmp(N);
++     Subscript i;
++ 
++     for (i=0; i&lt;N; i++)
++             tmp[i] = A[i] * B[i];
++ 
++     return tmp;
++ }
++ 
++ 
++ template &lt;class T&gt;
++ T dot_prod(const Vector&lt;T&gt; &amp;A, const Vector&lt;T&gt; &amp;B)
++ {
++     Subscript N = A.dim();
++     assert(N == B.dim());
++ 
++     Subscript i;
++     T sum = 0;
++ 
++     for (i=0; i&lt;N; i++)
++         sum += A[i] * B[i];
++ 
++     return sum;
++ }
++ 
++ }   /* namespace TNT */
++ 
++ #endif
++ // VEC_H
+Index: tnt/vec.h.patch
+===================================================================
+RCS file: vec.h.patch
+diff -N vec.h.patch
+*** /dev/null	Tue May  5 14:32:27 1998
+--- vec.h.patch	Thu Aug 16 13:02:56 2001
+***************
+*** 0 ****
+--- 1,15 ----
++ *** vec.h.~1~	Tue Aug  7 15:36:22 2001
++ --- vec.h	Tue Aug  7 19:42:18 2001
++ ***************
++ *** 58,62 ****
++     protected:
++       T* v_;                  
++ !     T* vm1_;        // pointer adjustment for optimzied 1-offset indexing
++       Subscript n_;
++   
++ --- 58,62 ----
++     protected:
++       T* v_;                  
++ !     T* vm1_;        // pointer adjustment for optimized 1-offset indexing
++       Subscript n_;
++   
+Index: tnt/vecadaptor.h
+===================================================================
+RCS file: vecadaptor.h
+diff -N vecadaptor.h
+*** /dev/null	Tue May  5 14:32:27 1998
+--- vecadaptor.h	Thu Aug 16 13:02:56 2001
+***************
+*** 0 ****
+--- 1,289 ----
++ /*
++ *
++ * Template Numerical Toolkit (TNT): Linear Algebra Module
++ *
++ * Mathematical and Computational Sciences Division
++ * National Institute of Technology,
++ * Gaithersburg, MD USA
++ *
++ *
++ * This software was developed at the National Institute of Standards and
++ * Technology (NIST) by employees of the Federal Government in the course
++ * of their official duties. Pursuant to title 17 Section 105 of the
++ * United States Code, this software is not subject to copyright protection
++ * and is in the public domain.  The Template Numerical Toolkit (TNT) is
++ * an experimental system.  NIST assumes no responsibility whatsoever for
++ * its use by other parties, and makes no guarantees, expressed or implied,
++ * about its quality, reliability, or any other characteristic.
++ *
++ * BETA VERSION INCOMPLETE AND SUBJECT TO CHANGE
++ * see <A HREF="http://math.nist.gov/tnt">http://math.nist.gov/tnt</A> for latest updates.
++ *
++ */
++ 
++ 
++ 
++ #ifndef VECADAPTOR_H
++ #define VECADAPTOR_H
++ 
++ #include &lt;cstdlib&gt;
++ #include &lt;iostream&gt;
++ #include &lt;sstream&gt;
++ #include &lt;cassert&gt;
++ 
++ #include &quot;tnt/subscript.h&quot;
++ 
++ #ifdef TNT_USE_REGIONS
++ #include &quot;tnt/region1d.h&quot;
++ #endif
++ 
++ namespace TNT
++ {
++ 
++ //  see &quot;tntreq.h&quot; for TNT requirements for underlying vector
++ //  class.  This need NOT be the STL vector&lt;&gt; class, but a subset
++ //  that provides minimal services.
++ //
++ //  This is a container adaptor that provides the following services.
++ //
++ //      o)  adds 1-offset operator() access ([] is always 0 offset)
++ //      o)  adds TNT_BOUNDS_CHECK to () and []
++ //      o)  adds initialization from strings, e.g.  &quot;1.0 2.0 3.0&quot;;
++ //      o)  adds newsize(N) function (does not preserve previous values)
++ //      o)  adds dim() and dim(1)
++ //      o)  adds free() function to release memory used by vector
++ //      o)  adds regions, e.g. A(Index(1,10)) = ... 
++ //      o)  add getVector() method to return adapted container
++ //      o)  adds simple I/O for ostreams
++ 
++ template &lt;class BBVec&gt;
++ class Vector_Adaptor
++ {
++ 
++   public:
++     typedef   typename BBVec::value_type T;
++     typedef         T   value_type;
++     typedef         T   element_type;
++     typedef         T*  pointer;
++     typedef         T*  iterator;
++     typedef         T&amp;  reference;
++     typedef const   T*  const_iterator;
++     typedef const   T&amp;  const_reference;
++     
++     Subscript lbound() const { return 1; }
++ 
++   protected:
++     BBVec v_;
++     T* vm1_;
++ 
++   public:
++ 
++     Subscript size() const { return v_.size(); }
++ 
++     // These were removed so that the ANSI C++ valarray class
++     // would work as a possible storage container.
++     //
++     //
++     //iterator begin() { return v_.begin();}
++     //iterator begin() { return &amp;v_[0];}
++     //
++     //iterator end()   { return v_.end(); }
++     //iterator end()   { return &amp;v_[0] + v_.size(); }
++     //
++     //const_iterator begin() const { return v_.begin();}
++     //const_iterator begin() const { return &amp;v_[0];}
++     //
++     //const_iterator end()  const { return v_.end(); }
++     //const_iterator end()  const { return &amp;v_[0] + v_.size(); }
++ 
++     BBVec&amp; getVector() { return v_; }
++     Subscript dim() const { return v_.size(); }
++     Subscript dim(Subscript i)
++     {
++ #ifdef TNT_BOUNDS_CHECK
++         assert(i==TNT_BASE_OFFSET);
++ #endif
++         return (i==TNT_BASE_OFFSET ? v_.size() : 0 );
++     }
++     Vector_Adaptor() : v_() {};
++     Vector_Adaptor(const Vector_Adaptor&lt;BBVec&gt; &amp;A) : v_(A.v_) 
++     { 
++         vm1_ = ( v_.size() &gt; 0 ? &amp;(v_[0]) -1 : NULL); 
++ 
++     } 
++ 
++     Vector_Adaptor(Subscript N, const char *s) : v_(N) 
++     {
++         istringstream ins(s);
++         for (Subscript i=0; i&lt;N; i++)
++             ins &gt;&gt; v_[i] ;
++ 
++         vm1_ = ( v_.size() &gt; 0 ? &amp;(v_[0]) -1 : NULL); 
++     }; 
++ 
++     Vector_Adaptor(Subscript N, const T&amp; value = T()) : v_(N)
++     {
++         for (Subscript i=0; i&lt;N; i++)
++              v_[i]  = value;
++         
++         vm1_ = ( v_.size() &gt; 0 ? &amp;(v_[0]) -1 : NULL); 
++     }
++ 
++     Vector_Adaptor(Subscript N, const T* values) : v_(N)
++     {
++         for (Subscript i=0; i&lt;N; i++)
++              v_[i]  = values[i];
++         vm1_ = ( v_.size() &gt; 0 ? &amp;(v_[0]) -1 : NULL); 
++     } 
++     Vector_Adaptor(const BBVec &amp; A) : v_(A) 
++     {
++         vm1_ = ( v_.size() &gt; 0 ? &amp;(v_[0]) -1 : NULL); 
++     }
++ 
++     // NOTE: this assumes that BBVec(0) constructor creates an 
++     //  null vector that does not take up space...  It would be
++     //  great to require that BBVec have a corresponding free()
++     //  function, but in particular STL vectors do not.
++     //
++     Vector_Adaptor&lt;BBVec&gt;&amp; free()
++     {
++         return *this = Vector_Adaptor&lt;BBVec&gt;(0);
++     }
++ 
++     Vector_Adaptor&lt;BBVec&gt;&amp; operator=(const Vector_Adaptor&lt;BBVec&gt; &amp;A) 
++     { 
++         v_ = A.v_ ; 
++         vm1_ = ( v_.size() &gt; 0 ? &amp;(v_[0]) -1 : NULL); 
++         return *this;
++     }
++ 
++     Vector_Adaptor&lt;BBVec&gt;&amp; newsize(Subscript N)
++     {
++         // NOTE: this is not as efficient as it could be
++         // but to retain compatiblity with STL interface
++         // we cannot assume underlying implementation
++         // has a newsize() function.
++ 
++         return *this = Vector_Adaptor&lt;BBVec&gt;(N);
++ 
++     }
++ 
++     Vector_Adaptor&lt;BBVec&gt;&amp; operator=(const T &amp;a) 
++     {
++         Subscript i;
++         Subscript N = v_.size();    
++         for (i=0; i&lt;N; i++)
++             v_[i] = a;
++ 
++         return *this;
++     }
++ 
++     Vector_Adaptor&lt;BBVec&gt;&amp; resize(Subscript N) 
++     { 
++         if (N == size()) return *this;
++ 
++         Vector_Adaptor&lt;BBVec&gt; tmp(N);
++         Subscript n =  (N &lt; size() ? N : size());  // min(N, size());
++         Subscript i;
++ 
++         for (i=0; i&lt;n; i++)
++             tmp[i] = v_[i];
++             
++ 
++         return (*this = tmp);
++ 
++     }
++ 
++ 
++     reference operator()(Subscript i)
++     { 
++ #ifdef TNT_BOUNDS_CHECK
++         assert(1&lt;=i);
++         assert(i&lt;=dim());
++ #endif
++         return vm1_[i]; 
++     }
++ 
++     const_reference operator()(Subscript i) const
++     { 
++ #ifdef TNT_BOUNDS_CHECK
++         assert(1&lt;=i);
++         assert(i&lt;=dim());
++ #endif
++         return vm1_[i]; 
++     }
++ 
++     reference operator[](Subscript i)
++     { 
++ #ifdef TNT_BOUNDS_CHECK
++         assert(0&lt;=i);
++         assert(i&lt;dim());
++ #endif
++         return v_[i]; 
++     }
++ 
++     const_reference operator[](Subscript i) const
++     { 
++ #ifdef TNT_BOUNDS_CHECK
++         assert(0&lt;=i);
++         assert(i&lt;dim());
++ #endif
++         return v_[i]; 
++     }
++ 
++ 
++ #ifdef TNT_USE_REGIONS
++     // &quot;index-aware&quot; features, all of these are 1-based offsets
++ 
++     typedef Region1D&lt;Vector_Adaptor&lt;BBVec&gt; &gt; Region;
++ 
++     typedef const_Region1D&lt; Vector_Adaptor&lt;BBVec&gt; &gt; const_Region;
++ 
++     Region operator()(const Index1D &amp;I)
++     {   return Region(*this, I); }
++ 
++     Region operator()(const Subscript i1, Subscript i2)
++     {   return Region(*this, i1, i2); }
++ 
++     const_Region operator()(const Index1D &amp;I) const
++     {   return const_Region(*this, I); }
++ 
++     const_Region operator()(const Subscript i1, Subscript i2) const
++     {   return const_Region(*this, i1, i2); }
++ #endif
++ // TNT_USE_REGIONS
++ 
++ 
++ };
++ 
++ #include &lt;iostream&gt;
++ 
++ template &lt;class BBVec&gt;
++ std::ostream&amp; operator&lt;&lt;(std::ostream &amp;s, const Vector_Adaptor&lt;BBVec&gt; &amp;A)
++ {
++     Subscript M=A.size();
++ 
++     s &lt;&lt; M &lt;&lt; endl;
++     for (Subscript i=1; i&lt;=M; i++)
++             s &lt;&lt; A(i) &lt;&lt; endl;
++     return s;
++ }
++ 
++ template &lt;class BBVec&gt;
++ std::istream&amp; operator&gt;&gt;(std::istream &amp;s, Vector_Adaptor&lt;BBVec&gt; &amp;A)
++ {
++     Subscript N;
++     
++     s &gt;&gt; N;
++ 
++     A.resize(N);
++ 
++     for (Subscript i=1; i&lt;=N; i++)
++         s &gt;&gt; A(i);
++ 
++     return s;
++ }
++ 
++ } // namespace TNT
++ 
++ #endif
+Index: tnt/version.h
+===================================================================
+RCS file: version.h
+diff -N version.h
+*** /dev/null	Tue May  5 14:32:27 1998
+--- version.h	Thu Aug 16 13:02:56 2001
+***************
+*** 0 ****
+--- 1,20 ----
++ // Template Numerical Toolkit (TNT) for Linear Algebra
++ //
++ // BETA VERSION INCOMPLETE AND SUBJECT TO CHANGE
++ // Please see <A HREF="http://math.nist.gov/tnt">http://math.nist.gov/tnt</A> for updates
++ //
++ // R. Pozo
++ // Mathematical and Computational Sciences Division
++ // National Institute of Standards and Technology
++ 
++ 
++ #ifndef TNT_VERSION_H
++ #define TNT_VERSION_H
++ 
++ 
++ #define TNT_MAJOR_VERSION    '0'
++ #define TNT_MINOR_VERSION    '9'
++ #define TNT_SUBMINOR_VERSION '4'
++ #define TNT_VERSION_STRING &quot;0.9.4&quot;
++ 
++ #endif
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000630.html">[newfield_revision Patch] Fix nearestNeighbors()
+</A></li>
+	<LI>Next message: <A HREF="000632.html">[newfield_revision Patch] Use std::abs, not abs
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#631">[ date ]</a>
+              <a href="thread.html#631">[ thread ]</a>
+              <a href="subject.html#631">[ subject ]</a>
+              <a href="author.html#631">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

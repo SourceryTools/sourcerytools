@@ -1,0 +1,2780 @@
+From jules at codesourcery.com  Tue Aug  1 12:19:28 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Tue, 01 Aug 2006 08:19:28 -0400
+Subject: [patch] Add SIMD operations for logical operations, optimize distributed
+ get
+Message-ID: <44CF46D0.1000806@codesourcery.com>
+
+This patch:
+
+  - Updates configure to support both SIMD loop fusion and SIMD
+    builtin routines.  The intent is that as SIMD loop fusion
+    performance improves, SIMD builtin routines will either decrease
+    in number or go away altogether.
+
+    The dispatch tag for SIMD loop fusion is 'Simd_loop_fusion_tag'.
+    The dispatch tag for SIMD builtin routines is 'Simd_builtin_tag'
+    The old tag 'Simd_tag' has gone away to avoid confusions.
+
+    To configure the library to use SIMD loop fusion, use:
+
+    	--enable-simd-loop-fusion
+
+    To configure the library to use the generic SIMD builtin routines
+
+    	--enable-builtin-simd-routines=generic
+
+    Currently SIMD loop fuions is disabled by default (so that we can
+    make a snapshot release), but the intent is to be enabled by
+    default.
+
+  - Adds generic SIMD routines for logic operations
+    ({b,l},{and,or,xor,not}) and greater-than comparison (gt()).
+    These routines work with Intel SSE when using GCC 3.4, and
+    with PowerPC altivec when using GreenHills.
+
+  - Extends test coverage for these logic operators.
+
+  - Optimizes distributed get() to avoid a communication when running
+    on a single processor, and when data is globally replicated.
+
+  - Un-reverts the FFTW changes in vendor/GNUmakefile.inc.in
+
+This patch is being tested as part of making a snapshot.  So far,
+things look good:
+
+/scratch/jules/release-snapshot/log-test-ParallelIntel64 (   unknown): 
+149 / 150
+/scratch/jules/release-snapshot/log-test-ParallelIntel64 (   unknown): 
+149 / 150
+/scratch/jules/release-snapshot/log-test-SerialBuiltin32 (   unknown): 
+149 / 150
+/scratch/jules/release-snapshot/log-test-SerialBuiltin32 (   unknown): 
+149 / 150
+/scratch/jules/release-snapshot/log-test-SerialBuiltinAMD64 ( 
+unknown): 133 / 150
+/scratch/jules/release-snapshot/log-test-SerialBuiltinAMD64 ( 
+unknown): 148 / 150
+/scratch/jules/release-snapshot/log-test-SerialBuiltinEM64T ( 
+unknown): 149 / 150
+/scratch/jules/release-snapshot/log-test-SerialBuiltinEM64T ( 
+unknown): 149 / 150
+/scratch/jules/release-snapshot/log-test-SerialIntel32 (   unknown): 149 
+/ 150
+/scratch/jules/release-snapshot/log-test-SerialIntel32 (   unknown): 149 
+/ 150
+/scratch/jules/release-snapshot/log-test-SerialIntel64 (   unknown): 149 
+/ 150
+/scratch/jules/release-snapshot/log-test-SerialIntel64 (   unknown): 149 
+/ 150
+
+(The 1 failure for the non-AMD64 cases is due to a test that needs to
+be linked with -lvsip_csl.  The AMD64 failures are expected.)
+
+				-- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: simd-logic.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060801/a331516b/attachment.ksh>
+
+From assem at codesourcery.com  Tue Aug  1 14:47:51 2006
+From: assem at codesourcery.com (Assem Salama)
+Date: Tue, 01 Aug 2006 10:47:51 -0400
+Subject: configure.ac
+Message-ID: <44CF6997.4040109@codesourcery.com>
+
+Everyone,
+  This is my patch to configure.ac to allow for simple-builtin option 
+and to take into account the new variables that the vendor makefile uses.
+
+Thanks,
+Assem
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: svn.diff.0812006.log
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060801/4813c6fd/attachment.ksh>
+
+From jules at codesourcery.com  Tue Aug  1 14:58:46 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Tue, 01 Aug 2006 10:58:46 -0400
+Subject: [vsipl++] configure.ac
+In-Reply-To: <44CF6997.4040109@codesourcery.com>
+References: <44CF6997.4040109@codesourcery.com>
+Message-ID: <44CF6C26.5080003@codesourcery.com>
+
+Assem Salama wrote:
+ > Everyone,
+ >  This is my patch to configure.ac to allow for simple-builtin option and
+ > to take into account the new variables that the vendor makefile uses.
+
+Assem,
+
+This looks good.  I have two comments below about how libF77 is handled.
+Once those are in shape, please check it in.
+
+				thanks,
+				-- Jules
+
+
+ > +          ln -s ../../clapack/F2CLIBS/libF77/libF77.a 
+vendor/atlas/lib/libF77.a
+
+It is no longer necessary to create a symbolic linke.
+vendor/GNUmakefile.inc.in now copies libF77.a into the lib/
+subdirectory.
+
+This is similar to how we handle the FFTW libraries, and eventually
+we'll handle all the Lapack libraries this way too.
+
+
+
+ > +      INT_LDFLAGS="$INT_LDFLAGS -L$curdir/vendor/clapack/F2CLIBS/libF77"
+
+This shouldn't be necessary either, for the same reason as above.
+
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From assem at codesourcery.com  Tue Aug  1 15:05:32 2006
+From: assem at codesourcery.com (Assem Salama)
+Date: Tue, 01 Aug 2006 11:05:32 -0400
+Subject: [vsipl++] configure.ac
+In-Reply-To: <44CF6C26.5080003@codesourcery.com>
+References: <44CF6997.4040109@codesourcery.com> <44CF6C26.5080003@codesourcery.com>
+Message-ID: <44CF6DBC.5060402@codesourcery.com>
+
+I have now check in this patch
+
+Jules Bergmann wrote:
+> Assem Salama wrote:
+> > Everyone,
+> >  This is my patch to configure.ac to allow for simple-builtin option 
+> and
+> > to take into account the new variables that the vendor makefile uses.
+>
+> Assem,
+>
+> This looks good.  I have two comments below about how libF77 is handled.
+> Once those are in shape, please check it in.
+>
+>                 thanks,
+>                 -- Jules
+>
+>
+> > +          ln -s ../../clapack/F2CLIBS/libF77/libF77.a 
+> vendor/atlas/lib/libF77.a
+>
+> It is no longer necessary to create a symbolic linke.
+> vendor/GNUmakefile.inc.in now copies libF77.a into the lib/
+> subdirectory.
+>
+> This is similar to how we handle the FFTW libraries, and eventually
+> we'll handle all the Lapack libraries this way too.
+>
+>
+>
+> > +      INT_LDFLAGS="$INT_LDFLAGS 
+> -L$curdir/vendor/clapack/F2CLIBS/libF77"
+>
+> This shouldn't be necessary either, for the same reason as above.
+>
+>
+>
+
+
+
+From don at codesourcery.com  Tue Aug  1 23:38:40 2006
+From: don at codesourcery.com (Don McCoy)
+Date: Tue, 01 Aug 2006 17:38:40 -0600
+Subject: [vsipl++] configure.ac patch for Athlon
+In-Reply-To: <23738f080607292049p25ae0068r98bf95e92b7075ee@mail.gmail.com>
+References: <23738f080607292049p25ae0068r98bf95e92b7075ee@mail.gmail.com>
+Message-ID: <44CFE600.4000403@codesourcery.com>
+
+Sashan Govender wrote:
+> Hi
+> 
+> Tried to compile vsipl++ on my AMD Athlon and configure failed. I've
+> attached a patch for vendor/atlas/configure.ac.
+> 
+I had a chance to test this today and added a few minor changes to your 
+patch (giving credit where it is due, of course!).  Please find the 
+revised patch attached.
+
+Thank you for finding this defect and bringing it to our attention. 
+Taking the time to investigate and post a patch is very much appreciated!
+
+Regards,
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: va.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060801/48b1504f/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: va.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060801/48b1504f/attachment-0001.ksh>
+
+From jules at codesourcery.com  Fri Aug  4 16:50:53 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Fri, 04 Aug 2006 12:50:53 -0400
+Subject: [patch] Expr_ops_per_point
+Message-ID: <44D37AED.2020801@codesourcery.com>
+
+This patch addes the reduction to count the number of ops/point for an 
+expression.  It needs to be extended (and tested) to deal with other 
+operator types besides binary + and *, but the basic functionality is there.
+
+Patch applied.
+
+				-- Jules
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: opp.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060804/7bc3069b/attachment.ksh>
+
+From jules at codesourcery.com  Fri Aug  4 18:32:17 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Fri, 04 Aug 2006 14:32:17 -0400
+Subject: [patch] Optimize logic functions
+Message-ID: <44D392B1.9050907@codesourcery.com>
+
+This patch ...
+
+... modifies configure and dispatch so that the new SIMD loop fusion and 
+old SIMD generic routines can both be used.
+
+... introduces generic SIMD routines for of all the logic functions 
+(band, bor, bxor, bnot, land, lor, lxor, and lnot) and one comparison 
+function (gt).
+
+... optimizes distributed get performance for several cases (single 
+processor and when data is globally replicated).
+
+... cleans up several build problems with FFTW rules.
+
+				-- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: mc-release.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060804/fb3823cc/attachment.ksh>
+
+From jules at codesourcery.com  Mon Aug  7 17:28:04 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Mon, 07 Aug 2006 13:28:04 -0400
+Subject: [vsipl++] [patch] Profiling for IIR, FIR and matrix-vector functions
+In-Reply-To: <44CA2E84.6070402@codesourcery.com>
+References: <44CA2E84.6070402@codesourcery.com>
+Message-ID: <44D77824.4060606@codesourcery.com>
+
+Don McCoy wrote:
+ > This patch also reorganizes some of the description and operation
+ > counting functions to one place and puts them under a namespace matching
+ > their section name from the specification.  For example, 'dot', 'outer'
+ > and other matrix-vector helper functions are under the 'impl::matvec'
+ > namespace.  Signal processing helper functions, including the
+ > Convolution and Correlation functions, are now under 'impl::signal'
+ > namespace.
+ >
+ > This reorganization is helpful because it keeps all of these related
+ > functions in one place, which should be easier for maintenance.  Note,
+ > FFT helper functions and some of the operations counting functions have
+ > not yet been moved either, pending approval of the current changes.
+ >
+ > Two miscellaneous fixes are included:  A change to the benchmarks
+ > makefile skips building MPI benchmarks when not configured with MPI.
+ > Second, a benchmark missed getting updated due to the change in location
+ > of the ops_info.hpp header file.
+
+Don,
+
+This looks good.
+
+I have a copule of comments below:
+
+  - I think that 'impl::Length' would be more efficient than 'Domain'
+    for passing view sizes to the Op_count_xyz::value() functions.
+
+  - The template parameter to Domain is a 'dimension_type'.  To be correct,
+    the template parameters for Op_count_xyz classes that take a dimension
+    should also use 'dimension_type'.  (The same would be true if you switch
+    to impl::Length).
+
+Please have a look to see if those make sense.  Otherwise it looks
+good, please check it in.
+
+Also, I will rename the MPI specific benchmarks to use the same naming
+convention as IPP and SAL specific benchmarks.
+
+				-- Jules
+
+
+
+
+[1] 'dimension_type' should be used for dimensions (such as D).
+Likewise for several template declarations below.
+
+ > +template <int D, typename T>
+ > +struct Description
+ > +{
+ > +  static std::string tag(const char* op, length_type size)
+ > +  {
+ > +    std::ostringstream   st;
+ > +    st << op << " " << Desc_datatype<T>::value() << " ";
+ > +
+ > +    st.width(7);
+ > +    st << size;
+ > +
+ > +    return st.str();
+ > +  }
+ > +
+ > +  static std::string tag(const char* op, Domain<D> const &dom_kernel,
+ > +    Domain<D> const &dom_output)
+ > +  {
+ > +    std::ostringstream   st;
+ > +    st << op << " "
+ > +       << D << "D "
+ > +       << Desc_datatype<T>::value() << " ";
+ > +
+ > +    st.width(4);
+ > +    st << dom_kernel[0].size();
+ > +    st.width(1);
+ > +    st << "x" << (D == 2 ? dom_kernel[1].size() : 1) << " ";
+ > +
+ > +    st.width(7);
+ > +    st << dom_output[0].size();
+ > +    st.width(1);
+ > +    st << "x" << (D == 2 ? dom_output[1].size() : 1);
+ > +
+ > +    return st.str();
+ > +  }
+ > +};
+ > +
+ > +} // namespace signal
+ > +
+ > +
+ > +namespace matvec
+ > +{
+ > +template <typename T>
+ > +struct Op_count_dot
+ > +{
+ > +  static length_type value(Domain<1> const &dom)
+
+[2] Given the way these functions are called, it will probably be more
+efficient to pass the size as a 'length_type' or a 'impl::Length'
+instead of a 'Domain'.  A Domain encodes has offset and stride fields
+that aren't used in the op-count calculation.
+
+Because the Domain is being passed by reference, it is possible that
+compiler could figure out that the offset and stride aren't used and
+avoid creating them, but I don't think we can rely on that.
+
+ > +  {
+ > +    length_type count = dom[0].size() * Ops_info<T>::mul;
+ > +    if ( dom[0].size() > 1 )
+ > +      count += (dom[0].size() - 1) * Ops_info<T>::add;
+ > +    return  count;
+ > +  }
+ > +};
+ > @@ -545,18 +573,13 @@
+ >    const_Vector<T0, Block0> v,
+ >    const_Vector<T1, Block1> w) VSIP_NOTHROW
+ >  {
+ > -  typedef typename Promotion<T0, T1>::type return_type;
+ > +  typedef typename Promotion<T0, T1>::type result_type;
+ > +  Domain<1> dom_v( view_domain(v) );
+ > +  impl::profile::Scope_event event(
+ > +    impl::matvec::Description<result_type>::tag("dot", dom_v),
+ > +    impl::matvec::Op_count_dot<result_type>::value(dom_v) );
+
+[3] if you change the Op_count_dot::value to accept a Length, you can
+use the 'extent()' function to get the size of the view as a Length.
+This becomes:
+
+   impl::profile::Scope_event event(
+     impl::matvec::Description<result_type>::tag("dot", dom_v),
+     impl::matvec::Op_count_dot<result_type>::value(extent(v)) );
+
+ > Index: benchmarks/GNUmakefile.inc.in
+ > ===================================================================
+ > --- benchmarks/GNUmakefile.inc.in	(revision 145922)
+ > +++ benchmarks/GNUmakefile.inc.in	(working copy)
+ > @@ -41,6 +41,7 @@
+ >                                           $(srcdir)/benchmarks/qrd.cpp
+ >  benchmarks_cxx_srcs_ipp    := $(wildcard 
+$(srcdir)/benchmarks/*_ipp.cpp)
+ >  benchmarks_cxx_srcs_sal    := $(wildcard 
+$(srcdir)/benchmarks/*_sal.cpp)
+ > +benchmarks_cxx_srcs_mpi    := $(wildcard 
+$(srcdir)/benchmarks/mpi_*.cpp)
+
+[4] I will rename the mpi only benchmarks to match the convention.
+
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From don at codesourcery.com  Tue Aug  8 19:08:07 2006
+From: don at codesourcery.com (Don McCoy)
+Date: Tue, 08 Aug 2006 13:08:07 -0600
+Subject: [vsipl++] [patch] Profiling for IIR, FIR and matrix-vector functions
+In-Reply-To: <44D77824.4060606@codesourcery.com>
+References: <44CA2E84.6070402@codesourcery.com> <44D77824.4060606@codesourcery.com>
+Message-ID: <44D8E117.40704@codesourcery.com>
+
+Jules Bergmann wrote:
+> 
+>  - I think that 'impl::Length' would be more efficient than 'Domain'
+>    for passing view sizes to the Op_count_xyz::value() functions.
+> 
+>  - The template parameter to Domain is a 'dimension_type'.  To be correct,
+>    the template parameters for Op_count_xyz classes that take a dimension
+>    should also use 'dimension_type'.  (The same would be true if you switch
+>    to impl::Length).
+> 
+> Please have a look to see if those make sense.  Otherwise it looks
+> good, please check it in.
+> 
+Yes.  Thanks for pointing that out.  Committed with changes as noted below.
+
+> Also, I will rename the MPI specific benchmarks to use the same naming
+> convention as IPP and SAL specific benchmarks.
+> 
+Sounds good.
+
+> [1] 'dimension_type' should be used for dimensions (such as D).
+> Likewise for several template declarations below.
+> 
+Changed.
+
+>  > +namespace matvec
+>  > +{
+>  > +template <typename T>
+>  > +struct Op_count_dot
+>  > +{
+>  > +  static length_type value(Domain<1> const &dom)
+> 
+> [2] Given the way these functions are called, it will probably be more
+> efficient to pass the size as a 'length_type' or a 'impl::Length'
+> instead of a 'Domain'.  A Domain encodes has offset and stride fields
+> that aren't used in the op-count calculation.
+> 
+All these use Length in place of Domain now.
+
+>  >    const_Vector<T0, Block0> v,
+>  >    const_Vector<T1, Block1> w) VSIP_NOTHROW
+>  >  {
+>  > -  typedef typename Promotion<T0, T1>::type return_type;
+>  > +  typedef typename Promotion<T0, T1>::type result_type;
+>  > +  Domain<1> dom_v( view_domain(v) );
+>  > +  impl::profile::Scope_event event(
+>  > +    impl::matvec::Description<result_type>::tag("dot", dom_v),
+>  > +    impl::matvec::Op_count_dot<result_type>::value(dom_v) );
+> 
+> [3] if you change the Op_count_dot::value to accept a Length, you can
+> use the 'extent()' function to get the size of the view as a Length.
+> This becomes:
+> 
+>   impl::profile::Scope_event event(
+>     impl::matvec::Description<result_type>::tag("dot", dom_v),
+>     impl::matvec::Op_count_dot<result_type>::value(extent(v)) );
+> 
+
+That is nicer.  I also found we have a built-in converter for making 
+Length objects from Domains.  That was needed in signal-conv.hpp where 
+the function returning the output size does so using a domain.
+
+
+>  > Index: benchmarks/GNUmakefile.inc.in
+>  > ===================================================================
+>  > --- benchmarks/GNUmakefile.inc.in    (revision 145922)
+>  > +++ benchmarks/GNUmakefile.inc.in    (working copy)
+>  > @@ -41,6 +41,7 @@
+>  >                                           $(srcdir)/benchmarks/qrd.cpp
+>  >  benchmarks_cxx_srcs_ipp    := $(wildcard 
+> $(srcdir)/benchmarks/*_ipp.cpp)
+>  >  benchmarks_cxx_srcs_sal    := $(wildcard 
+> $(srcdir)/benchmarks/*_sal.cpp)
+>  > +benchmarks_cxx_srcs_mpi    := $(wildcard 
+> $(srcdir)/benchmarks/mpi_*.cpp)
+> 
+> [4] I will rename the mpi only benchmarks to match the convention.
+> 
+I changed it to *_mpi.cpp to correspond.
+
+Thanks for the suggestions!
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: pm2.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060808/ac9887a6/attachment.ksh>
+
+From jules at codesourcery.com  Tue Aug  8 19:24:45 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Tue, 08 Aug 2006 15:24:45 -0400
+Subject: [patch] MPI benchmarks
+Message-ID: <44D8E4FD.1000803@codesourcery.com>
+
+Renames mpi_alltoall to alltoall_mpi (to follow ipp and sal benchmark 
+conventions).
+
+New copy_mpi benchmark, measures point-to-point transfer rate.  Used to 
+help diagnose cost of using derived datatypes.
+
+Patch applied.
+
+				-- Jules
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: mpi.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060808/8f01be87/attachment.ksh>
+
+From don at codesourcery.com  Wed Aug  9 20:26:16 2006
+From: don at codesourcery.com (Don McCoy)
+Date: Wed, 09 Aug 2006 14:26:16 -0600
+Subject: [patch] Serial Expression Profiling
+Message-ID: <44DA44E8.1040108@codesourcery.com>
+
+The attached patch extends the profiling further by handling some of the 
+dispatched expression evaluations.  The three specific cases covered are:
+
+    * Loop fusion - collapsing multiple loops into one when doing
+      element-wise operations on views.
+    * Dense expressions - converting tightly-packed 2-D and 3-D views
+      into 1-D views that are then evaluated normally.
+    * Matrix transpose - transposing matrices with possibly different
+      storage formats (row/col)
+
+This can conceivably be extended to cover cases where we are dispatching 
+to IPP and SAL as well.
+
+All expressions are tagged in the profiler output with "Expr[/type/]", 
+where type is LF, Dense or Trans.  Following that is the dimensionality 
+(1D, 2D or 3D), a compact representation of the expression and finally 
+the size(s).  For example,  the following expression (where all are the 
+same size and of type Vector<T>):
+
+    r = v1 * v2;
+
+Gets logged as:
+
+    Expr[LF] 1D *SS 262144 : 66929535 : 1 : 262144 : 14.0664
+
+The expression is represented as "*SS", meaning "the binary multiply 
+operator applied to two single-precision real values" (again using the 
+BLAS/LAPACK convention of S/D/C/Z for operand types). 
+
+In general, operators are designated with a 'u', 'b' or 't' for unary, 
+binary and ternary operators respectively, with the exception of the 
+common binary operators, shown in their more familiar +-*/ form. 
+
+Multiple operators are evaluated in order, therefore
+
+    v1 * T(4) + v2 / v3
+
+is tagged as:
+
+    Expr[LF] 1D *SS/SS+SS 2048 : 1527534 : 1 : 6144 : 14.4451
+
+Changing it to
+
+    (v1 * T(4) + v2) / v3
+
+yields:
+
+    Expr[LF] 1D *SS+SS/SS 2048 : 1536309 : 1 : 6144 : 14.3626
+
+
+Dense expressions will appear twice in the profiler output -- once when 
+it is converted from a 2- or 3-D view and once when evaluated as a 1-D 
+expression.  They do, in fact, refer to the same expression.  For example:
+
+    Expr[Dense] 3D *SS 64x64x64 : 67455693 : 1 : 262144 : 13.9567
+    Expr[LF] 1D *SS 262144 : 66991743 : 1 : 262144 : 14.0533
+
+Note that the dense evaluation includes the time it takes to perform the 
+loop fusion evaluation, hence the slightly longer amount of time spent 
+there.  However, the time difference is probably dominated by the amount 
+of time it takes to generate the tag itself.  Note also that the sizes 
+are reported differently, but are equivalent as 64x64x64=262144
+
+Finally, please note that not all the operation counts are done at this 
+point.  Missing ones should probably be counted in some fashion.  
+Currently, if an operator is not handled, it defaults to adding zero ops 
+to the total count.
+
+Regards,
+
+-- 
+Don McCoy
+don (at) CodeSourcery 
+(888) 776-0262 / (650) 331-3385, x712
+
+
+
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: se1.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060809/207e9608/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: se1.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060809/207e9608/attachment-0001.ksh>
+
+From don at codesourcery.com  Thu Aug 10 22:54:11 2006
+From: don at codesourcery.com (Don McCoy)
+Date: Thu, 10 Aug 2006 16:54:11 -0600
+Subject: [patch] Profiler Configuration Options
+Message-ID: <44DBB913.7030301@codesourcery.com>
+
+This patch adds the ability to enable/disable the profiler or selected 
+portions.  The new option is:
+
+   --enable-profiler=type  Specify list of areas to profile. Choices include
+                           none, all or a combination of: signal, 
+matvec, fns
+                           and user. Default is none.
+
+There is a built-in dependency on the timer or it produces an error at 
+configuration time.  The timer has also been renamed to help avoid 
+confusion.
+
+Although there are four options, only signal and matvec are implemented 
+yet.  The former controls profiling of FFT's, Convolutions etc. (all 
+part of the signal processing portion of the standard) and the latter 
+controls profiling of matrix-vector functions like dot-product and 
+matrix multiplication.
+
+Regards,
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: pc1.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060810/afa6543b/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: pc1.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060810/afa6543b/attachment-0001.ksh>
+
+From don at codesourcery.com  Fri Aug 11 08:06:58 2006
+From: don at codesourcery.com (Don McCoy)
+Date: Fri, 11 Aug 2006 02:06:58 -0600
+Subject: [patch] Profiler Command Line Options
+Message-ID: <44DC3AA2.9080108@codesourcery.com>
+
+This patch adds two new command line options related to profiling:
+
+   --vsipl++-profile-mode={accum,trace}
+   --vsipl++-profile-output=/filename/
+
+Both should normally be used together to enable the profiler, but if the 
+filename is omitted, the output will go to stdout.
+
+Regards,
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: po1.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060811/e02f0cbe/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: po1.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060811/e02f0cbe/attachment-0001.ksh>
+
+From jules at codesourcery.com  Fri Aug 11 19:42:26 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Fri, 11 Aug 2006 15:42:26 -0400
+Subject: [vsipl++] [patch] Profiler Configuration Options
+In-Reply-To: <44DBB913.7030301@codesourcery.com>
+References: <44DBB913.7030301@codesourcery.com>
+Message-ID: <44DCDDA2.7090807@codesourcery.com>
+
+Don McCoy wrote:
+> This patch adds the ability to enable/disable the profiler or selected 
+> portions.  The new option is:
+> 
+>   --enable-profiler=type  Specify list of areas to profile. Choices include
+>                           none, all or a combination of: signal, matvec, 
+> fns
+>                           and user. Default is none.
+> 
+> There is a built-in dependency on the timer or it produces an error at 
+> configuration time.  The timer has also been renamed to help avoid 
+> confusion.
+> 
+> Although there are four options, only signal and matvec are implemented 
+> yet.  The former controls profiling of FFT's, Convolutions etc. (all 
+> part of the signal processing portion of the standard) and the latter 
+> controls profiling of matrix-vector functions like dot-product and 
+> matrix multiplication.
+
+Don,
+
+This looks good.
+
+I have two comments:
+
+The first comment: in general, I like the way the current profiling code 
+has a minimal foorprint on the functional code.  This minimizes the 
+impact on code readabilit.  In particular, you have done a good job 
+using techniques like RAII so that in many cases a profiling event can 
+be inserted in just a single line with the Scope_event class.
+
+We should be able to keep this up as we add the ability to disable 
+profiling.
+
+For example, instead of disabling a Scope_event class with an ifdef:
+
+	#if PROFILING_ENABLED
+	   Scope_event ev("name");
+	#endif
+
+we could define a VSIP_IMPL_PROFILE macro:
+
+	VSIP_IMPL_PROFILE(PROFILING_ENABLED, Scope_event ev("name"))
+
+That let's us keep this as a single line.
+
+We could even fold the PROFILING_ENABLED into the VSIP_IMPL_PROFILE macro:
+
+	VSIP_IMPL_PROFILE(Scope_event ev("name"))
+
+Or go all the way down to:
+
+	VSIP_IMPL_SCOPE_EVENT(ev("name"))
+
+VSIP_IMPL_PROFILE could be used for other things besides Scope_events:
+
+	VSIP_IMPL_PROFILE(pm_in_ext_cost_  += in_ext.cost)
+
+Of course it will make sense to use #if/#endif for some multi-line 
+chunks of profiling code.
+
+
+
+There are a couple of ways to implement this.
+
+First, at the top of each file, you could define those macros:
+
+	#define PROFILING_ENABLED (VSIP_IMPL_PROFILER & ...)
+	#if PROFILING_ENABLED
+	#  define VSIP_IMPL_PROFILE(X) X;
+	#  define VSIP_IMPL_SCOPE_EVENT(X) Scope_event X;
+	   ...
+	#else
+	#  define VSIP_IMPL_PROFILE(X)
+	#  define VSIP_IMPL_SCOPE_EVENT(X)
+	   ...
+	#endif
+
+However, that leads to replication of the macros in each file, which we 
+should avoid.
+
+A better approach is to put the VSIP_IMPL_PROFILE macro in profile.hpp. 
+  That requires a bit of work because it will be defined before 
+PROFILING_ENABLED.  Something like this should work:
+
+	/* in profile.hpp: */
+
+	// Enable (or not) for a single statement
+	#define VSIP_IMPL_PROFILE_EN_0(X)
+	#define VSIP_IMPL_PROFILE_EN_1(X) X;
+
+	// Join two names together (allowing for expansion of macros)
+	#define VSIP_IMPL_JOIN(A, B) VSIP_IMPL_JOIN_1(A, B)
+	#define VSIP_IMPL_JOIN_1(A, B) A ## B
+
+	#define VSIP_IMPL_PROFILE(STMT)				\
+	 VSIP_IMPL_JOIN(VSIP_IMPL_PROFILE_EN_, PROFILING_ENABLED) (STMT)
+
+	#define VSIP_IMPL_SCOPE_EVNET(DECL)			\
+	 VSIP_IMPL_JOIN(VSIP_IMPL_PROFILE_EN_, PROFILING_ENABLED) \
+	 (Scope_event DECL)
+
+One more change is necessary.  The PROFILING_ENABLED variable set at the 
+top of each file needs to be set to either 0 or 1:
+
+	#if (VSIP_IMPL_PROFILER & VSIP_IMPL_PROFILER_SIGNAL)
+	#  define PROFILING_ENABLED 1
+	#else
+	#  define PROFILING_ENABLED 0
+	#endif
+
+An alternative to this is to have configure.ac set individual macros for 
+each class of profiling (set VSIP_IMPL_PROFILER_SIGNAL to either a 0 or 
+a 1) instead of rolling them together into a mask.  Then each header 
+would have:
+
+	#define PROFILING_ENABLED VSIP_IMPL_PROFILER_SIGNAL
+
+
+
+The second comment is more of a wish that can be addressed later.  I 
+would like the ability to separately enable/disable the profiling and 
+performance APIs.  The performance API should have a lower overhead than 
+the profiling because it doesn't store data in a std::vector or 
+std::map.  Right now we can punt on this, as I'm not entire sure what 
+the performance API and profiling overheads are and how folks will 
+actually use all this.
+
+
+Other than that, this looks good to check in.
+
+				-- Jules
+
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From jules at codesourcery.com  Fri Aug 11 19:49:35 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Fri, 11 Aug 2006 15:49:35 -0400
+Subject: [vsipl++] [patch] Profiler Command Line Options
+In-Reply-To: <44DC3AA2.9080108@codesourcery.com>
+References: <44DC3AA2.9080108@codesourcery.com>
+Message-ID: <44DCDF4F.8040703@codesourcery.com>
+
+Don McCoy wrote:
+> This patch adds two new command line options related to profiling:
+> 
+>   --vsipl++-profile-mode={accum,trace}
+>   --vsipl++-profile-output=/filename/
+> 
+> Both should normally be used together to enable the profiler, but if the 
+> filename is omitted, the output will go to stdout.
+
+Don,
+
+This looks good!  Please check it in.
+
+Oops, this patch made me think of another comment for the previous patch.
+
+				thanks,
+				-- Jules
+
+
+
+
+
+> +#define MODE_OPTION    "--vsipl++-profile-mode"
+> +#define MODE_LENGTH    (strlen(MODE_OPTION))
+> +
+> +#define OUTPUT_OPTION  "--vsipl++-profile-output"
+> +#define OUTPUT_LENGTH  (strlen(OUTPUT_OPTION))
+
+I was going to make the following comment:
+
+Any macros that we define in the library should be prefixed by 
+"VSIP_IMPL_", even those that we later undefine.  The reason for this is 
+that a user program may define those macros before including the library 
+file.
+
+However, this does not apply to macros in .cpp files, so no problemo.
+
+It does apply to the PROFILING_ENABLED macro in the previous patch.
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From mark at codesourcery.com  Sun Aug 13 17:29:43 2006
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Sun, 13 Aug 2006 10:29:43 -0700
+Subject: [vsipl++] [patch] Profiler Configuration Options
+In-Reply-To: <44DCDDA2.7090807@codesourcery.com>
+References: <44DBB913.7030301@codesourcery.com> <44DCDDA2.7090807@codesourcery.com>
+Message-ID: <44DF6187.2040304@codesourcery.com>
+
+Jules Bergmann wrote:
+
+> For example, instead of disabling a Scope_event class with an ifdef:
+> 
+>     #if PROFILING_ENABLED
+>        Scope_event ev("name");
+>     #endif
+
+I expected you to suggest making the Scope_event class itself conditional:
+
+  class Scope_event {
+    Scope_event (const char *name) {
+#if PROFILING_ENABLED
+     // Do interesting stuff.
+#endif
+    }
+
+In theory, the compiler should optimize away completely empty functions
+and such.  I'm not sure that's true, in pratice, though, so your way may
+be more robust in the real world.
+
+Just a random thought,
+
+-- 
+Mark Mitchell
+CodeSourcery
+mark at codesourcery.com
+(650) 331-3385 x713
+
+
+From don at codesourcery.com  Mon Aug 14 05:49:10 2006
+From: don at codesourcery.com (Don McCoy)
+Date: Sun, 13 Aug 2006 23:49:10 -0600
+Subject: [vsipl++] [patch] Profiler Configuration Options
+In-Reply-To: <44DCDDA2.7090807@codesourcery.com>
+References: <44DBB913.7030301@codesourcery.com> <44DCDDA2.7090807@codesourcery.com>
+Message-ID: <44E00ED6.6030501@codesourcery.com>
+
+Jules Bergmann wrote:
+> A better approach is to put the VSIP_IMPL_PROFILE macro in profile.hpp. 
+>  That requires a bit of work because it will be defined before 
+> PROFILING_ENABLED.  Something like this should work:
+> 
+I chose this method and added an explanatory comment in profile.hpp.
+
+> The second comment is more of a wish that can be addressed later.  I 
+> would like the ability to separately enable/disable the profiling and 
+> performance APIs.  The performance API should have a lower overhead than 
+> the profiling because it doesn't store data in a std::vector or 
+> std::map.  Right now we can punt on this, as I'm not entire sure what 
+> the performance API and profiling overheads are and how folks will 
+> actually use all this.
+> 
+I see your point.  It shouldn't be too hard to separate the two in the 
+future.  After the overhead is characterized we can decide to leave the 
+performance API enabled always (if the impact is shown to be very small) 
+or change it to use its own configure option.
+
+> 
+> Other than that, this looks good to check in.
+> 
+Committed with attached changes.  Thanks for the help.
+
+Regards,
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: pc2.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060813/193d813c/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: pc2.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060813/193d813c/attachment-0001.ksh>
+
+From jules at codesourcery.com  Mon Aug 14 11:27:08 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Mon, 14 Aug 2006 07:27:08 -0400
+Subject: [vsipl++] [patch] Profiler Configuration Options
+In-Reply-To: <44DF6187.2040304@codesourcery.com>
+References: <44DBB913.7030301@codesourcery.com> <44DCDDA2.7090807@codesourcery.com> <44DF6187.2040304@codesourcery.com>
+Message-ID: <44E05E0C.9090201@codesourcery.com>
+
+
+> 
+> I expected you to suggest making the Scope_event class itself conditional:
+> 
+>   class Scope_event {
+>     Scope_event (const char *name) {
+> #if PROFILING_ENABLED
+>      // Do interesting stuff.
+> #endif
+>     }
+> 
+
+The problem with this is that PROFILING_ENABLED is re-defined locally in 
+each file that uses profiling.  I.e. we may have profiling turned on for 
+FFT, but turned off for element-wise expressions.
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From mark at codesourcery.com  Mon Aug 14 15:02:04 2006
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Mon, 14 Aug 2006 08:02:04 -0700
+Subject: [vsipl++] [patch] Profiler Configuration Options
+In-Reply-To: <44E05E0C.9090201@codesourcery.com>
+References: <44DBB913.7030301@codesourcery.com> <44DCDDA2.7090807@codesourcery.com> <44DF6187.2040304@codesourcery.com> <44E05E0C.9090201@codesourcery.com>
+Message-ID: <44E0906C.2000302@codesourcery.com>
+
+Jules Bergmann wrote:
+> 
+>>
+>> I expected you to suggest making the Scope_event class itself
+>> conditional:
+>>
+>>   class Scope_event {
+>>     Scope_event (const char *name) {
+>> #if PROFILING_ENABLED
+>>      // Do interesting stuff.
+>> #endif
+>>     }
+>>
+> 
+> The problem with this is that PROFILING_ENABLED is re-defined locally in
+> each file that uses profiling.  I.e. we may have profiling turned on for
+> FFT, but turned off for element-wise expressions.
+
+Ah!
+
+-- 
+Mark Mitchell
+CodeSourcery
+mark at codesourcery.com
+(650) 331-3385 x713
+
+
+From jules at codesourcery.com  Mon Aug 14 18:14:30 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Mon, 14 Aug 2006 14:14:30 -0400
+Subject: [vsipl++] [patch] Serial Expression Profiling
+In-Reply-To: <44DA44E8.1040108@codesourcery.com>
+References: <44DA44E8.1040108@codesourcery.com>
+Message-ID: <44E0BD86.8040503@codesourcery.com>
+
+Don,
+
+This patch looks good.  There are 2 things I would like to change:
+
+  - First, I would like to move the profiling code from the evaluator
+    class specializations into the Dispatch_assign class.  This requires
+    some changes to the Evaluator framework, and some help from the
+    evaluators themselves, but not much.
+
+    Doing this will reduce the amount of duplication, making it easier
+    to add a new evaluator.  It will also give us visibility into
+    distributed expressions before they are reduced.
+
+  - Second, the expression name generator is pretty cool, but the
+    psuedo-postfix notation seems unintuitive.  Since the framework you
+    have is fairly general, it should not be too hard to generate a
+    name with proper prefix or infix notation.
+
+This email only discusses the second bullet.  I need to take a look at the
+evaluator framework before discussing the first in more detail.
+
+				-- Jules
+
+
+ > All expressions are tagged in the profiler output with "Expr[/type/]",
+ > where type is LF, Dense or Trans.  Following that is the dimensionality
+ > (1D, 2D or 3D), a compact representation of the expression and finally
+ > the size(s).  For example,  the following expression (where all are the
+ > same size and of type Vector<T>):
+ >
+ >    r = v1 * v2;
+ >
+ > Gets logged as:
+ >
+ >    Expr[LF] 1D *SS 262144 : 66929535 : 1 : 262144 : 14.0664
+ >
+ > The expression is represented as "*SS", meaning "the binary multiply
+ > operator applied to two single-precision real values" (again using the
+ > BLAS/LAPACK convention of S/D/C/Z for operand types).
+ > In general, operators are designated with a 'u', 'b' or 't' for unary,
+ > binary and ternary operators respectively, with the exception of the
+ > common binary operators, shown in their more familiar +-*/ form.
+ > Multiple operators are evaluated in order, therefore
+ >
+ >    v1 * T(4) + v2 / v3
+ >
+ > is tagged as:
+ >
+ >    Expr[LF] 1D *SS/SS+SS 2048 : 1527534 : 1 : 6144 : 14.4451
+
+I think it would be easier to read the expression name if
+   - it used prefix or infix notation
+   - treated sub-expressions differently from leaves
+
+I.e. the above expression could be:
+
+  prefix: +(*(S,S), /(S,S))
+  infix:  (S*S)+(S/S)
+
+I would suggest doing infix first, even though it is harder to read,
+and then adding support for infix, since we'll have to support
+operators (such as 'hypot') that don't have infix equivalents.
+
+
+ >
+ > Changing it to
+ >
+ >    (v1 * T(4) + v2) / v3
+ >
+ > yields:
+ >
+ >    Expr[LF] 1D *SS+SS/SS 2048 : 1536309 : 1 : 6144 : 14.3626
+
+As an example of how this notation breaks down, (v1 * T(4)) / (v2 + v3) also
+has the same name: '*SS+SS/SS'.
+
+
+An alternative to generating the name in this way is to use the standard
+C++ typeinfo (i.e. 'typeid(ExprBlockType).name()').  This is *much* more
+verbose and difficult to read than the above, but it would be possible to
+clean up in a post-processing step.
+
+
+
+ > Index: src/vsip/impl/expr_op_names.hpp
+ > ===================================================================
+ > +template <template <typename, typename> class BinaryOp,
+ > +          typename                            T1,
+ > +          typename                            T2>
+ > +struct Binary_op_tag
+ > +{
+ > +  static std::string tag()
+ > +  {
+ > +    std::ostringstream   st;
+ > +    st << Binary_op_name<BinaryOp>::value
+ > +       << Type_name<T1>::value
+ > +       << Type_name<T2>::value;
+
+You can determine the parameter value types from the block type
+and have transform() roll them up, getting rid of the T1 and T2
+parameters (see below)
+
+ > +
+ > +    return st.str();
+ > +  }
+ > +};
+
+
+
+ > +/// Reduction to generate a tag for the entire expression tree
+ > +
+ > +struct Reduce_expr_op_name
+ > +{
+ > +public:
+ > +
+ > +  template <typename BlockT>
+ > +  struct transform
+ > +  {
+ > +    // Leaf nodes get empty tags
+ > +    static std::string tag() { return std::string(); }
+
+Leaf nodes can figure out what they are: 'S', 'C', etc.
+
+	return Type_name<typename BlockT::value_type>::value;
+
+Also, we should specialize Scalar_block so that scalars can be
+distinguished from vectors (perhaps 's' for scalar float, 'S' for vector
+float?).
+
+
+
+ > +  };
+ > +
+ > +  template <dimension_type            Dim0,
+ > +	    template <typename> class Op,
+ > +	    typename                  Block,
+ > +	    typename                  Type>
+ > +  struct transform<Unary_expr_block<Dim0, Op,
+ > +                                    Block, Type> const>
+ > +  {
+ > +    static std::string tag()
+ > +    {
+ > +      return transform<Block>::tag() + Unary_op_tag<Op, Type>::tag();
+ > +    }
+ > +  };
+ > +
+ > +  template <dimension_type                Dim0,
+ > +	    template <typename, typename> class Op,
+ > +	    typename                      LBlock,
+ > +	    typename                      LType,
+ > +	    typename                      RBlock,
+ > +	    typename                      RType>
+ > +  struct transform<Binary_expr_block<Dim0, Op,
+ > +                                     LBlock, LType,
+ > +                                     RBlock, RType> const>
+ > +  {
+ > +    static std::string tag()
+ > +    {
+ > +      return transform<LBlock>::tag() + transform<RBlock>::tag() +
+ > +        Binary_op_tag<Op, LType, RType>::tag();
+
+To do prefix notation:
+
+	 return Binary_op_tag<Op>::tag() + std::string("(")
+               + transform(RBlock>::tag() + std::string(",")
+               + transform<LBlock>::tag() + std::string(")");
+
+To handle a mix of prefix and infix
+
+	  if (Binary_op_tag<Op>::is_infix)
+	    return string("(")
+                  + transform(RBlock>::tag()
+                  + Binary_op_tag<Op>::tag()
+		 + transform<LBlock>::tag()
+                  + string(")");
+           else
+	    return Binary_op_tag<Op>::tag() + std::string("(")
+		 + transform(RBlock>::tag() + std::string(",")
+		 + transform<LBlock>::tag() + std::string(")");
+
+(Bonus points for figuring out how to avoid unnecessary parenthesis
+for infix! :)
+
+ > +    }
+ > +  };
+
+
+
+
+ > Index: src/vsip/impl/expr_ops_per_point.hpp
+ > ===================================================================
+
+ > +//UNARY_OPS_FUNCTOR(bnot)
+-> 1 op
+
+ > +//UNARY_OPS_FUNCTOR(ceil)
+-> 1 op
+
+ > +//UNARY_OPS_FUNCTOR(conj)
+-> 1 op
+
+ > +UNARY_OPS_FUNCTOR(cos,   T,            1);
+
+I think that sin, cos, and tan of a float are more expnsive than 1
+floating-point op
+
+ > +UNARY_OPS_FUNCTOR(cos,   complex<T>,  12);
+
+ > +//UNARY_OPS_FUNCTOR(floor)
+-> 1 op
+
+ > +//UNARY_OPS_FUNCTOR(imag)
+-> 0 op
+
+ > +//UNARY_OPS_FUNCTOR(lnot)
+-> 1 op
+
+ > +//UNARY_OPS_FUNCTOR(mag)
+
+mag -> sqrt(R^2 + I^2) -> 3 + sqrt? ops
+
+ > +//UNARY_OPS_FUNCTOR(magsq)
+
+magsq -> R^2 + I^2 -> 3 ops
+
+ > +//UNARY_OPS_FUNCTOR(neg)
+
+neg -> 1 op
+
+ > +//UNARY_OPS_FUNCTOR(real)
+
+real -> 0 op
+
+
+ > +UNARY_OPS_FUNCTOR(sqrt,  T,            1);
+-> sqrt for T is probably more like 8 flops
+
+
+ > +//BINARY_OPS_FUNCTOR(band)
+-> 1 op
+
+ > +//BINARY_OPS_FUNCTOR(bor)
+-> 1 op
+
+ > +//BINARY_OPS_FUNCTOR(bxor)
+-> 1 op
+
+ > +//BINARY_OPS_FUNCTOR(eq)
+-> 1 op
+
+ > +//BINARY_OPS_FUNCTOR(ge)
+-> 1 op
+
+ > +//BINARY_OPS_FUNCTOR(gt)
+-> 1 op
+
+ > +//BINARY_OPS_FUNCTOR(land)
+-> 1 op
+
+ > +//BINARY_OPS_FUNCTOR(le)
+-> 1 op
+
+ > +//BINARY_OPS_FUNCTOR(lt)
+-> 1 op
+
+ > +//BINARY_OPS_FUNCTOR(lor)
+-> 1 op
+
+ > +//BINARY_OPS_FUNCTOR(lxor)
+-> 1 op
+
+ > +//BINARY_OPS_FUNCTOR(max)
+-> 1 op
+
+ > +//BINARY_OPS_FUNCTOR(maxmgsq)
+-> 3+1 ops
+
+ > +//BINARY_OPS_FUNCTOR(min)
+-> 1 op
+
+ > +//BINARY_OPS_FUNCTOR(minmgsq)
+-> 3+1 ops
+
+ > +//BINARY_OPS_FUNCTOR(ne)
+-> 1 op
+
+
+
+ > +// The cost is computed by adding the costs for pure real, mixed 
+real-complex and
+ > +// pure complex adds and multiples for the given equation:
+ > +
+ > +//  (t1 + t2) * t3
+ > +//                                   <  adds  >    <   muls   >
+ > +//                                   R   M   C     R   M     C
+ > +TERNARY_OPS_FUNCTOR(am, T1, T2, T3,  1 + 0 + 0*2 + 1 + 0*2 + 0*6)
+ > +TERNARY_OPS_FUNCTOR(am, T1, T2, C3,  1 + 0 + 0*2 + 0 + 0*2 + 0*6)
+ > +TERNARY_OPS_FUNCTOR(am, T1, C2, T3,  0 + 1 + 0*2 + 0 + 1*2 + 0*6)
+ > +TERNARY_OPS_FUNCTOR(am, T1, C2, C3,  0 + 1 + 0*2 + 0 + 0*2 + 1*6)
+ > +TERNARY_OPS_FUNCTOR(am, C1, T2, T3,  0 + 1 + 0*2 + 0 + 1*2 + 0*6)
+ > +TERNARY_OPS_FUNCTOR(am, C1, T2, C3,  0 + 1 + 0*2 + 0 + 0*2 + 1*6)
+ > +TERNARY_OPS_FUNCTOR(am, C1, C2, T3,  0 + 0 + 1*2 + 0 + 1*2 + 0*6)
+ > +TERNARY_OPS_FUNCTOR(am, C1, C2, C3,  0 + 0 + 1*2 + 0 + 0*2 + 1*6)
+
+good stuff!
+
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From jules at codesourcery.com  Mon Aug 14 21:13:17 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Mon, 14 Aug 2006 17:13:17 -0400
+Subject: [patch]  Profiling policies for the serial expression evaluator.
+Message-ID: <44E0E76D.6070600@codesourcery.com>
+
+This patch adds the ability to plug "profiling policies" into the 
+expression dispatch.  The idea is that this will let us insert profiling 
+(or coverage) code in one place that gets used for all the different 
+expression evaluators out there.
+
+A profiling policy is a class template that:
+  1) has on template parameter 'EvalExpr', which is used by the dispatch
+     to tell the policy which expression evaluator will be used for the
+     expression.
+  2) has a templated constructor that takes the 'SrcBlock' and 'DstBlock'
+     parameters.
+
+For example, the profiling policy for inserting coverage looks like:
+
+	template <typename EvalExpr>
+	struct Eval_coverage_policy
+	{
+	  template <typename DstBlock,
+	            typename SrcBlock>
+	  Eval_coverage_policy(DstBlock const&, SrcBlock const&)
+	  {
+	    char const* evaluator_name = EvalExpr::name();
+	    VSIPL_IMPL_COVER_BLK(evaluator_name, SrcBlock);
+	  }
+	};
+
+This policy class gets instantiated by the Serial_dispatch_helper class 
+in its exec body (ProfileP is a new template parameter for 
+Serial_dispatch_helper that is used to indicate the policy):
+
+	struct Serial_dispatch_helper<...>
+	{
+	  static void exec(DstBlock& dst, SrcBlock const& src)
+	    VSIP_NOTHROW
+	  {
+	    if (EvalExpr::rt_valid(dst, src))
+	    {
+	      ProfileP<EvalExpr> profile(dst, src);
+	      EvalExpr::exec(dst, src);
+	    }
+	    else ...
+	  }
+	};
+
+When the policy gets instantiated, it knows which evaluator has been 
+selected, along with the expression being evaluated.  Because it is 
+instantiated before the expression is evaluated and has scope that ends 
+once the expression has been evaluated, it should be easy to insert a 
+Scope_event member to profile expressions.
+
+This patch adds a 'name()' member function to all the 
+Serial_expr_evaluator specializations that returns the name of the 
+evaluator.  For example, the 1-dimensional Loop_fusion_tag evaluator 
+returns the string "SEE_1".  The profiling policy can use this to get 
+the name of the evaluator.
+
+Right now, this patch looses some of the detail that Don's profiling 
+patch is able to see (for example, it currently does not distinguish 
+whether a 2-dim loop fusion is done with row-major or column-major 
+traversal).  However, it should be easy to get that back by extending 
+the 2-dim loop fusion name function to determine whether row-major or 
+col-major traversal will be done (it has enough info to do that).  I.e.
+
+	static char const* name()
+	{
+	  typedef typename Block_layout<DstBlock>::order_type
+	          dst_order_type;
+	  if (Type_equal<dst_order_type, row2_type>::value)
+	    return "SEE_2_row";
+	  else
+	    return "SEE_2_col";
+	}
+
+The patch also works for coverage, allowing us to replace the COVERAGE_ 
+statements sprinkled throughout most (but not all) of the evaluators 
+with a single policy that does coverage for evaluators.
+
+This also adds a new class 'Serial_dispatch' that is a front-end to 
+'Serial_dispatch_helper'.  It is responsible for choosing the 
+appropriate policy, based on whether profiling and coverage are enabled.
+
+Don, do you think that you can work the expression profiling into this 
+framework?
+
+				-- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: eval-policy.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060814/76936c30/attachment.ksh>
+
+From don at codesourcery.com  Mon Aug 14 21:36:37 2006
+From: don at codesourcery.com (Don McCoy)
+Date: Mon, 14 Aug 2006 15:36:37 -0600
+Subject: [vsipl++] [patch] Serial Expression Profiling
+In-Reply-To: <44E0BD86.8040503@codesourcery.com>
+References: <44DA44E8.1040108@codesourcery.com> <44E0BD86.8040503@codesourcery.com>
+Message-ID: <44E0ECE5.30600@codesourcery.com>
+
+Jules Bergmann wrote:
+> 
+> I think it would be easier to read the expression name if
+>   - it used prefix or infix notation
+>   - treated sub-expressions differently from leaves
+> 
+> I.e. the above expression could be:
+> 
+>  prefix: +(*(S,S), /(S,S))
+>  infix:  (S*S)+(S/S)
+> 
+> I would suggest doing infix first, even though it is harder to read,
+> and then adding support for infix, since we'll have to support
+> operators (such as 'hypot') that don't have infix equivalents.
+> 
+Do you want support for both expression encodings?  And did you mean 
+'prefix' first?
+
+And since you bring it up, most operators don't have an infix equivalent 
+(or prefix/postfix as far as I know).  That is why I chose the lower 
+case u, b and t to express them.  That was pretty arbitrary, so if we'd 
+like to incorporate things like scalar constants, we could rethink this 
+a bit.
+
+> 
+>  >
+>  > Changing it to
+>  >
+>  >    (v1 * T(4) + v2) / v3
+>  >
+>  > yields:
+>  >
+>  >    Expr[LF] 1D *SS+SS/SS 2048 : 1536309 : 1 : 6144 : 14.3626
+> 
+> As an example of how this notation breaks down, (v1 * T(4)) / (v2 + v3) 
+> also
+> has the same name: '*SS+SS/SS'.
+> 
+True, true.  I realized this at the time, but rationalized it by saying 
+the user will know what they wrote and it is unlikely that would have 
+*both* of the above expressions coded in their algorithm.  The other, 
+and probably less compelling reasons, are that the two will likely 
+compute in about the same amount of time and the notation is more compact.
+
+That being said, the fact that there are more common notations to use 
+and that it is not particularly difficult to change, means we should 
+probably do so.
+
+> 
+> An alternative to generating the name in this way is to use the standard
+> C++ typeinfo (i.e. 'typeid(ExprBlockType).name()').  This is *much* more
+> verbose and difficult to read than the above, but it would be possible to
+> clean up in a post-processing step.
+> 
+This was my first thought, but decided that it only made it harder to 
+use the profiling if we mandate that extra post-processing step.
+
+
+I'll take a look at the remaining suggestions and let you know if I have 
+any other questions.
+
+Thanks!
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+
+
+From don at codesourcery.com  Mon Aug 14 21:43:30 2006
+From: don at codesourcery.com (Don McCoy)
+Date: Mon, 14 Aug 2006 15:43:30 -0600
+Subject: [vsipl++] [patch]  Profiling policies for the serial expression
+ evaluator.
+In-Reply-To: <44E0E76D.6070600@codesourcery.com>
+References: <44E0E76D.6070600@codesourcery.com>
+Message-ID: <44E0EE82.40603@codesourcery.com>
+
+Jules Bergmann wrote:
+> This patch adds the ability to plug "profiling policies" into the 
+> expression dispatch.  The idea is that this will let us insert profiling 
+> (or coverage) code in one place that gets used for all the different 
+> expression evaluators out there.
+> 
+...
+> 
+> Don, do you think that you can work the expression profiling into this 
+> framework?
+> 
+Sounds ok.  I will let you know if I run into any problems.
+
+Thanks,
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+
+
+From jules at codesourcery.com  Tue Aug 15 11:39:45 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Tue, 15 Aug 2006 07:39:45 -0400
+Subject: [vsipl++] [patch] Serial Expression Profiling
+In-Reply-To: <44E0ECE5.30600@codesourcery.com>
+References: <44DA44E8.1040108@codesourcery.com> <44E0BD86.8040503@codesourcery.com> <44E0ECE5.30600@codesourcery.com>
+Message-ID: <44E1B281.50208@codesourcery.com>
+
+
+> Do you want support for both expression encodings?  And did you mean 
+> 'prefix' first?
+
+Oops! yes, I meant prefix first.
+
+> 
+> And since you bring it up, most operators don't have an infix equivalent 
+> (or prefix/postfix as far as I know).  That is why I chose the lower 
+> case u, b and t to express them.  That was pretty arbitrary, so if we'd 
+> like to incorporate things like scalar constants, we could rethink this 
+> a bit.
+
+If I understand correctly, these could be handled as functions.  For 
+example, expoavg could be 'expoavg(S, S, S)'.
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From stefan at codesourcery.com  Thu Aug 17 10:26:03 2006
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Thu, 17 Aug 2006 06:26:03 -0400
+Subject: patch: Enhancements to SIMD loop fusion
+Message-ID: <44E4443B.6010801@codesourcery.com>
+
+The attached patch adds some optimizations as well as more functionality
+(support for complex types, as well as fused multiply-add) to the
+SIMD loop fusion harness.
+
+As SSE(2) doesn't provide fused multiply-add, the fma() implementation
+falls back on mul() and add(). For AltiVec fma() still needs to be implemented.
+
+No regressions were observed with gcc 4.1.
+
+OK to commit ?
+
+Thanks,
+		Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: simd.patch
+Type: text/x-patch
+Size: 17179 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060817/ce0f2b97/attachment.bin>
+
+From jules at codesourcery.com  Thu Aug 17 11:19:15 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Thu, 17 Aug 2006 07:19:15 -0400
+Subject: [vsipl++] patch: Enhancements to SIMD loop fusion
+In-Reply-To: <44E4443B.6010801@codesourcery.com>
+References: <44E4443B.6010801@codesourcery.com>
+Message-ID: <44E450B3.1070005@codesourcery.com>
+
+Stefan Seefeld wrote:
+> The attached patch adds some optimizations as well as more functionality
+> (support for complex types, as well as fused multiply-add) to the
+> SIMD loop fusion harness.
+> 
+> As SSE(2) doesn't provide fused multiply-add, the fma() implementation
+> falls back on mul() and add(). For AltiVec fma() still needs to be implemented.
+> 
+> No regressions were observed with gcc 4.1.
+> 
+> OK to commit ?
+
+Yes, please.  This looks good.  thanks -- Jules
+
+
+>  
+> +  static simd_type fma(simd_type const& v1, simd_type const& v2,
+> +		       simd_type const& v3)
+> +  { assert(0); return v1; } // FIXME: need to be implemented.
+
+This is:
+
+	{ return vec_madd(v1, v2, v3); }
+
+(notice that add and mul are implemented in terms of vec_madd because 
+AltiVec only has fused multiply add)
+
+
+
+> +    }
+> +#else
+> +    // loop using proxy interface. This generates the best code
+> +    // with gcc 3.4 (with gcc 4.1 the difference to the first case
+> +    // above is negligible).
+
+I thought this also generates the best code with 4.1.
+
+> +    while (n >= vec_size)
+> +    {
+> +      lp.store(rp.load());
+> +      n -= vec_size;
+> +      lp.increment();
+> +      rp.increment();
+> +    }
+> +#endif
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From don at codesourcery.com  Sat Aug 19 23:09:39 2006
+From: don at codesourcery.com (Don McCoy)
+Date: Sat, 19 Aug 2006 17:09:39 -0600
+Subject: [vsipl++] [patch] Serial Expression Profiling
+In-Reply-To: <44E0BD86.8040503@codesourcery.com>
+References: <44DA44E8.1040108@codesourcery.com> <44E0BD86.8040503@codesourcery.com>
+Message-ID: <44E79A33.90208@codesourcery.com>
+
+Jules Bergmann wrote:
+> Don,
+> 
+> This patch looks good.  There are 2 things I would like to change:
+> 
+>  - First, I would like to move the profiling code from the evaluator
+>    class specializations into the Dispatch_assign class.  This requires
+>    some changes to the Evaluator framework, and some help from the
+>    evaluators themselves, but not much.
+> 
+>    Doing this will reduce the amount of duplication, making it easier
+>    to add a new evaluator.  It will also give us visibility into
+>    distributed expressions before they are reduced.
+> 
+>  - Second, the expression name generator is pretty cool, but the
+>    psuedo-postfix notation seems unintuitive.  Since the framework you
+>    have is fairly general, it should not be too hard to generate a
+>    name with proper prefix or infix notation.
+> 
+
+This new patch addresses both of the above, building on Jules' changes 
+to the framework.  Now any time we add a new serial expression evaluator 
+we are obligated to provided the char const* name() function for the 
+profiler/coverage code to use.  Overall it is much more nicely organized 
+this way.
+
+With regards to the second item, the names are now generated using 
+standard prefix notation.  This was chosen over infix notation as it is 
+only slightly harder to read, but provides a uniform way of describing 
+both operators and functions.  It is much more readable than before and 
+should eliminate any ambiguity when profiling expressions.  Each tag 
+includes
+
+   - The type of evaluator (copy, dense, loop, simd_loop, etc...)
+   - Number of dimensions
+   - The expression in prefix notation with
+     - Views denoted with S/D/C/Z
+     - Scalar values denoted with s/d/c/z
+     - Parentheses used to show evaluation order.
+   - View size
+
+There is work left to do defining estimates for operation counts for a 
+few operators.
+
+Some examples of the type of profiler output now available:
+
+# mode: pm_accum
+# timer: x86_64_tsc_time
+# clocks_per_sec: 3591375104
+#
+# tag : total ticks : num calls : op count : mops
+Expr_Copy 1D S 2048 : 23319 : 1 : 0 : 0
+Expr_Dense 2D *(S,S) 64x64 : 1095120 : 1 : 4096 : 13.4326
+Expr_Dense 3D *(S,S) 64x64x64 : 67102560 : 1 : 262144 : 14.0301
+Expr_Loop 1D *(C,sin(C)) 262144 : 740760129 : 1 : 4718592 : 22.8768
+Expr_Loop 1D *(S,C) 2048 : 2346777 : 1 : 4096 : 6.26829
+Expr_Loop 1D *(S,S) 262144 : 67018662 : 1 : 262144 : 14.0477
+Expr_Loop 1D *(S,S) 4096 : 1050210 : 1 : 4096 : 14.007
+Expr_Loop 1D *(am(S,C,C),s) 1024 : 2693421 : 1 : 9216 : 12.2885
+Expr_Loop 1D *(am(S,S,S),s) 1024 : 627255 : 1 : 3072 : 17.5889
+Expr_Loop 1D +(*(S,s),/(S,S)) 2048 : 1516950 : 1 : 6144 : 14.5459
+Expr_Loop 1D +(/(-(*(S,s),S),S),S) 2048 : 1950273 : 1 : 8192 : 15.0853
+Expr_Loop 1D +(S,*(S,S)) 2048 : 893754 : 1 : 4096 : 16.459
+Expr_Loop 1D /(+(*(S,s),S),S) 2048 : 1471230 : 1 : 6144 : 14.9979
+Expr_Loop 2D *(S,S) 128x128 : 10240929 : 1 : 16384 : 5.74568
+Expr_Loop 3D *(S,S) 32x32x32 : 40336200 : 1 : 32768 : 2.91753
+Expr_Trans 2D S 2048x2048 : 230791311 : 3 : 0 : 0
+
+
+Although not shown, it also identifies expressions dispatched to IPP or
+SAL.  The full documentation for all possible tags and their meanings
+is still being put together.
+
+Things to note:  The file expr_ops_per_point.hpp was renamed 
+expr_ops_info.hpp.  The changes to fns_elementwise.hpp are numerous 
+because of a change in the macro parameter 'name' to 'fname' to avoid 
+colliding with the new function named, er... 'name'.  This only had to 
+be done in a few places, but I wanted the file to be consistent, so I 
+changed it throughout.
+
+Regards,
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: se2.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060819/9f018057/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: se2.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060819/9f018057/attachment-0001.ksh>
+
+From mark at codesourcery.com  Sun Aug 20 16:14:34 2006
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Sun, 20 Aug 2006 09:14:34 -0700
+Subject: [vsipl++] [patch] Serial Expression Profiling
+In-Reply-To: <44E79A33.90208@codesourcery.com>
+References: <44DA44E8.1040108@codesourcery.com> <44E0BD86.8040503@codesourcery.com> <44E79A33.90208@codesourcery.com>
+Message-ID: <44E88A6A.3050000@codesourcery.com>
+
+Don McCoy wrote:
+
+> Expr_Loop 1D *(am(S,C,C),s) 1024 : 2693421 : 1 : 9216 : 12.2885
+> Expr_Loop 1D *(am(S,S,S),s) 1024 : 627255 : 1 : 3072 : 17.5889
+> Expr_Loop 1D +(*(S,s),/(S,S)) 2048 : 1516950 : 1 : 6144 : 14.5459
+
+Nice!
+
+-- 
+Mark Mitchell
+CodeSourcery
+mark at codesourcery.com
+(650) 331-3385 x713
+
+
+From jules at codesourcery.com  Mon Aug 21 16:29:04 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Mon, 21 Aug 2006 12:29:04 -0400
+Subject: [vsipl++] [patch] Serial Expression Profiling
+In-Reply-To: <44E79A33.90208@codesourcery.com>
+References: <44DA44E8.1040108@codesourcery.com> <44E0BD86.8040503@codesourcery.com> <44E79A33.90208@codesourcery.com>
+Message-ID: <44E9DF50.4060000@codesourcery.com>
+
+Don, this looks very nice! please check it in.  -- Jules
+
+
+
+Don McCoy wrote:
+ > Expr_Copy 1D S 2048 : 23319 : 1 : 0 : 0
+ > Expr_Dense 2D *(S,S) 64x64 : 1095120 : 1 : 4096 : 13.4326
+
+Wouldn't we see another line for the 1D evaluator that got used
+in this case?
+
+ > Expr_Dense 3D *(S,S) 64x64x64 : 67102560 : 1 : 262144 : 14.0301
+ > Expr_Loop 1D *(C,sin(C)) 262144 : 740760129 : 1 : 4718592 : 22.8768
+ > Expr_Loop 1D *(S,C) 2048 : 2346777 : 1 : 4096 : 6.26829
+ > Expr_Loop 1D *(S,S) 262144 : 67018662 : 1 : 262144 : 14.0477
+ > Expr_Loop 1D *(S,S) 4096 : 1050210 : 1 : 4096 : 14.007
+ > Expr_Loop 1D *(am(S,C,C),s) 1024 : 2693421 : 1 : 9216 : 12.2885
+ > Expr_Loop 1D *(am(S,S,S),s) 1024 : 627255 : 1 : 3072 : 17.5889
+ > Expr_Loop 1D +(*(S,s),/(S,S)) 2048 : 1516950 : 1 : 6144 : 14.5459
+ > Expr_Loop 1D +(/(-(*(S,s),S),S),S) 2048 : 1950273 : 1 : 8192 : 15.0853
+ > Expr_Loop 1D +(S,*(S,S)) 2048 : 893754 : 1 : 4096 : 16.459
+ > Expr_Loop 1D /(+(*(S,s),S),S) 2048 : 1471230 : 1 : 6144 : 14.9979
+ > Expr_Loop 2D *(S,S) 128x128 : 10240929 : 1 : 16384 : 5.74568
+ > Expr_Loop 3D *(S,S) 32x32x32 : 40336200 : 1 : 32768 : 2.91753
+ > Expr_Trans 2D S 2048x2048 : 230791311 : 3 : 0 : 0
+
+ >
+ >    static void exec(DstBlock& dst, SrcBlock const& src)
+ >    {
+ > -    VSIP_IMPL_COVER_BLK("EDV", SrcBlock);
+ > +//    VSIP_IMPL_COVER_BLK("EDV", SrcBlock);
+
+Just delete this line.
+
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From don at codesourcery.com  Mon Aug 21 16:43:09 2006
+From: don at codesourcery.com (Don McCoy)
+Date: Mon, 21 Aug 2006 10:43:09 -0600
+Subject: [vsipl++] [patch] Serial Expression Profiling
+In-Reply-To: <44E9DF50.4060000@codesourcery.com>
+References: <44DA44E8.1040108@codesourcery.com> <44E0BD86.8040503@codesourcery.com> <44E79A33.90208@codesourcery.com> <44E9DF50.4060000@codesourcery.com>
+Message-ID: <44E9E29D.6060204@codesourcery.com>
+
+Jules Bergmann wrote:
+> Don, this looks very nice! please check it in.  -- Jules
+> 
+> 
+> 
+> Don McCoy wrote:
+>  > Expr_Copy 1D S 2048 : 23319 : 1 : 0 : 0
+>  > Expr_Dense 2D *(S,S) 64x64 : 1095120 : 1 : 4096 : 13.4326
+> 
+> Wouldn't we see another line for the 1D evaluator that got used
+> in this case?
+> 
+Yes.  It is...
+
+>  > Expr_Dense 3D *(S,S) 64x64x64 : 67102560 : 1 : 262144 : 14.0301
+>  > Expr_Loop 1D *(C,sin(C)) 262144 : 740760129 : 1 : 4718592 : 22.8768
+>  > Expr_Loop 1D *(S,C) 2048 : 2346777 : 1 : 4096 : 6.26829
+>  > Expr_Loop 1D *(S,S) 262144 : 67018662 : 1 : 262144 : 14.0477
+>  > Expr_Loop 1D *(S,S) 4096 : 1050210 : 1 : 4096 : 14.007
+
+^^^ this one
+
+>  > Expr_Loop 1D *(am(S,C,C),s) 1024 : 2693421 : 1 : 9216 : 12.2885
+>  > Expr_Loop 1D *(am(S,S,S),s) 1024 : 627255 : 1 : 3072 : 17.5889
+>  > Expr_Loop 1D +(*(S,s),/(S,S)) 2048 : 1516950 : 1 : 6144 : 14.5459
+>  > Expr_Loop 1D +(/(-(*(S,s),S),S),S) 2048 : 1950273 : 1 : 8192 : 15.0853
+>  > Expr_Loop 1D +(S,*(S,S)) 2048 : 893754 : 1 : 4096 : 16.459
+>  > Expr_Loop 1D /(+(*(S,s),S),S) 2048 : 1471230 : 1 : 6144 : 14.9979
+>  > Expr_Loop 2D *(S,S) 128x128 : 10240929 : 1 : 16384 : 5.74568
+>  > Expr_Loop 3D *(S,S) 32x32x32 : 40336200 : 1 : 32768 : 2.91753
+>  > Expr_Trans 2D S 2048x2048 : 230791311 : 3 : 0 : 0
+> 
+>  >
+>  >    static void exec(DstBlock& dst, SrcBlock const& src)
+>  >    {
+>  > -    VSIP_IMPL_COVER_BLK("EDV", SrcBlock);
+>  > +//    VSIP_IMPL_COVER_BLK("EDV", SrcBlock);
+> 
+> Just delete this line.
+
+Good catch.  Thanks.
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+
+
+From jules at codesourcery.com  Mon Aug 21 16:51:51 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Mon, 21 Aug 2006 12:51:51 -0400
+Subject: [vsipl++] [patch] Serial Expression Profiling
+In-Reply-To: <44E9E29D.6060204@codesourcery.com>
+References: <44DA44E8.1040108@codesourcery.com> <44E0BD86.8040503@codesourcery.com> <44E79A33.90208@codesourcery.com> <44E9DF50.4060000@codesourcery.com> <44E9E29D.6060204@codesourcery.com>
+Message-ID: <44E9E4A7.2020700@codesourcery.com>
+
+
+>> Wouldn't we see another line for the 1D evaluator that got used
+>> in this case?
+>>
+> Yes.  It is...
+> 
+>>  > Expr_Dense 3D *(S,S) 64x64x64 : 67102560 : 1 : 262144 : 14.0301
+>>  > Expr_Loop 1D *(C,sin(C)) 262144 : 740760129 : 1 : 4718592 : 22.8768
+>>  > Expr_Loop 1D *(S,C) 2048 : 2346777 : 1 : 4096 : 6.26829
+>>  > Expr_Loop 1D *(S,S) 262144 : 67018662 : 1 : 262144 : 14.0477
+>>  > Expr_Loop 1D *(S,S) 4096 : 1050210 : 1 : 4096 : 14.007
+> 
+> ^^^ this one
+
+Right!  This is an accumulated profile, so they're not in time order. 
+My bad.
+
+			thanks,
+			-- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From don at codesourcery.com  Tue Aug 22 18:42:12 2006
+From: don at codesourcery.com (Don McCoy)
+Date: Tue, 22 Aug 2006 12:42:12 -0600
+Subject: Readme for Profiling
+Message-ID: <44EB5004.1090409@codesourcery.com>
+
+This 'readme' file is referred to in the tutorial section on profiling, 
+meant to reside in the top-level directory of the source distribution. 
+It serves as a place to put implementation details that would otherwise 
+clutter the tutorial.  It also makes a nice handy mini-reference.
+
+In the near future I'd like to add some more details regarding each of 
+the objects or events we profile internally.  This may make it more 
+clear how to determine which events are "nested" (i.e. listed by more 
+than one expression evaluator).
+
+Regards,
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: pr.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060822/d5626b4e/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: pr.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060822/d5626b4e/attachment-0001.ksh>
+
+From jules at codesourcery.com  Thu Aug 24 14:56:50 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Thu, 24 Aug 2006 10:56:50 -0400
+Subject: [patch]  tutorial updates for parallel chapter
+Message-ID: <44EDBE32.9090906@codesourcery.com>
+
+This patch:
+  - applies Mark's 7/31 edits
+  - updates the existing example programs to match the text
+  - adds missing example programs for parallel local views and
+    parallel foreach
+  - makes some misc fixes in the library
+
+Next step is to separate out the serial fast convolution section to be 
+the first chapter.
+
+Patch applied.
+
+				-- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: par.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060824/259ab5f4/attachment.ksh>
+
+From jules at codesourcery.com  Thu Aug 24 16:31:20 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Thu, 24 Aug 2006 12:31:20 -0400
+Subject: [patch] Rename library
+Message-ID: <44EDD458.6090500@codesourcery.com>
+
+This patch renames the library from libvsip.a to libsvpp.a to avoid 
+conflicts with other libraries.
+
+				-- Jules
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: libname.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060824/4e029778/attachment.ksh>
+
+From mark at codesourcery.com  Thu Aug 24 16:44:31 2006
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Thu, 24 Aug 2006 09:44:31 -0700
+Subject: [vsipl++] [patch] Rename library
+In-Reply-To: <44EDD458.6090500@codesourcery.com>
+References: <44EDD458.6090500@codesourcery.com>
+Message-ID: <44EDD76F.2030905@codesourcery.com>
+
+Jules Bergmann wrote:
+> This patch renames the library from libvsip.a to libsvpp.a to avoid 
+> conflicts with other libraries.
+
+Are there any places in the docs  where we say -lvsip in examples?
+
+Thanks,
+
+-- 
+Mark Mitchell
+CodeSourcery
+mark at codesourcery.com
+(650) 331-3385 x713
+
+
+From jules at codesourcery.com  Thu Aug 24 16:58:21 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Thu, 24 Aug 2006 12:58:21 -0400
+Subject: [vsipl++] [patch] Rename library
+In-Reply-To: <44EDD76F.2030905@codesourcery.com>
+References: <44EDD458.6090500@codesourcery.com> <44EDD76F.2030905@codesourcery.com>
+Message-ID: <44EDDAAD.20905@codesourcery.com>
+
+Mark Mitchell wrote:
+> Jules Bergmann wrote:
+>> This patch renames the library from libvsip.a to libsvpp.a to avoid 
+>> conflicts with other libraries.
+> 
+> Are there any places in the docs  where we say -lvsip in examples?
+> 
+
+Surely there must be.  Good catch. -- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From jules at codesourcery.com  Thu Aug 24 17:03:22 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Thu, 24 Aug 2006 13:03:22 -0400
+Subject: [vsipl++] [patch] Rename library
+In-Reply-To: <44EDD76F.2030905@codesourcery.com>
+References: <44EDD458.6090500@codesourcery.com> <44EDD76F.2030905@codesourcery.com>
+Message-ID: <44EDDBDA.5020904@codesourcery.com>
+
+> 
+> Are there any places in the docs  where we say -lvsip in examples?
+> 
+
+I fixed this reference in quickstart.xml.  Patch applied. -- Jules
+
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: q.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060824/93dd3201/attachment.ksh>
+
+From don at codesourcery.com  Thu Aug 24 17:31:55 2006
+From: don at codesourcery.com (Don McCoy)
+Date: Thu, 24 Aug 2006 11:31:55 -0600
+Subject: [patch] Profiling cleanup
+Message-ID: <44EDE28B.6070606@codesourcery.com>
+
+This patch completes the move of the operation counts for matvec and 
+signal processing functions into impl/ops_info.hpp.  It also cleans up 
+the tags for the FFT's to correspond to recent tutorial changes.
+
+Regards,
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: cu.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060824/fc95ed82/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: cu.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060824/fc95ed82/attachment-0001.ksh>
+
+From jules at codesourcery.com  Thu Aug 24 17:55:06 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Thu, 24 Aug 2006 13:55:06 -0400
+Subject: [vsipl++] [patch] Profiling cleanup
+In-Reply-To: <44EDE28B.6070606@codesourcery.com>
+References: <44EDE28B.6070606@codesourcery.com>
+Message-ID: <44EDE7FA.2050307@codesourcery.com>
+
+Don McCoy wrote:
+> This patch completes the move of the operation counts for matvec and 
+> signal processing functions into impl/ops_info.hpp.  It also cleans up 
+> the tags for the FFT's to correspond to recent tutorial changes.
+
+Don,
+
+This looks good.  I have one question below about the names for Fft and 
+Fftm, but it otherwise it looks good to check in.
+
+				-- Jules
+
+> Index: src/vsip/impl/ops_info.hpp
+> ===================================================================
+> --- src/vsip/impl/ops_info.hpp	(revision 147402)
+> +++ src/vsip/impl/ops_info.hpp	(working copy)
+> @@ -3,7 +3,8 @@
+>  /** @file    vsip/impl/ops_info.cpp
+>      @author  Jules Bergmann
+
+Don you've taken this file a long way!  Can you add your name to the 
+authors?
+
+
+> +
+> +template <int D, typename I, typename O>
+> +struct Description
+> +{ 
+> +  static std::string tag(Domain<D> const &dom, int dir, 
+> +    return_mechanism_type rm)
+> +  {
+> +    std::ostringstream   st;
+> +    st << (D == 2 ? "Fftm " : "Fft ")
+> +       << (dir == -1 ? "Inv " : "Fwd ")
+> +       << Desc_datatype<I>::value() << "-"
+> +       << Desc_datatype<O>::value() << " "
+> +       << (rm == vsip::by_reference ? "by_ref " : "by_val ")
+> +       << dom[0].size();
+> +    if (D == 2)
+> +       st << "x" << dom[1].size();
+> +
+> +    return st.str();
+> +  } 
+> +};
+
+I'm not sure if this logic is right, in particular using the dimension 
+of the Domain to distinguish between Fft and Fftm.  It is possible to 
+have 1D, 2D, and 3D Fft transforms.  Fftm represents multiple 1D Fft 
+transforms on either the rows or columns of a matrix.  A 2D Fft is not 
+the same as a Fftm.
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From don at codesourcery.com  Thu Aug 24 20:51:25 2006
+From: don at codesourcery.com (Don McCoy)
+Date: Thu, 24 Aug 2006 14:51:25 -0600
+Subject: [vsipl++] [patch] Profiling cleanup
+In-Reply-To: <44EDE7FA.2050307@codesourcery.com>
+References: <44EDE28B.6070606@codesourcery.com> <44EDE7FA.2050307@codesourcery.com>
+Message-ID: <44EE114D.8080102@codesourcery.com>
+
+Jules Bergmann wrote:
+> I'm not sure if this logic is right, in particular using the dimension 
+> of the Domain to distinguish between Fft and Fftm.  It is possible to 
+> have 1D, 2D, and 3D Fft transforms.  Fftm represents multiple 1D Fft 
+> transforms on either the rows or columns of a matrix.  A 2D Fft is not 
+> the same as a Fftm.
+> 
+You are quite correct, referring back to the specification.  I fixed the 
+naming issue, but will need to correct the way tags are generated for Fft.
+
+Good catch!  Thanks.
+
+Ok to commit?
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: cu2.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060824/b9516e93/attachment.ksh>
+
+From don at codesourcery.com  Fri Aug 25 05:20:11 2006
+From: don at codesourcery.com (Don McCoy)
+Date: Thu, 24 Aug 2006 23:20:11 -0600
+Subject: [patch] new package release suffix '-profile', quickstart update
+Message-ID: <44EE888B.70602@codesourcery.com>
+
+The attached patch adds a third configuration (aside from -debug and 
+release) to each of the package types.  I tested it with the 'describe' 
+option of package.py.  E.g.:
+
+   ./scripts/package.py describe --package=SerialBuiltin32 
+--configfile=./scripts/config
+
+
+The Quickstart has been updated to mention the configuration options 
+related to profiling as well.
+
+Regards,
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: cp.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060824/c3cc233d/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: cp.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060824/c3cc233d/attachment-0001.ksh>
+
+From jules at codesourcery.com  Fri Aug 25 11:55:41 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Fri, 25 Aug 2006 07:55:41 -0400
+Subject: [vsipl++] [patch] Profiling cleanup
+In-Reply-To: <44EE114D.8080102@codesourcery.com>
+References: <44EDE28B.6070606@codesourcery.com> <44EDE7FA.2050307@codesourcery.com> <44EE114D.8080102@codesourcery.com>
+Message-ID: <44EEE53D.2070404@codesourcery.com>
+
+Don McCoy wrote:
+> Jules Bergmann wrote:
+>> I'm not sure if this logic is right, in particular using the dimension 
+>> of the Domain to distinguish between Fft and Fftm.  It is possible to 
+>> have 1D, 2D, and 3D Fft transforms.  Fftm represents multiple 1D Fft 
+>> transforms on either the rows or columns of a matrix.  A 2D Fft is not 
+>> the same as a Fftm.
+>>
+> You are quite correct, referring back to the specification.  I fixed the 
+> naming issue, but will need to correct the way tags are generated for Fft.
+> 
+> Good catch!  Thanks.
+> 
+> Ok to commit?
+
+Don, Yes please (except for the conflict in the ChangeLog of course) -- 
+Jules
+> 
+> 
+> ------------------------------------------------------------------------
+> 
+> Index: ChangeLog
+> ===================================================================
+> --- ChangeLog	(revision 147597)
+> +++ ChangeLog	(working copy)
+> @@ -1,3 +1,22 @@
+> +<<<<<<< .mine
+
+>  	
+> +>>>>>>> .r147597
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From don at codesourcery.com  Fri Aug 25 20:30:46 2006
+From: don at codesourcery.com (Don McCoy)
+Date: Fri, 25 Aug 2006 14:30:46 -0600
+Subject: [patch] configure change for IPP 5.0
+Message-ID: <44EF5DF6.6050701@codesourcery.com>
+
+This teaches configure about a function name change in IPP 5.0 that 
+affected the way configure probes for the core library.  This now works 
+for both 4.1 and 5.0.
+
+Regards,
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: ip.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060825/91eb334e/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: ip.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060825/91eb334e/attachment-0001.ksh>
+
+From don at codesourcery.com  Sun Aug 27 17:37:34 2006
+From: don at codesourcery.com (Don McCoy)
+Date: Sun, 27 Aug 2006 11:37:34 -0600
+Subject: [patch] configure help cleanup
+Message-ID: <44F1D85E.8020502@codesourcery.com>
+
+I was reviewing the configuration options and noticed some 
+inconsistencies in the help strings.  Other than that, I think they're 
+looking pretty good.
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: cc.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060827/4a11f193/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: cc.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060827/4a11f193/attachment-0001.ksh>
+
+From don at codesourcery.com  Sun Aug 27 18:12:10 2006
+From: don at codesourcery.com (Don McCoy)
+Date: Sun, 27 Aug 2006 12:12:10 -0600
+Subject: [patch] Command line arguments for tests
+Message-ID: <44F1E07A.2070507@codesourcery.com>
+
+This patch fixes places in the tests where argc and argv are not passed 
+to the vsipl initialization object.
+
+Regards,
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: ct.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060827/b540cacf/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: ct.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060827/b540cacf/attachment-0001.ksh>
+
+From jules at codesourcery.com  Mon Aug 28 15:50:19 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Mon, 28 Aug 2006 11:50:19 -0400
+Subject: [vsipl++] [patch] configure change for IPP 5.0
+In-Reply-To: <44EF5DF6.6050701@codesourcery.com>
+References: <44EF5DF6.6050701@codesourcery.com>
+Message-ID: <44F310BB.5030506@codesourcery.com>
+
+Don McCoy wrote:
+> This teaches configure about a function name change in IPP 5.0 that 
+> affected the way configure probes for the core library.  This now works 
+> for both 4.1 and 5.0.
+
+Don,
+
+This looks good.  Please have a look at my comment below.  If that isn't 
+feasible, then please check it in.
+
+				-- Jules
+
+
+>      save_LDFLAGS="$LDFLAGS"
+>      LDFLAGS="$LDFLAGS $IPP_LDFLAGS"
+>      LIBS="-lpthread $LIBS"
+> +    # IPP 4.1 uses the first version, 5.0 uses the second.
+>      AC_SEARCH_LIBS(ippCoreGetCpuType, [$ippcore_search],,
+> -      [LD_FLAGS="$save_LDFLAGS"])
+> +      [
+> +        AC_SEARCH_LIBS(ippGetCpuType, [$ippcore_search],,
+> +          [LD_FLAGS="$save_LDFLAGS"])
+> +      ])
+>      
+>      save_LDFLAGS="$LDFLAGS"
+>      LDFLAGS="$LDFLAGS $IPP_LDFLAGS"
+
+If these are the only changes necessary to go from 4.1 to 5.0, it looks 
+like they are pretty similar.
+
+Since we don't actually use ippCoreGetCputype/ippGetCpuType in the 
+library, i.e. we only use it to determine if IPP is present, is there 
+another function that we could check for that is the same in both 4.1 
+and 5.0?  Then our configure check would be even simpler.
+
+					
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From jules at codesourcery.com  Mon Aug 28 15:51:46 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Mon, 28 Aug 2006 11:51:46 -0400
+Subject: [vsipl++] [patch] configure help cleanup
+In-Reply-To: <44F1D85E.8020502@codesourcery.com>
+References: <44F1D85E.8020502@codesourcery.com>
+Message-ID: <44F31112.4050503@codesourcery.com>
+
+Don McCoy wrote:
+> I was reviewing the configuration options and noticed some 
+> inconsistencies in the help strings.  Other than that, I think they're 
+> looking pretty good.
+> 
+
+Don, this looks good, please check it in!  thanks, -- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From jules at codesourcery.com  Mon Aug 28 15:52:47 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Mon, 28 Aug 2006 11:52:47 -0400
+Subject: [vsipl++] [patch] Command line arguments for tests
+In-Reply-To: <44F1E07A.2070507@codesourcery.com>
+References: <44F1E07A.2070507@codesourcery.com>
+Message-ID: <44F3114F.7020305@codesourcery.com>
+
+Don McCoy wrote:
+> This patch fixes places in the tests where argc and argv are not passed 
+> to the vsipl initialization object.
+
+Don, this looks good, please check it in. thanks, -- Jules
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From don at codesourcery.com  Wed Aug 30 03:42:01 2006
+From: don at codesourcery.com (Don McCoy)
+Date: Tue, 29 Aug 2006 21:42:01 -0600
+Subject: [patch] Reduced profiler overhead for expressions 
+Message-ID: <44F50909.1000104@codesourcery.com>
+
+This patch corrects a performance issue for profiling expressions that 
+occurred when the profile mode was set to none.  The performance is now 
+almost as good as it is when profiling is disabled at configuration time.
+
+Regards,
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: pn.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060829/b692c934/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: pn.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060829/b692c934/attachment-0001.ksh>
+
+From mark at codesourcery.com  Wed Aug 30 03:54:22 2006
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Tue, 29 Aug 2006 22:54:22 -0500
+Subject: [vsipl++] [patch] Reduced profiler overhead for expressions
+In-Reply-To: <44F50909.1000104@codesourcery.com>
+References: <44F50909.1000104@codesourcery.com>
+Message-ID: <44F50BEE.6010008@codesourcery.com>
+
+Don McCoy wrote:
+
+> +    if (event_)
+> +      delete event_;
+
+FYI, you're allowed to delete NULL.  The compiler is required to check 
+that the pointer is non-NULL before passing it to operator delete.  So, 
+The "if" is redundant.  A good compiler will of course optimize:
+
+   if (x)
+    if (x)
+      f();
+
+by removing one of the if-statements, so this is really just about not 
+writing more code that you need to. :-)
+
+-- 
+Mark Mitchell
+CodeSourcery
+mark at codesourcery.com
+(650) 331-3385 x713
+
+
+From don at codesourcery.com  Wed Aug 30 06:40:04 2006
+From: don at codesourcery.com (Don McCoy)
+Date: Wed, 30 Aug 2006 00:40:04 -0600
+Subject: [vsipl++] [patch] Reduced profiler overhead for expressions
+In-Reply-To: <44F50BEE.6010008@codesourcery.com>
+References: <44F50909.1000104@codesourcery.com> <44F50BEE.6010008@codesourcery.com>
+Message-ID: <44F532C4.1090100@codesourcery.com>
+
+Mark Mitchell wrote:
+> Don McCoy wrote:
+>
+>> +    if (event_)
+>> +      delete event_;
+>
+> FYI, you're allowed to delete NULL.  The compiler is required to check 
+> that the 
+
+I will revise that.  Better yet, I'll stop doing it in the future.  :)
+
+Thanks,
+
+-- 
+Don McCoy
+don (at) CodeSourcery 
+(888) 776-0262 / (650) 331-3385, x712
+
+
+
+From don at codesourcery.com  Wed Aug 30 07:52:55 2006
+From: don at codesourcery.com (Don McCoy)
+Date: Wed, 30 Aug 2006 01:52:55 -0600
+Subject: [vsipl++] [patch] configure change for IPP 5.0
+In-Reply-To: <44F310BB.5030506@codesourcery.com>
+References: <44EF5DF6.6050701@codesourcery.com> <44F310BB.5030506@codesourcery.com>
+Message-ID: <44F543D7.3020102@codesourcery.com>
+
+Jules Bergmann wrote:
+> Since we don't actually use ippCoreGetCputype/ippGetCpuType in the 
+> library, i.e. we only use it to determine if IPP is present, is there 
+> another function that we could check for that is the same in both 4.1 
+> and 5.0?  Then our configure check would be even simpler.            
+Checked in with the attached change.  Thanks for the suggestion.
+
+Regards,
+
+-- 
+Don McCoy
+don (at) CodeSourcery 
+(888) 776-0262 / (650) 331-3385, x712
+
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: ip2.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060830/391d01e1/attachment.ksh>
+
+From jules at codesourcery.com  Wed Aug 30 14:43:28 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Wed, 30 Aug 2006 10:43:28 -0400
+Subject: [patch] PAS support
+Message-ID: <44F5A410.50703@codesourcery.com>
+
+This patch adds support to use PAS for parallel services.
+
+It has been tested on using the Linux PAS, but not yet with MCOE PAS. 
+However, older versions of this patch were developed with MCOE.  AFAICT, 
+the major difference appears to be that MCOE prefers non-interrupt based 
+semaphores, while Linux prefers the opposite.  This choice is handled by 
+macros, so it should not be an issue.
+
+I'm currently testing that this does not break MPI parallel services. 
+(Basic testing of this on GTRI was good, but it looks like there are a 
+few more bits to fix).
+
+Known todos and broken bits:
+  - Test with MCOE
+  - Add split complex support
+  - Correct aclocal support for configure.ac.  Linux PAS uses pkg-config
+    (hurray!), but autoconf doesn't have builtin support for pkg-config
+    (boo!).  On GTRI, there is a PAS_CHECK_MODULES macro in aclocal.
+    However, this must not be standard, since it isn't on cugel.
+
+					-- Jules
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: pas.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060830/bfbbe150/attachment.ksh>
+
+From mark at codesourcery.com  Wed Aug 30 18:08:00 2006
+From: mark at codesourcery.com (Mark Mitchell)
+Date: 30 Aug 2006 13:08:00 -0500
+Subject: [vsipl++] [patch] PAS support
+Message-ID: <3239788127.26049073@mail.codesourcery.com>
+
+yay!
+--
+Mark Mitchell
+CodeSourcery
+mark at codesourcery.com
+(650) 331-6685 x713
+-----Original Message-----
+From: Jules Bergmann <jules at codesourcery.com>
+Date: Wednesday, Aug 30, 2006 9:44 am
+Subject: [vsipl++] [patch] PAS support
+
+This patch adds support to use PAS for parallel services.
+
+It has been tested on using the Linux PAS, but not yet with MCOE PAS. However, older versions of this patch were developed with MCOE.  AFAICT, the major difference appears to be that MCOE prefers non-interrupt based semaphores, while Linux prefers the opposite.  This choice is handled by macros, so it should not be an issue.
+
+I'm currently testing that this does not break MPI parallel services. (Basic testing of this on GTRI was good, but it looks like there are a few more bits to fix).
+
+Known todos and broken bits:
+  - Test with MCOE
+  - Add split complex support
+  - Correct aclocal support for configure.ac.  Linux PAS uses pkg-config
+    (hurray!), but autoconf doesn't have builtin support for pkg-config
+    (boo!).  On GTRI, there is a PAS_CHECK_MODULES macro in aclocal.
+    However, this must not be standard, since it isn't on cugel.
+
+					-- Jules
+
+
+-- Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+
+
+From stefan at codesourcery.com  Thu Aug 31 22:34:31 2006
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Thu, 31 Aug 2006 18:34:31 -0400
+Subject: patch: add support for intel-win toolchain
+Message-ID: <44F763F7.1060707@codesourcery.com>
+
+The attached patch adds support for Intel's compiler on windows.
+Documentation still needs to be worked on.
+The patch is checked in.
+
+Regards,
+		Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: intel-win.patch
+Type: text/x-patch
+Size: 23574 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060831/65a9113a/attachment.bin>
+
+From mark at codesourcery.com  Thu Aug 31 22:41:51 2006
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Thu, 31 Aug 2006 15:41:51 -0700
+Subject: [vsipl++] patch: add support for intel-win toolchain
+In-Reply-To: <44F763F7.1060707@codesourcery.com>
+References: <44F763F7.1060707@codesourcery.com>
+Message-ID: <44F765AF.7060500@codesourcery.com>
+
+Stefan Seefeld wrote:
+> The attached patch adds support for Intel's compiler on windows.
+> Documentation still needs to be worked on.
+> The patch is checked in.
+
+Yay!
+
+-- 
+Mark Mitchell
+CodeSourcery
+mark at codesourcery.com
+(650) 331-3385 x713
+
+

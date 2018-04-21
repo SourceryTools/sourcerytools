@@ -1,0 +1,103 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [c++-pthreads] cancellation points report failure
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:c%2B%2B-pthreads%40codesourcery.com?Subject=Re%3A%20%5Bc%2B%2B-pthreads%5D%20cancellation%20points%20report%20failure&In-Reply-To=%3Cxypisk64bvq.fsf%40miranda.boston.redhat.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000023.html">
+   <LINK REL="Next"  HREF="000063.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[c++-pthreads] cancellation points report failure</H1>
+    <B>Jason Merrill</B> 
+    <A HREF="mailto:c%2B%2B-pthreads%40codesourcery.com?Subject=Re%3A%20%5Bc%2B%2B-pthreads%5D%20cancellation%20points%20report%20failure&In-Reply-To=%3Cxypisk64bvq.fsf%40miranda.boston.redhat.com%3E"
+       TITLE="[c++-pthreads] cancellation points report failure">jason at redhat.com
+       </A><BR>
+    <I>Wed Dec 24 12:51:37 UTC 2003</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000023.html">[c++-pthreads] cancellation points report failure
+</A></li>
+        <LI>Next message: <A HREF="000063.html">cancellation points report failure
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#59">[ date ]</a>
+              <a href="thread.html#59">[ thread ]</a>
+              <a href="subject.html#59">[ subject ]</a>
+              <a href="author.html#59">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>On Sat, 20 Dec 2003 10:54:44 -0800, Mark Mitchell &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/c++-pthreads">mark at codesourcery.com</A>&gt; wrote:
+
+&gt;&gt;<i> Since it apparently isn't yet clear to everybody what I had suggested,
+</I>&gt;&gt;<i> I'll outline it again:
+</I>&gt;<i>
+</I>&gt;<i> I think it's a great to see a tidy description of your idea.  It's good
+</I>&gt;<i> to get concrete proposals on the table.
+</I>&gt;<i>
+</I>&gt;<i> Jason (Merill), would you care to post a similar description of your
+</I>&gt;<i> preferred scenario?
+</I>
+The scenario I've been thinking of is:
+
+ * The POSIX cancellation points can throw a cancellation exception.
+ * C++ I/O functions can throw a cancellation exception.
+ * C++ catch blocks work normally.
+ * If a cancellation exception is destroyed, the cancellation request
+   is re-entered, and acted on again at the next cancellation point.
+
+This model doesn't work as well for pthread_exit or longjmp_unwind, since
+they don't have predefined deferral semantics.  I'm somewhat inclined to
+stay with calling terminate if we swallow an exit exception.
+
+I just did some testing on Tru64: Evidently in their structured
+exception handling model, finalizing a cancellation exception discards the
+cancellation request, as Mark was suggesting; ditto for pthread_exit.  And,
+interestingly, abort().  Testcase attached below.
+
+The main problem with extending these semantics to C++ is the iostream code
+which traps all exceptions.  I think this is a mistake in the design of
+iostreams, but it seems likely to be a common mistake, and I feel strongly
+that it shouldn't silently discard the cancellation request.  That would
+almost certainly be an unintended side-effect.
+
+Jason
+
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: not available
+Type: text/x-c
+Size: 712 bytes
+Desc: not available
+URL: &lt;<A HREF="http://sourcerytools.com/pipermail/c++-pthreads/attachments/20031224/390d71d0/attachment.bin">http://sourcerytools.com/pipermail/c++-pthreads/attachments/20031224/390d71d0/attachment.bin</A>&gt;
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000023.html">[c++-pthreads] cancellation points report failure
+</A></li>
+	<LI>Next message: <A HREF="000063.html">cancellation points report failure
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#59">[ date ]</a>
+              <a href="thread.html#59">[ thread ]</a>
+              <a href="subject.html#59">[ subject ]</a>
+              <a href="author.html#59">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/c++-pthreads">More information about the c++-pthreads
+mailing list</a><br>
+</body></html>

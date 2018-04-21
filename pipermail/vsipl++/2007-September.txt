@@ -1,0 +1,422 @@
+From eschnetz at harris.com  Wed Sep  5 12:48:53 2007
+From: eschnetz at harris.com (Schnetzer, Everett)
+Date: Wed, 5 Sep 2007 08:48:53 -0400
+Subject: Compile problems with reference implementation and gnu 3.4.5
+Message-ID: <E7191752EF4FAD498FD0E968F7A7DAF70AA340@mlbe2k5.cs.myharris.net>
+
+Hi,
+
+I am trying to port the reference implementation to Windows using MinGW
+and gnu 3.4.5, and the doesn't like certain static methods within
+template structs. The first error encountered while building the
+tests/ref-impl programs is:
+
+g++ -DUNIT_TEST_FAILURE_PRINT \
+-I../../src -I/include \
+-c math-matvec.cpp -o math-matvec.o
+../../src/vsip/core/matvec.hpp: In function `typename
+vsip::Promotion<Left, Right>::type
+vsip::impl::impl_dot(vsip::const_Vector<T0, Block0>,
+vsip::const_Vector<T1, Block1>) [with T0 = vsip::cscalar_f, T1 =
+vsip::cscalar_f, Block0 = vsip::Dense<1u, vsip::cscalar_f,
+vsip::tuple<0u, 1u, 2u>, vsip::Local_map>, Block1 = const
+vsip::impl::Unary_expr_block<1u, vsip::impl::conj_functor,
+vsip::Dense<1u, vsip::cscalar_f, vsip::tuple<0u, 1u, 2u>,
+vsip::Local_map>, vsip::cscalar_f>]':
+../../src/vsip/core/matvec.hpp:609:   instantiated from `typename
+vsip::Promotion<std::complex<_Tp>, std::complex<Right> >::type
+vsip::cvjdot(vsip::const_Vector<std::complex<_Tp>, Block0>,
+vsip::const_Vector<std::complex<Right>, Block1>) [with T0 = float, T1 =
+float, Block0 = vsip::Dense<1u, vsip::cscalar_f, vsip::tuple<0u, 1u,
+2u>, vsip::Local_map>, Block1 = vsip::Dense<1u, vsip::cscalar_f,
+vsip::tuple<0u, 1u, 2u>, vsip::Local_map>]'
+math-matvec.cpp:83:   instantiated from here
+../../src/vsip/core/matvec.hpp:164: error: `exec' is not a member of
+`vsip::impl::Evaluator<vsip::impl::Op_prod_vv_dot,
+vsip::impl::Return_scalar<std::complex<float> >,
+vsip::impl::Op_list_2<vsip::Dense<1u, vsip::cscalar_f, vsip::tuple<0u,
+1u, 2u>, vsip::Local_map>, const vsip::impl::Unary_expr_block<1u,
+vsip::impl::conj_functor, vsip::Dense<1u, vsip::cscalar_f,
+vsip::tuple<0u, 1u, 2u>, vsip::Local_map>, vsip::cscalar_f> >,
+vsip::impl::Cvsip_tag>'
+
+I cannot spot any errors in the source that would lead to this error.
+The compiler doesn't have this issue with the GPL version of the code,
+although there seems to be similar implementation patterns in that code
+as well. The error does show up in the GPL version of the tests
+(matvec-prod.cpp) if I force it to use the reference version via the
+VSIP_IMPL_REF_IMPL flag. So I'm stuck trying to figure out why gnu 3.4.5
+doesn't like the implementations of Evaluator in core/matvec.hpp. Any
+clues would be appreciated.
+
+Sincerely,
+
+Everett Schnetzer
+Software Engineer, Harris GCSD
+eschnetz at harris.com
+321-727-6607
+
+-------------- next part --------------
+An HTML attachment was scrubbed...
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20070905/c2060fef/attachment.html>
+
+From stefan at codesourcery.com  Fri Sep  7 22:31:49 2007
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Fri, 07 Sep 2007 18:31:49 -0400
+Subject: [vsipl++] Compile problems with reference implementation and
+ gnu 3.4.5
+In-Reply-To: <E7191752EF4FAD498FD0E968F7A7DAF70AA340@mlbe2k5.cs.myharris.net>
+References: <E7191752EF4FAD498FD0E968F7A7DAF70AA340@mlbe2k5.cs.myharris.net>
+Message-ID: <46E1D155.8040209@codesourcery.com>
+
+Everett,
+
+thanks for reporting this issue. I have tried to reproduce it on Linux
+with g++ 3.4.5 (assuming that mingw 3.4.5 would use the same C++ frontend,
+and thus expose the same problems as the stock g++ 3.4.5, but couldn't
+see any problem. The compilation command you show works fine.
+
+We will try to reproduce this on a Windows machine.
+
+Meanwhile, can you provide us with some details as to how you configured
+and built ? What options and commands did you use exactly ?
+
+Thanks,
+		Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+
+
+From eschnetz at harris.com  Mon Sep 10 13:01:48 2007
+From: eschnetz at harris.com (Schnetzer, Everett)
+Date: Mon, 10 Sep 2007 09:01:48 -0400
+Subject: [vsipl++] Compile problems with reference implementation and gnu 3.4.5
+In-Reply-To: <46E1D155.8040209@codesourcery.com>
+References: <E7191752EF4FAD498FD0E968F7A7DAF70AA340@mlbe2k5.cs.myharris.net> <46E1D155.8040209@codesourcery.com>
+Message-ID: <E7191752EF4FAD498FD0E968F7A7DAF70AA356@mlbe2k5.cs.myharris.net>
+
+Stefan,
+
+Here's the configure command and status:
+
+.\configure --enable-ref-impl --disable-mpi --without-lapack
+--enable-cvsip
+ 
+--with-cvsip-prefix=/m/aip_eschnetz_ai0127_view/AIP_IRAD/COTS/i686-pc-mi
+ngw32
+
+...
+
+configure: Summary
+Build in maintainer-mode:                
+Using config suffix:                     
+Exceptions enabled:                      yes
+With mpi enabled:                        no
+With PAS enabled:                        no
+With LAPACK:                             no
+With SAL:                                no
+With IPP:                                no
+With C-VSIPL:                            yes
+Using FFT backends:                      cvsip
+  Provides float FFTs
+  Provides double FFTs
+Complex storage format:                  interleaved
+Timer:                                   none
+With Python bindings:                    no
+configure: creating ./config.status
+config.status: creating benchmarks/GNUmakefile.inc
+config.status: creating benchmarks/hpec_kernel/GNUmakefile.inc
+config.status: creating doc/Doxyfile
+config.status: creating doc/GNUmakefile.inc
+config.status: creating examples/GNUmakefile.inc
+config.status: creating examples/makefile.standalone
+config.status: creating GNUmakefile
+config.status: creating scripting/GNUmakefile.inc
+config.status: creating src/vsip/core/acconfig.hpp
+config.status: creating src/vsip/GNUmakefile.inc
+config.status: creating src/vsip/opt/cbe/alf/src/ppu/GNUmakefile.inc
+config.status: creating src/vsip/opt/cbe/spu/GNUmakefile.inc
+config.status: creating src/vsip_csl/GNUmakefile.inc
+config.status: creating synopsis.py
+config.status: creating tests/context-installed.pre
+config.status: creating tests/context
+config.status: creating tests/GNUmakefile.inc
+config.status: creating tests/QMTest/configuration
+config.status: creating vendor/clapack/blas/SRC/GNUmakefile
+config.status: creating vendor/clapack/F2CLIBS/libF77/GNUmakefile
+config.status: creating vendor/clapack/SRC/GNUmakefile
+config.status: creating vendor/clapack/SRC/make.inc
+config.status: creating vendor/GNUmakefile.inc
+config.status: creating vendor/lapack/make.inc
+config.status: creating vendor/lapack/SRC/GNUmakefile
+config.status: creating vsipl++.pc
+config.status: creating src/vsip/core/acconfig.hpp 
+
+The build of the VSIPL++ library is done with "make -fGNUmakefile all",
+and it succeeds. Then I change directories to tests/ref-impl and try
+"make -fMakefile check". For the tests, the Makefile and Makefile.inc
+files were updated for our directory structure. The error appears when
+it gets to math-matvec.cpp file.
+
+I've played some with the flags used to compile the tests (removed -O2
+and -pedantic), but nothing has changed the result. I hope your attempt
+on Windows reproduces the problem, but since it works for Linux, I'll
+start looking for possible problems in our environment.
+
+Thanks,
+
+Everett
+
+
+From stefan at codesourcery.com  Mon Sep 10 18:56:04 2007
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Mon, 10 Sep 2007 14:56:04 -0400
+Subject: patch: minor fixes
+Message-ID: <46E59344.8040206@codesourcery.com>
+
+The attached patch fixes three issues:
+
+* The default-option logic in configure.ac was wrong such that --enable-ref-impl
+  and --without-lapack couldn't coexist.
+
+* The src/core/vsip/fft.hpp file had a typo (exposed when built in ref-impl mode).
+
+* The tests/ref-impl/GNUmakefile is obsolete and outdated, and thus is removed now.
+
+OK to check in ?
+
+Thanks,
+		Stefan
+
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: patch
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20070910/f8fb5798/attachment.ksh>
+
+From stefan at codesourcery.com  Mon Sep 10 18:59:11 2007
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Mon, 10 Sep 2007 14:59:11 -0400
+Subject: [vsipl++] patch: minor fixes
+In-Reply-To: <46E59344.8040206@codesourcery.com>
+References: <46E59344.8040206@codesourcery.com>
+Message-ID: <46E593FF.7090301@codesourcery.com>
+
+Sorry, the previous mail contained the unfiltered output of 'svn diff'.
+here is the cleaned-up patch for the three involved files.
+
+Thanks,
+		Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+
+
+From stefan at codesourcery.com  Mon Sep 10 19:00:50 2007
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Mon, 10 Sep 2007 15:00:50 -0400
+Subject: [vsipl++] patch: minor fixes
+In-Reply-To: <46E593FF.7090301@codesourcery.com>
+References: <46E59344.8040206@codesourcery.com> <46E593FF.7090301@codesourcery.com>
+Message-ID: <46E59462.3050208@codesourcery.com>
+
+Stefan Seefeld wrote:
+> Sorry, the previous mail contained the unfiltered output of 'svn diff'.
+> here is the cleaned-up patch for the three involved files.
+
+There. Sorry for the noise.
+
+		Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: patch
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20070910/f8e8b82f/attachment.ksh>
+
+From stefan at codesourcery.com  Mon Sep 10 19:52:19 2007
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Mon, 10 Sep 2007 15:52:19 -0400
+Subject: [vsipl++] Compile problems with reference implementation and
+ gnu 3.4.5
+In-Reply-To: <E7191752EF4FAD498FD0E968F7A7DAF70AA356@mlbe2k5.cs.myharris.net>
+References: <E7191752EF4FAD498FD0E968F7A7DAF70AA340@mlbe2k5.cs.myharris.net> <46E1D155.8040209@codesourcery.com> <E7191752EF4FAD498FD0E968F7A7DAF70AA356@mlbe2k5.cs.myharris.net>
+Message-ID: <46E5A073.8040305@codesourcery.com>
+
+Everett,
+
+Schnetzer, Everett wrote:
+
+> The build of the VSIPL++ library is done with "make -fGNUmakefile all",
+
+(The -f option shouldn't be necessary. The reason we use GNUmakefile
+ instead of Makefile is to make clear (to 'make') that we really require
+ GNU make -- which detects GNUmakefiles automatically. Other versions of
+ make won't be able to handle our build system anyway.)
+
+> and it succeeds. Then I change directories to tests/ref-impl and try
+> "make -fMakefile check". For the tests, the Makefile and Makefile.inc
+> files were updated for our directory structure. The error appears when
+> it gets to math-matvec.cpp file.
+
+That may be the root of the problem. tests/ref-impl/ doesn't come with
+a 'Makefile', only with a 'GNUmakefile'. That, however, is obsolete, and
+not used by our testing harness.
+
+(Our testing harness uses QMTest, and to invoke it you run 'make check'
+ from the toplevel directory. We also support compiling individual tests
+ in a way as not to require QMTest, though the ref-impl test suite doesn't
+ seem to be supported that way. I would suggest to modify / add to the
+ tests_cxx_sources variable in tests/GNUmakefile.inc to include tests/ref-impl/*.cpp.
+
+ Once that is done, you can run 'make tests/ref-impl/math-matvec' from the toplevel
+ directory.)
+
+> I've played some with the flags used to compile the tests (removed -O2
+> and -pedantic), but nothing has changed the result. I hope your attempt
+> on Windows reproduces the problem, but since it works for Linux, I'll
+> start looking for possible problems in our environment.
+
+As I can't reproduce this with my (Linux-based) version of GCC 3.4.5, and
+since this looks like a C++ frontend issue, rather than a platform-specific
+problem, I'm tempted to believe that the cause is related to your writing
+your own Makefile for tests/ref-impl/.
+
+Regards,
+		Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+
+
+From jules at codesourcery.com  Mon Sep 10 20:18:27 2007
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Mon, 10 Sep 2007 16:18:27 -0400
+Subject: [vsipl++] patch: minor fixes
+In-Reply-To: <46E59462.3050208@codesourcery.com>
+References: <46E59344.8040206@codesourcery.com> <46E593FF.7090301@codesourcery.com> <46E59462.3050208@codesourcery.com>
+Message-ID: <46E5A693.70602@codesourcery.com>
+
+Stefan Seefeld wrote:
+> Stefan Seefeld wrote:
+>> Sorry, the previous mail contained the unfiltered output of 'svn diff'.
+>> here is the cleaned-up patch for the three involved files.
+> 
+> There. Sorry for the noise.
+> 
+> 		Stefan
+> 
+> 
+
+This looks good.  Please check it in, thanks!  -- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From cwilso11 at harris.com  Wed Sep 26 21:24:45 2007
+From: cwilso11 at harris.com (Wilson, Charles (cwilso11))
+Date: Wed, 26 Sep 2007 17:24:45 -0400
+Subject: VSIPL++ and Visual C++
+Message-ID: <1B90921D44561C4A977E2604A5247075068508@mlbe2k4.cs.myharris.net>
+
+From
+http://www.codesourcery.com/public/vsiplplusplus/sourceryvsipl++-1.3/qui
+ckstart/ch02s03.html, it is apparent that /building/ CodeSourcery
+VSIPL++ requires the Intel C++ compiler. Once built, though, can the
+library be used from Microsoft Visual C++ 2005?  If VSIPL++ were a C
+library, the answer would obviously be yes because the ABI for C is
+standardized and the header files contain little actual code.  However,
+CodeSourcery VSIPL++ is C++, which makes for ABI issues between
+compilers.  Also, it makes extensive use of templates and template
+meta-programming techniques so quite a bit of the functionality is in
+the public header files -- which the "client compiler" needs to process
+to generate instantiated code.
+
+So
+
+(1) can a pre-compiled VSIPL++ library (such as the one here:
+http://www.codesourcery.com/vsiplplusplus/1.3/download.html) be used
+from Microsoft Visual C++ 2005 -- is MSVC 2005 "ISO C++ compliant"
+enough?
+
+(2) If so, then why can't VSIPL++ be /built/ using MSVC2005 -- assuming
+that either individual licenses for IPP and MKL are obtained, or those
+(presumably optional) elements are disabled when running configure.
+
+(3) If not, the what is the point of using the /Qvc8 switch when
+building VSIPL++ with the Intel C++ compiler? (Why worry about the MS
+ABI if all clients of the library are required to icc anyway?)
+
+Thanks,
+Charles Wilson
+
+
+From stefan at codesourcery.com  Fri Sep 28 18:05:25 2007
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Fri, 28 Sep 2007 14:05:25 -0400
+Subject: [vsipl++] VSIPL++ and Visual C++
+In-Reply-To: <1B90921D44561C4A977E2604A5247075068508@mlbe2k4.cs.myharris.net>
+References: <1B90921D44561C4A977E2604A5247075068508@mlbe2k4.cs.myharris.net>
+Message-ID: <46FD4265.9000001@codesourcery.com>
+
+Charles,
+
+thanks for your interest into Sourcery VSIPL++.
+
+Wilson, Charles (cwilso11) wrote:
+
+> (1) can a pre-compiled VSIPL++ library (such as the one here:
+> http://www.codesourcery.com/vsiplplusplus/1.3/download.html) be used
+> from Microsoft Visual C++ 2005 -- is MSVC 2005 "ISO C++ compliant"
+> enough?
+
+You are right, building Sourcery VSIPL++ requires a fairly standard-compliant
+C++ compiler, and -- as we had to find out -- MSVC2005 unfortunately isn't
+good enough.
+Since most of the complex code is part of (public) headers, it will be
+exposed to the end-user's compiler, too. Thus, MSVC2005 most likely won't
+be able to compile applications using Sourcery VSIPL++.
+
+> (2) If so, then why can't VSIPL++ be /built/ using MSVC2005 -- assuming
+> that either individual licenses for IPP and MKL are obtained, or those
+> (presumably optional) elements are disabled when running configure.
+> 
+> (3) If not, the what is the point of using the /Qvc8 switch when
+> building VSIPL++ with the Intel C++ compiler? (Why worry about the MS
+> ABI if all clients of the library are required to icc anyway?)
+
+This flag may indeed not be very meaningful in this context.
+
+Thanks,
+		Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+
+

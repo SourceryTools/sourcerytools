@@ -1,0 +1,383 @@
+From nathan at codesourcery.com  Mon Jul  2 13:17:46 2007
+From: nathan at codesourcery.com (Nathan Sidwell)
+Date: Mon, 02 Jul 2007 14:17:46 +0100
+Subject: [coldfire-gnu-discuss] USB BDM
+In-Reply-To: <7D2939E6-563C-4855-B730-B44A618E2DAD@ucsd.edu>
+References: <3B586A4C-B24D-4A72-A040-753800DEACAD@ucsd.edu> <20070625205628.GC2133@caradoc.them.org> <7D2939E6-563C-4855-B730-B44A618E2DAD@ucsd.edu>
+Message-ID: <4688FAFA.9060908@codesourcery.com>
+
+Paul Georgief wrote:
+
+> Tried it.  It doesn't work.  I get the following:
+> 
+> (gdb) target remote | m68k-elf-sprite pe://USBMultilink/?speed=2 4x4
+> Remote debugging using | m68k-elf-sprite pe://USBMultilink/?speed=2 4x4
+> m68k-elf-sprite:error:Cannot find a matching debug device
+> Remote communication error: No error.
+
+This is a URL parsing bug, that we have fixed in the development sources, it 
+will be in the next release.
+
+
+nathan
+
+-- 
+Nathan Sidwell    ::   http://www.codesourcery.com   ::         CodeSourcery
+nathan at codesourcery.com    ::     http://www.planetfall.pwp.blueyonder.co.uk
+
+
+
+From Tony.Mouawad at christiedigital.com  Wed Jul  4 14:04:55 2007
+From: Tony.Mouawad at christiedigital.com (Mouawad, Tony)
+Date: Wed, 4 Jul 2007 10:04:55 -0400
+Subject: Illegal Instruction in libc?
+Message-ID: <AD98412A5373CC4AA643D9C021922A543A9167@cdskitexg01.cds.int>
+
+I'm trying to figure out why we are experiencing an illegal instruction
+in libc during a call to nanosleep.  The version of linux is 2.6.10 and
+gcc version 4.1.1 CodeSourcery Sourcery G++ 4.1-30.
+
+Here's a register dump and disassembly after hitting the illegal
+instruction:
+(gdb) info reg
+d0             0x0      0
+d1             0xbffff99c       -1073743460
+d2             0x0      0
+d3             0x5dc    1500
+d4             0x28     40
+d5             0x113    275
+d6             0x3cf    975
+d7             0xc      12
+a0             0x40364388       0x40364388 <<<-- BAD ADDRESS
+a1             0xbffffaf8       0xbffffaf8
+a2             0x0      0x0
+a3             0x8008cdda       0x8008cdda
+a4             0xbffff9cc       0xbffff9cc
+a5             0x404e1018       0x404e1018
+fp             0xbffff97c       0xbffff97c
+sp             0xbffff974       0xbffff974
+ps             0x8      8
+pc             0x40364388       0x40364388 <__FRAME_END__+18212>
+fpcontrol      0x0      0
+fpstatus       0x0      0
+fpiaddr        0x8      0x8
+
+(gdb) frame 1
+#1  0x404a052e in __librt_disable_asynccancel () from /lib/libc.so.6
+(gdb) disass
+Dump of assembler code for function __librt_disable_asynccancel:
+0x404a0514 <__librt_disable_asynccancel+0>:     linkw %fp,#0
+0x404a0518 <__librt_disable_asynccancel+4>:     movel %a5,%sp at -
+0x404a051a <__librt_disable_asynccancel+6>:     moveal #264956,%a5
+0x404a0520 <__librt_disable_asynccancel+12>:    lea %pc@(0x404a051c
+<__librt_disable_asynccancel+8>,%a5:l),%a5
+0x404a0524 <__librt_disable_asynccancel+16>:    moveal %a5@(7704),%a0
+0x404a0528 <__librt_disable_asynccancel+20>:    moveal %a0@(140),%a0
+0x404a052c <__librt_disable_asynccancel+24>:    jsr %a0@ <<<- BAD JUMP
+0x404a052e <__librt_disable_asynccancel+26>:    moveb %fp@(11),%a0@(129)
+0x404a0534 <__librt_disable_asynccancel+32>:    moveal %fp@(-4),%a5
+0x404a0538 <__librt_disable_asynccancel+36>:    unlk %fp
+0x404a053a <__librt_disable_asynccancel+38>:    rts
+End of assembler dump.
+(gdb)
+
+Do you have any insight as to what maybe going wrong?  Is there
+additional information I can provide?
+
+Cheers,
+Tony
+
+
+
+From nathan at codesourcery.com  Wed Jul  4 14:25:40 2007
+From: nathan at codesourcery.com (Nathan Sidwell)
+Date: Wed, 04 Jul 2007 15:25:40 +0100
+Subject: [coldfire-gnu-discuss] Illegal Instruction in libc?
+In-Reply-To: <AD98412A5373CC4AA643D9C021922A543A9167@cdskitexg01.cds.int>
+References: <AD98412A5373CC4AA643D9C021922A543A9167@cdskitexg01.cds.int>
+Message-ID: <468BADE4.7010109@codesourcery.com>
+
+Mouawad, Tony wrote:
+> I'm trying to figure out why we are experiencing an illegal instruction
+> in libc during a call to nanosleep.  The version of linux is 2.6.10 and
+> gcc version 4.1.1 CodeSourcery Sourcery G++ 4.1-30.
+
+Have you tried the 4.2 toolchain?
+
+> Do you have any insight as to what maybe going wrong?  Is there
+> additional information I can provide?
+
+do you have a test case?
+
+nathan
+
+-- 
+Nathan Sidwell    ::   http://www.codesourcery.com   ::         CodeSourcery
+nathan at codesourcery.com    ::     http://www.planetfall.pwp.blueyonder.co.uk
+
+
+
+From Tony.Mouawad at christiedigital.com  Wed Jul  4 14:49:37 2007
+From: Tony.Mouawad at christiedigital.com (Mouawad, Tony)
+Date: Wed, 4 Jul 2007 10:49:37 -0400
+Subject: [coldfire-gnu-discuss] Illegal Instruction in libc?
+In-Reply-To: <468BADE4.7010109@codesourcery.com>
+Message-ID: <AD98412A5373CC4AA643D9C021922A543A916A@cdskitexg01.cds.int>
+
+I have not tried 4.2 toolchain.
+
+This is a very intermittent problem and very difficult to reproduce but
+it does occur and may be related to system lockups we've been
+experiencing as well.  It would probably be very difficult to put
+together a test case but I am willing to work with you to provide as
+much information as possible.
+
+Tony.
+
+-----Original Message-----
+From: Nathan Sidwell [mailto:nathan at codesourcery.com] 
+Sent: Wednesday, July 04, 2007 10:26 AM
+To: Mouawad, Tony
+Cc: coldfire-gnu-discuss at codesourcery.com
+Subject: Re: [coldfire-gnu-discuss] Illegal Instruction in libc?
+
+Mouawad, Tony wrote:
+> I'm trying to figure out why we are experiencing an illegal
+instruction
+> in libc during a call to nanosleep.  The version of linux is 2.6.10
+and
+> gcc version 4.1.1 CodeSourcery Sourcery G++ 4.1-30.
+
+Have you tried the 4.2 toolchain?
+
+> Do you have any insight as to what maybe going wrong?  Is there
+> additional information I can provide?
+
+do you have a test case?
+
+nathan
+
+-- 
+Nathan Sidwell    ::   http://www.codesourcery.com   ::
+CodeSourcery
+nathan at codesourcery.com    ::
+http://www.planetfall.pwp.blueyonder.co.uk
+
+
+
+From Tony.Mouawad at christiedigital.com  Thu Jul  5 15:25:42 2007
+From: Tony.Mouawad at christiedigital.com (Mouawad, Tony)
+Date: Thu, 5 Jul 2007 11:25:42 -0400
+Subject: [coldfire-gnu-discuss] Illegal Instruction in libc?
+In-Reply-To: <AD98412A5373CC4AA643D9C021922A543A916A@cdskitexg01.cds.int>
+Message-ID: <AD98412A5373CC4AA643D9C021922A543A9176@cdskitexg01.cds.int>
+
+I have another instance of this issue... I investigated a core dump and
+found that instructions at 0x404a0524 and 0x404a0528 reference valid
+data according to the dump.  At the time we execute 0x404a052c, the
+value in A0 should have been 0x404A2388 (pthread_thread_self) according
+to the memory in the core dump.  Yet the actual value in A0 at the time
+we execute 0x404a052c is 0x404a2388.  So, it looks like something is
+going wrong with register A0.  The memory referenced to set A0 is fine.
+Do you have any ideas as to what could be causing this kind of symptom?
+I have a core dump, would that be useful for you?
+
+
+(gdb) disass 0x404a0514
+Dump of assembler code for function __librt_disable_asynccancel:
+0x404a0514 <__librt_disable_asynccancel+0>:     linkw %fp,#0
+0x404a0518 <__librt_disable_asynccancel+4>:     movel %a5,%sp at -
+0x404a051a <__librt_disable_asynccancel+6>:     moveal #264956,%a5
+0x404a0520 <__librt_disable_asynccancel+12>:    lea %pc@(0x404a051c
+<__librt_disable_asynccancel+8>,%a5:l),%a5
+0x404a0524 <__librt_disable_asynccancel+16>:    moveal %a5@(7704),%a0
+0x404a0528 <__librt_disable_asynccancel+20>:    moveal %a0@(140),%a0
+0x404a052c <__librt_disable_asynccancel+24>:    jsr %a0@
+0x404a052e <__librt_disable_asynccancel+26>:    moveb %fp@(11),%a0@(129)
+0x404a0534 <__librt_disable_asynccancel+32>:    moveal %fp@(-4),%a5
+0x404a0538 <__librt_disable_asynccancel+36>:    unlk %fp
+0x404a053a <__librt_disable_asynccancel+38>:    rts
+End of assembler dump.
+
+(gdb) info reg
+d0             0x0      0
+d1             0xbffffbb0       -1073742928
+d2             0x0      0
+d3             0xc      12
+d4             0x0      0
+d5             0xbf     191
+d6             0x0      0
+d7             0xc      12
+a0             0x404a2388       0x404a2388
+a1             0x0      0x0
+a2             0x80228720       0x80228720
+a3             0x0      0x0
+a4             0x80007934       0x80007934
+a5             0x404e1018       0x404e1018
+fp             0xbffffb90       0xbffffb90
+sp             0xbffffb88       0xbffffb88
+ps             0x4      4
+pc             0x404a238a       0x404a238a <skip_ws+68>
+fpcontrol      0x0      0
+fpstatus       0x0      0
+fpiaddr        0x8      0x8
+(gdb)
+
+
+From nathan at codesourcery.com  Thu Jul  5 15:31:17 2007
+From: nathan at codesourcery.com (Nathan Sidwell)
+Date: Thu, 05 Jul 2007 16:31:17 +0100
+Subject: [coldfire-gnu-discuss] Illegal Instruction in libc?
+In-Reply-To: <AD98412A5373CC4AA643D9C021922A543A9176@cdskitexg01.cds.int>
+References: <AD98412A5373CC4AA643D9C021922A543A9176@cdskitexg01.cds.int>
+Message-ID: <468D0EC5.6090005@codesourcery.com>
+
+Mouawad, Tony wrote:
+> I have another instance of this issue... I investigated a core dump and
+> found that instructions at 0x404a0524 and 0x404a0528 reference valid
+> data according to the dump.  At the time we execute 0x404a052c, the
+> value in A0 should have been 0x404A2388 (pthread_thread_self) according
+> to the memory in the core dump.  Yet the actual value in A0 at the time
+> we execute 0x404a052c is 0x404a2388.  So, it looks like something is
+> going wrong with register A0.  The memory referenced to set A0 is fine.
+> Do you have any ideas as to what could be causing this kind of symptom?
+> I have a core dump, would that be useful for you?
+
+Thanks, but without a testcase it's difficult.  Also, our priority is to our 
+subscription customers.
+
+nathan
+-- 
+Nathan Sidwell    ::   http://www.codesourcery.com   ::         CodeSourcery
+nathan at codesourcery.com    ::     http://www.planetfall.pwp.blueyonder.co.uk
+
+
+
+From haluongvn at gmail.com  Wed Jul  4 07:20:46 2007
+From: haluongvn at gmail.com (Ha Luong)
+Date: Wed, 4 Jul 2007 02:20:46 -0500
+Subject: undefined reference to `__region_array' error
+Message-ID: <61577c8f0707040020y23e87bd1q6b0775e001c9fe6d@mail.gmail.com>
+
+Dear all,
+I used sourcery 4.2-8 to compile my source and I has the error :
+
+m68k-elf-gcc -c  -mcpu=5282  -O3    -DMCF5282_BOARD -D NW_DGM_ALIGN=4
+-DEE_BIG_E
+NDIAN -msoft-float -DNDEBUG -DAUTOGO=TRUE   -I. -I../th/gcc_cf/al
+-I../th/src
+-Ittsprk01 -DITERATIONS=DEFAULT  -I. -I../th/gcc_cf/al -I../th/src -o
+gcc_cf/obj
+/ttsprk01/algotst.o ttsprk01/algotst.c
+m68k-elf-gcc -c  -mcpu=5282  -O3    -DMCF5282_BOARD -D NW_DGM_ALIGN=4
+-DEE_BIG_E
+NDIAN -msoft-float -DNDEBUG -DAUTOGO=TRUE   -I. -I../th/gcc_cf/al
+-I../th/src
+-Ittsprk01 -DITERATIONS=DEFAULT  -I. -I../th/gcc_cf/al -I../th/src -o
+gcc_cf/obj
+/ttsprk01/bmark.o ttsprk01/bmark.c
+m68k-elf-gcc -u main -u __region_array
+-TD:/cvs_test/mw_test/Cross_Products/Com
+piler/mw_test_harness/product_utils/gcc_cf/m5282evb-ram-hosted.ld -o
+gcc_cf/bin/
+ttsprk01.elf gcc_cf/obj/ttsprk01/algotst.o gcc_cf/obj/ttsprk01/bmark.o
+gcc_cf/o
+bj/thobjs.a D:\CodeSourcery\SourceryGppLite/m68k-elf/lib/libm.a
+d:/codesourcery/sourcerygpplite/bin/../lib/gcc/m68k-elf/4.2.0/../../../../m68k-e
+lf/bin/ld.exe: warning: cannot find entry symbol __start; defaulting to
+00000000
+
+d:/codesourcery/sourcerygpplite/bin/../lib/gcc/m68k-elf/4.2.0/../../../../m68k-e
+lf/lib\libcf.a(cf-crt1.o): In function `__start1':
+cf-crt1.c:(.text+0x32): undefined reference to `__region_array'
+cf-crt1.c:(.text+0x3a): undefined reference to `__region_array'
+collect2: ld returned 1 exit status
+make: *** [gcc_cf/bin/ttsprk01.elf] Error 1
+
+I compiled the same source with sourcery 4.1-32 before , and it has no error
+. Could you please help me ?
+
+Thanks,
+Ha Luong
+-------------- next part --------------
+An HTML attachment was scrubbed...
+URL: <http://sourcerytools.com/pipermail/coldfire-gnu-discuss/attachments/20070704/a57cd0fe/attachment.html>
+
+From mark at codesourcery.com  Thu Jul  5 16:24:49 2007
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Thu, 05 Jul 2007 09:24:49 -0700
+Subject: [coldfire-gnu-discuss] Illegal Instruction in libc?
+In-Reply-To: <468D0EC5.6090005@codesourcery.com>
+References: <AD98412A5373CC4AA643D9C021922A543A9176@cdskitexg01.cds.int> <468D0EC5.6090005@codesourcery.com>
+Message-ID: <468D1B51.7050105@codesourcery.com>
+
+Nathan Sidwell wrote:
+> Mouawad, Tony wrote:
+>> I have another instance of this issue... I investigated a core dump and
+>> found that instructions at 0x404a0524 and 0x404a0528 reference valid
+>> data according to the dump.
+
+> Thanks, but without a testcase it's difficult. 
+
+I think that what we need is a program that we can run that manifests
+the bad benavhior.  The problem could be the kernel, the C library, the
+compiler, or the application.  Unfortunately, it's very tough to isolate
+intermittent problems.  If you can strip down your application to the
+point where you can run some problematic function in a loop until it
+explodes, then we may be able to figure out what's wrong.
+
+-- 
+Mark Mitchell
+CodeSourcery
+mark at codesourcery.com
+(650) 331-3385 x713
+
+
+From carlos at codesourcery.com  Thu Jul  5 16:35:30 2007
+From: carlos at codesourcery.com (Carlos O'Donell)
+Date: Thu, 5 Jul 2007 12:35:30 -0400
+Subject: [coldfire-gnu-discuss] undefined reference to `__region_array' error
+In-Reply-To: <61577c8f0707040020y23e87bd1q6b0775e001c9fe6d@mail.gmail.com>
+References: <61577c8f0707040020y23e87bd1q6b0775e001c9fe6d@mail.gmail.com>
+Message-ID: <20070705163530.GY4712@lios>
+
+On Wed, Jul 04, 2007 at 02:20:46AM -0500, Ha Luong wrote:
+>    Dear all,
+>    I used sourcery 4.2-8 to compile my source and I has the error :
+>    m68k-elf-gcc -u main -u __region_array 
+>    -TD:/cvs_test/mw_test/Cross_Products/Com
+>    piler/mw_test_harness/product_utils/gcc_cf/m5282evb- ram-hosted.ld -o
+>    gcc_cf/bin/
+>    ttsprk01.elf gcc_cf/obj/ttsprk01/algotst.o gcc_cf/obj/ttsprk01/bmark.o 
+>    gcc_cf/o
+>    bj/thobjs.a D:\CodeSourcery\SourceryGppLite/m68k-elf/lib/libm.a
+>    d:/codesourcery/sourcerygpplite/bin/../lib/gcc/m68k-elf/4.2.0/../../../../m68k-e
+>    lf/bin/ld.exe: warning: cannot find entry symbol __start; defaulting to
+>    00000000
+> 
+>    d:/codesourcery/sourcerygpplite/bin/../lib/gcc/m68k-elf/4.2.0/../../../../m68k-e
+>    lf/lib\libcf.a(cf-crt1.o): In function `__start1':
+>    cf-crt1.c:(.text+0x32): undefined reference to `__region_array'
+>    cf-crt1.c:(.text+0x3a): undefined reference to `__region_array'
+>    collect2: ld returned 1 exit status
+>    make: *** [gcc_cf/bin/ttsprk01.elf] Error 1
+> 
+>    I compiled the same source with sourcery 4.1-32 before , and it has no
+>    error . Could you please help me ?
+
+You have forced __region_array to be undefined with "-u __region_array" 
+and you have not provided an archive which defines __region_array?
+
+Which archive defines __region_array?
+
+It appears that __start is also not defined?
+
+Cheers,
+Carlos.
+-- 
+Carlos O'Donell
+CodeSourcery
+carlos at codesourcery.com
+(650) 331-3385 x716
+
+

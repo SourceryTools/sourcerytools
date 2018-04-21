@@ -1,0 +1,153 @@
+Index: Engine/MultiPatchEngine.cpp
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/Engine/MultiPatchEngine.cpp,v
+retrieving revision 1.47
+diff -c -p -r1.47 MultiPatchEngine.cpp
+*** Engine/MultiPatchEngine.cpp	2001/04/12 15:49:43	1.47
+--- Engine/MultiPatchEngine.cpp	2001/05/15 19:47:34
+*************** Engine<Dim, T, MultiPatch<LayoutTag,Patc
+*** 247,255 ****
+  Engine<Dim, T, MultiPatch<LayoutTag,PatchTag> >::
+  makeOwnCopy()
+  {
+!   int sz = data().size();
+!   for (int i = 0; i < sz; ++i)
+!     data()[i].makeOwnCopy();
+      
+    return *this;
+  }
+--- 247,253 ----
+  Engine<Dim, T, MultiPatch<LayoutTag,PatchTag> >::
+  makeOwnCopy()
+  {
+!   data_m.makeOwnCopy();
+      
+    return *this;
+  }
+Index: Engine/RemoteDynamicEngine.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/Engine/RemoteDynamicEngine.h,v
+retrieving revision 1.15
+diff -c -p -r1.15 RemoteDynamicEngine.h
+*** Engine/RemoteDynamicEngine.h	2000/09/20 16:22:07	1.15
+--- Engine/RemoteDynamicEngine.h	2001/05/15 19:47:34
+*************** public:
+*** 234,239 ****
+--- 234,256 ----
+      return (*localEnginePtr_m).data();
+    }
+  
++   // Get a private copy of data viewed by this Engine.
++ 
++   inline
++   Engine_t &makeOwnCopy()
++   {
++     if (engineIsLocal()) 
++     {
++       // Ideally this would be localEnginePtr_m.makeOwnCopy();
++       // but Shared<> doesn't implement ElementProperties correctly.
++       LocalEngine_t engine(localEngine());
++       engine.makeOwnCopy();
++       localEnginePtr_m = LocalPtr_t(new LocalShared_t(engine));
++     }
++  
++     return *this;
++   }
++ 
+    //============================================================
+    // Dynamic interface methods.
+    //============================================================
+Index: Engine/RemoteEngine.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/Engine/RemoteEngine.h,v
+retrieving revision 1.32
+diff -c -p -r1.32 RemoteEngine.h
+*** Engine/RemoteEngine.h	2001/05/14 21:11:23	1.32
+--- Engine/RemoteEngine.h	2001/05/15 19:47:35
+*************** public:
+*** 277,282 ****
+--- 277,299 ----
+      return domain_m[i].first();
+    }
+  
++   // Get a private copy of data viewed by this Engine.
++ 
++   inline
++   Engine_t &makeOwnCopy()
++   {
++     if (engineIsLocal() && localEnginePtr_m.isValid()) 
++     {
++       // Ideally this would be localEnginePtr_m.makeOwnCopy();
++       // but Shared<> doesn't implement ElementProperties correctly.
++       LocalEngine_t engine(localEngine());
++       engine.makeOwnCopy();
++       localEnginePtr_m = LocalPtr_t(new LocalShared_t(engine));
++     }
++  
++     return *this;
++   }
++ 
+  protected:
+  
+    // The domain.  We don't just pull the domain out of the localEngine
+Index: Engine/tests/makefile
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/Engine/tests/makefile,v
+retrieving revision 1.37
+diff -c -p -r1.37 makefile
+*** Engine/tests/makefile	2000/07/28 18:21:05	1.37
+--- Engine/tests/makefile	2001/05/15 19:47:35
+*************** dynamic_tests:: dynamic_test1 dynamic_te
+*** 56,62 ****
+  brickbase_tests:: brickbase_test1 brickviewbase_test1 brickviewbase_test2 \
+  	          brickviewbase_test3 brickviewbase_test4 brickviewbase_test5
+  
+! remote_tests:: remoteBrickTest1 remoteDynamicTest1
+  
+  run: run_tests
+  	cat *.out
+--- 56,62 ----
+  brickbase_tests:: brickbase_test1 brickviewbase_test1 brickviewbase_test2 \
+  	          brickviewbase_test3 brickviewbase_test4 brickviewbase_test5
+  
+! remote_tests:: remoteBrickTest1 remoteDynamicTest1 makeOwnCopy
+  
+  run: run_tests
+  	cat *.out
+*************** run_remote:
+*** 122,127 ****
+--- 122,129 ----
+  					1>remoteBrickTest1.out 2>&1
+  	$(MPIRUN) $(ODIR)/remoteDynamicTest1 $(TSTOPTS) \
+  					1>remoteDynamicTest1.out 2>&1
++ 	$(MPIRUN) $(ODIR)/makeOwnCopy $(TSTOPTS) \
++ 					1>makeOwnCopy.out 2>&1
+  
+  .PHONY: dynamic_test1
+  .PHONY: dynamic_test2
+*************** dynamiclayout_test1: $(ODIR)/dynamiclayo
+*** 203,211 ****
+--- 205,215 ----
+  
+  .PHONY: remoteBrickTest1
+  .PHONY: remoteDynamicTest1
++ .PHONY: makeOwnCopy
+  
+  remoteBrickTest1: $(ODIR)/remoteBrickTest1
+  remoteDynamicTest1: $(ODIR)/remoteDynamicTest1
++ makeOwnCopy: $(ODIR)/makeOwnCopy
+  
+  
+  
+*************** $(ODIR)/remoteBrickTest1: $(ODIR)/remote
+*** 303,308 ****
+--- 307,315 ----
+  	$(LinkToSuite)
+  
+  $(ODIR)/remoteDynamicTest1: $(ODIR)/remoteDynamicTest1.o
++ 	$(LinkToSuite)
++ 
++ $(ODIR)/makeOwnCopy: $(ODIR)/makeOwnCopy.o
+  	$(LinkToSuite)
+  
+  include $(SHARED_ROOT)/tail.mk

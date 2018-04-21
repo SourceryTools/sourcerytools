@@ -1,0 +1,450 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [PATCH] misc. cleanups
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:qmtest%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20misc.%20cleanups&In-Reply-To=%3C20030815062342.GA6270%40njs.dhis.org%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000411.html">
+   <LINK REL="Next"  HREF="000413.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[PATCH] misc. cleanups</H1>
+    <B>Nathaniel Smith</B> 
+    <A HREF="mailto:qmtest%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20misc.%20cleanups&In-Reply-To=%3C20030815062342.GA6270%40njs.dhis.org%3E"
+       TITLE="[PATCH] misc. cleanups">njs at pobox.com
+       </A><BR>
+    <I>Fri Aug 15 06:23:42 UTC 2003</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000411.html">[qmtest] [PATCH] Reliably close stdin in 'qm.executable.Filter'
+</A></li>
+        <LI>Next message: <A HREF="000413.html">[qmtest] [PATCH] misc. cleanups
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#412">[ date ]</a>
+              <a href="thread.html#412">[ thread ]</a>
+              <a href="subject.html#412">[ subject ]</a>
+              <a href="author.html#412">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Went through my list of assorted QMTest gripes today, so here's a
+patch with all the trivial changes.
+
+-- Nathaniel
+
+-- 
+Details are all that matters; God dwells there, and you never get to
+see Him if you don't struggle to get them right. -- Stephen Jay Gould
+-------------- next part --------------
+diff -urN --exclude='*~' --exclude='.*' --exclude=CVS --exclude='*.pyo' --exclude='*.pyc' --exclude=build --exclude=GNUmakefile --exclude=config.log --exclude=config.status --exclude=config.cache --exclude=qmtest --exclude=qm.spec --exclude='*.html' --exclude='*.dtd' --exclude=CATALOG --exclude=__version.py --exclude=thread_target --exclude=process_target qm-clean/ChangeLog qm-misc-cleanups/ChangeLog
+--- qm-clean/ChangeLog	2003-08-14 23:20:43.000000000 -0700
++++ qm-misc-cleanups/ChangeLog	2003-08-14 22:51:22.000000000 -0700
+@@ -1,5 +1,22 @@
+ 2003-08-14  Nathaniel Smith  &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">njs at codesourcery.com</A>&gt;
+ 
++	* qm/executable.py (Executable.Spawn): Remove __has_*_run variables.
++	(Executable._InitializeParent): Likewise.
++	(Executable._HandleChild): Likewise.
++	(Executable._InitializeChild): Likewise.
++	(Executable._DoParent): Likewise.
++	* qm/platform_win32.py (get_user_name): Remove.
++	* qm/platform_unix.py (send_email): Remove.
++	(get_user_name): Remove.
++	* qm/regression_test.py: Remove file.	
++	
++	* qm/test/doc/reference.xml (Field Classes): Fix typo.
++
++	* qm/test/file_result_stream.py (FileResultStream.__init__): Fix
++	indentation.
++	
++2003-08-14  Nathaniel Smith  &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">njs at codesourcery.com</A>&gt;
++
+ 	* qm/executable.py (TimeoutExecutable._HandleChild): Close all
+ 	fds in the monitor process.
+ 	* tests/xmldb/test.qms/classes.qms/scripttest_closes_stdin.qmt:
+diff -urN --exclude='*~' --exclude='.*' --exclude=CVS --exclude='*.pyo' --exclude='*.pyc' --exclude=build --exclude=GNUmakefile --exclude=config.log --exclude=config.status --exclude=config.cache --exclude=qmtest --exclude=qm.spec --exclude='*.html' --exclude='*.dtd' --exclude=CATALOG --exclude=__version.py --exclude=thread_target --exclude=process_target qm-clean/qm/executable.py qm-misc-cleanups/qm/executable.py
+--- qm-clean/qm/executable.py	2003-08-14 23:20:43.000000000 -0700
++++ qm-misc-cleanups/qm/executable.py	2003-08-14 22:46:17.000000000 -0700
+@@ -97,15 +97,6 @@
+         path using 'dir' as the base, or the current directory if
+         'dir' is not set.&quot;&quot;&quot;
+ 
+-        # None of the hook functions have been run yet.  These flags
+-        # are maintained so as to support multiple inheritance; in
+-        # that situation these functions in this class may be called
+-        # more than once.
+-        self.__has_initialize_child_run = 0
+-        self.__has_initialize_parent_run = 0
+-        self.__has_handle_child_run = 1
+-        self.__has_do_parent_run = 0
+-        
+         # Remember the directory in which the execution will occur.
+         self.__dir = dir
+ 
+@@ -272,10 +263,8 @@
+         explaining how the child should be initialized.  On other
+         systems, the return value is ignored.&quot;&quot;&quot;
+ 
+-        if not self.__has_initialize_parent_run:
+-            self.__has_initialize_parent_run = 1
+-            if sys.platform == &quot;win32&quot;:
+-                return win32process.STARTUPINFO()
++        if sys.platform == &quot;win32&quot;:
++            return win32process.STARTUPINFO()
+ 
+ 
+     def _HandleChild(self):
+@@ -287,7 +276,7 @@
+ 
+         Derived class versions must call this method.&quot;&quot;&quot;
+ 
+-        self.__has_handle_child_run = 1
++        pass
+     
+         
+     def _InitializeChild(self):
+@@ -301,16 +290,14 @@
+ 
+         assert sys.platform != &quot;win32&quot;
+ 
+-        if not self.__has_initialize_child_run:
+-            self.__has_initialize_child_run = 1
+-            if self.__dir:
+-                os.chdir(self.__dir)
++        if self.__dir:
++            os.chdir(self.__dir)
+ 
+ 
+     def _DoParent(self):
+         &quot;&quot;&quot;Perform actions required in the parent after 'Spawn'.&quot;&quot;&quot;
+ 
+-        self.__has_do_parent_run = 1
++        pass
+     
+ 
+     def _GetChildPID(self):
+diff -urN --exclude='*~' --exclude='.*' --exclude=CVS --exclude='*.pyo' --exclude='*.pyc' --exclude=build --exclude=GNUmakefile --exclude=config.log --exclude=config.status --exclude=config.cache --exclude=qmtest --exclude=qm.spec --exclude='*.html' --exclude='*.dtd' --exclude=CATALOG --exclude=__version.py --exclude=thread_target --exclude=process_target qm-clean/qm/platform_unix.py qm-misc-cleanups/qm/platform_unix.py
+--- qm-clean/qm/platform_unix.py	2003-08-14 23:20:43.000000000 -0700
++++ qm-misc-cleanups/qm/platform_unix.py	2003-08-14 22:44:02.000000000 -0700
+@@ -93,128 +93,6 @@
+     os.system(&quot;%s '%s' &amp;&quot; % (browser, url))
+ 
+ 
+-def send_email(body_text,
+-               subject,
+-               recipients,
+-               ccs=[],
+-               bccs=[],
+-               from_address=None,
+-               attachments=[],
+-               headers={}):
+-    &quot;&quot;&quot;Send an email message.
+-
+-    'body_text' -- The message body text.
+-
+-    'subject' -- The message subject.
+-
+-    'recipients' -- A sequence of email addresses of message
+-    recipients.
+-
+-    'ccs' -- A sequence of email addresses of recipients of carbon
+-    copies.
+-
+-    'bccs' -- A sequence of email addresses of recipients of blind
+-    carbon copies.
+-
+-    'from_address' -- The message's originating address.  If 'None',
+-    the system will fill in the sending user's address.
+-
+-    'attachments' -- A sequence of email attachments.  Each attachment
+-    is a tuple containing '(description, mime_type, file_name,
+-    attachment_data)'.  An appropriate encoding is chosen for the data
+-    based on the MIME type.
+-
+-    'headers' -- Additional RFC 822 headers in a map.  Keys are
+-    header names and values are corresponding header contents.&quot;&quot;&quot;
+-
+-    # Figure out which sendmail (or equivalent) to use.
+-    sendmail_path = common.rc.Get(&quot;sendmail&quot;, &quot;/usr/lib/sendmail&quot;,
+-                                  &quot;common&quot;)
+-    # Make sure it exists and is executable.
+-    if not os.access(sendmail_path, os.X_OK):
+-        raise common.QMException, \
+-              qm.error(&quot;sendmail error&quot;,
+-                       sendmail_path=sendmail_path)
+-
+-    # Start a sendmail process.
+-    addresses = map(lambda a: &quot;'%s'&quot; % a, recipients + ccs + bccs)
+-    sendmail_command = sendmail_path + &quot; &quot; + string.join(addresses, &quot; &quot;)
+-    sendmail = os.popen(sendmail_command, &quot;w&quot;)
+-    message = MimeWriter.MimeWriter(sendmail)
+-
+-    # Construct mail headers.
+-    if from_address is not None:
+-        message.addheader(&quot;From&quot;, from_address)
+-    message.addheader(&quot;To&quot;, string.join(recipients, &quot;, &quot;))
+-    if len(ccs) &gt; 0:
+-        message.addheader(&quot;CC&quot;, string.join(ccs, &quot;, &quot;))
+-    if len(bccs) &gt; 0:
+-        message.addheader(&quot;BCC&quot;, string.join(bccs, &quot;, &quot;))
+-    for name, value in headers.items():
+-        message.addheader(name, value)
+-    message.addheader(&quot;Subject&quot;, subject)
+-
+-    # Handle messages with attachments differently.
+-    if len(attachments) &gt; 0:
+-        # Set the MIME version header.
+-        message.addheader(&quot;MIME-Version&quot;, &quot;1.0&quot;)
+-        # A message with attachments has a content type
+-        # &quot;multipart/mixed&quot;. 
+-        body = message.startmultipartbody(&quot;mixed&quot;)
+-
+-        # The text of the message body goes in the first message part.
+-        body_part = message.nextpart()
+-        body_part.addheader(&quot;Content-Description&quot;, &quot;message body text&quot;)
+-        body_part.addheader(&quot;Content-Transfer-Encoding&quot;, &quot;7bit&quot;)
+-        body_part_body = body_part.startbody(&quot;text/plain&quot;)
+-        body_part_body.write(body_text)
+-
+-        # Add the attachments, each in a separate message part.
+-        for attachment in attachments:
+-            # Unpack the attachment tuple.
+-            description, mime_type, file_name, data = attachment
+-            # Choose an encoding based on the MIME type.
+-            if mime_type == &quot;text/plain&quot;:
+-                # Plain text encoded as-is.
+-                encoding = &quot;7bit&quot;
+-            elif mime_type[:4] == &quot;text&quot;:
+-                # Other types of text are encoded quoted-printable.
+-                encoding = &quot;quoted-printable&quot;
+-            else:
+-                # Everything else is base 64-encoded.
+-                encoding = &quot;base64&quot;
+-            # Create a new message part for the attachment.
+-            part = message.nextpart()
+-            part.addheader(&quot;Content-Description&quot;, description)
+-            part.addheader(&quot;Content-Disposition&quot;,
+-                           'attachment; filename=&quot;%s&quot;' % file_name)
+-            part.addheader(&quot;Content-Transfer-Encoding&quot;, encoding)
+-            part_body = part.startbody('%s; name=&quot;%s&quot;'
+-                                       % (mime_type, file_name))
+-            # Write the attachment data, encoded appropriately.
+-            if encoding is &quot;7bit&quot;:
+-                part_body.write(data)
+-            elif encoding is &quot;quoted-printable&quot;:
+-                quopri.encode(cStringIO.StringIO(data), part_body, quotetabs=0)
+-            elif encoding is &quot;base64&quot;:
+-                base64.encode(cStringIO.StringIO(data), part_body)
+-
+-        # End the multipart message. 
+-        message.lastpart()
+-
+-    else:
+-        # If the message has no attachments, don't use a multipart
+-        # format.  Instead, just write the essage bdoy.
+-        body = message.startbody(&quot;text/plain&quot;)
+-        body.write(body_text)
+-
+-    # Finish up.
+-    exit_code = sendmail.close()
+-    if exit_code is not None:
+-        raise MailError, &quot;%s returned with exit code %d&quot; \
+-              % (sendmail_path, exit_code)
+-
+-
+ def get_signal_name(signal_number):
+     &quot;&quot;&quot;Return the name for signal 'signal_number'.
+ 
+@@ -246,23 +124,6 @@
+     raise SignalException(signal_number)
+ 
+ 
+-def get_user_name():
+-    &quot;&quot;&quot;Return the name user running the current program.&quot;&quot;&quot;
+-
+-    # Get the numerical user ID.
+-    user_id = os.getuid()
+-    # To convert it to a name, we have to consult the system password file.
+-    for line in open(&quot;/etc/passwd&quot;, &quot;r&quot;).readlines():
+-        # Each row is constructed of parts delimited by colons.
+-        parts = string.split(line, &quot;:&quot;)
+-        # The third element is the user ID.  Does it match?
+-        if int(parts[2]) == user_id:
+-            # Yes.  Return the first part, the user name.
+-            return parts[0]
+-    # No match.
+-    raise common.QMException, &quot;user not found in /etc/passwd&quot;
+-
+-
+ def get_host_name():
+     &quot;&quot;&quot;Return the name of this computer.&quot;&quot;&quot;
+ 
+diff -urN --exclude='*~' --exclude='.*' --exclude=CVS --exclude='*.pyo' --exclude='*.pyc' --exclude=build --exclude=GNUmakefile --exclude=config.log --exclude=config.status --exclude=config.cache --exclude=qmtest --exclude=qm.spec --exclude='*.html' --exclude='*.dtd' --exclude=CATALOG --exclude=__version.py --exclude=thread_target --exclude=process_target qm-clean/qm/platform_win32.py qm-misc-cleanups/qm/platform_win32.py
+--- qm-clean/qm/platform_win32.py	2003-08-14 23:20:43.000000000 -0700
++++ qm-misc-cleanups/qm/platform_win32.py	2003-08-14 22:44:29.000000000 -0700
+@@ -48,12 +48,6 @@
+ # functions
+ ########################################################################
+ 
+-def get_user_name():
+-    &quot;&quot;&quot;Return the name user running the current program.&quot;&quot;&quot;
+-
+-    return os.environ[&quot;USERNAME&quot;]
+-
+-
+ def get_host_name():
+     &quot;&quot;&quot;Return the name of this computer.&quot;&quot;&quot;
+ 
+diff -urN --exclude='*~' --exclude='.*' --exclude=CVS --exclude='*.pyo' --exclude='*.pyc' --exclude=build --exclude=GNUmakefile --exclude=config.log --exclude=config.status --exclude=config.cache --exclude=qmtest --exclude=qm.spec --exclude='*.html' --exclude='*.dtd' --exclude=CATALOG --exclude=__version.py --exclude=thread_target --exclude=process_target qm-clean/qm/regression_test.py qm-misc-cleanups/qm/regression_test.py
+--- qm-clean/qm/regression_test.py	2003-08-14 23:20:43.000000000 -0700
++++ qm-misc-cleanups/qm/regression_test.py	1969-12-31 16:00:00.000000000 -0800
+@@ -1,93 +0,0 @@
+-########################################################################
+-#
+-# File:   regression_test.py
+-# Author: Alex Samuel
+-# Date:   2000-12-20
+-#
+-# Contents:
+-#   Very simple provisional regression test framework for qm components
+-#   to tie us over until qmtest is up and running.
+-#
+-# Copyright (c) 2000 by CodeSourcery, LLC.  All rights reserved. 
+-#
+-# For license terms see the file COPYING.
+-#
+-########################################################################
+-
+-########################################################################
+-# imports
+-########################################################################
+-
+-import getopt
+-import string
+-import sys
+-import traceback
+-
+-########################################################################
+-# functions
+-########################################################################
+-
+-def run_regression_test_driver(regression_tests):
+-    &quot;&quot;&quot;Run regression tests.
+-
+-    Each regression test is a callable object that takes zero
+-    arguments, and returns a true value if the test passes or a false
+-    value if the test failes.  Exits the program with a zero exit code
+-    if all tests pass, or with a non-zero exit code if some tests
+-    fail.
+-
+-    'regression_tests' -- A sequence of regression tests.&quot;&quot;&quot;
+-
+-    keep_going = 0
+-    verbosity = 0
+-
+-    # Parse command-line options.
+-    options, args = getopt.getopt(sys.argv[1:], &quot;kv&quot;)
+-    for option, option_arg in options:
+-        if option == &quot;-k&quot;:
+-            keep_going = 1
+-        elif option == &quot;-v&quot;:
+-            verbosity = verbosity + 1
+-
+-    def message(min_verbosity, message_text, verbosity=verbosity):
+-        if verbosity &gt;= min_verbosity:
+-            sys.stdout.write(message_text)
+-
+-    # Count failures.
+-    failures = 0
+-    # Run tests.
+-    for test in regression_tests:
+-        # Invoke the test, handling all exceptions.
+-        try:
+-            result = apply(test, ())
+-            exception = None
+-        except:
+-            exception = sys.exc_info()
+-            
+-        # Print the result.
+-        message(1, &quot;test %-40s: &quot; % ('&quot;' + test.__name__ + '&quot;'))
+-        if exception != None:
+-            # The test raised an unhandled exception.  Print a
+-            # traceback and the exception info.
+-            message(1, &quot;unhandled exception\n&quot;)
+-            message(2, &quot;Traceback:\n&quot;
+-                    + string.join(traceback.format_tb(exception[2]), &quot;&quot;)
+-                    + &quot;\n%s: %s\n&quot; % (exception[0], exception[1]))
+-            failures = failures + 1
+-            # Don't continue past an exception, unless asked to.
+-            if not keep_going:
+-                break
+-        elif result:
+-            message(1, &quot;passed\n&quot;)
+-        else:
+-            message(1, &quot;failed\n&quot;)
+-            failures = failures + 1
+-
+-    return failures
+-        
+-
+-########################################################################
+-# Local Variables:
+-# mode: python
+-# indent-tabs-mode: nil
+-# End:
+diff -urN --exclude='*~' --exclude='.*' --exclude=CVS --exclude='*.pyo' --exclude='*.pyc' --exclude=build --exclude=GNUmakefile --exclude=config.log --exclude=config.status --exclude=config.cache --exclude=qmtest --exclude=qm.spec --exclude='*.html' --exclude='*.dtd' --exclude=CATALOG --exclude=__version.py --exclude=thread_target --exclude=process_target qm-clean/qm/test/doc/reference.xml qm-misc-cleanups/qm/test/doc/reference.xml
+--- qm-clean/qm/test/doc/reference.xml	2003-08-14 23:20:43.000000000 -0700
++++ qm-misc-cleanups/qm/test/doc/reference.xml	2003-08-14 22:38:45.000000000 -0700
+@@ -2070,7 +2070,7 @@
+   &lt;para&gt;A &amp;field_class; is a named, typed component of a data
+   structure.  A &lt;classname&gt;Field&lt;/classname&gt; can read and write XML
+   representations of values, generate HTML representations of values,
+-  or present HTML forms that permit the user to pudate the value of
++  or present HTML forms that permit the user to update the value of
+   the field.  There are several classes derived from
+   &lt;classname&gt;Field&lt;/classname&gt; that you can use in extension classes.
+   If none of those classes satisfy your needs, you can create a new
+diff -urN --exclude='*~' --exclude='.*' --exclude=CVS --exclude='*.pyo' --exclude='*.pyc' --exclude=build --exclude=GNUmakefile --exclude=config.log --exclude=config.status --exclude=config.cache --exclude=qmtest --exclude=qm.spec --exclude='*.html' --exclude='*.dtd' --exclude=CATALOG --exclude=__version.py --exclude=thread_target --exclude=process_target qm-clean/qm/test/file_result_stream.py qm-misc-cleanups/qm/test/file_result_stream.py
+--- qm-clean/qm/test/file_result_stream.py	2003-08-14 23:20:43.000000000 -0700
++++ qm-misc-cleanups/qm/test/file_result_stream.py	2003-08-14 22:51:14.000000000 -0700
+@@ -64,7 +64,7 @@
+                     mode = &quot;wb&quot;
+                 else:
+                     mode = &quot;w&quot;
+-                    self.file = open(self.filename, mode, 0)
++                self.file = open(self.filename, mode, 0)
+             else:
+                 self.file = sys.stdout
+             
+Binary files qm-clean/results.qmr and qm-misc-cleanups/results.qmr differ
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000411.html">[qmtest] [PATCH] Reliably close stdin in 'qm.executable.Filter'
+</A></li>
+	<LI>Next message: <A HREF="000413.html">[qmtest] [PATCH] misc. cleanups
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#412">[ date ]</a>
+              <a href="thread.html#412">[ thread ]</a>
+              <a href="subject.html#412">[ subject ]</a>
+              <a href="author.html#412">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">More information about the qmtest
+mailing list</a><br>
+</body></html>

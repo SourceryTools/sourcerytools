@@ -1,0 +1,885 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> PATCH: XML improvements
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:qmtest%40codesourcery.com?Subject=Re%3A%20PATCH%3A%20XML%20improvements&In-Reply-To=%3C200309220622.h8M6M4E8014340%40minax.codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000525.html">
+   <LINK REL="Next"  HREF="000526.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>PATCH: XML improvements</H1>
+    <B>Mark Mitchell</B> 
+    <A HREF="mailto:qmtest%40codesourcery.com?Subject=Re%3A%20PATCH%3A%20XML%20improvements&In-Reply-To=%3C200309220622.h8M6M4E8014340%40minax.codesourcery.com%3E"
+       TITLE="PATCH: XML improvements">mark at codesourcery.com
+       </A><BR>
+    <I>Mon Sep 22 06:22:04 UTC 2003</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000525.html">[qmtest] RFE: result annotations
+</A></li>
+        <LI>Next message: <A HREF="000526.html">PATCH: Timeouts for Windows
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#516">[ date ]</a>
+              <a href="thread.html#516">[ thread ]</a>
+              <a href="subject.html#516">[ subject ]</a>
+              <a href="author.html#516">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>
+This patch allows us to turn on pretty-printed XML in a couple of
+places, which makes the XML output much more readable.  I intend to
+make similar changes for the &quot;Extension&quot; class storage while
+travelling this week.
+
+This is part of the overall audit that we're performing to stabilize
+the interfaces and APIs in preparation for QMTest 2.1.
+
+--
+Mark Mitchell
+CodeSourcery, LLC
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">mark at codesourcery.com</A>
+
+2003-09-21  Mark Mitchell  &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">mark at codesourcery.com</A>&gt;
+
+	* qm/xmlutil.py (get_children): Remove.
+	(get_child_texts): Don't use it.
+	* qm/test/base.py (get_extension_class_names_in_directory):
+	Support new class directory format.
+	* qm/test/cmdline.py (QMTest.__ExecuteRegister): Generate the
+	class directory using the new directory format.
+	* qm/test/database.py (load_database): Do not use get_children.
+	* qm/test/result.py (Result.MakeDomNode): Revise result format.
+	(__all__): New variable.
+	* qm/test/classes.qmc: Regenerated.
+	* qm/test/classes/xml_result_stream.py
+	(XMLResultStream.WriteAnnotation): Use indentation when writing
+	out results.
+	(XMLResultStream.WriteResult): Likewise.
+	(XMLResultReader._get_result_from_dom): Rename to ...
+	(XMLResultReader._GetResultFromDomNode): ... this.  Support old
+	and new formats.
+	* qm/test/share/dtds/result.dtd: Update.
+	* qm/test/share/dtds/class-directory.dtd: Likewise.
+
+Index: qm/xmlutil.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/xmlutil.py,v
+retrieving revision 1.22
+diff -c -5 -p -r1.22 xmlutil.py
+*** qm/xmlutil.py	15 Sep 2003 20:26:40 -0000	1.22
+--- qm/xmlutil.py	22 Sep 2003 04:41:58 -0000
+*************** def get_child(node, child_tag):
+*** 126,141 ****
+      if len(matching_children) != 1:
+          raise KeyError, child_tag
+      return matching_children[0]
+  
+  
+- def get_children(node, child_tag):
+-     &quot;&quot;&quot;Return a sequence of children of 'node' whose tags are 'child_tag'.&quot;&quot;&quot;
+-     
+-     return filter(child_tag_predicate(child_tag), node.childNodes)
+- 
+- 
+  def get_child_text(node, child_tag, default=None):
+      &quot;&quot;&quot;Return the text contained in a child of DOM 'node'.
+  
+      'child_tag' -- The tag of the child node whose text is to be
+      retrieved.
+--- 126,135 ----
+*************** def get_child_texts(node, child_tag):
+*** 162,178 ****
+  
+      returns -- The list containing all child nodes of 'node' which have
+      tag 'child_tag'.  Each child must have exactly one child of its own,
+      which must be a text node.&quot;&quot;&quot;
+  
+!     return map(get_dom_text, get_children(node, child_tag))
+  
+  
+  def create_dom_text_element(document, tag, text):
+      &quot;&quot;&quot;Return a DOM element containing a single text node.
+  
+!     'document' -- The containing DOM document node.
+  
+      'tag' -- The element tag.
+  
+      'text' -- The text contents of the text node.&quot;&quot;&quot;
+  
+--- 156,172 ----
+  
+      returns -- The list containing all child nodes of 'node' which have
+      tag 'child_tag'.  Each child must have exactly one child of its own,
+      which must be a text node.&quot;&quot;&quot;
+  
+!     return map(get_dom_text, node.getElementsByTagName(child_tag))
+  
+  
+  def create_dom_text_element(document, tag, text):
+      &quot;&quot;&quot;Return a DOM element containing a single text node.
+  
+!     'document' -- The containing DOM document.
+  
+      'tag' -- The element tag.
+  
+      'text' -- The text contents of the text node.&quot;&quot;&quot;
+  
+Index: qm/test/base.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/base.py,v
+retrieving revision 1.91
+diff -c -5 -p -r1.91 base.py
+*** qm/test/base.py	15 Sep 2003 20:26:41 -0000	1.91
+--- qm/test/base.py	22 Sep 2003 04:41:58 -0000
+*************** def get_extension_class_names_in_directo
+*** 149,169 ****
+          document = qm.xmlutil.load_xml_file(file)
+          # Get the root node in the document.
+          root = document.documentElement
+          # Get the sequence of elements corresponding to each of the
+          # classes listed in the directory.
+!         classes = qm.xmlutil.get_children(root, 'class')
+          # Go through each of the classes to see what kind it is.
+          for c in classes:
+              kind = c.getAttribute('kind')
+              # Skip extensions we do not understand.  Perhaps they
+              # are for some other QM tool.
+              if kind not in extension_kinds:
+                  continue
+!             extensions[kind].append(qm.xmlutil.get_dom_text(c))
+      except:
+!         pass
+  
+      return extensions
+  
+  
+  def get_extension_class_names(kind, database, database_path = None):
+--- 149,177 ----
+          document = qm.xmlutil.load_xml_file(file)
+          # Get the root node in the document.
+          root = document.documentElement
+          # Get the sequence of elements corresponding to each of the
+          # classes listed in the directory.
+!         classes = root.getElementsByTagName(&quot;class&quot;)
+          # Go through each of the classes to see what kind it is.
+          for c in classes:
+              kind = c.getAttribute('kind')
+              # Skip extensions we do not understand.  Perhaps they
+              # are for some other QM tool.
+              if kind not in extension_kinds:
+                  continue
+!             if c.hasAttribute(&quot;name&quot;):
+!                 name = c.getAttribute(&quot;name&quot;)
+!             else:
+!                 # Before QMTest 2.1, the class name was contained in
+!                 # the class element, rather than being an attribute.
+!                 name = qm.xmlutil.get_dom_text(c)
+!             # Strip whitespace.
+!             name = name.strip()
+!             extensions[kind].append(name)
+      except:
+!         raise
+  
+      return extensions
+  
+  
+  def get_extension_class_names(kind, database, database_path = None):
+Index: qm/test/cmdline.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/cmdline.py,v
+retrieving revision 1.98
+diff -c -5 -p -r1.98 cmdline.py
+*** qm/test/cmdline.py	15 Sep 2003 20:26:41 -0000	1.98
+--- qm/test/cmdline.py	22 Sep 2003 04:42:01 -0000
+*************** Valid formats are &quot;full&quot;, &quot;brief&quot; (the d
+*** 1112,1149 ****
+          extension_class = get_extension_class_from_directory(class_name,
+                                                               kind,
+                                                               directory,
+                                                               directories)
+  
+!         # Update the classes.qmc file.  If it already exists, we must
+!         # read it in first.
+          classes_file_name = os.path.join(directory, &quot;classes.qmc&quot;)
+!         try:
+!             document = qm.xmlutil.load_xml_file(classes_file_name)
+!         except:
+!             document = (qm.xmlutil.create_dom_document
+!                         (public_id = &quot;Class-Directory&quot;,
+!                          document_element_tag=&quot;class-directory&quot;))
+  
+!         # Remove any previous entries for this class.
+!         duplicates = []
+!         for element in qm.xmlutil.get_children(document.documentElement,
+!                                                &quot;class&quot;):
+!             if (str(qm.xmlutil.get_dom_text(element)) == class_name):
+!                 duplicates.append(element)
+!         for element in duplicates:
+!             document.documentElement.removeChild(element)
+!             element.unlink()
+!                 
+!         # Construct the new node.
+!         class_element = (qm.xmlutil.create_dom_text_element
+!                          (document, &quot;class&quot;, class_name))
+!         class_element.setAttribute(&quot;kind&quot;, kind)
+!         document.documentElement.appendChild(class_element)
+  
+          # Write out the file.
+!         document.writexml(open(classes_file_name, &quot;w&quot;))
+  
+          return 0
+  
+          
+      def __ExecuteSummarize(self):
+--- 1112,1151 ----
+          extension_class = get_extension_class_from_directory(class_name,
+                                                               kind,
+                                                               directory,
+                                                               directories)
+  
+!         # Create or update the classes.qmc file.
+          classes_file_name = os.path.join(directory, &quot;classes.qmc&quot;)
+!         
+!         # Create a new DOM document for the class directory.
+!         document = (qm.xmlutil.create_dom_document
+!                     (public_id = &quot;Class-Directory&quot;,
+!                      document_element_tag=&quot;class-directory&quot;))
+!         
+!         # Copy entries from the old file to the new one.
+!         extensions \
+!             = qm.test.base.get_extension_class_names_in_directory(directory)
+!         for k, ns in extensions.iteritems():
+!             for n in ns:
+!                 # Remove previous entries for the class being added.
+!                 if k == kind and n == class_name:
+!                     continue
+!                 element = document.createElement(&quot;class&quot;)
+!                 element.setAttribute(&quot;kind&quot;, k)
+!                 element.setAttribute(&quot;name&quot;, n)
+!                 document.documentElement.appendChild(element)
+  
+!         # Add an entry for the new element.
+!         element = document.createElement(&quot;class&quot;)
+!         element.setAttribute(&quot;kind&quot;, kind)
+!         element.setAttribute(&quot;name&quot;, class_name)
+!         document.documentElement.appendChild(element)        
+  
+          # Write out the file.
+!         document.writexml(open(classes_file_name, &quot;w&quot;),
+!                           addindent = &quot; &quot;, newl = &quot;\n&quot;)
+  
+          return 0
+  
+          
+      def __ExecuteSummarize(self):
+Index: qm/test/database.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/database.py,v
+retrieving revision 1.38
+diff -c -5 -p -r1.38 database.py
+*** qm/test/database.py	23 Jun 2003 06:46:47 -0000	1.38
+--- qm/test/database.py	22 Sep 2003 04:42:03 -0000
+*************** def load_database(db_path):
+*** 1114,1125 ****
+             (document.documentElement,
+              lambda n: qm.test.base.get_extension_class(n, &quot;database&quot;,
+                                                         None, db_path)))
+      # For backwards compatibility with QM 1.1.x, we look for &quot;attribute&quot;
+      # elements.
+!     for node in qm.xmlutil.get_children(document.documentElement,
+!                                         &quot;attribute&quot;):
+          name = node.getAttribute(&quot;name&quot;)
+          # These elements were only allowed to contain strings as
+          # values.
+          value = qm.xmlutil.get_dom_text(node)
+          # Python does not allow keyword arguments to have Unicode
+--- 1114,1124 ----
+             (document.documentElement,
+              lambda n: qm.test.base.get_extension_class(n, &quot;database&quot;,
+                                                         None, db_path)))
+      # For backwards compatibility with QM 1.1.x, we look for &quot;attribute&quot;
+      # elements.
+!     for node in document.documentElement.getElementsByTagName(&quot;attribute&quot;):
+          name = node.getAttribute(&quot;name&quot;)
+          # These elements were only allowed to contain strings as
+          # values.
+          value = qm.xmlutil.get_dom_text(node)
+          # Python does not allow keyword arguments to have Unicode
+Index: qm/test/qmtest.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/qmtest.py,v
+retrieving revision 1.25
+diff -c -5 -p -r1.25 qmtest.py
+*** qm/test/qmtest.py	17 Sep 2003 19:15:52 -0000	1.25
+--- qm/test/qmtest.py	22 Sep 2003 04:42:03 -0000
+*************** import sys
+*** 38,49 ****
+  import gc
+  
+  # This executable is supposed to live in ${QM_HOME}/bin (posix)
+  # or ${QM_HOME}\Scripts (nt) so we deduce the QM_HOME variable
+  # by stripping off the last two components of the path.
+! #
+! _qm_home = os.path.dirname(os.path.dirname(os.path.abspath(sys.argv[0])))
+  os.environ['QM_HOME']=_qm_home
+  
+  import qm
+  
+  class config:
+--- 38,50 ----
+  import gc
+  
+  # This executable is supposed to live in ${QM_HOME}/bin (posix)
+  # or ${QM_HOME}\Scripts (nt) so we deduce the QM_HOME variable
+  # by stripping off the last two components of the path.
+! _qm_home = os.environ.get(&quot;QM_HOME&quot;,
+!                           os.path.dirname(os.path.dirname(os.path.abspath
+!                                                           (sys.argv[0]))))
+  os.environ['QM_HOME']=_qm_home
+  
+  import qm
+  
+  class config:
+Index: qm/test/result.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/result.py,v
+retrieving revision 1.19
+diff -c -5 -p -r1.19 result.py
+*** qm/test/result.py	9 Aug 2003 05:15:02 -0000	1.19
+--- qm/test/result.py	22 Sep 2003 04:42:05 -0000
+*************** class Result:
+*** 323,345 ****
+          # Add a property element for each property.
+          keys = self.keys()
+          keys.sort()
+          for key in keys:
+              value = self[key]
+!             property_element = document.createElement(&quot;property&quot;)
+!             # The property name is an attribute.
+!             property_element.setAttribute(&quot;name&quot;, str(key))
+!             if type(value) in qm.common.string_types:
+!                 # The property value is contained in a text mode.
+!                 node = document.createTextNode(str(value))
+!                 property_element.appendChild(node)
+!             else:
+!                 for text in value:
+!                     node = document.createTextNode(str(text))
+!                     property_element.appendChild(node)
+!             # Add the property element to the result node.
+!             element.appendChild(property_element)
+  
+          return element
+  
+      # These methods allow 'Result' to act like a dictionary of
+      # annotations.
+--- 323,342 ----
+          # Add a property element for each property.
+          keys = self.keys()
+          keys.sort()
+          for key in keys:
+              value = self[key]
+!             annotation_element = document.createElement(&quot;annotation&quot;)
+!             # The annotation name is an attribute.
+!             annotation_element.setAttribute(&quot;name&quot;, str(key))
+!             # The annotation value is contained in a text node.  The
+!             # data is enclosed in quotes for robustness if the
+!             # document is pretty-printed.
+!             node = document.createTextNode('&quot;' + str(value) + '&quot;')
+!             annotation_element.appendChild(node)
+!             # Add the annotation element to the result node.
+!             element.appendChild(annotation_element)
+  
+          return element
+  
+      # These methods allow 'Result' to act like a dictionary of
+      # annotations.
+*************** class Result:
+*** 375,379 ****
+--- 372,382 ----
+  
+  
+      def items(self):
+          return self.__annotations.items()
+  
++ 
++ ########################################################################
++ # Variables
++ ########################################################################
++ 
++ __all__ = [&quot;Result&quot;]
+Index: qm/test/classes/classes.qmc
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/classes/classes.qmc,v
+retrieving revision 1.13
+diff -c -5 -p -r1.13 classes.qmc
+*** qm/test/classes/classes.qmc	3 Jul 2003 19:32:04 -0000	1.13
+--- qm/test/classes/classes.qmc	22 Sep 2003 04:42:05 -0000
+***************
+*** 1,27 ****
+  &lt;?xml version=&quot;1.0&quot; ?&gt;
+  &lt;class-directory&gt;
+! &lt;class kind=&quot;database&quot;&gt;mount_database.MountDatabase&lt;/class&gt;
+! &lt;class kind=&quot;database&quot;&gt;xml_database.XMLDatabase&lt;/class&gt;
+! &lt;class kind=&quot;test&quot;&gt;command.ExecTest&lt;/class&gt;
+! &lt;class kind=&quot;test&quot;&gt;command.ShellCommandTest&lt;/class&gt;
+! &lt;class kind=&quot;test&quot;&gt;command.ShellScriptTest&lt;/class&gt;
+! &lt;class kind=&quot;test&quot;&gt;file.FileContentsTest&lt;/class&gt;
+! &lt;class kind=&quot;test&quot;&gt;python.ExecTest&lt;/class&gt;
+! &lt;class kind=&quot;test&quot;&gt;python.ExceptionTest&lt;/class&gt;
+! &lt;class kind=&quot;test&quot;&gt;python.StringExceptionTest&lt;/class&gt;
+! &lt;class kind=&quot;resource&quot;&gt;temporary.TempDirectoryResource&lt;/class&gt;
+! &lt;class kind=&quot;target&quot;&gt;serial_target.SerialTarget&lt;/class&gt;
+! &lt;class kind=&quot;target&quot;&gt;thread_target.ThreadTarget&lt;/class&gt;
+! &lt;class kind=&quot;target&quot;&gt;process_target.ProcessTarget&lt;/class&gt;
+! &lt;class kind=&quot;target&quot;&gt;rsh_target.RSHTarget&lt;/class&gt;
+! &lt;class kind=&quot;label&quot;&gt;file_label.FileLabel&lt;/class&gt;
+! &lt;class kind=&quot;label&quot;&gt;python_label.PythonLabel&lt;/class&gt;
+! &lt;class kind=&quot;result_stream&quot;&gt;text_result_stream.TextResultStream&lt;/class&gt;
+! &lt;class kind=&quot;result_stream&quot;&gt;xml_result_stream.XMLResultStream&lt;/class&gt;
+! &lt;class kind=&quot;result_reader&quot;&gt;xml_result_stream.XMLResultReader&lt;/class&gt;
+! &lt;class kind=&quot;result_stream&quot;&gt;pickle_result_stream.PickleResultStream&lt;/class&gt;
+! &lt;class kind=&quot;result_reader&quot;&gt;pickle_result_stream.PickleResultReader&lt;/class&gt;
+! &lt;class kind=&quot;result_stream&quot;&gt;sql_result_stream.SQLResultStream&lt;/class&gt;
+! &lt;class kind=&quot;result_reader&quot;&gt;sql_result_stream.SQLResultReader&lt;/class&gt;
+! &lt;class kind=&quot;result_stream&quot;&gt;dejagnu_stream.DejaGNUStream&lt;/class&gt;
+  &lt;/class-directory&gt;
+--- 1,27 ----
+  &lt;?xml version=&quot;1.0&quot; ?&gt;
+  &lt;class-directory&gt;
+!  &lt;class kind=&quot;result_reader&quot; name=&quot;pickle_result_stream.PickleResultReader&quot;/&gt;
+!  &lt;class kind=&quot;result_reader&quot; name=&quot;sql_result_stream.SQLResultReader&quot;/&gt;
+!  &lt;class kind=&quot;result_reader&quot; name=&quot;xml_result_stream.XMLResultReader&quot;/&gt;
+!  &lt;class kind=&quot;result_stream&quot; name=&quot;dejagnu_stream.DejaGNUStream&quot;/&gt;
+!  &lt;class kind=&quot;result_stream&quot; name=&quot;pickle_result_stream.PickleResultStream&quot;/&gt;
+!  &lt;class kind=&quot;result_stream&quot; name=&quot;sql_result_stream.SQLResultStream&quot;/&gt;
+!  &lt;class kind=&quot;result_stream&quot; name=&quot;text_result_stream.TextResultStream&quot;/&gt;
+!  &lt;class kind=&quot;result_stream&quot; name=&quot;xml_result_stream.XMLResultStream&quot;/&gt;
+!  &lt;class kind=&quot;resource&quot; name=&quot;temporary.TempDirectoryResource&quot;/&gt;
+!  &lt;class kind=&quot;target&quot; name=&quot;process_target.ProcessTarget&quot;/&gt;
+!  &lt;class kind=&quot;target&quot; name=&quot;rsh_target.RSHTarget&quot;/&gt;
+!  &lt;class kind=&quot;target&quot; name=&quot;serial_target.SerialTarget&quot;/&gt;
+!  &lt;class kind=&quot;target&quot; name=&quot;thread_target.ThreadTarget&quot;/&gt;
+!  &lt;class kind=&quot;database&quot; name=&quot;mount_database.MountDatabase&quot;/&gt;
+!  &lt;class kind=&quot;test&quot; name=&quot;command.ExecTest&quot;/&gt;
+!  &lt;class kind=&quot;test&quot; name=&quot;command.ShellCommandTest&quot;/&gt;
+!  &lt;class kind=&quot;test&quot; name=&quot;command.ShellScriptTest&quot;/&gt;
+!  &lt;class kind=&quot;test&quot; name=&quot;file.FileContentsTest&quot;/&gt;
+!  &lt;class kind=&quot;test&quot; name=&quot;python.ExceptionTest&quot;/&gt;
+!  &lt;class kind=&quot;test&quot; name=&quot;python.ExecTest&quot;/&gt;
+!  &lt;class kind=&quot;test&quot; name=&quot;python.StringExceptionTest&quot;/&gt;
+!  &lt;class kind=&quot;label&quot; name=&quot;file_label.FileLabel&quot;/&gt;
+!  &lt;class kind=&quot;label&quot; name=&quot;python_label.PythonLabel&quot;/&gt;
+!  &lt;class kind=&quot;database&quot; name=&quot;xml_database.XMLDatabase&quot;/&gt;
+  &lt;/class-directory&gt;
+Index: qm/test/classes/xml_result_stream.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/classes/xml_result_stream.py,v
+retrieving revision 1.4
+diff -c -5 -p -r1.4 xml_result_stream.py
+*** qm/test/classes/xml_result_stream.py	15 Sep 2003 20:26:41 -0000	1.4
+--- qm/test/classes/xml_result_stream.py	22 Sep 2003 04:42:05 -0000
+*************** class XMLResultStream(FileResultStream):
+*** 54,89 ****
+          self.file.write(&quot;&lt;results&gt;\n&quot;)
+  
+  
+      def WriteAnnotation(self, key, value):
+  
+!             element = self.__document.createElement(&quot;annotation&quot;)
+!             element.setAttribute(&quot;key&quot;, key)
+!             text = self.__document.createTextNode(value)
+!             element.appendChild(text)
+!             element.writexml(self.file)
+!             # Following increases readability of output:
+!             self.file.write(&quot;\n&quot;)
+  
+  
+      def WriteResult(self, result):
+-         &quot;&quot;&quot;Output a test or resource result.
+- 
+-         'result' -- A 'Result'.&quot;&quot;&quot;
+  
+          element = result.MakeDomNode(self.__document)
+!         element.writexml(self.file)
+!         self.file.write(&quot;\n&quot;)
+          
+  
+      def Summarize(self):
+-         &quot;&quot;&quot;Output summary information about the results.
+- 
+-         When this method is called, the test run is complete.  Summary
+-         information should be displayed for the user, if appropriate.
+-         Any finalization, such as the closing of open files, should
+-         also be performed at this point.&quot;&quot;&quot;
+  
+          # Finish the list of results.
+          self.file.write(&quot;\n&lt;/results&gt;\n&quot;)
+  
+          FileResultStream.Summarize(self)
+--- 54,78 ----
+          self.file.write(&quot;&lt;results&gt;\n&quot;)
+  
+  
+      def WriteAnnotation(self, key, value):
+  
+!         element = self.__document.createElement(&quot;annotation&quot;)
+!         element.setAttribute(&quot;key&quot;, key)
+!         text = self.__document.createTextNode(value)
+!         element.appendChild(text)
+!         element.writexml(self.file, addindent = &quot; &quot;, newl = &quot;\n&quot;)
+  
+  
+      def WriteResult(self, result):
+  
+          element = result.MakeDomNode(self.__document)
+!         element.writexml(self.file, indent = &quot; &quot;, addindent = &quot; &quot;,
+!                          newl = &quot;\n&quot;)
+          
+  
+      def Summarize(self):
+  
+          # Finish the list of results.
+          self.file.write(&quot;\n&lt;/results&gt;\n&quot;)
+  
+          FileResultStream.Summarize(self)
+*************** class XMLResultReader(FileResultReader):
+*** 99,158 ****
+  
+          super(XMLResultReader, self).__init__(arguments)
+  
+          document = qm.xmlutil.load_xml(self.file)
+          node = document.documentElement
+!         results = qm.xmlutil.get_children(node, &quot;result&quot;)
+          self.__node_iterator = iter(results)
+  
+          # Read out annotations
+          self._annotations = {}
+!         annotation_nodes = qm.xmlutil.get_children(node, &quot;annotation&quot;)
+          for node in annotation_nodes:
+              key = node.getAttribute(&quot;key&quot;)
+!             value = qm.xmlutil.get_dom_text(node)
+              self._annotations[key] = value
+  
+  
+      def GetAnnotations(self):
+  
+          return self._annotations
+  
+  
+!     def _result_from_dom(self, node):
+          &quot;&quot;&quot;Extract a result from a DOM node.
+  
+          'node' -- A DOM node corresponding to a &quot;result&quot; element.
+  
+          returns -- A 'Result' object.&quot;&quot;&quot;
+  
+          assert node.tagName == &quot;result&quot;
+          # Extract the outcome.
+!         outcome = qm.xmlutil.get_child_text(node, &quot;outcome&quot;)
+          # Extract the test ID.
+          test_id = node.getAttribute(&quot;id&quot;)
+          kind = node.getAttribute(&quot;kind&quot;)
+          # Build a Result.
+          result = Result(kind, test_id, outcome)
+!         # Extract properties, one for each property element.
+!         for property_node in node.getElementsByTagName(&quot;property&quot;):
+!             # The name is stored in an attribute.
+!             name = property_node.getAttribute(&quot;name&quot;)
+!             # The value is stored in the child text node.
+!             value = qm.xmlutil.get_dom_text(property_node)
+!             # Store it.
+              result[name] = value
+  
+          return result
+  
+  
+-     def GetResult(self):
+- 
+-         try:
+-             return self._result_from_dom(self.__node_iterator.next())
+-         except StopIteration:
+-             return None
+  
+  ########################################################################
+  # Local Variables:
+  # mode: python
+  # indent-tabs-mode: nil
+--- 88,162 ----
+  
+          super(XMLResultReader, self).__init__(arguments)
+  
+          document = qm.xmlutil.load_xml(self.file)
+          node = document.documentElement
+!         results = node.getElementsByTagName(&quot;result&quot;)
+          self.__node_iterator = iter(results)
+  
+          # Read out annotations
+          self._annotations = {}
+!         annotation_nodes = node.getElementsByTagName(&quot;annotation&quot;)
+          for node in annotation_nodes:
+              key = node.getAttribute(&quot;key&quot;)
+!             value = qm.xmlutil.get_dom_text(node).strip()
+              self._annotations[key] = value
+  
+  
+      def GetAnnotations(self):
+  
+          return self._annotations
+  
+  
+!     def GetResult(self):
+! 
+!         try:
+!             return self._GetResultFromDomNode(self.__node_iterator.next())
+!         except StopIteration:
+!             return None
+! 
+! 
+!     def _GetResultFromDomNode(self, node):
+          &quot;&quot;&quot;Extract a result from a DOM node.
+  
+          'node' -- A DOM node corresponding to a &quot;result&quot; element.
+  
+          returns -- A 'Result' object.&quot;&quot;&quot;
+  
+          assert node.tagName == &quot;result&quot;
+          # Extract the outcome.
+!         outcome = qm.xmlutil.get_child_text(node, &quot;outcome&quot;).strip()
+          # Extract the test ID.
+          test_id = node.getAttribute(&quot;id&quot;)
+          kind = node.getAttribute(&quot;kind&quot;)
+          # Build a Result.
+          result = Result(kind, test_id, outcome)
+!         # Extract annotations.
+!         for n in node.childNodes:
+!             if n.nodeType != node.ELEMENT_NODE:
+!                 continue
+!             if n.tagName == &quot;annotation&quot;:
+!                 quoted = 1
+!             elif n.tagName == &quot;property&quot;:
+!                 # Versions of QMTest before 2.1 used the &quot;property&quot; tag,
+!                 # and did not quote the contained text.
+!                 quoted = 0
+!             else:
+!                 continue
+!             # Get the name of the annotation.
+!             name = n.getAttribute(&quot;name&quot;)
+!             # Get the value of the annotation.
+!             value = qm.xmlutil.get_dom_text(n)
+!             if quoted:
+!                 # Remove whitespace and then remove the enclosing quotes.
+!                 value = value.strip()[1:-1]
+!             # Remember the annotation.
+              result[name] = value
+  
+          return result
+  
+  
+  
+  ########################################################################
+  # Local Variables:
+  # mode: python
+  # indent-tabs-mode: nil
+Index: qm/test/share/dtds/class-directory.dtd
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/share/dtds/class-directory.dtd,v
+retrieving revision 1.4
+diff -c -5 -p -r1.4 class-directory.dtd
+*** qm/test/share/dtds/class-directory.dtd	15 Sep 2003 20:26:41 -0000	1.4
+--- qm/test/share/dtds/class-directory.dtd	22 Sep 2003 04:42:05 -0000
+***************
+*** 19,28 ****
+--- 19,29 ----
+  &lt;!ELEMENT class-directory (class*)&gt;
+  
+  &lt;!-- A class. --&gt;
+  &lt;!ELEMENT class (#PCDATA)&gt;
+  &lt;!ATTLIST class kind CDATA #REQUIRED&gt;
++ &lt;!ATTLIST class name CDATA #REQUIRED&gt;
+  
+  &lt;!-- 
+    Local Variables:
+    mode: xml
+    indent-tabs-mode: nil
+Index: qm/test/share/dtds/result.dtd
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/share/dtds/result.dtd,v
+retrieving revision 1.4
+diff -c -5 -p -r1.4 result.dtd
+*** qm/test/share/dtds/result.dtd	15 Sep 2003 20:26:42 -0000	1.4
+--- qm/test/share/dtds/result.dtd	22 Sep 2003 04:42:05 -0000
+***************
+*** 29,40 ****
+  
+  &lt;!-- The outcome of a test or resource.  --&gt;
+  &lt;!ELEMENT outcome (#PCDATA)&gt;
+  
+  &lt;!-- An additional annotation to the result.  --&gt;
+! &lt;!ELEMENT property (#PCDATA)&gt;
+! &lt;!ATTLIST property name CDATA #REQUIRED&gt;
+  
+  &lt;!-- 
+    Local Variables:
+    mode: xml
+    indent-tabs-mode: nil
+--- 29,40 ----
+  
+  &lt;!-- The outcome of a test or resource.  --&gt;
+  &lt;!ELEMENT outcome (#PCDATA)&gt;
+  
+  &lt;!-- An additional annotation to the result.  --&gt;
+! &lt;!ELEMENT annotation (#PCDATA)&gt;
+! &lt;!ATTLIST annotation name CDATA #REQUIRED&gt;
+  
+  &lt;!-- 
+    Local Variables:
+    mode: xml
+    indent-tabs-mode: nil
+Index: tests/results_files/xml_results_v2.qmr
+===================================================================
+RCS file: tests/results_files/xml_results_v2.qmr
+diff -N tests/results_files/xml_results_v2.qmr
+*** /dev/null	1 Jan 1970 00:00:00 -0000
+--- tests/results_files/xml_results_v2.qmr	22 Sep 2003 04:42:05 -0000
+***************
+*** 0 ****
+--- 1,105 ----
++ &lt;?xml version='1.0' encoding='ISO-8859-1'?&gt;
++ &lt;!DOCTYPE results PUBLIC &quot;-//QM/2.1/QMTest/Result//EN&quot; &quot;<A HREF="http://www.codesourcery.com/qm/dtds/2.1/qmtest/result.dtd">http://www.codesourcery.com/qm/dtds/2.1/qmtest/result.dtd</A>&quot;&gt;
++ &lt;results&gt;
++ &lt;annotation key=&quot;qmtest.run.start_time&quot;&gt;
++  2003-09-22T01:43:05Z
++ &lt;/annotation&gt;
++  &lt;result id=&quot;error&quot; kind=&quot;test&quot;&gt;
++   &lt;outcome&gt;
++    ERROR
++   &lt;/outcome&gt;
++   &lt;annotation name=&quot;qmtest.cause&quot;&gt;
++    &quot;Exception evaluating expression.&quot;
++   &lt;/annotation&gt;
++   &lt;annotation name=&quot;qmtest.exception&quot;&gt;
++    &quot;exceptions.SyntaxError: invalid syntax (line 1)&quot;
++   &lt;/annotation&gt;
++   &lt;annotation name=&quot;qmtest.target&quot;&gt;
++    &quot;local&quot;
++   &lt;/annotation&gt;
++   &lt;annotation name=&quot;qmtest.traceback&quot;&gt;
++    &quot;&lt;pre&gt;  File &quot;/home/mitchell/dev/qm-mainline/qm/test/classes/python.py&quot;, line 101, in Run
++     global_namespace, local_namespace)
++ &lt;/pre&gt;&quot;
++   &lt;/annotation&gt;
++  &lt;/result&gt;
++  &lt;result id=&quot;fail&quot; kind=&quot;test&quot;&gt;
++   &lt;outcome&gt;
++    FAIL
++   &lt;/outcome&gt;
++   &lt;annotation name=&quot;ExecTest.expr&quot;&gt;
++    &quot;0&quot;
++   &lt;/annotation&gt;
++   &lt;annotation name=&quot;ExecTest.value&quot;&gt;
++    &quot;0&quot;
++   &lt;/annotation&gt;
++   &lt;annotation name=&quot;qmtest.cause&quot;&gt;
++    &quot;Expression evaluates to false.&quot;
++   &lt;/annotation&gt;
++   &lt;annotation name=&quot;qmtest.target&quot;&gt;
++    &quot;local&quot;
++   &lt;/annotation&gt;
++  &lt;/result&gt;
++  &lt;result id=&quot;tmpdir_resource&quot; kind=&quot;resource_setup&quot;&gt;
++   &lt;outcome&gt;
++    PASS
++   &lt;/outcome&gt;
++   &lt;annotation name=&quot;qmtest.target&quot;&gt;
++    &quot;local&quot;
++   &lt;/annotation&gt;
++  &lt;/result&gt;
++  &lt;result id=&quot;fail_with_tmpdir&quot; kind=&quot;test&quot;&gt;
++   &lt;outcome&gt;
++    FAIL
++   &lt;/outcome&gt;
++   &lt;annotation name=&quot;ExecTest.expr&quot;&gt;
++    &quot;0&quot;
++   &lt;/annotation&gt;
++   &lt;annotation name=&quot;ExecTest.value&quot;&gt;
++    &quot;0&quot;
++   &lt;/annotation&gt;
++   &lt;annotation name=&quot;qmtest.cause&quot;&gt;
++    &quot;Expression evaluates to false.&quot;
++   &lt;/annotation&gt;
++   &lt;annotation name=&quot;qmtest.target&quot;&gt;
++    &quot;local&quot;
++   &lt;/annotation&gt;
++  &lt;/result&gt;
++  &lt;result id=&quot;pass&quot; kind=&quot;test&quot;&gt;
++   &lt;outcome&gt;
++    PASS
++   &lt;/outcome&gt;
++   &lt;annotation name=&quot;qmtest.target&quot;&gt;
++    &quot;local&quot;
++   &lt;/annotation&gt;
++  &lt;/result&gt;
++  &lt;result id=&quot;untested&quot; kind=&quot;test&quot;&gt;
++   &lt;outcome&gt;
++    UNTESTED
++   &lt;/outcome&gt;
++   &lt;annotation name=&quot;qmtest.cause&quot;&gt;
++    &quot;A prerequisite produced an incorrect outcome.&quot;
++   &lt;/annotation&gt;
++   &lt;annotation name=&quot;qmtest.expected_outcome&quot;&gt;
++    &quot;PASS&quot;
++   &lt;/annotation&gt;
++   &lt;annotation name=&quot;qmtest.outcome&quot;&gt;
++    &quot;FAIL&quot;
++   &lt;/annotation&gt;
++   &lt;annotation name=&quot;qmtest.prequisite&quot;&gt;
++    &quot;fail&quot;
++   &lt;/annotation&gt;
++  &lt;/result&gt;
++  &lt;result id=&quot;tmpdir_resource&quot; kind=&quot;resource_cleanup&quot;&gt;
++   &lt;outcome&gt;
++    PASS
++   &lt;/outcome&gt;
++   &lt;annotation name=&quot;qmtest.target&quot;&gt;
++    &quot;local&quot;
++   &lt;/annotation&gt;
++  &lt;/result&gt;
++ &lt;annotation key=&quot;qmtest.run.end_time&quot;&gt;
++  2003-09-22T01:43:05Z
++ &lt;/annotation&gt;
++ 
++ &lt;/results&gt;
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000525.html">[qmtest] RFE: result annotations
+</A></li>
+	<LI>Next message: <A HREF="000526.html">PATCH: Timeouts for Windows
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#516">[ date ]</a>
+              <a href="thread.html#516">[ thread ]</a>
+              <a href="subject.html#516">[ subject ]</a>
+              <a href="author.html#516">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">More information about the qmtest
+mailing list</a><br>
+</body></html>

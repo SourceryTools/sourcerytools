@@ -1,0 +1,204 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [qmtest] Problem loading expectation
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:qmtest%40codesourcery.com?Subject=Re%3A%20%5Bqmtest%5D%20Problem%20loading%20expectation&In-Reply-To=%3C20030808205639.GA4654%40njs.dhis.org%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000393.html">
+   <LINK REL="Next"  HREF="000395.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[qmtest] Problem loading expectation</H1>
+    <B>Nathaniel Smith</B> 
+    <A HREF="mailto:qmtest%40codesourcery.com?Subject=Re%3A%20%5Bqmtest%5D%20Problem%20loading%20expectation&In-Reply-To=%3C20030808205639.GA4654%40njs.dhis.org%3E"
+       TITLE="[qmtest] Problem loading expectation">njs at pobox.com
+       </A><BR>
+    <I>Fri Aug  8 20:56:40 UTC 2003</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000393.html">[qmtest] Remote Option
+</A></li>
+        <LI>Next message: <A HREF="000395.html">[qmtest] Problem loading expectation
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#394">[ date ]</a>
+              <a href="thread.html#394">[ thread ]</a>
+              <a href="subject.html#394">[ subject ]</a>
+              <a href="author.html#394">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>On Tue, Jul 15, 2003 at 08:45:50AM +0400, Vladimir Prus wrote:
+[...]
+&gt;<i>   File 
+</I>&gt;<i> &quot;/home/ghost/build/Tools/qm-up-to-date/qm/test/classes/pickle_result_stream.py&quot;, 
+</I>&gt;<i> line 183, in __init__
+</I>&gt;<i>     version = self.__unpickler.load()
+</I>&gt;<i> cPickle.UnpicklingError: &lt;class 'qm.test.context.Context'&gt; is not safe for 
+</I>&gt;<i> unpickling
+</I>
+Sorry for taking such a long time to get back to this.  I've cleaned
+up the pickle handling a bit so this shouldn't happen again in the
+future, and I believe I've fixed your problem as well.  Patch
+attached.
+
+-- Nathaniel
+
+-- 
+Details are all that matters; God dwells there, and you never get to
+see Him if you don't struggle to get them right. -- Stephen Jay Gould
+-------------- next part --------------
+diff -urN --exclude='*~' --exclude='.*' --exclude=CVS --exclude='*.pyo' --exclude='*.pyc' --exclude=build --exclude=GNUmakefile --exclude=config.log --exclude=config.status --exclude=setup_path.py --exclude=qm.sh --exclude=qmtest --exclude=qm.spec --exclude='*.dtd' --exclude=CATALOG --exclude=thread_target --exclude=process_target --exclude='*.qmr' qm-clean/ChangeLog qm-pickle-compatibility/ChangeLog
+--- qm-clean/ChangeLog	2003-08-07 11:10:43.000000000 -0700
++++ qm-pickle-compatibility/ChangeLog	2003-08-08 13:35:08.000000000 -0700
+@@ -1,3 +1,13 @@
++2003-08-08  Nathaniel Smith  &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">njs at codesourcery.com</A>&gt;
++
++	* qm/test/context.py (ContextException.__safe_for_unpickling__):
++	Set to 1.
++	(ContextWrapper): New class.
++	* qm/test/result.py (Result.__setstate__): New method.
++	(Result.__getstate__): New method.
++	* qm/test/share/messages/diagnostics.txt
++	(result pickle too recent): New message.
++
+ 2003-08-07  Nathaniel Smith  &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">njs at codesourcery.com</A>&gt;
+ 	    Mark Mitchell  &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">mark at codesourcery.com</A>&gt;
+ 
+diff -urN --exclude='*~' --exclude='.*' --exclude=CVS --exclude='*.pyo' --exclude='*.pyc' --exclude=build --exclude=GNUmakefile --exclude=config.log --exclude=config.status --exclude=setup_path.py --exclude=qm.sh --exclude=qmtest --exclude=qm.spec --exclude='*.dtd' --exclude=CATALOG --exclude=thread_target --exclude=process_target --exclude='*.qmr' qm-clean/qm/test/context.py qm-pickle-compatibility/qm/test/context.py
+--- qm-clean/qm/test/context.py	2003-07-09 17:33:44.000000000 -0700
++++ qm-pickle-compatibility/qm/test/context.py	2003-08-07 19:13:20.000000000 -0700
+@@ -39,6 +39,19 @@
+ 
+         
+     
++class ContextWrapper:
++    &quot;&quot;&quot;Do-nothing class to preserve pickle compatability.
++
++    A class called 'ContextWrapper' used to be used in instead of a
++    'Context' class in some cases, and we used to put contexts into
++    'Result's.  Because of how pickles work, this means that the only way
++    to unpickle these old 'Result's is to have a do-nothing placeholder
++    class that can be instantiated and then thrown away.&quot;&quot;&quot;
++
++    pass
++
++
++
+ class Context(types.DictType):
+     &quot;&quot;&quot;Test-time and local configuration for tests.
+ 
+@@ -67,6 +80,9 @@
+     the temporary directory is empty, however; it may contain files
+     left behind by the execution of other 'Runnable' objects.&quot;&quot;&quot;
+ 
++    __safe_for_unpickling__ = 1
++    &quot;&quot;&quot;Required to unpickle new-style classes under Python 2.2.&quot;&quot;&quot;
++
+     def __init__(self, context = None):
+         &quot;&quot;&quot;Construct a new context.
+ 
+diff -urN --exclude='*~' --exclude='.*' --exclude=CVS --exclude='*.pyo' --exclude='*.pyc' --exclude=build --exclude=GNUmakefile --exclude=config.log --exclude=config.status --exclude=setup_path.py --exclude=qm.sh --exclude=qmtest --exclude=qm.spec --exclude='*.dtd' --exclude=CATALOG --exclude=thread_target --exclude=process_target --exclude='*.qmr' qm-clean/qm/test/result.py qm-pickle-compatibility/qm/test/result.py
+--- qm-clean/qm/test/result.py	2003-05-16 00:31:18.000000000 -0700
++++ qm-pickle-compatibility/qm/test/result.py	2003-08-08 13:43:15.000000000 -0700
+@@ -142,6 +142,55 @@
+         self.__annotations = annotations.copy()
+ 
+ 
++    def __getstate__(self):
++        &quot;&quot;&quot;Return a representation of this result for pickling.
++
++        By using an explicit tuple representation of 'Result's when
++        storing them in a pickle file, we decouple our storage format
++        from internal implementation details (e.g., the names of private
++        variables).&quot;&quot;&quot;
++
++        # First element is a version number; the rest are the data
++        # needed to reconstruct a 'Result'.  No part of this structure
++        # should ever be a user-defined type, because that will
++        # introduce interdependencies that we want to avoid.
++        return (0,
++                self.__kind,
++                self.__id,
++                self.__outcome,
++                self.__annotations)
++
++
++    def __setstate__(self, pickled_state):
++        &quot;&quot;&quot;Construct a 'Result' from its pickled form.&quot;&quot;&quot;
++
++        if isinstance(pickled_state, dict):
++            # Old style pickle, from before we defined '__getstate__'.
++            # The state is a dictionary containing the variables we used
++            # to have.
++            self.__kind = pickled_state[&quot;_Result__kind&quot;]
++            self.__id = pickled_state[&quot;_Result__id&quot;]
++            self.__outcome = pickled_state[&quot;_Result__outcome&quot;]
++            self.__annotations = pickled_state[&quot;_Result__annotations&quot;]
++            # Also has a key &quot;_Result__context&quot; containing a (probably
++            # invalid) context object, but we discard it.
++        else:
++            # New style pickle, from after we defined '__getstate__'.
++            # The state is a tuple whose first element is a version
++            # number, and the rest are values of variables we care
++            # about.
++            if pickled_state[0] == 0:
++                (self.__kind,
++                 self.__id,
++                 self.__outcome,
++                 self.__annotations) = pickled_state[1:]
++            else:
++                raise QMException, \
++                      qm.error(&quot;result pickle too recent&quot;,
++                               curr_version=0,
++                               bad_version=pickled_state[0])
++
++
+     def GetKind(self):
+         &quot;&quot;&quot;Return the kind of result this is.
+ 
+diff -urN --exclude='*~' --exclude='.*' --exclude=CVS --exclude='*.pyo' --exclude='*.pyc' --exclude=build --exclude=GNUmakefile --exclude=config.log --exclude=config.status --exclude=setup_path.py --exclude=qm.sh --exclude=qmtest --exclude=qm.spec --exclude='*.dtd' --exclude=CATALOG --exclude=thread_target --exclude=process_target --exclude='*.qmr' qm-clean/qm/test/share/messages/diagnostics.txt qm-pickle-compatibility/qm/test/share/messages/diagnostics.txt
+--- qm-clean/qm/test/share/messages/diagnostics.txt	2003-08-08 13:35:15.000000000 -0700
++++ qm-pickle-compatibility/qm/test/share/messages/diagnostics.txt	2003-08-08 13:34:59.000000000 -0700
+@@ -181,6 +181,11 @@
+ @ not test database
+ &quot;%(path)s&quot; is not a test database.
+ 
++@ result pickle too recent
++Attempted to unpickle a 'Result' with version %(bad_version)i, but this
++version of QMTest only supports version %(curr_version)i or lower.  Try
++upgrading your version of QMTest.
++
+ @ seed not integer
+ The random number generator seed you specified, &quot;%(seed)s&quot;, is not an
+ integer. 
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000393.html">[qmtest] Remote Option
+</A></li>
+	<LI>Next message: <A HREF="000395.html">[qmtest] Problem loading expectation
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#394">[ date ]</a>
+              <a href="thread.html#394">[ thread ]</a>
+              <a href="subject.html#394">[ subject ]</a>
+              <a href="author.html#394">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">More information about the qmtest
+mailing list</a><br>
+</body></html>

@@ -1,0 +1,162 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [vsipl++] PATCH: installation / packaging
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20PATCH%3A%20installation%20/%20packaging&In-Reply-To=%3C43BBF95C.5010103%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000252.html">
+   <LINK REL="Next"  HREF="000254.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[vsipl++] PATCH: installation / packaging</H1>
+    <B>Stefan Seefeld</B> 
+    <A HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20PATCH%3A%20installation%20/%20packaging&In-Reply-To=%3C43BBF95C.5010103%40codesourcery.com%3E"
+       TITLE="[vsipl++] PATCH: installation / packaging">stefan at codesourcery.com
+       </A><BR>
+    <I>Wed Jan  4 16:35:40 UTC 2006</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000252.html">[vsipl++] PATCH: installation / packaging
+</A></li>
+        <LI>Next message: <A HREF="000254.html">[vsipl++] PATCH: installation / packaging
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#253">[ date ]</a>
+              <a href="thread.html#253">[ thread ]</a>
+              <a href="subject.html#253">[ subject ]</a>
+              <a href="author.html#253">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Jules Bergmann wrote:
+
+&gt;<i> IIUC, the DESTDIR is prepended to the different directories objdir, 
+</I>&gt;<i> libdir, etc.  I think this is the right thing to do, because it lets 
+</I>&gt;<i> build a binary package to live in an arbitrary system directory 
+</I>&gt;<i> (/opt/csl/vsipl++) without having to have modify that directory on our 
+</I>&gt;<i> build machine.
+</I>
+Precisely. It allows an installation into a fake (virtual) root that
+then only contains the newly installed bits, so tar will not pick up
+any undesired pieces.
+
+&gt;<i> However, there might be a problem when trying to build one copy of the 
+</I>&gt;<i> ATLAS/FFTW libraries to be used by all variants.  Consider:
+</I>&gt;<i> 
+</I>&gt;<i> # first, build optimized version of VSIPL++, ATLAS, and FFTW
+</I>&gt;<i> prefix=/opt/vsipl++
+</I>&gt;<i> configure &quot;opt-flags&quot; --with-fft=builtin --with-lapack=builtin 
+</I>&gt;<i> --prefix=$prefix
+</I>&gt;<i> make
+</I>&gt;<i> make doc maintainer_mode=1
+</I>&gt;<i> make install DESTDIR=tmp suffix=-opt
+</I>&gt;<i> 
+</I>&gt;<i> # second, build debug version of VSIPL++,
+</I>&gt;<i> # Don't build ATLAS and FFTW again, instead use the versions already in 
+</I>&gt;<i> /opt/vsipl++
+</I>&gt;<i> LDFLAGS=&quot;-L$prefix/lib&quot;
+</I>&gt;<i> CPPFLAGS=&quot;-L$prefix/include&quot;
+</I>&gt;<i> configure &quot;debug-flags&quot; --with-fft=fftw3 -with-lapack=atlas
+</I>&gt;<i> make
+</I>&gt;<i> make install DESTDIR=tmp suffix=-debug
+</I>&gt;<i> 
+</I>&gt;<i> ... make other variants ...
+</I>&gt;<i> ... create alias (vsipl++.pc -&gt; vsipl++-opt.pc)
+</I>&gt;<i> ... make binary package ...
+</I>&gt;<i> 
+</I>&gt;<i> 
+</I>&gt;<i> When configuring for the debug build, the libraries for ATLAS and FFTW 
+</I>&gt;<i> will not be found, since they are in /tmp/opt/vsipl++, not 
+</I>&gt;<i> /opt/vsipl++.  Also, when making the debug library, the headers will not 
+</I>&gt;<i> be in the right spot either.
+</I>
+That's right. In fact, we touched that subject when discussing the suffix
+option previously. Being able to package all variants into a single prefix,
+and sharing the same set of headers, imposes some constraints on how much
+the different configurations can actually differ.
+I think we were discussing the suffix flag in the context of differing
+compilation flags (e.g. -g vs. -O3), but not e.g. using IPP vs. ATLAS.
+
+Such differences will probably have to be installed in distinct prefixes
+for a number of reasons, for example because the generated config header
+isn't the same.
+
+&gt;<i> A work around is to build the ATLAS and FFTW libraries for each variant 
+</I>&gt;<i> (optimized, debug, etc), rely on them to be overwritten so that only one 
+</I>&gt;<i> copy of those libraries are in the final package,  and make sure to 
+</I>&gt;<i> build the version of the external libraries that we want to keep last.  
+</I>&gt;<i> However, if we have many variants, this will result in a lot of time 
+</I>&gt;<i> spent building ATLAS.
+</I>
+I haven't looked into the vendor package compilation, but my impression
+was that we now have no way to distinguish different configurations
+at link time. Am I wrong ? The only configurations that can coexist
+are one configuration without and one with ATLAS (say). However, there
+is still the acconfig.hpp issue I mentioned above...
+
+&gt;<i> Another idea is to have ATLAS and FFTW installed on our build system so 
+</I>&gt;<i> that the bogus paths are not noticed by configure/make.  However this 
+</I>&gt;<i> makes the build process a little less robust.
+</I>
+Indeed. I think we should make sure the compilation is as isolated as
+possible, and thus can be reproduced anywhere without reliance on external
+resources that aren't explicitely described in the documentation.
+
+&gt;<i> A final idea is to tell configure to trust that fftw3 and atlas are 
+</I>&gt;<i> present and not test for them.  (&quot;--with-fft=trust-fftw3&quot; ?).  We would 
+</I>&gt;<i> also need to handle the include paths during the make (via INT_CPPFLAGS?)
+</I>&gt;<i> 
+</I>&gt;<i> Any thoughts on how to handle this?
+</I>
+I really doubt the suffix-only approach is able to deal with multiple
+vendor library versions. We really need different prefixes for that.
+
+&gt;&gt;<i> Mark, doc/csl-docbook/GNUmakefile.inc contains two changes:
+</I>&gt;&gt;<i>
+</I>&gt;&gt;<i> * I prefixed all installation paths with $(DESTDIR) to make the above
+</I>&gt;&gt;<i>   work for documentation.
+</I>&gt;&gt;<i> * I fixed the %.html target for the case where $(docbook_html) is not 
+</I>&gt;&gt;<i> set,
+</I>&gt;&gt;<i>   as that case seems to have slipped through in Carlos' latest 
+</I>&gt;&gt;<i> adjustments.
+</I>&gt;<i> 
+</I>&gt;<i> 
+</I>&gt;<i> Is there an email list that we should send csl-docbook CVS changes to?
+</I>
+I had planned to send the changelog to gnu-internal.
+
+Regards,
+		Stefan
+
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000252.html">[vsipl++] PATCH: installation / packaging
+</A></li>
+	<LI>Next message: <A HREF="000254.html">[vsipl++] PATCH: installation / packaging
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#253">[ date ]</a>
+              <a href="thread.html#253">[ thread ]</a>
+              <a href="subject.html#253">[ subject ]</a>
+              <a href="author.html#253">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">More information about the vsipl++
+mailing list</a><br>
+</body></html>

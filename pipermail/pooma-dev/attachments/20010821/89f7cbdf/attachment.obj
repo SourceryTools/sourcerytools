@@ -1,0 +1,177 @@
+Implementation options:
+-----------------------
+
+C:
+  c-style arrays are used along with c-style evaluation
+  (i.e. a[i + stride * j] = b[i + stride * j];)
+  -inherently serial
+
+CppTran:
+  c-style arrays are wrapped inside c++ array objects, but
+  evaluation is still performed with loops:
+  (for (i = 0; ...) a(i,j) = b(i,j);)
+  This implementation was included for comparison in some Pooma
+  papers.  It's not really that important since we really care
+  about how fast a real Pooma application runs relative to c.
+  -inherently serial
+
+Brick:
+  Pooma Brick arrays are used with data-parallel assignment. (a = b;)
+  -inherently serial (bricks are a single contiguous piece of memory)
+
+CompressibleBrick:
+  Pooma Compressible Brick arrays will store a single value if the
+  contents of an array are identical, hence significantly speeding up
+  computation and reducing storage when a problem is uninteresting.
+  -inherently serial
+
+MultiPatch:
+  A Pooma array containing multiple patch engines (either brick or
+  compressible brick).  Parallelism in Pooma requires the use of
+  multipatch engines so that the problem can be decomposed and the
+  pieces distributed to different processors.  There are two forms
+  of multipatch: UMP - uniform multipatch and GMP - gridded multipatch.
+  The uniform version contains patches with identical sizes, the
+  grid version contains patches with varying sizes and potentially
+  has higher overhead for computations.
+  -runs in parallel or serial
+
+Guards:
+  Multipatch arrays can be constructed with or without guard layers.
+  Some algorithms require guards layers (stencil engines).  Other
+  algorithm work with or without guard layers, but may be much more
+  efficient with guard layers.
+
+Stencil Engines:
+  Some algorithms have been implemented with stencil engines.
+  (We write a = laplace(b); rather than a(I, J) = 4 * b(I, J) -
+  b(I-1, J) - b(I+1, J) ...)
+  Benchmark codes describe this case as "Opt" as in
+  "Pooma II UMP Opt".  Stencil engines only work with guard layers.
+
+Distributed arrays:
+  Layouts can be constructed to distribute arrays among multiple contexts
+  or to replicate arrays on all the contexts.  Obviously the distributed
+  case is more interesting because work is not duplicated, so the code
+  runs faster in parallel.  Currently only one of the benchmarks uses
+  distributed arrays.  (Originally, we benchmarked codes with SMARTS
+  running on multiple threads, so we were running in parallel in 1 context.)
+
+Field:
+  Benchmarks can be implemented with the Field class instead of arrays.
+
+Note:
+  The number of interesting parallel cases is quite large:
+  Brick UMP Guards
+  CompBrick GMP NoGuards
+  etc...
+  I believe that Blanca is currently aiming to use uniform MultiPatch
+  compressible brick arrays with guard layers.
+
+Kinds of calculations:
+----------------------
+
+Simple Data-Parallel Assignment:
+  Several benchmarks just test assignments like a = b + c; where no
+  communication is required. (The effect of guard layers should be
+  irrelevant for these problems, and the parallel scaling had better
+  be near perfect.)
+
+  ABCTest - simple 2-d problem
+  BlitzLoops - simple 1-d problem
+  SimpleArray - another simple 2-d problem
+
+Data-Parallel Stencils:
+  These benchmarks look at neighboring cells to perform computations
+  typically using data-parallel views:
+  (a(I, J) = b(I + 1, J) + b(I, J);)
+  These examples will stress the parallel machinery because they all
+  require computation every time step.  Some of these examples may be
+  implemented with stencil engines.
+
+  Acoustic2d - 2-d wave propagation
+  Doof2d - 2-d diffusion problem
+  Doof2dUMP, Doof2dGMP, Doof2dXC - additional implementations of Doof2d
+  GKPoisson - 2-d stencil computation from a real physics problem
+  Doof3d - 3-d diffusion problem
+  rbSOR - 2-d red-black relaxation problem
+
+Reductions:
+  Two of the examples perform reductions and stencil operations for each
+  step in the computation.  Achieving good parallel performance is more
+  difficult for codes with reductions because they require global
+  communication.
+
+  Solvers/Jacobi - a 2-d Jacobi solver
+  Solvers/Krylov - solves a 2-d stencil using conjugate gradient.
+
+Additional implementations and calculations:
+--------------------------------------------
+
+There is only one benchmark that is implemented using fields instead
+of arrays.  We probably also want to add some benchmarks which
+exercise multi-material fields, some that use the neighbor computations
+and field offsets, and perhaps benchmarks that use particles.
+
+Relevant Measurements:
+----------------------
+
+
+
+Recommendations:
+----------------
+
+  1) We should pick a useful set of benchmarks and implementation and
+     make sure all the cases are covered.  A useful subset would at least
+     include one of each of the three groups above:
+     ABCTest - it's important that simple expressions run fast and scale well
+     Doof2d - this is the stencil computation we're most familiar with
+     Solvers/Krylov - we should consider at least one code with reductions
+
+  2) The interesting implementations are probably:
+     a) straight C; This is a good baseline.
+     b) Brick; This is the closest Pooma comes to straight C,
+        so it provides data for the overhead not related to parallelism
+     c) Compressible Brick UMP Guards; This is what Blanca uses mostly.
+     d) Compressible Brick UMP No Guards; Used in places by Blanca.
+     e) Brick UMP Guards; A good intermediate reference.  Is there
+        overhead coming from the compressible brick?
+     f) Compressible Brick GMP Guards; Some codes may require a more
+        flexible layout, so we should test this case since it should have
+        the highest conceivable overhead.
+     We should update a useful subset of the benchmarks to implement at
+     least these cases.
+
+  3) We should make each of the benchmarks we're interested in include all
+     the implementations we care about.  All the versions of Doof2d should
+     be rolled back into one benchmark code.
+
+  4) As in the NewField/tests directory, we should convert all the
+     benchmarks to compile with distributed arrays when the code is
+     compiled with CHEETAH and with regular arrays when compiled without
+     CHEETAH (for all the multi-patch arrays, it doesn't make sense to
+     distribute the simple brick case).   Then we don't need separate
+     benchmark codes when start parallel benchmarking.  (I.e., get rid
+     of Doof2dXC and roll it into Doof2dUMP.)
+
+  5) In addition to the existing benchmarks, we should include some code
+     that is closer to existing Blanca code, perhaps a version of the
+     stratigraphic flow.
+
+  6) Consider adding Stencil engine implementations to the versions
+     that perform stencil operations.  If the stencil engine version is
+     significantly more efficient, then we should convince Blanca to
+     convert code that uses view-based stencils to stencil implemented with
+     stencil engine.
+
+  7) Blanca probably cares more about 3-d calculations.  We might want to
+     migrate some of the benchmarks to 3-d versions.  (At least consider
+     converting them to dimension independent code.)
+
+  8) We should be a little more careful with the examples using
+     compressible brick.  You should be able to set the compression ratio
+     for the problem.  The current examples that use compressible bricks
+     are at the extreme that we don't really care about (where almost
+     everything is compressed).  They're good tests because we really want
+     that case to run very fast, but we also want good performance when big
+     chunks of the problem are uncompressed.

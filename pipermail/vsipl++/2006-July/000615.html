@@ -1,0 +1,187 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [vsipl++] Matlab IO
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20Matlab%20IO&In-Reply-To=%3C44C78BCB.9060302%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000613.html">
+   <LINK REL="Next"  HREF="000616.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[vsipl++] Matlab IO</H1>
+    <B>Jules Bergmann</B> 
+    <A HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20Matlab%20IO&In-Reply-To=%3C44C78BCB.9060302%40codesourcery.com%3E"
+       TITLE="[vsipl++] Matlab IO">jules at codesourcery.com
+       </A><BR>
+    <I>Wed Jul 26 15:35:39 UTC 2006</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000613.html">Matlab IO
+</A></li>
+        <LI>Next message: <A HREF="000616.html">Matlab IO documentation
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#615">[ date ]</a>
+              <a href="thread.html#615">[ thread ]</a>
+              <a href="subject.html#615">[ subject ]</a>
+              <a href="author.html#615">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Assem Salama wrote:
+ &gt; Everyone,
+ &gt;  Patch with Jule's comments.
+
+Assem, this looks good.  I have 4 comments below.  Once you address 
+those, please check it in.
+
+				thanks,
+				-- Jules
+
+ &gt; ------------------------------------------------------------------------
+ &gt; Index: src/vsip_csl/matlab_file.hpp
+ &gt; ===================================================================
+ &gt; --- src/vsip_csl/matlab_file.hpp	(revision 0)
+ &gt; +++ src/vsip_csl/matlab_file.hpp	(revision 0)
+ &gt; @@ -0,0 +1,248 @@
+ &gt; +/* Copyright (c) 2005, 2006 by CodeSourcery.  All rights reserved. */
+ &gt; +
+ &gt; +/** @file    vsip_csl/matlab_file.hpp
+ &gt; +    @author  Assem Salama
+ &gt; +    @date    2006-06-21
+ &gt; +    @brief   VSIPL++ CodeSourcery Library: Matlab file class that 
+handles
+ &gt; +             Matlab files using an iterator.
+ &gt; +*/
+ &gt; +
+ &gt; +#ifndef VSIP_CSL_MATLAB_FILE_HPP
+ &gt; +#define VSIP_CSL_MATLAB_FILE_HPP
+ &gt; +
+ &gt; +#include &lt;iostream&gt;
+ &gt; +#include &lt;fstream&gt;
+ &gt; +#include &lt;vsip/impl/noncopyable.hpp&gt;
+ &gt; +#include &lt;vsip_csl/matlab_bin_formatter.hpp&gt;
+ &gt; +
+ &gt; +namespace vsip_csl
+ &gt; +{
+ &gt; +
+ &gt; +class Matlab_file : vsip::impl::Non_copyable
+ &gt; +{
+ &gt; +  public:
+ &gt; +    // Constructors
+ &gt; +    Matlab_file(std::string fname);
+ &gt; +
+ &gt; +  // classes
+ &gt; +  public:
+ &gt; +    class iterator
+ &gt; +    {
+
+
+[1] To be defensive, you should make the following constructor private:
+
+ &gt; +      public:
+ &gt; +        iterator(bool end_iterator,Matlab_file *mf) :
+ &gt; +	  mf_(mf),
+ &gt; +	  end_iterator_(end_iterator) {}
+
+That way only Matlab_file can use it (since it is a friend class).
+We know Matlab_file will always pass a valid Matlab_file*, so there
+is no need to assert(mf != NULL).
+
+ &gt; +
+ &gt; +      public:
+ &gt; +	// copy constructors
+ &gt; +	iterator(iterator const &amp;obj) :
+ &gt; +          mf_(obj.mf_), end_iterator_(obj.end_iterator_) {}
+ &gt; +
+ &gt; +        // = operator
+ &gt; +	iterator&amp;
+ &gt; +	operator=(iterator &amp;src)
+
+[2] Since this doesn't modify src, you should make parameter a const:
+
+	operator=(iterator const&amp; src)
+
+This allows the compiler to use the assignment operator under more
+conditions (such as assigning from a temporary object).
+
+ &gt; +	{
+ &gt; +	  this-&gt;mf_           = src.mf_;
+ &gt; +	  this-&gt;end_iterator_ = src.end_iterator_;
+ &gt; +	  return *this;
+ &gt; +	}
+
+
+ &gt; Index: tests/matlab_iterator_test.cpp
+
+[3] Please rename this file to 'tests/matlab_iterator.cpp'
+
+ &gt; ===================================================================
+ &gt; --- tests/matlab_iterator_test.cpp	(revision 0)
+ &gt; +++ tests/matlab_iterator_test.cpp	(revision 0)
+ &gt; @@ -0,0 +1,191 @@
+ &gt; +/* Copyright (c) 2006 by CodeSourcery, LLC.  All rights reserved. */
+ &gt; +
+ &gt; +/** @file    tests/matlab_bin_file_test.cpp
+ &gt; +    @author  Assem Salama
+ &gt; +    @date    2006-07-18
+ &gt; +    @brief   VSIPL++ Library: Test for reading and writing Matlab 
+.mat files
+ &gt; +             using iterators
+ &gt; +*/
+ &gt; +
+ &gt; +/***********************************************************************
+ &gt; +  Included Files
+ &gt; +***********************************************************************/
+ &gt; +
+ &gt; +#include &lt;iostream&gt;
+ &gt; +
+ &gt; +#include &lt;vsip/support.hpp&gt;
+ &gt; +#include &lt;vsip/matrix.hpp&gt;
+ &gt; +#include &lt;vsip/tensor.hpp&gt;
+ &gt; +#include &lt;vsip_csl/matlab_file.hpp&gt;
+ &gt; +#include &lt;vsip_csl/output.hpp&gt;
+ &gt; +
+ &gt; +#include &quot;test.hpp&quot;
+
+[4] Rembemer to do an 'svn update' before commiting this.  test.hpp is
+no longer in the tests directory.
+
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">jules at codesourcery.com</A>
+(650) 331-3385 x705
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000613.html">Matlab IO
+</A></li>
+	<LI>Next message: <A HREF="000616.html">Matlab IO documentation
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#615">[ date ]</a>
+              <a href="thread.html#615">[ thread ]</a>
+              <a href="subject.html#615">[ subject ]</a>
+              <a href="author.html#615">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">More information about the vsipl++
+mailing list</a><br>
+</body></html>

@@ -1,0 +1,164 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [vsipl++] [patch] CML bindings for matrix transpose operations
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20%5Bpatch%5D%20CML%20bindings%20for%20matrix%20transpose%20operations&In-Reply-To=%3C484735D2.3030507%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001350.html">
+   <LINK REL="Next"  HREF="001352.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[vsipl++] [patch] CML bindings for matrix transpose operations</H1>
+    <B>Stefan Seefeld</B> 
+    <A HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20%5Bpatch%5D%20CML%20bindings%20for%20matrix%20transpose%20operations&In-Reply-To=%3C484735D2.3030507%40codesourcery.com%3E"
+       TITLE="[vsipl++] [patch] CML bindings for matrix transpose operations">stefan at codesourcery.com
+       </A><BR>
+    <I>Thu Jun  5 00:39:46 UTC 2008</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001350.html">[patch] CML bindings for matrix transpose operations
+</A></li>
+        <LI>Next message: <A HREF="001352.html">[vsipl++] [patch] CML bindings for matrix transpose operations
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1351">[ date ]</a>
+              <a href="thread.html#1351">[ thread ]</a>
+              <a href="subject.html#1351">[ subject ]</a>
+              <a href="author.html#1351">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Don,
+
+I have some small comments and questions (one for Jules). Overall this 
+looks good.
+
+
+Don McCoy wrote:
+&gt;<i> This is patterned after the existing serial evaluator for transpose
+</I>&gt;<i> operations using SIMD instructions, except that it dispatches operations
+</I>&gt;<i> to CML.  One important difference is that it handles split complex as
+</I>&gt;<i> well as interleaved.  Matrix copies are also performed (when the block
+</I>&gt;<i> layouts match), but only if the strides are unit in the smallest
+</I>&gt;<i> dimension, so as to have the potential to use the SPU's.
+</I>
+&gt;<i> +// These macros support scalar and interleaved complex types
+</I>
+I don't find these macros very useful. Most of them you use exactly 
+once. And even the ones you use twice would result in simpler code if 
+spelled out. For example:
+
+&gt;<i> +
+</I>&gt;<i> +#define VSIP_IMPL_CML_TRANS(T, FCN, CML_FCN)    \
+</I>&gt;<i> +  inline void                                   \
+</I>&gt;<i> +  FCN(                                          \
+</I>&gt;<i> +    T* a, ptrdiff_t rsa, ptrdiff_t csa,         \
+</I>&gt;<i> +    T* z, ptrdiff_t rsz, ptrdiff_t csz,         \
+</I>&gt;<i> +    size_t m, size_t n)                         \
+</I>&gt;<i> +  {                                             \
+</I>&gt;<i> +    typedef Scalar_of&lt;T&gt;::type CML_T;           \
+</I>&gt;<i> +    CML_FCN(                                    \
+</I>&gt;<i> +      reinterpret_cast&lt;CML_T*&gt;(a), rsa, csa,    \
+</I>&gt;<i> +      reinterpret_cast&lt;CML_T*&gt;(z), rsz, csz,    \
+</I>&gt;<i> +      m, n );                                   \
+</I>&gt;<i> +  }
+</I>&gt;<i> +
+</I>&gt;<i> +VSIP_IMPL_CML_TRANS(float,               transpose, cml_mtrans_f)
+</I>&gt;<i> +VSIP_IMPL_CML_TRANS(std::complex&lt;float&gt;, transpose, cml_cmtrans_f)
+</I>&gt;<i> +#undef VSIP_IMPL_CML_TRANS
+</I>&gt;<i> +
+</I>
+actually boils down to
+
+inline void
+transpose(float *a, ptrdiff_t rsa, ptrdiff_t csa,
+           float *z, ptrdiff_t rsz, ptrdiff_t csz,
+           size_t m, size_t n)
+{
+   cml_mtrans_f(a, rsa, csa, z, rsz, csz, m, n);
+}
+
+for the first case, which I find much more readable than the macro
+code above.
+
+
+&gt;<i> +  static bool rt_valid(DstBlock&amp; dst, SrcBlock const&amp; src)
+</I>&gt;<i> +  { 
+</I>&gt;<i> +    bool rt = true;
+</I>&gt;<i> +
+</I>&gt;<i> +    // If performing a copy, both source and destination blocks
+</I>&gt;<i> +    // must be unit stride.
+</I>&gt;<i> +    if (Type_equal&lt;src_order_type, dst_order_type&gt;::value)
+</I>&gt;<i> +    {
+</I>&gt;<i> +      Ext_data&lt;DstBlock&gt; dst_ext(dst, SYNC_OUT);
+</I>&gt;<i> +      Ext_data&lt;SrcBlock&gt; src_ext(src, SYNC_IN);
+</I>
+These objects only exist to check the strides, right ? I'm aware that we 
+don't have any SYNC enumerators to indicate 'no-copy', but shouldn't we 
+? Using SYNC_OUT and SYNC_IN looks a bit misleading to me, in this 
+context. Jules ?
+
+&gt;<i> +
+</I>&gt;<i> +      dimension_type const s_dim1 = src_order_type::impl_dim1;
+</I>&gt;<i> +      dimension_type const d_dim1 = src_order_type::impl_dim1;
+</I>
+Why two constants, if they hold the same value ?
+
+&gt;<i> +      if (dst_ext.stride(d_dim1) != 1 || src_ext.stride(s_dim1) != 1)
+</I>&gt;<i> +        rt = false;
+</I>&gt;<i> +    }
+</I>&gt;<i> +
+</I>&gt;<i> +    return rt; 
+</I>&gt;<i> +  }
+</I>
+
+&gt;<i> +
+</I>&gt;<i> +  static void exec(DstBlock&amp; dst, SrcBlock const&amp; src, row2_type, row2_type)
+</I>&gt;<i> +  {
+</I>&gt;<i> +    vsip::impl::Ext_data&lt;DstBlock&gt; dst_ext(dst, vsip::impl::SYNC_OUT);
+</I>&gt;<i> +    vsip::impl::Ext_data&lt;SrcBlock&gt; src_ext(src, vsip::impl::SYNC_IN);
+</I>&gt;<i> +
+</I>
+Why the full qualification here (but not above) ? (I know, this is 
+really picky, but I like compact and concise code. ;-) )
+
+
+Thanks,
+		Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">stefan at codesourcery.com</A>
+(650) 331-3385 x718
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001350.html">[patch] CML bindings for matrix transpose operations
+</A></li>
+	<LI>Next message: <A HREF="001352.html">[vsipl++] [patch] CML bindings for matrix transpose operations
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1351">[ date ]</a>
+              <a href="thread.html#1351">[ thread ]</a>
+              <a href="subject.html#1351">[ subject ]</a>
+              <a href="author.html#1351">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">More information about the vsipl++
+mailing list</a><br>
+</body></html>

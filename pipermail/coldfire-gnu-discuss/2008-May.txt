@@ -1,0 +1,969 @@
+From NBarratt at Opto22.com  Thu May  8 17:03:15 2008
+From: NBarratt at Opto22.com (Nick Barratt)
+Date: Thu, 8 May 2008 10:03:15 -0700 
+Subject: Error: value too large for field of 2 bytes with FBcc
+Message-ID: <0617FCE63B50C241B551BBDBAE71052F0127F310@000exchange.opto22.com>
+
+Hello,
+
+I'm building an application that my company has licensed for our coldfire
+target using the CodeSourcery gcc package.  This application has a massive
+switch statement that seems to be exposing a limitation in the assembler.
+Specifically, floating-point conditional branches with displacements > 32k
+result in an assembler error (value of XXXXX too large for field of 2 bytes
+at XXXXX), even though FBcc supports 32-bit displacements using a size field
+in the instruction word.
+
+I've tested and found the same behavior on both Sourcery G++ Lite 4.2-125
+(from the CodeSourcery website) and CodeSourcery Sourcery G++ 4.1-30 (from
+Freescale).
+
+Is there a work-around for this problem?  My first thought was re-ordering
+the cases in the switch statement to reduce the displacement magnitudes, but
+I'm not technically supposed to alter this portion of the vendor source.
+
+Thanks,
+
+Nick Barratt
+-------------- next part --------------
+An HTML attachment was scrubbed...
+URL: <http://sourcerytools.com/pipermail/coldfire-gnu-discuss/attachments/20080508/09e9982f/attachment.html>
+
+From maxim at codesourcery.com  Thu May  8 19:54:03 2008
+From: maxim at codesourcery.com (Maxim Kuvyrkov)
+Date: Thu, 08 May 2008 23:54:03 +0400
+Subject: [coldfire-gnu-discuss] Error: value too large for field of 2
+ bytes with FBcc
+In-Reply-To: <0617FCE63B50C241B551BBDBAE71052F0127F310@000exchange.opto22.com>
+References: <0617FCE63B50C241B551BBDBAE71052F0127F310@000exchange.opto22.com>
+Message-ID: <48235A5B.4030205@codesourcery.com>
+
+Nick Barratt wrote:
+> Hello,
+> 
+> I'm building an application that my company has licensed for our 
+> coldfire target using the CodeSourcery gcc package.  This application 
+> has a massive switch statement that seems to be exposing a limitation in 
+> the assembler.  Specifically, floating-point conditional branches with 
+> displacements > 32k result in an assembler error (value of XXXXX too 
+> large for field of 2 bytes at XXXXX), even though FBcc supports 32-bit 
+> displacements using a size field in the instruction word.
+> 
+> I've tested and found the same behavior on both Sourcery G++ Lite 
+> 4.2-125 (from the CodeSourcery website) and CodeSourcery Sourcery G++ 
+> 4.1-30 (from Freescale).
+> 
+> Is there a work-around for this problem?  My first thought was 
+> re-ordering the cases in the switch statement to reduce the displacement 
+> magnitudes, but I'm not technically supposed to alter this portion of 
+> the vendor source.
+
+It's very hard to diagnose what the problem is without a testcase.  Can 
+you construct a testcase that reproduces exposes the problem?  Also, 
+what commands did you use to compile and link the test?
+
+
+--
+Maxim Kuvyrkov,
+CodeSourcery Inc.
+
+
+From mark at codesourcery.com  Fri May  9 06:07:33 2008
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Thu, 08 May 2008 23:07:33 -0700
+Subject: Updated 2008q1 uClinux Toolchains
+Message-ID: <4823EA25.9040101@codesourcery.com>
+
+We have corrected a defect in the version of the GNU Debugger included 
+in our 2008q1 uClinux toolchains that caused the debugger to crash when 
+printing global variables.
+
+The new release is now available from:
+
+   http://www.codesourcery.com/gnu_toolchains/coldfire
+
+Enjoy!
+
+-- 
+Mark Mitchell
+CodeSourcery
+mark at codesourcery.com
+(650) 331-3385 x713
+
+
+From syakovlev at thinksrs.com  Sun May 11 18:11:34 2008
+From: syakovlev at thinksrs.com (Sergei Yakovlev)
+Date: Sun, 11 May 2008 11:11:34 -0700
+Subject: How do I tell gcc to generate foo.s and foo.lst files?
+Message-ID: <482736D6.2070309@thinksrs.com>
+
+Google suggested to use:
+gcc -O2 -S -c foo.c
+and
+gcc -c -g -Wa,-a,-ad [other GCC options] foo.c > foo.lst
+
+So I've run:
+m68k-elf-gcc -c -g -Wa,-a,-ad  m5223x.c > m5223x.lst
+File m5223x.lst was actually empty :(
+68K GAS  /cygdrive/c/TEMP/ccyI14Wz.s             page 1
+
+
+   1                       .file    "m5223x.c"
+   2                       .file 1 "m5223x.c"
+  10                   .Ltext0:
+  11                   .Letext0:
+68K GAS  /cygdrive/c/TEMP/ccyI14Wz.s             page 2
+
+
+DEFINED SYMBOLS
+                            *ABS*:00000000 m5223x.c
+
+NO UNDEFINED SYMBOLS
+-------------- next part --------------
+An HTML attachment was scrubbed...
+URL: <http://sourcerytools.com/pipermail/coldfire-gnu-discuss/attachments/20080511/93e4e0c1/attachment.html>
+
+From dan at codesourcery.com  Mon May 12 16:20:08 2008
+From: dan at codesourcery.com (Daniel Jacobowitz)
+Date: Mon, 12 May 2008 12:20:08 -0400
+Subject: Stack size passed from Makefile
+In-Reply-To: <B64D6555244CB74AA301FFAABAB0522A06EF73@BRVSBS.brv.local>
+References: <B64D6555244CB74AA301FFAABAB0522A06EE42@BRVSBS.brv.local> <20080415150805.GP13707@caradoc.them.org> <B64D6555244CB74AA301FFAABAB0522A06EF73@BRVSBS.brv.local>
+Message-ID: <20080512162004.GW8986@caradoc.them.org>
+
+On Mon, May 12, 2008 at 05:30:43PM +0200, Martin Voss wrote:
+> Hi Daniel,
+> 
+> Hmm, we have been performing some user space stack profiling using the 4.2 version of Codesourcerys m68k-uclinux-gcc on the latest 2.4.x uClinux kernel.
+> 
+> In some makefiles in userland they have changed the default stack size by using
+> 
+> FLTFLAGS += -s 8192
+> 
+> The above example is from the Makefile in the ftpd directory.
+> 
+> But when we use flthdr to check the actual stack after the complete build has completed, it still reports 0x1000 as the stack size.
+> 
+> We tried the m68k-uclinux-20061214, and this version seems to properly pass the -s to flthdr and change stack according to the Makefile.
+> 
+> Is this something you could shed some light on?
+
+I can't, but maybe someone else on the coldfire-gnu-discuss list can.
+Is PLTFLAGS passed to GCC, ld, or elf2flt?
+
+-- 
+Daniel Jacobowitz
+CodeSourcery
+
+
+From maxim at codesourcery.com  Mon May 12 16:35:54 2008
+From: maxim at codesourcery.com (Maxim Kuvyrkov)
+Date: Mon, 12 May 2008 20:35:54 +0400
+Subject: [coldfire-gnu-discuss] Re: Stack size passed from Makefile
+In-Reply-To: <20080512162004.GW8986@caradoc.them.org>
+References: <B64D6555244CB74AA301FFAABAB0522A06EE42@BRVSBS.brv.local> <20080415150805.GP13707@caradoc.them.org> <B64D6555244CB74AA301FFAABAB0522A06EF73@BRVSBS.brv.local> <20080512162004.GW8986@caradoc.them.org>
+Message-ID: <482871EA.7090508@codesourcery.com>
+
+Daniel Jacobowitz wrote:
+> On Mon, May 12, 2008 at 05:30:43PM +0200, Martin Voss wrote:
+>> Hi Daniel,
+>>
+>> Hmm, we have been performing some user space stack profiling using the 4.2 version of Codesourcerys m68k-uclinux-gcc on the latest 2.4.x uClinux kernel.
+>>
+>> In some makefiles in userland they have changed the default stack size by using
+>>
+>> FLTFLAGS += -s 8192
+>>
+>> The above example is from the Makefile in the ftpd directory.
+>>
+>> But when we use flthdr to check the actual stack after the complete build has completed, it still reports 0x1000 as the stack size.
+>>
+>> We tried the m68k-uclinux-20061214, and this version seems to properly pass the -s to flthdr and change stack according to the Makefile.
+>>
+>> Is this something you could shed some light on?
+> 
+> I can't, but maybe someone else on the coldfire-gnu-discuss list can.
+> Is PLTFLAGS passed to GCC, ld, or elf2flt?
+
+This doesn't look like a toolchain issue.  In any case, we recommend to 
+use GCC for both compilation and linking.  Note, you can still pass 
+specific options to the linker using -Wl prefix.  E.g., to link a.o and 
+b.o into prog using 8192 stack size one can use:
+
+m68k-uclinux-gcc -o prog -Wl,-elf2flt="-s 8192" a.o b.o
+
+
+--
+Maxim Kuvyrkov
+CodeSourcery
+
+
+From embedded.beginner at gmail.com  Sat May 10 02:31:13 2008
+From: embedded.beginner at gmail.com (B T)
+Date: Fri, 9 May 2008 21:31:13 -0500
+Subject: 5271 CS Board File?
+Message-ID: <a6b3b9a70805091931w5e0920ccyf02f4e90bcfa8350@mail.gmail.com>
+
+I am in the process of trying to use CodeSourcery to debug a program I wrote
+for a custom board with a Coldfire 5271 as the MPU. Does anyone have an
+example board file for a 5271 that I could use as starting point? Thanks.
+-------------- next part --------------
+An HTML attachment was scrubbed...
+URL: <http://sourcerytools.com/pipermail/coldfire-gnu-discuss/attachments/20080509/ca86615b/attachment.html>
+
+From gunnar at genesi-usa.com  Wed May 14 08:52:49 2008
+From: gunnar at genesi-usa.com (Gunnar Von Boehn)
+Date: Wed, 14 May 2008 10:52:49 +0200
+Subject: Suboptimal code generation by GCC
+Message-ID: <b989d750805140152y3905f500rf62e0b873093095f@mail.gmail.com>
+
+To whom it may concern,
+
+We have evaluated the "gcc version 4.2.1 (Sourcery G++ Lite 4.2-47)"
+Compiling various test cases it showed that the the ASM code created
+by GCC 4.2.1 for 68k/Coldfire platform was not optimal.
+Comparing ASM output created by GCC 2.9 with GCC 4.2, the generated
+code got partially much worse with GCC 4.
+
+I have filed some bug report to the GCC team to help them rectify this issues.
+The found problems were described in these tickets:
+http://gcc.gnu.org/bugzilla/show_bug.cgi?id=36133
+http://gcc.gnu.org/bugzilla/show_bug.cgi?id=36134
+http://gcc.gnu.org/bugzilla/show_bug.cgi?id=36135
+http://gcc.gnu.org/bugzilla/show_bug.cgi?id=36136
+
+I think, I would be nice if you could have a look and help them to fix
+those issues.
+
+Please tell me if you need anything more from me to help you.
+
+
+Kind regards
+
+Gunnar von Boehn
+
+
+From vajrakilaya at att.net  Fri May 16 00:20:35 2008
+From: vajrakilaya at att.net (vajrakilaya at att.net)
+Date: Thu, 15 May 2008 20:20:35 -0400
+Subject: Initial Eclipse IDE configuration
+Message-ID: <B7A9875876004A4E9AB7214280060911@kundun>
+
+I just installed Sourcery G++ Lite from CodeSourcery and then installed the
+Eclipse IDE from Eclipse.org.  How is the IDE configured to recognize the
+G++ toolchain?
+
+ 
+
+David Liptak
+
+ 
+
+-------------- next part --------------
+An HTML attachment was scrubbed...
+URL: <http://sourcerytools.com/pipermail/coldfire-gnu-discuss/attachments/20080515/2e5408e7/attachment.html>
+
+From embedded.beginner at gmail.com  Fri May 16 08:09:08 2008
+From: embedded.beginner at gmail.com (B T)
+Date: Fri, 16 May 2008 03:09:08 -0500
+Subject: Board Files
+Message-ID: <a6b3b9a70805160109v1966e81bl913152f5642cffc@mail.gmail.com>
+
+I have a ColdFire 5271 project with two linker files, one that is Flash ROM-
+based and one that is RAM-based. Can I use a single CodeSourcery
+board file for programming/debugging from RAM AND programming/
+debugging from Flash?
+
+
+From carlos at codesourcery.com  Fri May 16 15:02:35 2008
+From: carlos at codesourcery.com (Carlos O'Donell)
+Date: Fri, 16 May 2008 11:02:35 -0400
+Subject: [coldfire-gnu-discuss] Board Files
+In-Reply-To: <a6b3b9a70805160109v1966e81bl913152f5642cffc@mail.gmail.com>
+References: <a6b3b9a70805160109v1966e81bl913152f5642cffc@mail.gmail.com>
+Message-ID: <482DA20B.1030408@codesourcery.com>
+
+B T wrote:
+> I have a ColdFire 5271 project with two linker files, one that is Flash ROM-
+> based and one that is RAM-based. Can I use a single CodeSourcery
+> board file for programming/debugging from RAM AND programming/
+> debugging from Flash?
+
+Yes. The XML board file describes the target board, but not where the 
+bits of your program reside (that's defined in your two linker scripts).
+
+Cheers,
+Carlos.
+-- 
+Carlos O'Donell
+CodeSourcery
+carlos at codesourcery.com
+(650) 331-3385 x716
+
+
+From kay at dohmanngmbh.de  Wed May 21 13:23:18 2008
+From: kay at dohmanngmbh.de (Kay Dohmann)
+Date: Wed, 21 May 2008 15:23:18 +0200
+Subject: Programming Flash Memory
+Message-ID: <48342246.2080303@dohmanngmbh.de>
+
+Hi.
+I am trying to programm flash memory (cfm) via gdb, but it errors. Is 
+flashing still not supported, or do I do something wrong? When I try to 
+flash via the P&E-Tools or via the CFFlasher from Freescale it works. My 
+target I want to flash is a mcf52235. Below I copied a complete gdb 
+session, for the case that helps.
+
+Thank you for any help and advice.
+
+Kay
+
+
+Output:
+
+70-gdb-set confirm off
+70^done
+71-gdb-set width 0
+(gdb) 
+71^done
+72-gdb-set height 0
+(gdb) 
+72^done
+(gdb) 
+73-interpreter-exec console echo
+73^done
+(gdb) 
+74-gdb-show prompt
+74^done,value="(gdb) "
+(gdb) 
+75-environment-directory "E:/Java/Eclipse-3.4/workspace/FreeRTOS Demo Application" "E:/Java/Eclipse-3.4/workspace/FreeRTOS Demo Application/.settings" "E:/Java/Eclipse-3.4/workspace/FreeRTOS Demo Application/include" "E:/Java/Eclipse-3.4/workspace/FreeRTOS Demo Application/include/arch" "E:/Java/Eclipse-3.4/workspace/FreeRTOS Demo Application/include/arch/mcf52235" "E:/Java/Eclipse-3.4/workspace/FreeRTOS Demo Application/system"
+75^done,source-path="E:/Java/Eclipse-3.4/workspace/FreeRTOS Demo Application;E:/Java/Eclipse-3.4/workspace/FreeRTOS Demo Application/.settings;E:/Java/Eclipse-3.4/workspace/FreeRTOS Demo Application/include;E:/Java/Eclipse-3.4/workspace/FreeRTOS Demo Application/include/arch;E:/Java/Eclipse-3.4/workspace/FreeRTOS Demo Application/include/arch/mcf52235;E:/Java/Eclipse-3.4/workspace/FreeRTOS Demo Application/system;$cdir;$cwd"
+(gdb) 
+76 info threads
+&"info threads\n"
+&"No registers.\n"
+76^error,msg="No registers."
+77-data-list-register-names
+(gdb) 
+77^done,register-names=["d0","d1","d2","d3","d4","d5","d6","d7","a0","a1","a2","a3","a4","a5","fp","sp","ps","pc","fp0","fp1","fp2","fp3","fp4","fp5","fp6","fp7","fpcontrol","fpstatus","fpiaddr"]
+(gdb) 
+78 source .gdbinit
+&"source .gdbinit\n"
+source .gdbinit
+78^done
+(gdb) 
+79 target remote | \\Compiler\\Freescale-Coldfire-4.2-125-m68k-ELF\\bin\\m68k-elf-sprite -v pe://USBMultilink m52235evb
+target remote | \Compiler\Freescale-Coldfire-4.2-125-m68k-ELF\bin\m68k-elf-sprite -v pe://USBMultilink m52235evb
+&"target remote | \\\\Compiler\\\\Freescale-Coldfire-4.2-125-m68k-ELF\\\\bin\\\\m68k-elf-sprite -v pe://USBMultilink m52235evb\n"
+&"m68k-elf-sprite: CodeSourcery ColdFire Debug Sprite (Sourcery G++ Lite 4.2-125)\n"
+m68k-elf-sprite: CodeSourcery ColdFire Debug Sprite (Sourcery G++ Lite 4.2-125)
+m68k-elf-sprite: Loaded P&E library 'UNIT_CFZ.DLL'
+m68k-elf-sprite: Using P&E DLL version: ColdFire Interface Libraries Version 3.14 (http://www.pemicro.com)
+&"m68k-elf-sprite: Loaded P&E library 'UNIT_CFZ.DLL'\n"
+&"m68k-elf-sprite: Using P&E DLL version: ColdFire Interface Libraries Version 3.14 (http://www.pemicro.com)\n"
+&"m68k-elf-sprite: 1 USBMultilink devices found\n"
+m68k-elf-sprite: 1 USBMultilink devices found
+m68k-elf-sprite: Opening P&E USBMultilink port 1 (USB1 : USB-ML-CF Rev C (PE6015711))
+&"m68k-elf-sprite: Opening P&E USBMultilink port 1 (USB1 : USB-ML-CF Rev C (PE6015711))\n"
+m68k-elf-sprite: Setting connection speed to 0
+&"m68k-elf-sprite: Setting connection speed to 0\n"
+m68k-elf-sprite: Doing I/O to stdin/stdout
+&"m68k-elf-sprite: Doing I/O to stdin/stdout\n"
+&"m68k-elf-sprite: Firmware version unavailable\n"
+m68k-elf-sprite: Firmware version unavailable
+&"m68k-elf-sprite: Remote device ready\n"
+&"m68k-elf-sprite: Device has Rev-B+ debug unit\n"
+m68k-elf-sprite: Remote device ready
+m68k-elf-sprite: Device has Rev-B+ debug unit
+&"m68k-elf-sprite: Init write-register 0xc05:32=0x20000021\n"
+&"m68k-elf-sprite: Init write-register 0xc04:32=0x21\n"
+m68k-elf-sprite: Init write-register 0xc05:32=0x20000021
+m68k-elf-sprite: Init write-register 0xc04:32=0x21
+&"m68k-elf-sprite: Init write-memory 0x40100074:8=0xf\n"
+&"m68k-elf-sprite: FLASHBAR valid bit detected, flash at 0x0\n"
+&"m68k-elf-sprite: Memory [0x0,+0x40000) flash (CFM 1:4/4)\n"
+&"m68k-elf-sprite: Memory [0x20000000,+0x8000) ram\n"
+&"m68k-elf-sprite: Target reset\n"
+&"m68k-elf-sprite: Got packet: 'qSupported'\n"
+&"m68k-elf-sprite: Sent response: 'PacketSize=1f40;qXfer:memory-map:read+;qXfer:features:read+;qXfer:features:read+'\n"
+m68k-elf-sprite: Init write-memory 0x40100074:8=0xf
+m68k-elf-sprite: FLASHBAR valid bit detected, flash at 0x0
+m68k-elf-sprite: Memory [0x0,+0x40000) flash (CFM 1:4/4)
+m68k-elf-sprite: Memory [0x20000000,+0x8000) ram
+m68k-elf-sprite: Target reset
+m68k-elf-sprite: Got packet: 'qSupported'
+m68k-elf-sprite: Sent response: 'PacketSize=1f40;qXfer:memory-map:read+;qXfer:features:read+;qXfer:features:read+'
+m68k-elf-sprite: Got packet: 'qXfer:features:read:target.xml:0,fff'
+&"m68k-elf-sprite: Got packet: 'qXfer:features:read:target.xml:0,fff'\n"
+&"m68k-elf-sprite: Sent response: 'l<?xml version=\"1.0\"?><!DOCTYPE target SYSTEM \"gdb-target.dtd\"><target><xi:include href=\"cf-core.xml\"/></target>'\n"
+m68k-elf-sprite: Sent response: 'l<?xml version="1.0"?><!DOCTYPE target SYSTEM "gdb-target.dtd"><target><xi:include href="cf-core.xml"/></target>'
+&"m68k-elf-sprite: Got packet: 'qXfer:features:read:cf-core.xml:0,fff'\n"
+m68k-elf-sprite: Got packet: 'qXfer:features:read:cf-core.xml:0,fff'
+&"m68k-elf-sprite: Sent response: 'l<?xml version=\"1.0\"?>\n"
+m68k-elf-sprite: Sent response: 'l<?xml version="1.0"?>
+&"<!DOCTYPE feature SYSTEM \"gdb-target.dtd\">\n"
+<!DOCTYPE feature SYSTEM "gdb-target.dtd">
+&"<feature name=\"org.gnu.gdb.coldfire.core\">\n"
+<feature name="org.gnu.gdb.coldfire.core">
+&"  <reg name=\"d0\" bitsize=\"32\"/>\n"
+  <reg name="d0" bitsize="32"/>
+  <reg name="d1" bitsize="32"/>
+  <reg name="d2" bitsize="32"/>
+  <reg name="d3" bitsize="32"/>
+  <reg name="d4" bitsize="32"/>
+  <reg name="d5" bitsize="32"/>
+  <reg name="d6" bitsize="32"/>
+  <reg name="d7" bitsize="32"/>
+  <reg name="a0" bitsize="32" type="data_ptr"/>
+  <reg name="a1" bitsize="32" type="data_ptr"/>
+  <reg name="a2" bitsize="32" type="data_ptr"/>
+  <reg name="a3" bitsize="32" type="data_ptr"/>
+  <reg name="a4" bitsize="32" type="data_ptr"/>
+  <reg name="a5" bitsize="32" type="data_ptr"/>
+  <reg name="fp" bitsize="32" type="data_ptr"/>
+&"  <reg name=\"d1\" bitsize=\"32\"/>\n"
+&"  <reg name=\"d2\" bitsize=\"32\"/>\n"
+&"  <reg name=\"d3\" bitsize=\"32\"/>\n"
+&"  <reg name=\"d4\" bitsize=\"32\"/>\n"
+&"  <reg name=\"d5\" bitsize=\"32\"/>\n"
+  <reg name="sp" bitsize="32" type="data_ptr"/>
+
+&"  <reg name=\"d6\" bitsize=\"32\"/>\n"
+&"  <reg name=\"d7\" bitsize=\"32\"/>\n"
+&"  <reg name=\"a0\" bitsize=\"32\" type=\"data_ptr\"/>\n"
+&"  <reg name=\"a1\" bitsize=\"32\" type=\"data_ptr\"/>\n"
+&"  <reg name=\"a2\" bitsize=\"32\" type=\"data_ptr\"/>\n"
+&"  <reg name=\"a3\" bitsize=\"32\" type=\"data_ptr\"/>\n"
+&"  <reg name=\"a4\" bitsize=\"32\" type=\"data_ptr\"/>\n"
+&"  <reg name=\"a5\" bitsize=\"32\" type=\"data_ptr\"/>\n"
+&"  <reg name=\"fp\" bitsize=\"32\" type=\"data_ptr\"/>\n"
+&"  <reg name=\"sp\" bitsize=\"32\" type=\"data_ptr\"/>\n"
+&"\n"
+&"  <reg name=\"ps\" bitsize=\"32\"/>\n"
+  <reg name="ps" bitsize="32"/>
+&"  <reg name=\"pc\" bitsize=\"32\" type=\"code_ptr\"/>\n"
+&"\n"
+  <reg name="pc" bitsize="32" type="code_ptr"/>
+
+&"</feature>\n"
+</feature>
+&"'\n"
+'
+&"m68k-elf-sprite: Got packet: 'Hc-1'\n"
+m68k-elf-sprite: Got packet: 'Hc-1'
+&"m68k-elf-sprite: Sent response: ''\n"
+m68k-elf-sprite: Sent response: ''
+&"m68k-elf-sprite: Got packet: 'qC'\n"
+m68k-elf-sprite: Got packet: 'qC'
+&"m68k-elf-sprite: Sent response: 'unset'\n"
+m68k-elf-sprite: Sent response: 'unset'
+m68k-elf-sprite: Got packet: 'qOffsets'
+&"m68k-elf-sprite: Got packet: 'qOffsets'\n"
+m68k-elf-sprite: Sent response: ''
+&"m68k-elf-sprite: Sent response: ''\n"
+&"m68k-elf-sprite: Got packet: '?'\n"
+m68k-elf-sprite: Got packet: '?'
+&"m68k-elf-sprite: Sent response: 'S00'\n"
+m68k-elf-sprite: Sent response: 'S00'
+&"m68k-elf-sprite: Got packet: 'Hg0'\n"
+m68k-elf-sprite: Got packet: 'Hg0'
+&"m68k-elf-sprite: Sent response: ''\n"
+m68k-elf-sprite: Sent response: ''
+&"m68k-elf-sprite: Got packet: 'g'\n"
+m68k-elf-sprite: Got packet: 'g'
+&"m68k-elf-sprite: Sent response: 'cf20608910a010700166ad280860892121df06f868cfd8b458aa000a2542506b496404010515e1034cace15266804cd20dde83485e61482550a8a42cacc206954040270800000000'\n"
+m68k-elf-sprite: Sent response: 'cf20608910a010700166ad280860892121df06f868cfd8b458aa000a2542506b496404010515e1034cace15266804cd20dde83485e61482550a8a42cacc206954040270800000000'
+~"0x00000000 in __text_start ()\n"
+0x00000000 in __text_start ()
+&"m68k-elf-sprite: Got packet: 'qSymbol::'\n"
+m68k-elf-sprite: Got packet: 'qSymbol::'
+&"m68k-elf-sprite: Sent response: ''\n"
+m68k-elf-sprite: Sent response: ''
+79^done
+(gdb) 
+80 load
+&"load\n"
+load
+m68k-elf-sprite: Got packet: 'qXfer:memory-map:read::0,fff'
+&"m68k-elf-sprite: Got packet: 'qXfer:memory-map:read::0,fff'\n"
+&"m68k-elf-sprite: Sent response: 'l<memory-map>\n"
+m68k-elf-sprite: Sent response: 'l<memory-map>
+&"  <memory start=\"0x0\" length=\"0x40000\" type=\"flash\">\n"
+  <memory start="0x0" length="0x40000" type="flash">
+&"    <property name=\"blocksize\">0x800</property>\n"
+&"  </memory>\n"
+    <property name="blocksize">0x800</property>
+  </memory>
+&"  <memory start=\"0x20000000\" length=\"0x8000\" type=\"ram\"/>\n"
+&"</memory-map>\n"
+  <memory start="0x20000000" length="0x8000" type="ram"/>
+</memory-map>
+&"'\n"
+'
+m68k-elf-sprite: Got packet: 'vFlashErase:00000000,0000f000'
+&"m68k-elf-sprite: Got packet: 'vFlashErase:00000000,0000f000'\n"
+&"m68k-elf-sprite: Flash programming is unsupported in this release\n"
+&"m68k-elf-sprite: Sent response: 'E23'\n"
+m68k-elf-sprite: Flash programming is unsupported in this release
+m68k-elf-sprite: Sent response: 'E23'
+Error erasing flash with vFlashErase packet
+&"Error erasing flash with vFlashErase packet\n"
+80^error,msg="Error erasing flash with vFlashErase packet"
+(gdb) 
+81-stack-list-frames
+&"Cannot access memory at address 0xacc20695\n"
+Cannot access memory at address 0xacc20695
+81^error,msg="Cannot access memory at address 0xacc20695"
+(gdb) 
+82 set $pc=_start
+&"set $pc=_start\n"
+set $pc=_start
+&"No symbol \"_start\" in current context.\n"
+No symbol "_start" in current context.
+82^error,msg="No symbol \"_start\" in current context."
+(gdb) 
+83 continue
+&"continue\n"
+continue
+&"m68k-elf-sprite: Got packet: 'vCont?'\n"
+m68k-elf-sprite: Got packet: 'vCont?'
+&"m68k-elf-sprite: Sent response: ''\n"
+m68k-elf-sprite: Sent response: ''
+m68k-elf-sprite: Got packet: 'Hc0'
+m68k-elf-sprite: Sent response: ''
+m68k-elf-sprite: Got packet: 'c'
+m68k-elf-sprite: Continue at 0x0
+&"m68k-elf-sprite: Got packet: 'Hc0'\n"
+&"m68k-elf-sprite: Sent response: ''\n"
+&"m68k-elf-sprite: Got packet: 'c'\n"
+&"m68k-elf-sprite: Continue at 0x0\n"
+&"m68k-elf-sprite: CSR = 0x08904420, FOF=1 TRG=0 HALT=0 BKPT=0\n"
+m68k-elf-sprite: CSR = 0x08904420, FOF=1 TRG=0 HALT=0 BKPT=0
+&"m68k-elf-sprite: Sent response: 'T0511:0000000a;f:acc20695;e:50a8a42c;'\n"
+m68k-elf-sprite: Sent response: 'T0511:0000000a;f:acc20695;e:50a8a42c;'
+~"\nProgram received signal "
+
+Program received signal ~"SIGTRAP, Trace/breakpoint trap.\n"
+SIGTRAP, Trace/breakpoint trap.
+~"0x0000000a in __text_start ()\n"
+0x0000000a in __text_start ()
+83^done
+(gdb) 
+84 info proc
+&"info proc\n"
+&"Undefined info command: \"proc\".  Try \"help info\".\n"
+84^error,msg="Undefined info command: \"proc\".  Try \"help info\"."
+(gdb) 
+85 info program
+&"info program\n"
+~"Debugging a target over a serial line.\n"
+~"Program stopped at 0xa.\n"
+~"It stopped with signal SIGTRAP, Trace/breakpoint trap.\n"
+~"Type \"info stack\" or \"info registers\" for more information.\n"
+85^done
+(gdb) 
+86 info threads
+&"info threads\n"
+&"m68k-elf-sprite: Got packet: 'qfThreadInfo'\n"
+&"m68k-elf-sprite: Sent response: ''\n"
+&"m68k-elf-sprite: Got packet: 'qL1200000000000000000'\n"
+&"m68k-elf-sprite: Sent response: ''\n"
+&"warning: RMT ERROR : failed to get remote thread list.\n"
+&"m68k-elf-sprite: Got packet: 'qC'\n"
+&"m68k-elf-sprite: Sent response: 'unset'\n"
+86^done
+(gdb) 
+87-stack-info-depth
+&"Cannot access memory at address 0xacc20695\n"
+Cannot access memory at address 0xacc20695
+87^error,msg="Cannot access memory at address 0xacc20695"
+(gdb) 
+88-stack-info-depth
+&"Cannot access memory at address 0xacc20695\n"
+Cannot access memory at address 0xacc20695
+88^error,msg="Cannot access memory at address 0xacc20695"
+(gdb) 
+89-data-list-changed-registers
+&"m68k-elf-sprite: Got packet: 'g'\n"
+m68k-elf-sprite: Got packet: 'g'
+&"m68k-elf-sprite: Sent response: 'cf20608910a010700166ad280860892121df06f868cfd8b458aa000a2542506b496404010515e1034cace15266804cd20dde83485e61482550a8a42cacc2069550a8a42c0000000a'\n"
+m68k-elf-sprite: Sent response: 'cf20608910a010700166ad280860892121df06f868cfd8b458aa000a2542506b496404010515e1034cace15266804cd20dde83485e61482550a8a42cacc2069550a8a42c0000000a'
+89^done,changed-registers=["0","1","2","3","4","5","6","7","8","9","10","11","12","13","14","15","16","17"]
+(gdb) 
+90-stack-info-depth
+&"Cannot access memory at address 0xacc20695\n"
+Cannot access memory at address 0xacc20695
+90^error,msg="Cannot access memory at address 0xacc20695"
+(gdb) 
+91-stack-info-depth
+&"Cannot access memory at address 0xacc20695\n"
+Cannot access memory at address 0xacc20695
+91^error,msg="Cannot access memory at address 0xacc20695"
+(gdb) 
+
+
+
+
+From sandra at codesourcery.com  Wed May 21 14:00:11 2008
+From: sandra at codesourcery.com (Sandra Loosemore)
+Date: Wed, 21 May 2008 10:00:11 -0400
+Subject: [coldfire-gnu-discuss] Programming Flash Memory
+In-Reply-To: <48342246.2080303@dohmanngmbh.de>
+References: <48342246.2080303@dohmanngmbh.de>
+Message-ID: <48342AEB.8060301@codesourcery.com>
+
+Kay Dohmann wrote:
+> Hi.
+> I am trying to programm flash memory (cfm) via gdb, but it errors. Is 
+> flashing still not supported, or do I do something wrong? When I try to 
+> flash via the P&E-Tools or via the CFFlasher from Freescale it works. My 
+> target I want to flash is a mcf52235. Below I copied a complete gdb 
+> session, for the case that helps.
+> 
+> [snip]
+> 
+> m68k-elf-sprite: Got packet: 'vFlashErase:00000000,0000f000'
+> m68k-elf-sprite: Flash programming is unsupported in this release
+
+That kind of answers your question, doesn't it?  Flash programming is a feature 
+of the product edition of Sourcery G++ and is not supported in the free Lite 
+edition.
+
+-Sandra
+
+
+
+From kay at dohmanngmbh.de  Wed May 21 14:25:10 2008
+From: kay at dohmanngmbh.de (Kay Dohmann)
+Date: Wed, 21 May 2008 16:25:10 +0200
+Subject: [coldfire-gnu-discuss] Programming Flash Memory
+In-Reply-To: <48342AEB.8060301@codesourcery.com>
+References: <48342246.2080303@dohmanngmbh.de> <48342AEB.8060301@codesourcery.com>
+Message-ID: <483430C6.8090701@dohmanngmbh.de>
+
+Sandra Loosemore schrieb:
+> Kay Dohmann wrote:
+>> Hi.
+>> I am trying to programm flash memory (cfm) via gdb, but it errors. Is 
+>> flashing still not supported, or do I do something wrong? When I try 
+>> to flash via the P&E-Tools or via the CFFlasher from Freescale it 
+>> works. My target I want to flash is a mcf52235. Below I copied a 
+>> complete gdb session, for the case that helps.
+>>
+>> [snip]
+>>
+>> m68k-elf-sprite: Got packet: 'vFlashErase:00000000,0000f000'
+>> m68k-elf-sprite: Flash programming is unsupported in this release
+>
+> That kind of answers your question, doesn't it?  Flash programming is 
+> a feature of the product edition of Sourcery G++ and is not supported 
+> in the free Lite edition.
+>
+> -Sandra
+>
+Ah, should have asked before. I've searched all over if this is 
+supported and what I found was the note in the Release Notes in the 
+Getting-Started document saying:
+"*Programming of ColdFire Flash devices.* The Sourcery G++ Debug Sprite 
+now supports programming
+of internal ColdFire Flash (CFM) devices. Applications built using 
+ROM-based linker
+scripts are automatically loaded into flash memory when run from the 
+debugger."
+That was why I thought it should work. Anyway, just to be sure, would 
+this work with the mcf52235 after buying another edition? And can I try 
+it first with the evaluation version, or is this version also cutted 
+(other that in use time periode)?
+
+Kay
+-------------- next part --------------
+An HTML attachment was scrubbed...
+URL: <http://sourcerytools.com/pipermail/coldfire-gnu-discuss/attachments/20080521/7e34e704/attachment.html>
+
+From sandra at codesourcery.com  Wed May 21 16:28:17 2008
+From: sandra at codesourcery.com (Sandra Loosemore)
+Date: Wed, 21 May 2008 12:28:17 -0400
+Subject: [coldfire-gnu-discuss] Programming Flash Memory
+In-Reply-To: <483430C6.8090701@dohmanngmbh.de>
+References: <48342246.2080303@dohmanngmbh.de> <48342AEB.8060301@codesourcery.com> <483430C6.8090701@dohmanngmbh.de>
+Message-ID: <48344DA1.2080800@codesourcery.com>
+
+Kay Dohmann wrote:
+
+> Ah, should have asked before. I've searched all over if this is 
+> supported and what I found was the note in the Release Notes in the 
+> Getting-Started document saying:
+> "*Programming of ColdFire Flash devices.* The Sourcery G++ Debug Sprite 
+> now supports programming
+> of internal ColdFire Flash (CFM) devices. Applications built using 
+> ROM-based linker
+> scripts are automatically loaded into flash memory when run from the 
+> debugger."
+
+Hmmm, thanks for the documentation bug report.  We've recently been moving from 
+a one-size-fits-all Getting Started guide to trying to tailor it for the 
+features of specific release configurations, and we clearly missed this case.
+
+> That was why I thought it should work. Anyway, just to be sure, would 
+> this work with the mcf52235 after buying another edition? And can I try 
+> it first with the evaluation version, or is this version also cutted 
+> (other that in use time periode)?
+
+We do provide a m52235evb board package.  The 30-day free evaluation period is 
+for the full product edition and includes support during that time if you run 
+into any problems getting things set up.
+
+-Sandra
+
+
+
+From m.koenigshaus at wut.de  Fri May 30 09:51:39 2008
+From: m.koenigshaus at wut.de (=?ISO-8859-15?Q?Markus_K=F6nigshaus?=)
+Date: Fri, 30 May 2008 11:51:39 +0200
+Subject: Building Linux for Coldfire V4
+Message-ID: <483FCE2B.8020501@wut.de>
+
+Hello,
+
+I try to use the Sourcery G++ Lite 4.2-125 edition to build the Linux 
+Kernel 2.6.23 for the MCF54455 Coldfireprocessor. The Kernelsources come 
+from the BSP M54455EVB, Release 20071214. The compilation is ok, but 
+there is some problem with the linkerscript:
+
+/* ld script to make m68k Coldfire Linux kernel
+ *
+ * Derived from arch/m68k/kernel/vmlinux-std.lds
+ *
+ * Updated 11/26/2007 for new CodeSourcery toolset
+ *     by Kurt Mahan <kmahan at freescale.com>
+ */
+
+#define    LOAD_OFFSET    0x00000000
+
+#include <asm-generic/vmlinux.lds.h>
+#include <asm/page_offset.h>
+
+#define    START_OFFSET    0x00020000
+#define    IMAGE_START    PAGE_OFFSET_RAW + START_OFFSET
+
+OUTPUT_FORMAT("elf32-m68k", "elf32-m68k", "elf32-m68k")
+OUTPUT_ARCH(m68k)
+ENTRY(_stext)
+jiffies = jiffies_64 + 4;
+
+SECTIONS
+{
+  . = IMAGE_START;
+  .text.head : AT(ADDR(.text.head) - LOAD_OFFSET) {
+      _text = .;            /* Text and read-only data */
+    *(.text.head)
+  } :text = 0x4e75
+
+  .text : AT(ADDR(.text) - LOAD_OFFSET) {
+    TEXT_TEXT
+    SCHED_TEXT
+    LOCK_TEXT
+    *(.fixup)
+    *(.gnu.warning)
+  } :text = 0x4e75
+  _etext = .;            /* End of text section */
+
+  . = ALIGN(16);
+  __ex_table : AT(ADDR(__ex_table) - LOAD_OFFSET) {
+    __start___ex_table = .;
+    *(__ex_table)
+    __stop___ex_table = .;
+  }
+
+  RODATA
+
+  . = ALIGN(8192);
+  .data : AT(ADDR(.data) - LOAD_OFFSET) {    /* Data */
+    DATA_DATA
+    CONSTRUCTORS
+  } :data
+
+  .bss : AT(ADDR(.bss) - LOAD_OFFSET) {        /* BSS */
+    *(.bss)
+  }
+
+  . = ALIGN(16);
+  .data.cacheline_aligned : AT(ADDR(.data.cacheline_aligned) - 
+LOAD_OFFSET ) {
+    *(.data.cacheline_aligned)
+  } :data
+
+  _edata = .;            /* End of data section */
+
+  . = ALIGN(8192);        /* Initrd */
+  .init.text : AT(ADDR(.init.text) - LOAD_OFFSET) {
+      __init_begin = .;
+    _sinittext = .;
+    *(.init.text)
+    _einittext = .;
+  }
+
+  .init.data : AT(ADDR(.init.data) - LOAD_OFFSET) {
+    *(.init.data)
+  }
+
+  . = ALIGN(16);
+  .init.setup : AT(ADDR(.init.setup) - LOAD_OFFSET) {
+    __setup_start = .;
+    *(.init.setup)
+      __setup_end = .;
+  }
+
+  .initcall.init : AT(ADDR(.initcall.init) - LOAD_OFFSET) {
+    __initcall_start = .;
+    INITCALLS
+    __initcall_end = .;
+  }
+
+  .con_initcall.init : AT(ADDR(.con_initcall.init) - LOAD_OFFSET) {
+    __con_initcall_start = .;
+    *(.con_initcall.init)
+    __con_initcall_end = .;
+  }
+
+  SECURITY_INIT
+
+#ifdef CONFIG_BLK_DEV_INITRD
+  . = ALIGN(8192);
+  .init.ramfs : AT(ADDR(.init.ramfs) - LOAD_OFFSET) {
+    __initramfs_start = .;
+    *(.init.ramfs)
+    __initramfs_end = .;
+  }
+#endif
+
+  . = ALIGN(8192);
+  __init_end = .;
+
+  .data.init_task : AT(ADDR(.data.init_task) - LOAD_OFFSET) {
+    *(.data.init_task)    /* The initial task and kernel stack */
+  }
+
+  _end = . ;
+
+  /* Sections to be discarded */
+  /DISCARD/ : {
+    *(.exit.text)
+    *(.exit.data)
+    *(.exitcall.exit)
+  }
+
+  /* Stabs debugging sections.  */
+  STABS_DEBUG
+}
+
+Trying to link .tmp_vmlinux1, I get
+
+LD      .tmp_vmlinux1
+m68k-linux-gnu-ld: .tmp_vmlinux1: PROGBITS section 
+'.data.cacheline_aligned' cannot be placed into same segment after 
+NOBITS section '.bss'
+m68k-linux-gnu-ld: map sections to segments failed: Nonrepresentable 
+section on output
+
+With the older Linker (Sourcery G++ Lite 4.2-35) 2.17, there is no problem.
+
+I try to allocate the data.cacheline_aligned bevore the .bss section, I 
+get some overlapping errors:
+
+
+...
+  . = ALIGN(8192);
+  .data : AT(ADDR(.data) - LOAD_OFFSET) {    /* Data */
+    DATA_DATA
+    CONSTRUCTORS   
+  } :data
+
+. = ALIGN(16);
+  .data.cacheline_aligned : AT(ADDR(.data.cacheline_aligned) - 
+LOAD_OFFSET ) {
+    *(.data.cacheline_aligned)
+  } :data
+
+  .bss : AT(ADDR(.bss) - LOAD_OFFSET) {        /* BSS */
+    *(.bss)
+  }
+...
+
+
+LD      .tmp_vmlinux1
+m68k-linux-gnu-ld: .tmp_vmlinux1: section .data lma 0xc0290000 overlaps 
+previous sections
+m68k-linux-gnu-ld: .tmp_vmlinux1: section .data.cacheline_aligned lma 
+0xc02a4a50 overlaps previous sections
+m68k-linux-gnu-ld: .tmp_vmlinux1: section .bss lma 0xc02a4af0 overlaps 
+previous sections
+m68k-linux-gnu-ld: .tmp_vmlinux1: section .init.text lma 0xc02da000 
+overlaps previous sections
+m68k-linux-gnu-ld: .tmp_vmlinux1: section .init.data lma 0xc02eb304 
+overlaps previous sections
+m68k-linux-gnu-ld: .tmp_vmlinux1: section .init.setup lma 0xc02ed110 
+overlaps previous sections
+m68k-linux-gnu-ld: .tmp_vmlinux1: section .initcall.init lma 0xc02ed350 
+overlaps previous sections
+m68k-linux-gnu-ld: .tmp_vmlinux1: section .con_initcall.init lma 
+0xc02ed590 overlaps previous sections
+m68k-linux-gnu-ld: .tmp_vmlinux1: section .data.init_task lma 0xc02ee000 
+overlaps previous sections
+m68k-linux-gnu-ld: .tmp_vmlinux1: section `.data' can't be allocated in 
+segment 2
+LOAD: .note.gnu.build-id .data .data.cacheline_aligned .bss .init.text 
+.init.data .init.setup .initcall.init .con_initcall.init .data.init_task
+m68k-linux-gnu-ld: final link failed: Bad value
+
+Do you know a workaround?
+
+Best regards,
+
+Markus K?nigshaus
+-------------- next part --------------
+An HTML attachment was scrubbed...
+URL: <http://sourcerytools.com/pipermail/coldfire-gnu-discuss/attachments/20080530/71569f0d/attachment.html>
+
+From maxim at codesourcery.com  Fri May 30 20:49:38 2008
+From: maxim at codesourcery.com (Maxim Kuvyrkov)
+Date: Sat, 31 May 2008 00:49:38 +0400
+Subject: [coldfire-gnu-discuss] Building Linux for Coldfire V4
+In-Reply-To: <483FCE2B.8020501@wut.de>
+References: <483FCE2B.8020501@wut.de>
+Message-ID: <48406862.6070300@codesourcery.com>
+
+Markus K?nigshaus wrote:
+> Hello,
+> 
+> I try to use the Sourcery G++ Lite 4.2-125 edition to build the Linux 
+> Kernel 2.6.23 for the MCF54455 Coldfireprocessor. The Kernelsources come 
+> from the BSP M54455EVB, Release 20071214. The compilation is ok, but 
+> there is some problem with the linkerscript:
+
+...
+
+> Trying to link .tmp_vmlinux1, I get
+> 
+> LD      .tmp_vmlinux1
+> m68k-linux-gnu-ld: .tmp_vmlinux1: PROGBITS section 
+> '.data.cacheline_aligned' cannot be placed into same segment after 
+> NOBITS section '.bss'
+> m68k-linux-gnu-ld: map sections to segments failed: Nonrepresentable 
+> section on output
+> 
+> With the older Linker (Sourcery G++ Lite 4.2-35) 2.17, there is no problem.
+
+The linker script is ill-formed.  The fix is to place .bss section last 
+in the linker script.
+
+SG++ Lite 4.2-35 release didn't properly diagnose the error and produced 
+a broken executable in this case.
+
+
+Regards,
+
+Maxim Kuvyrkov
+CodeSourcery
+
+

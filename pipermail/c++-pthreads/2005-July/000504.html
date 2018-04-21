@@ -1,0 +1,126 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [c++-pthreads]  Re: pthread_cancel and EH: let's try this again
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:c%2B%2B-pthreads%40codesourcery.com?Subject=Re%3A%20%5Bc%2B%2B-pthreads%5D%20%20Re%3A%20pthread_cancel%20and%20EH%3A%20let%27s%20try%20this%20again&In-Reply-To=%3C42E634CE.2010705%40hp.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000499.html">
+   <LINK REL="Next"  HREF="000510.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[c++-pthreads]  Re: pthread_cancel and EH: let's try this again</H1>
+    <B>Dave Butenhof</B> 
+    <A HREF="mailto:c%2B%2B-pthreads%40codesourcery.com?Subject=Re%3A%20%5Bc%2B%2B-pthreads%5D%20%20Re%3A%20pthread_cancel%20and%20EH%3A%20let%27s%20try%20this%20again&In-Reply-To=%3C42E634CE.2010705%40hp.com%3E"
+       TITLE="[c++-pthreads]  Re: pthread_cancel and EH: let's try this again">david.butenhof at hp.com
+       </A><BR>
+    <I>Tue Jul 26 13:04:14 UTC 2005</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000499.html">pthread_cancel and EH: let's try this again
+</A></li>
+        <LI>Next message: <A HREF="000510.html">[c++-pthreads]  Re: pthread_cancel and EH: let's try this again
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#504">[ date ]</a>
+              <a href="thread.html#504">[ thread ]</a>
+              <a href="subject.html#504">[ subject ]</a>
+              <a href="author.html#504">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Alexander Terekhov wrote:
+
+&gt;&gt;<i>As you can see, this leads to fixes that break catch(...) in a variety of
+</I>&gt;&gt;<i>creative ways.
+</I>&gt;&gt;<i>    
+</I>&gt;&gt;<i>
+</I>Yes; and of course the basic issue is that in POSIX (and C99) there's 
+nothing vaguely equivalent to &quot;catch(...)&quot;; and therefore no way the 
+standard can address this.
+
+&gt;&gt;&gt;<i><A HREF="http://opengroup.org/austin/mailarchives/austin-review-l/msg01450.html">http://opengroup.org/austin/mailarchives/austin-review-l/msg01450.html</A>
+</I>&gt;&gt;&gt;<i>      
+</I>&gt;&gt;&gt;<i>
+</I>&gt;&gt;<i>So it was _your_ idea. ;-)
+</I>&gt;&gt;<i>    
+</I>&gt;&gt;<i>
+</I>&gt;<i>It did came to my mind... but its was Butenhof who authored the patch:
+</I>&gt;<i>
+</I>&gt;<i><A HREF="http://www.opengroup.org/austin/mailarchives/austin-group-l/msg05916.html">http://www.opengroup.org/austin/mailarchives/austin-group-l/msg05916.html</A>
+</I>&gt;<i><A HREF="http://www.opengroup.org/austin/mailarchives/austin-group-l/msg05987.html">http://www.opengroup.org/austin/mailarchives/austin-group-l/msg05987.html</A>
+</I>&gt;<i><A HREF="http://www.opengroup.org/austin/mailarchives/austin-group-l/msg05989.html">http://www.opengroup.org/austin/mailarchives/austin-group-l/msg05989.html</A>
+</I>&gt;<i>  
+</I>&gt;<i>
+</I>Alexander pointed out a problem in the &quot;C Language binding to POSIX 
+API&quot;, and I suggested a fix for that problem also in the context of that 
+standard... the only context that was relevant.
+
+Perhaps needless to say, I never thought that was ideal. There's just no 
+way to express &quot;ideal&quot; without adding exceptions. POSIX made the 
+decision that it wasn't remotely &quot;in scope&quot; to try to add &quot;POSIX 
+exceptions&quot;; that this needed to be done by ISO C. POSIX cleanup (cancel 
+and thread exit) cannot be finalized -- cleanup handlers are like 
+Ada/Modula &quot;finally&quot; or C++ destructors, not like &quot;catch&quot; -- they 
+cleanup, the return, and the unwind continues irrevokably until the call 
+stack is empty and the thread terminates.
+
+What was important, and relevant, was to make the cleanup handlers (and 
+TSD destructors) reliable by specifying the state of cancellation. The 
+original INTENT of the working group had been that cancellation was 
+disabled implicitly by delivery, and most code is written presuming that 
+state. Making all cleanup handlers and destructors that don't explicitly 
+disable cancel suddenly &quot;non-conforming&quot; wouldn't have been a 
+particularly useful amendment. (And it would also have been silly 
+because all code a conforming application can run in the thread before 
+termination ought to be non-cancellable as it's doing nothing but 
+termination cleanup.)
+
+As has been implied here, in my implementation, cancel re-enable, in the 
+event that something outside &quot;standard POSIX C&quot; finalizes a cancel 
+unwind, is the responsibility of the caller. That is, a C program that 
+explicitly catches pthread_cancel_e, or identifies a CATCH_ALL exception 
+as pthread_cancel_e, should itself enable cancellation if it wants the 
+thread to become cancellable. A C++ binding could certainly choose to 
+make that implicit, perhaps as part of the exception destructor. That 
+the current implementation on Tru64 and OpenVMS doesn't do this is 
+irrelevant to any future standardization. (Tru64 is being strangled to 
+death along with Alpha, while OpenVMS never pretended to any more than a 
+reasonable level of &quot;convenience conformance&quot; to POSIX or other 
+UNIX-based standards anyway. That's not why people buy OpenVMS.)
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: david.butenhof.vcf
+Type: text/x-vcard
+Size: 476 bytes
+Desc: not available
+URL: &lt;<A HREF="http://sourcerytools.com/pipermail/c++-pthreads/attachments/20050726/d4e2750e/attachment.vcf">http://sourcerytools.com/pipermail/c++-pthreads/attachments/20050726/d4e2750e/attachment.vcf</A>&gt;
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000499.html">pthread_cancel and EH: let's try this again
+</A></li>
+	<LI>Next message: <A HREF="000510.html">[c++-pthreads]  Re: pthread_cancel and EH: let's try this again
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#504">[ date ]</a>
+              <a href="thread.html#504">[ thread ]</a>
+              <a href="subject.html#504">[ subject ]</a>
+              <a href="author.html#504">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/c++-pthreads">More information about the c++-pthreads
+mailing list</a><br>
+</body></html>

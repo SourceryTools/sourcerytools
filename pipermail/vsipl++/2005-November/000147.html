@@ -1,0 +1,122 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [vsipl++] compiler warnings
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20compiler%20warnings&In-Reply-To=%3C4375237D.8020607%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000146.html">
+   <LINK REL="Next"  HREF="000150.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[vsipl++] compiler warnings</H1>
+    <B>Mark Mitchell</B> 
+    <A HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20compiler%20warnings&In-Reply-To=%3C4375237D.8020607%40codesourcery.com%3E"
+       TITLE="[vsipl++] compiler warnings">mark at codesourcery.com
+       </A><BR>
+    <I>Fri Nov 11 23:04:29 UTC 2005</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000146.html">[vsipl++] compiler warnings
+</A></li>
+        <LI>Next message: <A HREF="000150.html">[vsipl++] compiler warnings
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#147">[ date ]</a>
+              <a href="thread.html#147">[ thread ]</a>
+              <a href="subject.html#147">[ subject ]</a>
+              <a href="author.html#147">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Stefan Seefeld wrote:
+
+&gt;<i> These, as well as map.hpp:413, map.hpp:509, map.hpp:458.
+</I>
+Those three are going to cause warnings with almost all compilers when
+using -DNDEBUG, i.e., when assert is an empty macro.  In that case, most
+compilers will think that you're &quot;falling off&quot; the switch, and,
+therefore, the function.
+
+One way to fix this would be to use a single return (with a local
+variable to store the value), and then it would be obvious to all
+compilers that there was no problem, e.g.:
+
+  subblocks_type s;
+
+  assert (d &lt; VSIP_MAX_DIMENSION);
+
+  switch(d) {
+    case 0: s = dist0._num_subblocks();
+    case 1: s = dist1._num_subblocks();
+    case 2: s = dist2._num_subblocks();
+    default: assert(false);
+  }
+
+  return s;
+
+However, that could result in a warning about s being uninitialized, so
+you'll probably need to write &quot;s = 0&quot; first.  And, that's bad, because
+the compiler will not eliminate that assignment when optimizing because
+it will not know that d is smaller than VSIP_MAX_DIMENSION, because the
+assert will be gone.  It also won't work if the variable has no default
+constructor.
+
+Some compilers (but, not yet, GCC) have a magic __builtin_assert
+function.  You can use this like so:
+
+  __builtin_assert (d &lt; VSIP_MAX_DIMENSION);
+
+In debug mode, this is like an ordinary assert -- but in optimized mode
+it tells the optimizer that the condition is always true.  So, the
+compiler would know that the default case was unreachable, and could
+eliminate the unreachable case.
+
+Here is the trick I would use:
+
+  switch(d) {
+    default: assert(false);
+    case 0: return dist0_.num_subblocks();
+    case 1: return dist1_.num_subblocks();
+    case 2: return dist2_.num_subblocks();
+  }
+
+That way, when the assert is gone, you'll just fall into the &quot;0&quot; case,
+which is OK, because you never expect it to happen, but the compiler
+will see that you never fall off the end of the switch.
+
+-- 
+Mark Mitchell
+CodeSourcery, LLC
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">mark at codesourcery.com</A>
+(916) 791-8304
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000146.html">[vsipl++] compiler warnings
+</A></li>
+	<LI>Next message: <A HREF="000150.html">[vsipl++] compiler warnings
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#147">[ date ]</a>
+              <a href="thread.html#147">[ thread ]</a>
+              <a href="subject.html#147">[ subject ]</a>
+              <a href="author.html#147">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">More information about the vsipl++
+mailing list</a><br>
+</body></html>

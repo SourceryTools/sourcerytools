@@ -1,0 +1,285 @@
+
+Index: src/vsip/signal.hpp
+===================================================================
+RCS file: /home/cvs/Repository/vpp/src/vsip/signal.hpp,v
+retrieving revision 1.11
+diff -c -p -r1.11 signal.hpp
+*** src/vsip/signal.hpp	10 Oct 2005 01:22:30 -0000	1.11
+--- src/vsip/signal.hpp	1 Dec 2005 22:57:16 -0000
+***************
+*** 20,25 ****
+--- 20,26 ----
+  #include <vsip/impl/signal-corr.hpp>
+  #include <vsip/impl/signal-window.hpp>
+  #include <vsip/impl/signal-fir.hpp>
++ #include <vsip/impl/signal-freqswap.hpp>
+  
+  
+  #endif // VSIP_SIGNAL_HPP
+Index: src/vsip/impl/signal-freqswap.hpp
+===================================================================
+RCS file: src/vsip/impl/signal-freqswap.hpp
+diff -N src/vsip/impl/signal-freqswap.hpp
+*** /dev/null	1 Jan 1970 00:00:00 -0000
+--- src/vsip/impl/signal-freqswap.hpp	1 Dec 2005 22:57:16 -0000
+***************
+*** 0 ****
+--- 1,160 ----
++ /* Copyright (c) 2005 by CodeSourcery, LLC.  All rights reserved. */
++ 
++ /** @file    vsip/impl/signal-freqswap.hpp
++     @author  Don McCoy
++     @date    2005-11-29
++     @brief   VSIPL++ Library: Frequency swap functions [signal.freqswap]
++ */
++ 
++ #ifndef VSIP_IMPL_SIGNAL_FREQSWAP_HPP
++ #define VSIP_IMPL_SIGNAL_FREQSWAP_HPP
++ 
++ /***********************************************************************
++   Included Files
++ ***********************************************************************/
++ 
++ #include <vsip/support.hpp>
++ #include <vsip/vector.hpp>
++ #include <vsip/matrix.hpp>
++ 
++ 
++ /***********************************************************************
++   Declarations
++ ***********************************************************************/
++ 
++ namespace vsip
++ {
++ 
++ namespace impl
++ {
++ 
++ template <typename T,
++           typename Block>
++ const_Vector<T, Block> 
++ freqswap( const_Vector<T, Block> a )
++ {
++   typedef Vector<T, Block> return_type;
++   return_type r( a.size() );
++ 
++   // Returns: If const_View is const_Vector, a const_Vector with the
++   // two halves of source swapped.  Given an odd-length, the left 
++   // half has one more value than the right-half.
++ 
++   // equiv. to r[i] = a[(M/2 + i) mod M],  where i = 0 --> M - 1
++ 
++   length_type const M = a.size();
++ 
++   index_type ii = M / 2;  // destination index
++   index_type ia = M % 2;  // adjustment to get source index
++   for ( index_type i = 0; i < M / 2; i++ )
++   {
++     r.put( ii, a.get( i       ) );
++     r.put(  i, a.get( ii + ia ) );
++     ++ii;
++   }
++ 
++   // if odd, fill in the last row/column(s)
++   if ( M % 2 )
++   {
++     index_type i = M / 2;
++     index_type ii = M - 1;
++     r.put( ii, a.get( i ) );
++   }
++ 
++   return r;
++ }
++ 
++ 
++ 
++ template <typename T,
++           typename Block>
++ const_Matrix<T, Block> 
++ freqswap( const_Matrix<T, Block> a )
++ {
++   typedef Matrix<T, Block> return_type;
++   return_type r( a.size(0), a.size(1) );
++ 
++   // Returns: If const_View is const_Matrix, a const_Matrix with the 
++   // upper left and lower right quadrants of source swapped. Given an 
++   // odd-length, the left half has one more value than the right-half.
++ 
++   // equiv. to r[i,j] = a[(M/2 + i) mod M,(N/2 + i) mod N], 
++   //   where i = 0 --> M - 1 and j = 0 --> N - 1
++ 
++   length_type const M = a.size(0);
++   length_type const N = a.size(1);
++ 
++   index_type ii = M / 2;  // destination index
++   index_type ia = M % 2;  // adjustment to get source index
++   for ( index_type i = 0; i < M / 2; i++ )
++   {
++     index_type jj = N / 2;
++     index_type ja = N % 2;
++     for ( index_type j = 0; j < N / 2; j++ )
++     {
++       r.put( ii, jj, a.get( i      , j       ) );
++       r.put(  i,  j, a.get( ii + ia, jj + ja ) );
++       r.put( ii,  j, a.get( i      , jj + ja ) );
++       r.put(  i, jj, a.get( ii + ia, j       ) );
++       ++jj;
++     }
++     ++ii;
++   }
++ 
++   // if odd, fill in the last row/column(s)
++   if ( M % 2 )
++   {
++     index_type i = M / 2;
++     index_type ii = M - 1;
++     index_type jj = N / 2;
++     index_type ja = N % 2;
++     for ( index_type j = 0; j < N / 2; j++ )
++     {
++       r.put( ii, jj, a.get( i, j       ) );
++       r.put( ii,  j, a.get( i, jj + ja ) );
++       ++jj;
++     }
++   }
++   if ( N % 2 )
++   {
++     index_type j = N / 2;
++     index_type jj = N - 1;
++     index_type ii = M / 2;
++     index_type ia = M % 2;
++     for ( index_type i = 0; i < M / 2; i++ )
++     {
++       r.put( ii, jj, a.get( i      , j ) );
++       r.put(  i, jj, a.get( ii + ia, j ) );
++       ++ii;
++     }
++   }
++   if ( (M % 2) && (N % 2) )
++     r.put( M - 1, N - 1, a.get( M / 2, N / 2 ) );
++ 
++   return r;
++ }
++ 
++ } // namespace impl
++ 
++ 
++ 
++ 
++ /// Swaps halves of a vector, or quadrants of a matrix, to remap zero 
++ /// frequencies from the origin to the middle.
++ 
++ template <template <typename, typename> class const_View,
++           typename T,
++           typename Block>
++ const_View<T, Block>
++ freqswap(const_View<T, Block> source)
++     VSIP_NOTHROW
++ {
++   return impl::freqswap( source );
++ }
++ 
++ 
++ 
++ 
++ } // namespace vsip
++ 
++ #endif // VSIP_IMPL_SIGNAL_FREQSWAP_HPP
+Index: tests/freqswap.cpp
+===================================================================
+RCS file: tests/freqswap.cpp
+diff -N tests/freqswap.cpp
+*** /dev/null	1 Jan 1970 00:00:00 -0000
+--- tests/freqswap.cpp	1 Dec 2005 22:57:16 -0000
+***************
+*** 0 ****
+--- 1,89 ----
++ /* Copyright (c) 2005 by CodeSourcery, LLC.  All rights reserved. */
++ 
++ /** @file    tests/freqswap.cpp
++     @author  Don McCoy
++     @date    2005-12-01
++     @brief   VSIPL++ Library: Frequency swap unit tests [signal.freqswap]
++ */
++ 
++ /***********************************************************************
++   Included Files
++ ***********************************************************************/
++ 
++ #include <vsip/initfin.hpp>
++ #include <vsip/support.hpp>
++ #include <vsip/signal.hpp>
++ #include <vsip/random.hpp>
++ #include "test.hpp"
++ #include "output.hpp"
++ 
++ using namespace vsip;
++ 
++ /***********************************************************************
++   Definitions
++ ***********************************************************************/
++ 
++ template <typename T>
++ void
++ test_vector_freqswap( length_type m )
++ {
++   Vector<T> a(m);
++ 
++   Rand<T> rgen(0);
++   a = rgen.randu(m);
++ 
++   Vector<T> b(m);
++   b = vsip::freqswap(a);
++ 
++   for ( index_type i = 0; i < m; i++ )
++     assert(equal( b.get(i), a.get(((m+1)/2 + i) % m ) ));
++ }
++ 
++ 
++ template <typename T>
++ void
++ test_matrix_freqswap( length_type m, length_type n )
++ {
++   Matrix<T> a(m, n);
++ 
++   Rand<T> rgen(0);
++   a = rgen.randu(m, n);
++ 
++   Matrix<T> b(m, n);
++   b = vsip::freqswap(a);
++ 
++   for ( index_type i = 0; i < m; i++ )
++     for ( index_type j = 0; j < n; j++ )
++       assert(equal( b.get(i, j),
++                a.get(((m+1)/2 + i) % m, ((n+1)/2 + j) % n ) ));
++ }
++ 
++ 
++ 
++ template <typename T>
++ void
++ cases_by_type()
++ {
++   test_vector_freqswap<T>( 8 );
++   test_vector_freqswap<T>( 9 );
++ 
++   test_matrix_freqswap<T>( 4, 4 );
++   test_matrix_freqswap<T>( 4, 5 );
++   test_matrix_freqswap<T>( 5, 4 );
++   test_matrix_freqswap<T>( 5, 5 );
++ }
++   
++ 
++ 
++ 
++ int
++ main ()
++ {
++   vsipl init;
++ 
++   cases_by_type<float>();
++   cases_by_type<double>();
++   cases_by_type<long double>();
++ 
++   return EXIT_SUCCESS;
++ }

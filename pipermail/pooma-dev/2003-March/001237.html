@@ -1,0 +1,871 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [pooma-dev] [Fwd: Non-Uniform Mesh]
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bpooma-dev%5D%20%5BFwd%3A%20Non-Uniform%20Mesh%5D&In-Reply-To=%3CPine.LNX.4.44.0303191020250.22005-200000%40bellatrix.tat.physik.uni-tuebingen.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001236.html">
+   
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[pooma-dev] [Fwd: Non-Uniform Mesh]</H1>
+    <B>Richard Guenther</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bpooma-dev%5D%20%5BFwd%3A%20Non-Uniform%20Mesh%5D&In-Reply-To=%3CPine.LNX.4.44.0303191020250.22005-200000%40bellatrix.tat.physik.uni-tuebingen.de%3E"
+       TITLE="[pooma-dev] [Fwd: Non-Uniform Mesh]">rguenth at tat.physik.uni-tuebingen.de
+       </A><BR>
+    <I>Wed Mar 19 09:21:46 UTC 2003</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001236.html">[pooma-dev] [Fwd: Non-Uniform Mesh]
+</A></li>
+        
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1237">[ date ]</a>
+              <a href="thread.html#1237">[ thread ]</a>
+              <a href="subject.html#1237">[ subject ]</a>
+              <a href="author.html#1237">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>On Tue, 18 Mar 2003, Richard Guenther wrote:
+
+&gt;<i> On 18 Mar 2003, Mark Mitchell wrote:
+</I>&gt;<i>
+</I>&gt;<i> &gt; Is there any support for the non-uniform mesh in pooma ver. 2.4?
+</I>&gt;<i> &gt; It seems that the new version lacks the header RectilinearMesh.h and
+</I>&gt;<i> only
+</I>&gt;<i> &gt; has support for the UniformRectilinearMesh as in version 2.3.
+</I>&gt;<i> &gt;
+</I>&gt;<i> &gt; Thank you,
+</I>&gt;<i> &gt;
+</I>&gt;<i> &gt; Tim
+</I>&gt;<i>
+</I>&gt;<i> I have this one in my local repository, but need to split away parts I
+</I>&gt;<i> may not give away.
+</I>
+Ok, here it is (my revision history says &quot;first working version&quot;, but
+that was for a local pooma repository one year ago, so no guarrantees).
+
+Richard.
+
+--
+Richard Guenther &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">richard.guenther at uni-tuebingen.de</A>&gt;
+WWW: <A HREF="http://www.tat.physik.uni-tuebingen.de/~rguenth/">http://www.tat.physik.uni-tuebingen.de/~rguenth/</A>
+-------------- next part --------------
+// -*- C++ -*-
+// ACL:license
+// ----------------------------------------------------------------------
+// This software and ancillary information (herein called &quot;SOFTWARE&quot;)
+// called POOMA (Parallel Object-Oriented Methods and Applications) is
+// made available under the terms described here.  The SOFTWARE has been
+// approved for release with associated LA-CC Number LA-CC-98-65.
+// 
+// Unless otherwise indicated, this SOFTWARE has been authored by an
+// employee or employees of the University of California, operator of the
+// Los Alamos National Laboratory under Contract No. W-7405-ENG-36 with
+// the U.S. Department of Energy.  The U.S. Government has rights to use,
+// reproduce, and distribute this SOFTWARE. The public may copy, distribute,
+// prepare derivative works and publicly display this SOFTWARE without 
+// charge, provided that this Notice and any statement of authorship are 
+// reproduced on all copies.  Neither the Government nor the University 
+// makes any warranty, express or implied, or assumes any liability or 
+// responsibility for the use of this SOFTWARE.
+// 
+// If SOFTWARE is modified to produce derivative works, such modified
+// SOFTWARE should be clearly marked, so as not to confuse it with the
+// version available from LANL.
+// 
+// For more information about POOMA, send e-mail to <A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">pooma at acl.lanl.gov</A>,
+// or visit the POOMA web page at <A HREF="http://www.acl.lanl.gov/pooma/.">http://www.acl.lanl.gov/pooma/.</A>
+// ----------------------------------------------------------------------
+// ACL:license
+
+/** @file
+ * @ingroup Mesh
+ * @brief
+ * A rectilinear mesh without uniform spacing between vertices.
+ */
+
+#ifndef POOMA_FIELD_MESH_RECTILINEARMESH_H
+#define POOMA_FIELD_MESH_RECTILINEARMESH_H
+
+//-----------------------------------------------------------------------------
+// Includes:
+//-----------------------------------------------------------------------------
+
+#include &lt;iostream.h&gt;
+
+#include &quot;Engine/ConstantFunctionEngine.h&quot;         // Used in functors
+#include &quot;Engine/IndexFunctionEngine.h&quot;            // Used in functors
+#include &quot;Layout/INode.h&quot;                          // Used in ctors
+#include &quot;Field/FieldEngine/FieldEnginePatch.h&quot; // Used in ctors
+#include &quot;Field/Mesh/NoMesh.h&quot;                  // Base class
+#include &quot;Field/FieldCentering.h&quot;               // Centering&lt;Dim&gt; inline
+#include &quot;Tiny/Vector.h&quot;                        // Class member
+
+
+//-----------------------------------------------------------------------------
+/// Holds the data for a rectilinear mesh. That class has a ref-counted
+/// instance of this class.
+//-----------------------------------------------------------------------------
+
+template &lt;int Dim, class T&gt;
+class RectilinearMeshData : public NoMeshData&lt;Dim&gt;
+{
+public:
+
+  //---------------------------------------------------------------------------
+  // Constructors.
+
+  /// We provide a default constructor that creates the object with empty
+  /// domains. To be useful, this object must be replaced by another 
+  /// version via assignment.
+  
+  RectilinearMeshData()
+    { 
+      // This space intentionally left blank.
+    }
+
+  /// This constructor fully constructs the object. It uses the layout to
+  /// compute domains and also initializes the origin and the spacings in each
+  /// coordinate direction. The indices in the layout refer to VERTEX
+  /// positions.
+
+  template&lt;class Layout, class EngineTag&gt;
+  RectilinearMeshData(
+    const Layout &amp;layout,
+    const Vector&lt;Dim, T&gt; &amp;origin,
+    const Vector&lt;Dim, Array&lt;1, T, EngineTag&gt; &gt; &amp;spacings)
+  : NoMeshData&lt;Dim&gt;(layout), 
+    origin_m(origin)
+    //spacings_m(spacings)
+    {
+      for (int i=0; i&lt;Dim; i++) {
+	spacings_m(i).engine() = spacings(i).engine(); // init
+	spacings_m(i).engine().makeOwnCopy(); // FIXME? Do we want this?
+	Interval&lt;1&gt; I(layout.domain()[i]);
+	positions_m(i).engine() = Engine&lt;1, T, Brick&gt;(I);
+	positions_m(i)(0) = origin_m(i);
+	// initialize from origin downward the ghost cells
+	for (int j=-1; j&gt;=I.min(); j--)
+	  positions_m(i)(j) = positions_m(i).read(j+1) - spacings_m(i).read(j);
+	// initialize from origin upward
+	for (int j=1; j&lt;=I.max(); j++)
+	  positions_m(i)(j) = positions_m(i).read(j-1) + spacings_m(i).read(j-1);
+      }
+    }
+
+  /// Constructor for constructing evenly spaced rectilinear meshes just
+  /// like UniformRectilinearMesh does.
+
+  template&lt;class Layout&gt;
+  RectilinearMeshData(
+    const Layout &amp;layout,
+    const Vector&lt;Dim, T&gt; &amp;origin,
+    const Vector&lt;Dim, T&gt; &amp;spacings)
+  : NoMeshData&lt;Dim&gt;(layout), 
+    origin_m(origin)
+    {
+      // for each dimension we allocate engines for spacings &amp; positions
+      // and initialize them according to origin/spacings
+      for (int i=0; i&lt;Dim; i++) {
+	Interval&lt;1&gt; I(layout.domain()[i]);
+	// allocate and assign spacings
+	spacings_m(i).engine() = Engine&lt;1, T, Brick&gt;(I);
+	spacings_m(i)(I) = spacings(i); // no Array.all()
+	Pooma::blockAndEvaluate();
+	// allocate positions, assign origin
+	positions_m(i).engine() = Engine&lt;1, T, Brick&gt;(I);
+	positions_m(i)(0) = origin_m(i);
+	// initialize from origin downward the ghost cells
+	for (int j=-1; j&gt;=I.min(); j--)
+	  positions_m(i)(j) = positions_m(i).read(j+1) - spacings_m(i).read(j);
+	// initialize from origin upward
+	for (int j=1; j&lt;=I.max(); j++)
+	  positions_m(i)(j) = positions_m(i).read(j-1) + spacings_m(i).read(j-1);
+      }
+    }
+    
+  /// Copy constructor.
+
+  RectilinearMeshData(const RectilinearMeshData&lt;Dim, T&gt; &amp;model)
+  : NoMeshData&lt;Dim&gt;(model), 
+    origin_m(model.origin_m)
+    //spacings_m(model.spacings_m),
+    //positions_m(model.positions_m)
+    {
+      for (int i=0; i&lt;Dim; i++) {
+	spacings_m(i).engine() = model.spacings_m(i).engine();
+	positions_m(i).engine() = model.positions_m(i).engine();
+      }
+      // This space intentionally left blank.
+    } 
+    
+  /// @name View constructors.
+  //@{
+  
+  /// Interval view. This means that we simply need to adjust the
+  /// origin by the amount the view is offset from the model's physical
+  /// cell domain. We rely on the base class to do the heavy lifting
+  /// with respect to figuring out the domains correctly.
+  ///
+  /// The Interval supplied must refer to VERTEX positions.
+  
+  RectilinearMeshData(const RectilinearMeshData&lt;Dim, T&gt; &amp;model, 
+		      const Interval&lt;Dim&gt; &amp;d)
+  : NoMeshData&lt;Dim&gt;(d)
+    {
+      for (int i = 0; i &lt; Dim; i++) {
+	// FIXME: Wheeee ;) (we cant store a BrickView...
+	// and still dont want to copy)
+	spacings_m(i).engine() = Engine&lt;1, T, Brick&gt;(&amp;model.spacings_m(i)(d[i])(0), d[i]);
+	positions_m(i).engine() = Engine&lt;1, T, Brick&gt;(&amp;model.positions_m(i)(d[i])(0), d[i]);
+	origin_m(i) = positions_m(i)(d[i].min());
+      }
+    }
+  
+  /// FieldEnginePatch view. We don't fiddle with the origin because we are not
+  /// making the domain zero-based.
+  ///
+  /// The domain supplied by the FieldEnginePatch must refer to VERTEX
+  /// positions.
+  
+  RectilinearMeshData(const RectilinearMeshData&lt;Dim, T&gt; &amp;model, 
+		      const FieldEnginePatch&lt;Dim&gt; &amp;p)
+  : NoMeshData&lt;Dim&gt;(model, p),
+    origin_m(model.origin_m),
+    spacings_m(model.spacings_m),
+    positions_m(model.spacings_m)
+    {
+      // FIXME: what does FieldEnginePatch do???
+      for (int i=0; i&lt;Dim; i++) {
+	spacings_m(i).engine() = model.spacings_m(i).engine();
+	positions_m(i).engine() = model.positions_m(i).engine();
+      }
+    }
+  
+  //@}
+
+  //---------------------------------------------------------------------------
+  /// Copy assignment operator.
+  
+  RectilinearMeshData&lt;Dim, T&gt; &amp;
+  operator=(const RectilinearMeshData&lt;Dim, T&gt; &amp;rhs)
+    {
+      if (this != &amp;rhs)
+        {
+          NoMeshData&lt;Dim&gt;::operator=(rhs);
+          origin_m = rhs.origin_m;
+	  for (int i=0; i&lt;Dim; i++) {
+	    spacings_m(i).engine() = rhs.spacings_m(i).engine();
+	    positions_m(i).engine() = rhs.positions_m(i).engine();
+	  }
+        }
+        
+      return *this;
+    }
+
+  //---------------------------------------------------------------------------
+  /// Empty destructor is fine. Note, however, that NoMeshData does not have
+  /// a virtual destructor. We must be careful to delete these puppies as
+  /// RectilinearMeshData.
+
+  ~RectilinearMeshData() { }
+
+  //---------------------------------------------------------------------------
+  /// @name General accessors.
+  //@{
+
+  /// The mesh spacing.
+  
+  inline const Vector&lt;Dim, Array&lt;1, T&gt; &gt; &amp;spacings() const 
+    { 
+      return spacings_m; 
+    }
+
+  /// The mesh vertex positions.
+  
+  inline const Vector&lt;Dim, Array&lt;1, T&gt; &gt; &amp;positions() const 
+    { 
+      return positions_m; 
+    }
+
+  /// The mesh origin.
+
+  inline const Vector&lt;Dim, T&gt; &amp;origin() const 
+    { 
+      return origin_m; 
+    }
+
+  //@}
+
+private:
+
+  /// Origin of mesh (coordinate vector of first vertex).
+
+  Vector&lt;Dim, T&gt; origin_m;
+
+  /// Spacings between vertices.
+
+  Vector&lt;Dim, Array&lt;1, T&gt; &gt; spacings_m;
+
+  /// Vertex positions.
+
+  Vector&lt;Dim, Array&lt;1, T&gt; &gt; positions_m;
+
+};
+
+
+///
+/// RectilinearMesh is a rectilinear mesh sometimes called a 
+/// &quot;cartesian product&quot; or &quot;tensor product&quot; mesh. Each dimension has a
+/// spacing value between every pair of vertices along that dimension;
+/// these spacings can all be different.
+///
+template&lt;int Dim, class T = POOMA_DEFAULT_POSITION_TYPE&gt;
+class RectilinearMesh
+{
+public:
+
+  //---------------------------------------------------------------------------
+  // Exported typedefs and enumerations.
+
+  /// The type of mesh points.
+    
+  typedef Vector&lt;Dim, T&gt; PointType_t;
+
+  /// The type of vectors used to represent, for example, normals.
+  
+  typedef Vector&lt;Dim, T&gt; VectorType_t;
+
+  /// The type used to store spacings.
+
+  typedef Vector&lt;Dim, Array&lt;1, T&gt; &gt; SpacingsType_t;
+  
+  /// The type T, used to represent, for example, volumes &amp; areas, etc.
+  
+  typedef T T_t;
+
+  /// The number of indices required to select a point in this mesh.
+  
+  enum { dimensions = Dim };
+
+  //---------------------------------------------------------------------------
+  // Constructors.
+  
+  /// We supply a default constructor, but it doesn't generate a useful mesh.
+  /// This is accomplished through assignment.
+  
+  RectilinearMesh() 
+  : data_m(new RectilinearMeshData&lt;Dim, T&gt;)
+    { 
+      // This space intentionally left blank.
+    }
+
+  /// This constructor fully constructs the object. It uses the layout to
+  /// compute domains and also initializes the origin and the spacings in each
+  /// coordinate direction.
+  ///
+  /// The Layout supplied must refer to VERTEX positions.
+  
+  template&lt;class Layout, class EngineTag&gt;
+  inline RectilinearMesh(const Layout &amp;layout, 
+			 const PointType_t &amp;origin,
+			 const Vector&lt;Dim, Array&lt;1, T, EngineTag&gt; &gt; &amp;spacings)
+  : data_m(new RectilinearMeshData&lt;Dim, T&gt;(layout, origin, spacings))
+    { 
+    }
+
+  /// Constructor compatible to UniformRectilinearMesh.
+
+  template&lt;class Layout&gt;
+  inline RectilinearMesh(const Layout &amp;layout,
+			 const PointType_t &amp;origin,
+			 const PointType_t &amp;spacings)
+  : data_m(new RectilinearMeshData&lt;Dim, T&gt;(layout, origin, spacings))
+    { 
+    }
+
+  template&lt;class Layout&gt;
+  inline RectilinearMesh(const Layout &amp;layout)
+  : data_m(new RectilinearMeshData&lt;Dim, T&gt;(layout, 
+					   PointType_t(0), 
+					   PointType_t(1)))
+    { 
+    }
+
+  /// Copy constructor. 
+  
+  inline RectilinearMesh(const RectilinearMesh&lt;Dim, T&gt; &amp;model)
+  : data_m(model.data_m)
+    {
+    }
+    
+  /// @name View constructors
+  /// These are the only possible views of this
+  /// mesh. Other views will make a NoMesh.
+  //@{ 
+  
+  /// Interval view.
+  ///
+  /// The Interval supplied must refer to VERTEX positions.
+  
+  inline RectilinearMesh(const RectilinearMesh&lt;Dim, T&gt; &amp;model, 
+			 const Interval&lt;Dim&gt; &amp;d)
+  : data_m(new RectilinearMeshData&lt;Dim, T&gt;(*model.data_m, d))
+    {
+    }
+  
+  /// INode view.
+  ///
+  /// The INode supplied must refer to VERTEX positions.
+  
+  inline RectilinearMesh(const RectilinearMesh&lt;Dim, T&gt; &amp;model, 
+			 const INode&lt;Dim&gt; &amp;i)
+  : data_m(new RectilinearMeshData&lt;Dim, T&gt;(*model.data_m, i.domain()))
+    {
+    }
+    
+  /// FieldEnginePatch view.
+  ///
+  /// The FieldEnginePatch supplied must refer to VERTEX positions.
+  
+  inline RectilinearMesh(const RectilinearMesh&lt;Dim, T&gt; &amp;model, 
+			 const FieldEnginePatch&lt;Dim&gt; &amp;p)
+  : data_m(new RectilinearMeshData&lt;Dim, T&gt;(*model.data_m, p))
+    {
+    }
+
+  //@}
+
+  //---------------------------------------------------------------------------
+  /// Copy assignment operator.
+  
+  inline RectilinearMesh&lt;Dim, T&gt; &amp;
+  operator=(const RectilinearMesh&lt;Dim, T&gt; &amp;rhs)
+    {
+      if (&amp;rhs != this)
+        {
+          data_m = rhs.data_m;
+        }
+      
+      return *this;
+    }
+
+  //---------------------------------------------------------------------------
+  /// Empty destructor is fine. The pointer to the data is ref-counted so its
+  /// lifetime is correctly managed.
+  
+  ~RectilinearMesh()
+    {
+    }
+  
+  //---------------------------------------------------------------------------
+  /// @name Domain functions.
+  //@{
+  
+  /// The vertex domain, as the mesh was constructed with.
+
+  inline const Interval&lt;Dim&gt; &amp;physicalVertexDomain() const
+    {
+      return data_m-&gt;physicalVertexDomain(); 
+    }
+
+  /// Function that returns a domain adjusted to give the indices of the cells.
+
+  inline const Interval&lt;Dim&gt; &amp;physicalCellDomain() const
+    {
+      return data_m-&gt;physicalCellDomain(); 
+    }
+
+  /// The total vertex domain, including mesh guard vertices.
+
+  inline const Interval&lt;Dim&gt; &amp;totalVertexDomain() const
+    {
+      return data_m-&gt;totalVertexDomain(); 
+    }
+
+  /// The total cell domain, including mesh guard cells.
+
+  inline const Interval&lt;Dim&gt; &amp;totalCellDomain() const
+    {
+      return data_m-&gt;totalCellDomain(); 
+    }
+
+  //@}
+
+  //---------------------------------------------------------------------------
+  /// @name General accessors.
+  //@{
+  
+  /// The mesh spacing.
+
+  inline const Vector&lt;Dim, Array&lt;1, T&gt; &gt; &amp;spacings() const 
+    { 
+      return data_m-&gt;spacings();
+    }
+
+  /// The mesh positions.
+
+  inline const Vector&lt;Dim, Array&lt;1, T&gt; &gt; &amp;positions() const 
+    { 
+      return data_m-&gt;positions();
+    }
+
+  /// The mesh origin.
+
+  inline const Vector&lt;Dim, T&gt; &amp;origin() const 
+    { 
+      return data_m-&gt;origin();
+    }
+
+  /// The cell containing a particular point.
+
+  inline Loc&lt;Dim&gt; cellContaining(const Vector&lt;Dim, T&gt; &amp;point) const
+    {
+      /// FIXME
+      Loc&lt;Dim&gt; loc((0, Pooma::NoInit()));	// Avoid a g++ parse error.
+      for (int i = 0; i &lt; Dim; i++)
+	{
+	  const T *start = &amp;positions()(i)(0);
+	  const T *finish = start + physicalDomain()[i].length();
+	  const T *p = std::lower_bound(start, finish, point(i));
+#if POOMA_BOUNDS_CHECK
+	  PInsist(p != finish,
+		  &quot;Rectilinear::cellContaining(): point is outside mesh.&quot;);
+#endif
+	  // The lower_bound function returns the first element that is not
+	  // less than the point we're searching for.
+	  int j = static_cast&lt;int&gt;(std::distance(start, p));
+	  if (*p == point(i))
+	    loc[i] = j;
+	  else
+	    loc[i] = j-1;
+	}
+
+      return loc;
+    }
+
+  /// The lower-left vertex associated with a given cell location.
+    
+  inline Vector&lt;Dim, T&gt; vertexPosition(const Loc&lt;Dim&gt; &amp;loc) const
+    {
+      Vector&lt;Dim, T&gt; point;
+      for (int i = 0; i &lt; Dim; i++)
+        point(i) = positions()(i)(loc[i]); 
+      return point;
+    }
+
+  //@}
+
+  //---------------------------------------------------------------------------
+  /// Support for the positions() function. We need to provide a functor for
+  /// use with IndexFunction-engine. We also need to export the
+  /// PositionsEngineTag_t typedef and the positionsFunctor() member function,
+  /// which computes the positions using the centering point positions.
+  /// The indices passed in refer to cells.
+  
+  class PositionsFunctor {
+  public:
+  
+    /// Need to be able to default construct since we fill in the details
+    /// after the fact.
+
+    // WARNING! For Arrays to be initialized (copy constructed, assigned,
+    //          etc.) correctly, even in the case of uninitialized targets
+    //          we need to copy the engines explicitly rather than rely
+    //          on the compiler generating correct copy constructors and
+    //          assignment operators.
+    // FIXME! Technically we either can dump the copy constructor or the
+    //        assignment operator.
+
+    PositionsFunctor() { }
+    
+    PositionsFunctor(const RectilinearMesh&lt;Dim, T&gt; &amp;m, 
+                     const Centering&lt;Dim&gt; &amp;c)
+      : centering_m(c.position(0))
+      {
+	for (int i=0; i&lt;Dim; i++) {
+	  positions_m(i).engine() = m.positions()(i).engine();
+	  spacings_m(i).engine() = m.spacings()(i).engine();
+	}
+      }
+
+    PositionsFunctor(const PositionsFunctor &amp;m)
+      :	centering_m(m.centering_m)
+    {
+      for (int i=0; i&lt;Dim; i++) {
+	positions_m(i).engine() = m.positions_m(i).engine();
+	spacings_m(i).engine() = m.spacings_m(i).engine();
+      }
+    }
+
+    PositionsFunctor&amp; operator=(const PositionsFunctor &amp;m)
+    {
+      centering_m = m.centering_m;
+      for (int i=0; i&lt;Dim; i++) {
+	positions_m(i).engine() = m.positions_m(i).engine();
+	spacings_m(i).engine() = m.spacings_m(i).engine();
+      }
+
+      return *this;
+    }
+
+    inline PointType_t operator()(int i0) const
+      {
+        return PointType_t(positions_m(0).read(i0) + spacings_m(0).read(i0)*centering_m(0));
+      }
+      
+    inline PointType_t operator()(int i0, int i1) const
+      {
+        return PointType_t(positions_m(0).read(i0) + spacings_m(0).read(i0)*centering_m(0),
+			   positions_m(1).read(i1) + spacings_m(1).read(i1)*centering_m(1));
+      }
+
+    inline PointType_t operator()(int i0, int i1, int i2) const
+      {
+        return PointType_t(positions_m(0).read(i0) + spacings_m(0).read(i0)*centering_m(0),
+			   positions_m(1).read(i1) + spacings_m(1).read(i1)*centering_m(1),
+			   positions_m(2).read(i2) + spacings_m(2).read(i2)*centering_m(2));
+      }
+
+  private:
+
+    Vector&lt;Dim, Array&lt;1, T&gt; &gt; positions_m;
+    Vector&lt;Dim, Array&lt;1, T&gt; &gt; spacings_m;
+    Centering&lt;Dim&gt;::Position centering_m;
+
+  };
+  
+  typedef IndexFunction&lt;PositionsFunctor&gt; PositionsEngineTag_t;
+  
+  void initializePositions(
+    Engine&lt;Dim, PointType_t, PositionsEngineTag_t&gt; &amp;e, 
+    const Centering&lt;Dim&gt; &amp;c) const
+    {
+      e.setFunctor(PositionsFunctor(*this, c));
+    }
+  
+  //---------------------------------------------------------------------------
+  /// Support for the outwardNormals() and coordinateNormals() functions. 
+  /// We also need to export the NormalsEngineTag_t typedef and the 
+  /// initializeNormals() member function, which sets the appropriate constant 
+  /// value (since the normals exactly align with the coordinate axes).
+  /// The boolean value passed is true if we are asking for outward normals,
+  /// as opposed to coordinate normals. The indices passed in refer to cells.
+
+  typedef ConstantFunction NormalsEngineTag_t;
+  
+  void initializeNormals(
+    Engine&lt;Dim, VectorType_t, NormalsEngineTag_t&gt; &amp;e, 
+    const Centering&lt;Dim&gt; &amp;c,
+    bool outward = true) const
+    {
+      // Check some pre-conditions. We need there to be a single centering
+      // point and it must be face-centered.
+      
+      PAssert(c.size() == 1);
+      PAssert(c.centeringType() == FaceType);
+      
+      // Generate the normals. The coordinate normals are computed from
+      // 1 - orientation. Then, if we are on the near face, indicated by
+      // position == 0.0, we need to multiply by -1.0 if we are doing
+      // outward normals.
+      
+      VectorType_t normal;
+      for (int i = 0; i &lt; Dim; i++)
+        {
+          normal(i) = static_cast&lt;T_t&gt;(1 - c.orientation(0)[i].first());
+          if (outward &amp;&amp; c.position(0)(i) == 0.0)
+            normal(i) *= static_cast&lt;T_t&gt;(-1);
+        }
+        
+      e.setConstant(normal);
+    }
+
+
+  /// General &quot;volume&quot; functor: works for edges, faces and cells.
+
+  class GeneralVolumesFunctor {
+  public:
+  
+    /// Need to be able to default construct since we fill in the details
+    /// after the fact.
+    
+    GeneralVolumesFunctor() { }
+    
+    GeneralVolumesFunctor(const RectilinearMesh&lt;Dim, T&gt; &amp;m, 
+			  const Centering&lt;Dim&gt; &amp;c)
+      : orientation_m(c.orientation(0))
+      {
+	for (int i=0; i&lt;Dim; i++)
+	  spacings_m(i).engine() = m.spacings()(i).engine();
+      }
+
+    GeneralVolumesFunctor(const GeneralVolumesFunctor &amp;m)
+      : orientation_m(m.orientation_m)
+      {
+	for (int i=0; i&lt;Dim; i++)
+	  spacings_m(i).engine() = m.spacings_m(i).engine();	
+      }
+
+    GeneralVolumesFunctor&amp; operator=(const GeneralVolumesFunctor &amp;m)
+    {
+      orientation_m = m.orientation_m;
+      for (int i=0; i&lt;Dim; i++)
+	spacings_m(i).engine() = m.spacings_m(i).engine();
+      return *this;
+    }
+
+    inline T operator()(int i0) const
+      {
+	// It does not make sense to have a zero orientation for 1D
+	return spacings_m(0).read(i0);
+      }
+      
+    inline T operator()(int i0, int i1) const
+      {
+	// It does not make sense to have all zero orientations for 2D
+	if (orientation_m[0].first() == 0)
+	  return spacings_m(1).read(i1);
+	else if (orientation_m[1].first() == 0)
+	  return spacings_m(0).read(i0);
+	else
+	  return spacings_m(0).read(i0) * spacings_m(1).read(i1);
+      }
+
+    inline T operator()(int i0, int i1, int i2) const
+      {
+	// Could optimize as above
+	T volume = static_cast&lt;T&gt;(1);
+	if (orientation_m[0].first() != 0)
+	  volume *= spacings_m(0).read(i0);
+	if (orientation_m[1].first() != 0)
+	  volume *= spacings_m(1).read(i1);
+	if (orientation_m[2].first() != 0)
+	  volume *= spacings_m(2).read(i2);
+	return volume;
+      }
+
+  private:
+
+    Vector&lt;Dim, Array&lt;1, T&gt; &gt; spacings_m;
+    Centering&lt;Dim&gt;::Orientation orientation_m;
+
+  };
+
+  
+  //---------------------------------------------------------------------------
+  /// Support for the cellVolumes() function. We also need to export the 
+  /// CellVolumesEngineTag_t typedef and the initializeCellVolumes() member 
+  /// function, which sets the appropriate constant value for the volume. 
+  /// The indices passed in refer to cells.
+  
+  typedef IndexFunction&lt;GeneralVolumesFunctor&gt; CellVolumesEngineTag_t;
+  
+  void initializeCellVolumes(
+    Engine&lt;Dim, T, CellVolumesEngineTag_t&gt; &amp;e, 
+    const Centering&lt;Dim&gt; &amp;c) const
+    {
+      // Check some pre-conditions. We need there to be a single centering
+      // point and it must be cell-centered.
+
+      PAssert(c.size() == 1);
+      PAssert(c.centeringType() == CellType);
+
+      // Use the general functor to do the job.
+
+      e.setFunctor(GeneralVolumesFunctor(*this, c));
+    }
+
+  //---------------------------------------------------------------------------
+  /// Support for the faceAreas() function. We also need to export the 
+  /// FaceAreasEngineTag_t typedef and the initializeFaceAreas() member 
+  /// function, which sets the appropriate constant face area value.
+  /// The indices passed in refer to cells.
+
+  typedef IndexFunction&lt;GeneralVolumesFunctor&gt; FaceAreasEngineTag_t;
+  
+  void initializeFaceAreas(
+    Engine&lt;Dim, T, FaceAreasEngineTag_t&gt; &amp;e, 
+    const Centering&lt;Dim&gt; &amp;c) const
+    {
+      // Check some pre-conditions. We need there to be a single centering
+      // point and it must be face-centered.
+
+      PAssert(c.size() == 1);
+      PAssert(c.centeringType() == FaceType);
+
+      // Use the general functor to do the job.
+      
+      e.setFunctor(GeneralVolumesFunctor(*this, c));
+    }
+  
+  //---------------------------------------------------------------------------
+  /// Support for the edgeLengths() function. We also need to export the 
+  /// EdgeLengthsEngineTag_t typedef and the initializeEdgeLengths() member 
+  /// function, which sets the appropriate constant edge length value.
+  /// The indices passed in refer to cells.
+
+  typedef IndexFunction&lt;GeneralVolumesFunctor&gt; EdgeLengthsEngineTag_t;
+  
+  void initializeEdgeLengths(
+    Engine&lt;Dim, T, EdgeLengthsEngineTag_t&gt; &amp;e, 
+    const Centering&lt;Dim&gt; &amp;c) const
+    {
+      // Check some pre-conditions. We need there to be a single centering
+      // point and it must be edge-centered.
+      
+      PAssert(c.size() == 1);
+      PAssert(c.centeringType() == EdgeType);
+      
+      // Use the general functor to do the job.
+      
+      e.setFunctor(GeneralVolumesFunctor(*this, c));
+    }
+  
+private:
+
+  /// Our data, stored as a ref-counted pointer to simplify memory management.
+  
+  RefCountedPtr&lt;RectilinearMeshData&lt;Dim, T&gt; &gt; data_m;
+};
+
+#endif // POOMA_FIELD_MESH_RECTILINEARMESH_H
+
+// ACL:rcsinfo
+// ----------------------------------------------------------------------
+// $RCSfile: RectilinearMesh.h,v $   $Author: oldham $
+// $Revision: 1.4 $   $Date: 2001/12/11 20:43:30 $
+// ----------------------------------------------------------------------
+// ACL:rcsinfo
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001236.html">[pooma-dev] [Fwd: Non-Uniform Mesh]
+</A></li>
+	
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1237">[ date ]</a>
+              <a href="thread.html#1237">[ thread ]</a>
+              <a href="subject.html#1237">[ subject ]</a>
+              <a href="author.html#1237">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

@@ -1,0 +1,457 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> Expanding Supported Explicit Instantiations
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20Expanding%20Supported%20Explicit%20Instantiations&In-Reply-To=%3C20010522113344.A7933%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000358.html">
+   <LINK REL="Next"  HREF="000360.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>Expanding Supported Explicit Instantiations</H1>
+    <B>Jeffrey Oldham</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20Expanding%20Supported%20Explicit%20Instantiations&In-Reply-To=%3C20010522113344.A7933%40codesourcery.com%3E"
+       TITLE="Expanding Supported Explicit Instantiations">oldham at codesourcery.com
+       </A><BR>
+    <I>Tue May 22 18:33:44 UTC 2001</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000358.html">weekly status
+</A></li>
+        <LI>Next message: <A HREF="000360.html">[pooma-dev] Expanding Supported Explicit Instantiations
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#359">[ date ]</a>
+              <a href="thread.html#359">[ thread ]</a>
+              <a href="subject.html#359">[ subject ]</a>
+              <a href="author.html#359">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>OK to commit this patch?
+
+Dave Nystrom desired to explicitly instantiate this program:
+
+    #include &quot;Pooma/NewFields.h&quot;
+
+    #define T1 NoGeometry&lt;(int)3&gt;
+    #define T2 int
+    #define T3 CompressibleBrick
+    #define T4 Interval&lt;(int)3&gt;
+    template View1&lt;Field&lt;T1,T2,T3&gt;,T4&gt;::sv;
+
+I do not know the correct syntax for explicitly instantiating View1's
+const static bool `sv' if this is even legal.  The attached patch
+permits instantiating
+
+    #include &quot;Pooma/NewFields.h&quot;
+
+    #define T1 NoGeometry&lt;(int)3&gt;
+    #define T2 int
+    #define T3 CompressibleBrick
+    #define T4 Interval&lt;(int)3&gt;
+    template class View1&lt;Field&lt;T1,T2,T3&gt;,T4&gt;;
+
+It also permits
+
+    template View0&lt;Array&lt;2,T2,T3&gt; &gt;;
+
+without first explicitly instantiating Array&lt;2,T2,T3&gt;;
+
+The main idea is to break mutually recursive class definitions by
+defining alternative `View' classes that contain all the type
+definitions of their corresponding `View' classes but omit the member
+functions.  These alternative classes provide the return type for
+non-templated member functions of Array and Field classes.  These
+member functions' bodies still use the View classes.  Since the
+alternative classes' definitions are the same as for the View classes,
+this trickery works.  If a View class's code changes, the
+corresponding alternative class's code must also be changed.  This
+might lead to future maintenance problems.
+
+Stephen Smith provided the insight for the patch so he deserves all
+positive credit.  Send all criticisms to Jeffrey.
+
+2001-05-22  Jeffrey D. Oldham &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">oldham at codesourcery.com</A>&gt;
+	* Array/Array.h (View0): Modify initial comment to indicate
+	changes should also be made to AltView0.
+	(AltView0): New class to avoid explicit instantiation problems.
+	(ComponentView): Modify initial comment to indicate class should
+	not be explicitly instantiated.
+	(Array::read()): Change return type to AltView0.
+	(Array::operator()()): Likewise.
+
+	* NewField/Field.h (View1): Modify initial comment to indicate
+	changes should also be made to AltView1.
+	(AltView1): New class to avoid explicit instantiation problems.
+	(Field::read()): Change return type to AltView1.
+	(Field::readAll()): Likewise.
+	(Field::read(s1)): Likewise.
+	(Field::operator()()): Likewise.
+	(Field::all()): Likewise.
+	(Field::operator()(s1)): Likewise.
+
+Tested on	sequential Linux using gcc 3.0
+Approved by	???you???
+
+Thanks,
+Jeffrey D. Oldham
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">oldham at codesourcery.com</A>
+-------------- next part --------------
+Index: Array/Array.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/Array/Array.h,v
+retrieving revision 1.140
+diff -c -p -r1.140 Array.h
+*** Array/Array.h	2001/05/14 21:11:22	1.140
+--- Array/Array.h	2001/05/22 17:56:30
+*************** struct View1&lt;Array&lt;Dim, T, EngineTag&gt;, D
+*** 642,647 ****
+--- 642,649 ----
+  // an existing engine cannot be any kind of slice domain.
+  // Also, bounds checking would make no sense because it would
+  // reduce to contains(a.domain(), a.domain());
++ //
++ // Any changes to this class should also be made to AltView0.
+  
+  template&lt;int Dim, class T, class EngineTag&gt;
+  struct View0&lt;Array&lt;Dim, T, EngineTag&gt; &gt;
+*************** struct View0&lt;Array&lt;Dim, T, EngineTag&gt; &gt;
+*** 686,691 ****
+--- 688,728 ----
+      }
+  };
+  
++ // AltView0 avoids an instantiation problem that arises when two
++ // classes use each other.  This class's definition should be exactly
++ // the same as View0 except omitting member functions.
++ //
++ // Do NOT explicitly instantiate this class.
++ 
++ template&lt;class ArrayTag&gt;
++ struct AltView0;
++ 
++ template&lt;int Dim, class T, class EngineTag&gt;
++ struct AltView0&lt;Array&lt;Dim, T, EngineTag&gt; &gt;
++ {
++   // Convenience typedef for the thing we're taking a view of.
++   
++   typedef Array&lt;Dim, T, EngineTag&gt; Subject_t;
++ 
++   // Deduce domains for the output type.
++   // At some point, we need to fix NewDomain1; until then, use
++   // the temporary version from Array.h.
++   
++   typedef typename Subject_t::Engine_t Engine_t;
++   typedef typename Subject_t::Domain_t Domain_t;
++ 
++   // Deduce the template parameters for the output type.
++   
++   typedef typename NewEngine&lt;Engine_t, Domain_t&gt;::Type_t NewEngine_t;
++   enum { newDim = NewEngine_t::dimensions };
++   typedef typename NewEngine_t::Tag_t NewEngineTag_t;
++   
++   // The output types.
++   
++   typedef Array&lt;newDim, T, NewEngineTag_t&gt; Type_t;
++   typedef Type_t ReadType_t;
++ };
++ 
+  template&lt;int Dim, class T, class EngineTag&gt;
+  struct View1&lt;Array&lt;Dim, T, EngineTag&gt;, int&gt;
+  {
+*************** struct Patch&lt;Array&lt;Dim, T, EngineTag&gt; &gt;
+*** 1278,1283 ****
+--- 1315,1321 ----
+  
+  //-----------------------------------------------------------------------------
+  // ComponentView specialization for Array.
++ // Changes to ComponentView should also be made to AltComponentView.
+  //-----------------------------------------------------------------------------
+  
+  template&lt;int Dim, class T, class EngineTag&gt;
+*************** struct ComponentView&lt;Components, Array&lt;D
+*** 1314,1321 ****
+  };
+  
+  //-----------------------------------------------------------------------------
+! // AltComponentView gets around the problem that instantiation problem that
+! // arises when two classes use each other.
+  //-----------------------------------------------------------------------------
+  
+  template&lt;class Components, class Arr&gt;
+--- 1352,1362 ----
+  };
+  
+  //-----------------------------------------------------------------------------
+! // AltComponentView avoids an instantiation problem that arises when
+! // two classes use each other.  These classes' definitions should be
+! // exactly the same as ComponentView except omitting member functions.
+! //
+! // Do NOT explicitly instantiate these alternative classes.
+  //-----------------------------------------------------------------------------
+  
+  template&lt;class Components, class Arr&gt;
+*************** public:
+*** 1785,1791 ****
+    // A zero-argument version of operator(), which takes a view of 
+    // array's domain, is also supplied.
+  
+!   typename View0&lt;This_t&gt;::ReadType_t 
+    read() const
+      {
+        typedef View0&lt;This_t&gt; Ret_t;
+--- 1826,1832 ----
+    // A zero-argument version of operator(), which takes a view of 
+    // array's domain, is also supplied.
+  
+!   typename AltView0&lt;This_t&gt;::ReadType_t 
+    read() const
+      {
+        typedef View0&lt;This_t&gt; Ret_t;
+*************** public:
+*** 1855,1861 ****
+        return Ret_t::makeRead(*this, s1, s2, s3, s4, s5, s6, s7);
+      }
+  
+!   typename View0&lt;This_t&gt;::Type_t 
+    operator()() const
+      {
+        typedef View0&lt;This_t&gt; Ret_t;
+--- 1896,1902 ----
+        return Ret_t::makeRead(*this, s1, s2, s3, s4, s5, s6, s7);
+      }
+  
+!   typename AltView0&lt;This_t&gt;::Type_t 
+    operator()() const
+      {
+        typedef View0&lt;This_t&gt; Ret_t;
+Index: NewField/Field.h
+===================================================================
+RCS file: /home/pooma/Repository/r2/src/NewField/Field.h,v
+retrieving revision 1.13
+diff -c -p -r1.13 Field.h
+*** NewField/Field.h	2001/05/14 21:11:24	1.13
+--- NewField/Field.h	2001/05/22 17:56:34
+*************** struct View1Implementation&lt;Field&lt;Geometr
+*** 424,429 ****
+--- 424,431 ----
+  
+  //-----------------------------------------------------------------------------
+  // View1&lt;Field, S1&gt; specialization for indexing a field with a single domain.
++ //
++ // Any changes to View1 should also be made to AltView1.
+  //-----------------------------------------------------------------------------
+  
+  template&lt;class GeometryTag, class T, class EngineTag, class Sub1&gt;
+*************** struct View1&lt;Field&lt;GeometryTag, T, Engin
+*** 473,478 ****
+--- 475,482 ----
+  
+  //-----------------------------------------------------------------------------
+  // View1&lt;Field, int&gt; specialization for indexing a field with an int.
++ //
++ // Any changes to View1 should also be made to AltView1.
+  //-----------------------------------------------------------------------------
+  
+  template&lt;class GeometryTag, class T, class EngineTag&gt;
+*************** struct View1&lt;Field&lt;GeometryTag, T, Engin
+*** 516,521 ****
+--- 520,590 ----
+  
+  
+  //-----------------------------------------------------------------------------
++ // AltView1 avoids an instantiation problem that arises when two
++ // classes use each other.  This class's definition should be exactly
++ // the same as View1 except omitting member functions.
++ //
++ // Do NOT explicitly instantiate this class.
++ //-----------------------------------------------------------------------------
++ 
++ template&lt;class FieldTag, class DomainTag&gt;
++ struct AltView1;
++ 
++ template&lt;class GeometryTag, class T, class EngineTag, class Sub1&gt;
++ struct AltView1&lt;Field&lt;GeometryTag, T, EngineTag&gt;, Sub1&gt;
++ {
++   // Convenience typedef for the thing we're taking a view of.
++   
++   typedef Field&lt;GeometryTag, T, EngineTag&gt; Subject_t;
++ 
++   // Deduce domains for the output type.
++   // At some point, we need to fix NewDomain1; until then, use
++   // the temporary version from NewDomain.h.
++   
++   typedef typename Subject_t::Domain_t Domain_t;
++   typedef TemporaryNewDomain1&lt;Domain_t, Sub1&gt; NewDomain_t;
++   typedef typename NewDomain_t::SliceType_t SDomain_t;
++   
++   // Deduce appropriate version of implementation to dispatch to.
++   
++   static const bool sv = DomainTraits&lt;SDomain_t&gt;::singleValued;
++   typedef View1Implementation&lt;Subject_t, SDomain_t, sv&gt; Dispatch_t;
++ 
++   // The optimized domain combiner.
++   
++   typedef CombineDomainOpt&lt;NewDomain_t, sv&gt; Combine_t;
++   
++   // The return types.
++   
++   typedef typename Dispatch_t::ReadType_t ReadType_t;
++   typedef typename Dispatch_t::Type_t Type_t;
++ };
++ 
++ 
++ //-----------------------------------------------------------------------------
++ // AltView1 avoids an instantiation problem that arises when two
++ // classes use each other.  This class's definition should be exactly
++ // the same as View1 except omitting member functions.
++ //
++ // Do NOT explicitly instantiate this class.
++ //-----------------------------------------------------------------------------
++ 
++ template&lt;class GeometryTag, class T, class EngineTag&gt;
++ struct AltView1&lt;Field&lt;GeometryTag, T, EngineTag&gt;, int&gt;
++ {
++   // Convenience typedef for the thing we're taking a view of.
++   
++   typedef Field&lt;GeometryTag, T, EngineTag&gt; Subject_t;
++ 
++   // The return types.
++   
++   typedef typename Subject_t::Element_t ReadType_t;
++   typedef typename Subject_t::ElementRef_t Type_t;
++ 
++ };
++ 
++ 
++ //-----------------------------------------------------------------------------
+  // View2&lt;Field, S1, S2&gt; specialization for indexing a field with two
+  // domains.
+  //-----------------------------------------------------------------------------
+*************** public:
+*** 1010,1023 ****
+    // version returns a view of the physical domain and the 'All'-suffixed
+    // versions return a view of the total domain.
+  
+!   inline typename View1&lt;This_t, Domain_t&gt;::ReadType_t 
+    read() const
+      {
+        typedef View1&lt;This_t, Domain_t&gt; Ret_t;
+        return Ret_t::makeRead(*this, physicalDomain());
+      }
+  
+!   inline typename View1&lt;This_t, Domain_t&gt;::ReadType_t 
+    readAll() const
+      {
+        typedef View1&lt;This_t, Domain_t&gt; Ret_t;
+--- 1079,1092 ----
+    // version returns a view of the physical domain and the 'All'-suffixed
+    // versions return a view of the total domain.
+  
+!   inline typename AltView1&lt;This_t, Domain_t&gt;::ReadType_t 
+    read() const
+      {
+        typedef View1&lt;This_t, Domain_t&gt; Ret_t;
+        return Ret_t::makeRead(*this, physicalDomain());
+      }
+  
+!   inline typename AltView1&lt;This_t, Domain_t&gt;::ReadType_t 
+    readAll() const
+      {
+        typedef View1&lt;This_t, Domain_t&gt; Ret_t;
+*************** public:
+*** 1025,1031 ****
+      }
+  
+    template&lt;class Sub1&gt; 
+!   inline typename View1&lt;This_t, Sub1&gt;::ReadType_t 
+    read(const Sub1 &amp;s1) const
+      {
+        typedef View1&lt;This_t, Sub1&gt; Ret_t;
+--- 1094,1100 ----
+      }
+  
+    template&lt;class Sub1&gt; 
+!   inline typename AltView1&lt;This_t, Sub1&gt;::ReadType_t 
+    read(const Sub1 &amp;s1) const
+      {
+        typedef View1&lt;This_t, Sub1&gt; Ret_t;
+*************** public:
+*** 1048,1061 ****
+        return Ret_t::makeRead(*this, s1, s2, s3);
+      }
+  
+!   inline typename View1&lt;This_t, Domain_t&gt;::Type_t 
+    operator()() const
+      {
+        typedef View1&lt;This_t, Domain_t&gt; Ret_t;
+        return Ret_t::make(*this, physicalDomain());
+      }
+  
+!   inline typename View1&lt;This_t, Domain_t&gt;::Type_t 
+    all() const
+      {
+        typedef View1&lt;This_t, Domain_t&gt; Ret_t;
+--- 1117,1130 ----
+        return Ret_t::makeRead(*this, s1, s2, s3);
+      }
+  
+!   inline typename AltView1&lt;This_t, Domain_t&gt;::Type_t 
+    operator()() const
+      {
+        typedef View1&lt;This_t, Domain_t&gt; Ret_t;
+        return Ret_t::make(*this, physicalDomain());
+      }
+  
+!   inline typename AltView1&lt;This_t, Domain_t&gt;::Type_t 
+    all() const
+      {
+        typedef View1&lt;This_t, Domain_t&gt; Ret_t;
+*************** public:
+*** 1063,1069 ****
+      }
+  
+    template&lt;class Sub1&gt; 
+!   inline typename View1&lt;This_t, Sub1&gt;::Type_t 
+    operator()(const Sub1 &amp;s1) const
+      {
+        typedef View1&lt;This_t, Sub1&gt; Ret_t;
+--- 1132,1138 ----
+      }
+  
+    template&lt;class Sub1&gt; 
+!   inline typename AltView1&lt;This_t, Sub1&gt;::Type_t 
+    operator()(const Sub1 &amp;s1) const
+      {
+        typedef View1&lt;This_t, Sub1&gt; Ret_t;
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000358.html">weekly status
+</A></li>
+	<LI>Next message: <A HREF="000360.html">[pooma-dev] Expanding Supported Explicit Instantiations
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#359">[ date ]</a>
+              <a href="thread.html#359">[ thread ]</a>
+              <a href="subject.html#359">[ subject ]</a>
+              <a href="author.html#359">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

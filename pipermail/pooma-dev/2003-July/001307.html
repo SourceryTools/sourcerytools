@@ -1,0 +1,141 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [PATCH] Fix RemoteProxy for std::string
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20Fix%20RemoteProxy%20for%20std%3A%3Astring&In-Reply-To=%3CPine.LNX.4.44.0307162005150.567-100000%40goofy%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001306.html">
+   <LINK REL="Next"  HREF="001308.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[PATCH] Fix RemoteProxy for std::string</H1>
+    <B>Richard Guenther</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20Fix%20RemoteProxy%20for%20std%3A%3Astring&In-Reply-To=%3CPine.LNX.4.44.0307162005150.567-100000%40goofy%3E"
+       TITLE="[PATCH] Fix RemoteProxy for std::string">rguenth at tat.physik.uni-tuebingen.de
+       </A><BR>
+    <I>Wed Jul 16 18:11:57 UTC 2003</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001306.html">[pooma-dev] particle-particle interact layout
+</A></li>
+        <LI>Next message: <A HREF="001308.html">DataObjectRequest problem
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1307">[ date ]</a>
+              <a href="thread.html#1307">[ thread ]</a>
+              <a href="subject.html#1307">[ subject ]</a>
+              <a href="author.html#1307">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Hi!
+
+The following patch fixes RemoteProxy handling of std::string (and
+possibly other non-POD types) by using the delegate mechanism of
+Cheetah. This will turn silent failures of non-POD transmissions
+into compile errors, if no suitable overrides are provided. It also
+will diagnose transfer of yet unknown POD objects as they need to
+be registered with Cheetah as being POD (I've done so for the objects
+I usually transfer with RemoteProxy).
+
+Regtested Tulip serially (it works with cheetah and MPI for my parallel
+code). Ok to apply? Better ideas to detect PODness?
+
+Richard.
+
+
+2003Jul16  Richard Guenther &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">richard.guenther at uni-tuebingen.de</A>&gt;
+
+	* src/Tulip/RemoteProxy.h: use Cheetah delegate mechanism
+	to pack/unpack objects. Add specializations for
+	Cheetah::DelegateType.
+
+===== src/Tulip/RemoteProxy.h 1.4 vs edited =====
+--- 1.4/r2/src/Tulip/RemoteProxy.h	Fri Jan 24 18:32:30 2003
++++ edited/src/Tulip/RemoteProxy.h	Wed Jul 16 20:04:42 2003
+@@ -57,6 +57,34 @@
+ # include &quot;Cheetah/Cheetah.h&quot;
+ #endif
+
++
++// For Cheetah support we need to mark more types not delegate.
++
++#if POOMA_CHEETAH
++namespace Cheetah {
++
++  template&lt;int Dim&gt;
++  class DelegateType&lt;Interval&lt;Dim&gt; &gt; {
++  public:
++    enum { delegate = false };
++  };
++
++  template&lt;int Dim&gt;
++  class DelegateType&lt;Loc&lt;Dim&gt; &gt; {
++  public:
++    enum { delegate = false };
++  };
++
++  template&lt;int Dim, class T, class Tag&gt;
++  class DelegateType&lt;Vector&lt;Dim, T, Tag&gt; &gt; {
++  public:
++    enum { delegate = false };
++  };
++
++} // namespace Cheetah
++#endif
++
++
+ //-----------------------------------------------------------------------------
+ //
+ // RemoteProxy&lt;T&gt;
+@@ -120,7 +148,7 @@
+       {
+ 	if (toContext != Pooma::context())
+ 	{
+-	  Pooma::indexHandler()-&gt;send(toContext, tag, val);
++	  Pooma::indexHandler()-&gt;sendWith(Cheetah::DELEGATE(), toContext, tag, val);
+ 	}
+       }
+ #endif
+@@ -133,7 +161,8 @@
+
+       RemoteProxyBase::ready_m = false;
+
+-      Pooma::indexHandler()-&gt;request(owningContext, tag, receive, this);
++      Pooma::indexHandler()-&gt;requestWith(Cheetah::DELEGATE(), owningContext,
++                                         tag, receive, this);
+
+       while (!RemoteProxyBase::ready_m)
+       {
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001306.html">[pooma-dev] particle-particle interact layout
+</A></li>
+	<LI>Next message: <A HREF="001308.html">DataObjectRequest problem
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1307">[ date ]</a>
+              <a href="thread.html#1307">[ thread ]</a>
+              <a href="subject.html#1307">[ subject ]</a>
+              <a href="author.html#1307">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

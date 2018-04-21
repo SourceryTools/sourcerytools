@@ -1,0 +1,335 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [PATCH] Reduction cleanup (2nd try)
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20Reduction%20cleanup%20%282nd%20try%29&In-Reply-To=%3CPine.LNX.4.58.0310262126380.619%40goofy%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001337.html">
+   <LINK REL="Next"  HREF="001339.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[PATCH] Reduction cleanup (2nd try)</H1>
+    <B>Richard Guenther</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20Reduction%20cleanup%20%282nd%20try%29&In-Reply-To=%3CPine.LNX.4.58.0310262126380.619%40goofy%3E"
+       TITLE="[PATCH] Reduction cleanup (2nd try)">rguenth at tat.physik.uni-tuebingen.de
+       </A><BR>
+    <I>Sun Oct 26 20:34:22 UTC 2003</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001337.html">Reference documentation work merged.
+</A></li>
+        <LI>Next message: <A HREF="001339.html">[pooma-dev] [PATCH] Reduction cleanup (2nd try)
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1338">[ date ]</a>
+              <a href="thread.html#1338">[ thread ]</a>
+              <a href="subject.html#1338">[ subject ]</a>
+              <a href="author.html#1338">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Hi!
+
+The following patch cleans up the reduction evaluator by introducing
+a ReductionTraits&lt;Op, T&gt; class to specify a neutral element for the
+reduction operation. This enables &quot;trivial&quot; OpenMP parallelization for
+reductions (patch to come). It also simplifies the loop structure of
+the reductions and thus exposes more optimization abilities to the
+compiler. This second approach does not inhibit use of arbitrary complex
+types, but only requires appropriate specialization of the
+ReductionTraits. In question is only the default specialization for
+OpBitwiseOrAssign and OpBitwiseAndAssign which constructs from 0ULL and
+~0ULL - any better ideas?
+
+Reductions tested on ppc, full test tomorrow.
+
+Ok?
+
+Richard.
+
+
+2003Oct26  Richard Guenther &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">richard.guenther at uni-tuebingen.de</A>&gt;
+
+	* src/Evaluator/ReductionEvaluator.h: simplify reduction loops
+	by introducing ReductionTraits&lt;Op, T&gt; class.
+
+===== ReductionEvaluator.h 1.1 vs edited =====
+--- 1.1/r2/src/Evaluator/ReductionEvaluator.h	Mon May 13 17:47:34 2002
++++ edited/ReductionEvaluator.h	Sun Oct 26 21:22:58 2003
+@@ -63,6 +63,58 @@
+ template&lt;class KernelTag&gt;
+ struct ReductionEvaluator;
+
++/**
++ * Traits class defining neutral element for type T under
++ * operation Op.  Needs to be specialized for Op and possibly T.
++ */
++
++template&lt;class Op, class T&gt;
++struct ReductionTraits {
++};
++
++template&lt;class T&gt;
++struct ReductionTraits&lt;OpAddAssign, T&gt; {
++  static inline T neutral() { return static_cast&lt;T&gt;(0); }
++};
++
++template&lt;class T&gt;
++struct ReductionTraits&lt;OpMultiplyAssign, T&gt; {
++  static inline T neutral() { return static_cast&lt;T&gt;(1); }
++};
++
++template&lt;class T&gt;
++struct ReductionTraits&lt;FnMinAssign, T&gt; {
++  static inline T neutral() { return std::numeric_limits&lt;T&gt;::max(); }
++};
++
++template&lt;class T&gt;
++struct ReductionTraits&lt;FnMaxAssign, T&gt; {
++  static inline T neutral() { return std::numeric_limits&lt;T&gt;::min(); }
++};
++
++template&lt;class T&gt;
++struct ReductionTraits&lt;FnOrAssign, T&gt; {
++  static inline T neutral() { return static_cast&lt;T&gt;(false); }
++};
++
++template&lt;class T&gt;
++struct ReductionTraits&lt;FnAndAssign, T&gt; {
++  static inline T neutral() { return static_cast&lt;T&gt;(true); }
++};
++
++template&lt;class T&gt;
++struct ReductionTraits&lt;OpBitwiseOrAssign, T&gt; {
++  static inline T neutral() { return static_cast&lt;T&gt;(0ULL); }
++};
++
++template&lt;class T&gt;
++struct ReductionTraits&lt;OpBitwiseAndAssign, T&gt; {
++  static inline T neutral() { return static_cast&lt;T&gt;(~0ULL); }
++};
++
++
++
++
+ //-----------------------------------------------------------------------------
+ // The point of this class is to input an expression with the
+ // 'evaluate' member function and reduce it by looping over the
+@@ -127,8 +179,8 @@
+     Expr localExpr(e);
+     int e0 = domain[0].length();
+
+-    T answer(localExpr.read(0));
+-    for (int i0 = 1; i0 &lt; e0; ++i0)
++    T answer = ReductionTraits&lt;Op, T&gt;::neutral();
++    for (int i0 = 0; i0 &lt; e0; ++i0)
+       op(answer, localExpr.read(i0));
+
+     ret = answer;
+@@ -145,22 +197,10 @@
+     int e0 = domain[0].length();
+     int e1 = domain[1].length();
+
+-    int i00;
+-    bool firstLoop = true;
+-
+-    T answer(localExpr.read(0, 0));
++    T answer = ReductionTraits&lt;Op, T&gt;::neutral();
+     for (int i1 = 0; i1 &lt; e1; ++i1)
+-      {
+-        if (firstLoop)
+-          {
+-            firstLoop = false;
+-            i00 = 1;
+-          }
+-        else
+-          i00 = 0;
+-        for (int i0 = i00; i0 &lt; e0; ++i0)
+-          op(answer, localExpr.read(i0, i1));
+-      }
++      for (int i0 = 0; i0 &lt; e0; ++i0)
++	op(answer, localExpr.read(i0, i1));
+
+     ret = answer;
+   }
+@@ -177,24 +217,12 @@
+     int e0 = domain[0].length();
+     int e1 = domain[1].length();
+     int e2 = domain[2].length();
+-
+-    int i00;
+-    bool firstLoop = true;
+
+-    T answer(localExpr.read(0, 0, 0));
++    T answer = ReductionTraits&lt;Op, T&gt;::neutral();
+     for (int i2 = 0; i2 &lt; e2; ++i2)
+       for (int i1 = 0; i1 &lt; e1; ++i1)
+-        {
+-          if (firstLoop)
+-            {
+-              firstLoop = false;
+-              i00 = 1;
+-            }
+-          else
+-            i00 = 0;
+-          for (int i0 = i00; i0 &lt; e0; ++i0)
+-            op(answer, localExpr.read(i0, i1, i2));
+-        }
++	for (int i0 = 0; i0 &lt; e0; ++i0)
++	  op(answer, localExpr.read(i0, i1, i2));
+
+     ret = answer;
+   }
+@@ -213,25 +241,13 @@
+     int e1 = domain[1].length();
+     int e2 = domain[2].length();
+     int e3 = domain[3].length();
+-
+-    int i00;
+-    bool firstLoop = true;
+
+-    T answer(localExpr.read(0, 0, 0, 0));
++    T answer = ReductionTraits&lt;Op, T&gt;::neutral();
+     for (int i3 = 0; i3 &lt; e3; ++i3)
+       for (int i2 = 0; i2 &lt; e2; ++i2)
+         for (int i1 = 0; i1 &lt; e1; ++i1)
+-          {
+-            if (firstLoop)
+-              {
+-                firstLoop = false;
+-                i00 = 1;
+-              }
+-            else
+-              i00 = 0;
+-            for (int i0 = i00; i0 &lt; e0; ++i0)
+-              op(answer, localExpr.read(i0, i1, i2, i3));
+-          }
++	  for (int i0 = 0; i0 &lt; e0; ++i0)
++	    op(answer, localExpr.read(i0, i1, i2, i3));
+
+     ret = answer;
+   }
+@@ -252,26 +268,14 @@
+     int e2 = domain[2].length();
+     int e3 = domain[3].length();
+     int e4 = domain[4].length();
+-
+-    int i00;
+-    bool firstLoop = true;
+
+-    T answer(localExpr.read(0, 0, 0, 0, 0));
++    T answer = ReductionTraits&lt;Op, T&gt;::neutral();
+     for (int i4 = 0; i4 &lt; e4; ++i4)
+       for (int i3 = 0; i3 &lt; e3; ++i3)
+         for (int i2 = 0; i2 &lt; e2; ++i2)
+           for (int i1 = 0; i1 &lt; e1; ++i1)
+-            {
+-              if (firstLoop)
+-                {
+-                  firstLoop = false;
+-                  i00 = 1;
+-                }
+-              else
+-                i00 = 0;
+-              for (int i0 = i00; i0 &lt; e0; ++i0)
+-                op(answer, localExpr.read(i0, i1, i2, i3, i4));
+-            }
++	    for (int i0 = 0; i0 &lt; e0; ++i0)
++	      op(answer, localExpr.read(i0, i1, i2, i3, i4));
+
+     ret = answer;
+   }
+@@ -294,27 +298,15 @@
+     int e3 = domain[3].length();
+     int e4 = domain[4].length();
+     int e5 = domain[5].length();
+-
+-    int i00;
+-    bool firstLoop = true;
+
+-    T answer(localExpr.read(0, 0, 0, 0, 0, 0));
++    T answer = ReductionTraits&lt;Op, T&gt;::neutral();
+     for (int i5 = 0; i5 &lt; e5; ++i5)
+       for (int i4 = 0; i4 &lt; e4; ++i4)
+         for (int i3 = 0; i3 &lt; e3; ++i3)
+           for (int i2 = 0; i2 &lt; e2; ++i2)
+             for (int i1 = 0; i1 &lt; e1; ++i1)
+-              {
+-                if (firstLoop)
+-                  {
+-                    firstLoop = false;
+-                    i00 = 1;
+-                  }
+-                else
+-                  i00 = 0;
+-                for (int i0 = i00; i0 &lt; e0; ++i0)
+-                  op(answer, localExpr.read(i0, i1, i2, i3, i4, i5));
+-              }
++	      for (int i0 = 0; i0 &lt; e0; ++i0)
++		op(answer, localExpr.read(i0, i1, i2, i3, i4, i5));
+
+     ret = answer;
+   }
+@@ -339,28 +331,16 @@
+     int e4 = domain[4].length();
+     int e5 = domain[5].length();
+     int e6 = domain[6].length();
+-
+-    int i00;
+-    bool firstLoop = true;
+
+-    T answer(localExpr.read(0, 0, 0, 0, 0, 0, 0));
++    T answer = ReductionTraits&lt;Op, T&gt;::neutral();
+     for (int i6 = 0; i6 &lt; e6; ++i6)
+       for (int i5 = 0; i5 &lt; e5; ++i5)
+         for (int i4 = 0; i4 &lt; e4; ++i4)
+           for (int i3 = 0; i3 &lt; e3; ++i3)
+             for (int i2 = 0; i2 &lt; e2; ++i2)
+               for (int i1 = 0; i1 &lt; e1; ++i1)
+-                {
+-                  if (firstLoop)
+-                    {
+-                      firstLoop = false;
+-                      i00 = 1;
+-                    }
+-                  else
+-                    i00 = 0;
+-                  for (int i0 = i00; i0 &lt; e0; ++i0)
+-                    op(answer, localExpr.read(i0, i1, i2, i3, i4, i5, i6));
+-                }
++		for (int i0 = 0; i0 &lt; e0; ++i0)
++		  op(answer, localExpr.read(i0, i1, i2, i3, i4, i5, i6));
+
+     ret = answer;
+   }
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001337.html">Reference documentation work merged.
+</A></li>
+	<LI>Next message: <A HREF="001339.html">[pooma-dev] [PATCH] Reduction cleanup (2nd try)
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1338">[ date ]</a>
+              <a href="thread.html#1338">[ thread ]</a>
+              <a href="subject.html#1338">[ subject ]</a>
+              <a href="author.html#1338">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

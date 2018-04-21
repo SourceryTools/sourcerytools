@@ -1,0 +1,129 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [pooma-dev] [PATCH] AltComponentView
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bpooma-dev%5D%20%5BPATCH%5D%20AltComponentView&In-Reply-To=%3CPine.LNX.4.53.0403231152560.16380%40bellatrix.tat.physik.uni-tuebingen.de%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001544.html">
+   <LINK REL="Next"  HREF="001545.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[pooma-dev] [PATCH] AltComponentView</H1>
+    <B>Richard Guenther</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bpooma-dev%5D%20%5BPATCH%5D%20AltComponentView&In-Reply-To=%3CPine.LNX.4.53.0403231152560.16380%40bellatrix.tat.physik.uni-tuebingen.de%3E"
+       TITLE="[pooma-dev] [PATCH] AltComponentView">rguenth at tat.physik.uni-tuebingen.de
+       </A><BR>
+    <I>Tue Mar 23 11:11:35 UTC 2004</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001544.html">[PATCH] AltComponentView
+</A></li>
+        <LI>Next message: <A HREF="001545.html">[PATCH] Add PETSc wrapper.
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1546">[ date ]</a>
+              <a href="thread.html#1546">[ thread ]</a>
+              <a href="subject.html#1546">[ subject ]</a>
+              <a href="author.html#1546">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>On Tue, 23 Mar 2004, Richard Guenther wrote:
+
+&gt;<i> Hi!
+</I>&gt;<i>
+</I>&gt;<i> Forgot that last time.
+</I>
+&gt;<i> @@ -2014,46 +1946,46 @@
+</I>&gt;<i>    /// ultimately work, Element_t must have a working const operator()(Loc&lt;M&gt;)
+</I>&gt;<i>    /// that returns a reference or proxy to the component.
+</I>&gt;<i>    //@{
+</I>&gt;<i> -  inline typename AltComponentView&lt;Loc&lt;1&gt;, This_t&gt;::Type_t
+</I>&gt;<i> +  inline typename ComponentView&lt;Loc&lt;1&gt;, This_t&gt;::Type_t
+</I>&gt;<i>    comp(const int &amp;i1) const
+</I>&gt;<i>      {
+</I>&gt;<i>        return ComponentView&lt;Loc&lt;1&gt;, This_t&gt;::make(*this, Loc&lt;1&gt;(i1));
+</I>&gt;<i>      }
+</I>
+I'll take that back - causes &quot;interesting&quot; failures of array_test22:
+
+/home/rguenth/src/pooma-bk/r2/src/Array/Array.h(1951): error: class
+&quot;ComponentView&lt;Loc&lt;1&gt;, Array&lt;1, Vector&lt;2, double, Full&gt;, Brick&gt;&gt;&quot; has no
+member &quot;Type_t&quot;
+    inline typename ComponentView&lt;Loc&lt;1&gt;, This_t&gt;::Type_t
+                                                   ^
+          detected during:
+            instantiation of class &quot;Array&lt;Dim, T, EngineTag&gt; [with Dim=1,
+T=Vector&lt;2, double, Full&gt;, EngineTag=Brick]&quot; at line 1307
+            instantiation of class &quot;ComponentView&lt;Components, Array&lt;D2,
+T2, E2&gt;&gt; [with Components=Loc&lt;1&gt;, Dim=1, T=Vector&lt;2, double, Full&gt;,
+EngineTag=Brick]&quot; at line 54 of
+&quot;/net/bellatrix/home/rguenth/src/pooma-bk/r2/src/Array/tests/array_test22.cpp&quot;
+
+where array_test22 just does:
+
+    typedef Array&lt;1, Vector&lt;2, double&gt;, Brick&gt; Array_t;
+54  typedef ComponentView&lt;Loc&lt;1&gt;, Array_t&gt;::Type_t CView_t;
+    Array_t b(dom);
+    CView_t d(b.comp(1));
+
+The intel compiler seems to rewrite the template names
+(ComponentView&lt;Components, Array&lt;D2, T2, E2&gt;&gt;), but I'm curious
+which ComponentView gets instantiated, as the overload in Array.h should
+work.  gcc just says
+
+/home/rguenth/src/pooma-bk/r2/src/Array/Array.h: In instantiation of
+`Array&lt;1, Vector&lt;2, double, Full&gt;, Brick&gt;':
+/home/rguenth/src/pooma-bk/r2/src/Array/Array.h:1307:   instantiated from
+`ComponentView&lt;Loc&lt;1&gt;, main(int, char**)::Array_t&gt;'
+/net/bellatrix/home/rguenth/src/pooma-bk/r2/src/Array/tests/array_test22.cpp:54:
+instantiated from here
+/home/rguenth/src/pooma-bk/r2/src/Array/Array.h:1953: error: no type named
+`Type_t' in `struct ComponentView&lt;Loc&lt;1&gt;, main(int, char**)::Array_t&gt;'
+
+which is equally un-helpful.
+
+Also, in Array.h:1290, the integer overload of ComponentView seems to have
+only potential negative effect, but disabling it doesn't fix the above
+problem (nor does it introduce new problems).
+
+Any suggestions?
+
+Thanks,
+
+Richard.
+
+--
+Richard Guenther &lt;richard dot guenther at uni-tuebingen dot de&gt;
+WWW: <A HREF="http://www.tat.physik.uni-tuebingen.de/~rguenth/">http://www.tat.physik.uni-tuebingen.de/~rguenth/</A>
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001544.html">[PATCH] AltComponentView
+</A></li>
+	<LI>Next message: <A HREF="001545.html">[PATCH] Add PETSc wrapper.
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1546">[ date ]</a>
+              <a href="thread.html#1546">[ thread ]</a>
+              <a href="subject.html#1546">[ subject ]</a>
+              <a href="author.html#1546">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

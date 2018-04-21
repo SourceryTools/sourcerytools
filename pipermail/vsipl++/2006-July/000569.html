@@ -1,0 +1,200 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [vsipl++] Matlab IO
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20Matlab%20IO&In-Reply-To=%3C44BBE385.8010102%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000566.html">
+   <LINK REL="Next"  HREF="000567.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[vsipl++] Matlab IO</H1>
+    <B>Jules Bergmann</B> 
+    <A HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20Matlab%20IO&In-Reply-To=%3C44BBE385.8010102%40codesourcery.com%3E"
+       TITLE="[vsipl++] Matlab IO">jules at codesourcery.com
+       </A><BR>
+    <I>Mon Jul 17 19:22:45 UTC 2006</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000566.html">Matlab IO
+</A></li>
+        <LI>Next message: <A HREF="000567.html">[patch] Profile_event class
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#569">[ date ]</a>
+              <a href="thread.html#569">[ thread ]</a>
+              <a href="subject.html#569">[ subject ]</a>
+              <a href="author.html#569">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Assem Salama wrote:
+ &gt; Everyone,
+ &gt;  This patch adds a test to the test directory to test low level Matlab
+ &gt; IO interface.
+
+Assem,
+
+This looks good, I have 5 comments below, once those are addressed,
+please check this in. -- Jules
+
+ &gt; ------------------------------------------------------------------------
+ &gt;
+ &gt; Index: tests/matlab_bin_file_test.cpp
+ &gt; ===================================================================
+ &gt; --- tests/matlab_bin_file_test.cpp	(revision 0)
+ &gt; +++ tests/matlab_bin_file_test.cpp	(revision 0)
+
+[1] Please add the standard header: copyright, file, author, date,
+and brief description.
+
+
+ &gt; +template &lt;typename T&gt;
+ &gt; +void tensor_test(int m, int n, int o, std::ofstream &amp;ofs, char *name)
+ &gt; +{
+
+[2] instead of representing view dimensions as 'int', can you use
+'length_type' instead?  I expected this type of conversion to be
+caught by GCC's '-W -Wall' but apparently not.
+
+ &gt; +  Tensor&lt;T&gt; a(m,n,o);
+ &gt; +  T         value;
+ &gt; +
+ &gt; +  value = 0;
+ &gt; +  for(int i=0;i&lt;m;i++) {
+ &gt; +    for(int j=0;j&lt;n;j++) {
+ &gt; +      for(int k=0;k&lt;o;k++) {
+ &gt; +        value = increment(value);
+ &gt; +        a.put(i,j,k,value);
+
+[3] Likewise, instead of using 'int' to iterate over indices, can you
+use 'index_type'?
+
+ &gt; +      }
+ &gt; +    }
+ &gt; +  }
+ &gt; +
+ &gt; +  // write it out to file
+ &gt; +  ofs &lt;&lt; Matlab_bin_formatter&lt;Tensor&lt;T&gt; &gt;(a,name);
+ &gt; +}
+
+
+ &gt; +template &lt;typename T&gt;
+ &gt; +void vector_input_test(int m, std::ifstream &amp;ifs, char 
+*name,Matlab_bin_hdr &amp;h)
+ &gt; +{
+ &gt; +  Vector&lt;T&gt; a(m);
+ &gt; +  T         value,input_value;
+ &gt; +
+ &gt; +  ifs &gt;&gt; Matlab_bin_formatter&lt;Vector&lt;T&gt; &gt;(a,name,h);
+ &gt; +
+ &gt; +  value = 0;
+ &gt; +  for(int i=0;i&lt;m;i++) {
+ &gt; +    value = increment(value);
+ &gt; +    input_value = a.get(i);
+ &gt; +    assert(value == input_value);
+
+[4] Inside of tests, you should use 'test_assert()' instead of 
+'assert()'. This way, when you configure the library to run fast (which 
+usually means turning off assertions with -DNDEBUG), the tests will 
+still check correctness.
+
+ &gt; +  }
+ &gt; +#if DEBUG == 1
+ &gt; +  cout &lt;&lt; a &lt;&lt; endl;
+ &gt; +#endif
+ &gt; +
+
+
+ &gt; Index: src/vsip/impl/layout.hpp
+ &gt; ===================================================================
+ &gt; --- src/vsip/impl/layout.hpp	(revision 144405)
+ &gt; +++ src/vsip/impl/layout.hpp	(working copy)
+ &gt; @@ -1089,6 +1089,12 @@
+ &gt;
+ &gt;    static type offset(type ptr, stride_type stride)
+ &gt;    { return ptr + stride; }
+ &gt; +
+ &gt; +  static T* get_real_ptr(type ptr)
+ &gt; +    { return ptr; }
+ &gt; +  static T* get_imag_ptr(type ptr)
+ &gt; +    { return ptr; }
+ &gt; +
+
+[5] I would think that when calling calling get_imag_ptr on a real 
+pointer, it should either return NULL or throw an exception.  To return 
+a pointer to the real data seems wrong.
+
+The idea behind defining this function is to allow code to compile that
+we do not actually expect to execute at runtime, i.e.:
+
+	value_type* ptr;
+
+	if (Is_complex&lt;value_type&gt;::value)
+	{
+	  ...
+	  get_imag_ptr(ptr);
+	  ...
+	}
+	else // must be real
+	{
+	  ... code that doesn't use get_imag_ptr() because ptr refers
+	  ... to real data.  Trying to use get_imag_ptr() is a design
+	  ... error.
+	}
+
+For now, lets throw a std::runtime exception &quot;Accessing imaginary part
+of non-complex pointer&quot;.
+
+ &gt;  };
+ &gt;
+ &gt;
+ &gt; @@ -1147,6 +1153,12 @@
+ &gt;
+ &gt;    static type offset(type ptr, stride_type stride)
+ &gt;    { return type(ptr.first + stride, ptr.second + stride); }
+ &gt; +
+ &gt; +  static T* get_real_ptr(type ptr)
+ &gt; +    { return ptr.first; }
+ &gt; +  static T* get_imag_ptr(type ptr)
+ &gt; +    { return ptr.second; }
+ &gt; +
+ &gt;  };
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">jules at codesourcery.com</A>
+(650) 331-3385 x705
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000566.html">Matlab IO
+</A></li>
+	<LI>Next message: <A HREF="000567.html">[patch] Profile_event class
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#569">[ date ]</a>
+              <a href="thread.html#569">[ thread ]</a>
+              <a href="subject.html#569">[ subject ]</a>
+              <a href="author.html#569">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">More information about the vsipl++
+mailing list</a><br>
+</body></html>

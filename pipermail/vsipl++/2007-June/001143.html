@@ -1,0 +1,186 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [vsipl++] fftm compile problem
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20fftm%20compile%20problem&In-Reply-To=%3C5CD1C9B961A59D4592F02D12CD93238B07CEBA55%40STITCH.essexcorp.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001142.html">
+   <LINK REL="Next"  HREF="001144.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[vsipl++] fftm compile problem</H1>
+    <B>Day, John</B> 
+    <A HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20fftm%20compile%20problem&In-Reply-To=%3C5CD1C9B961A59D4592F02D12CD93238B07CEBA55%40STITCH.essexcorp.com%3E"
+       TITLE="[vsipl++] fftm compile problem">John.Day at EssexCorp.com
+       </A><BR>
+    <I>Thu Jun 28 15:05:50 UTC 2007</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001142.html">[vsipl++] fftm compile problem
+</A></li>
+        <LI>Next message: <A HREF="001144.html">[vsipl++] fftm compile problem
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1143">[ date ]</a>
+              <a href="thread.html#1143">[ thread ]</a>
+              <a href="subject.html#1143">[ subject ]</a>
+              <a href="author.html#1143">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Jules wrote:
+&gt;&gt;<i> We tried building vsipl++1.3 on Windows using the Cygwin enviroment,
+</I>&gt;&gt;<i> but had many problems.
+</I>
+&gt;<i> If you don't mind, can you describe the problems?  We've had some
+</I>&gt;<i> success with cygwin, however we would like to make things more robust.
+</I>
+Turns out that there was only a single problem: the configure failed on
+fftw3l (using the &quot;builtin&quot; parameters that you suggested). Configure
+reported an error on the console, but the logs did not contain any
+specific error that we could identify or troubleshoot. That's when we
+decided to give MingGW a try.
+
+I should also mention that our development platform is a Dell running an
+x64 Dual Core Xeon processor. But we are mostly running in 32-bit
+emulation (using the WOW64 emulation) which seems to be slightly
+unstable, for example we cannot get gdb (MinGW or Cygwin versions) to
+run reliably. So there might be other &quot;x64&quot; side-effects at play here.
+
+ &gt;&gt; However (surprisingly) we were successful in
+ &gt;&gt; building using standalone MinGW with Msys and gcc/g++/g77 3.4.5,
+
+&gt;<i>Great!
+</I>
+ &gt;&gt; with only two minor glitches:
+
+ &gt;&gt; 1. MinGW didn't have sys/times.h, so we created one with just a tms
+ &gt;&gt; structure which satisfied the make.
+
+&gt;<i>OK.  Do you know where this was being included from?  We try to pull
+</I>&gt;<i>in &lt;time.h&gt;, but only if you've enabled one of the posix timers
+</I>&gt;<i>(--enable-timer=posix or --enable-timer=realtime).
+</I>
+These CLAPACK files included sys/times.h
+vendor/clapack/SRC/dsecnd.c 
+vendor/clapack/SRC/second.c
+
+ &gt;&gt; 2. Modified vendor\fftw\kernel\alloc.c to allow compilation of
+ &gt;&gt; our_alloc16()
+
+&gt;<i>Was this to fix a compilation error in that routine, or to force the
+</I>&gt;<i>#ifdef to true?
+</I>
+We forced with these #defines
+#define WITH_OUR_MALLOC16
+#define MIN_ALIGNMENT  16
+#if defined(WITH_OUR_MALLOC16) &amp;&amp; (MIN_ALIGNMENT == 16)
+ ?&gt;
+&gt;&gt;<i> The two build examples, fft.exe and example1.exe were linked and ran 
+</I>&gt;&gt;<i>OK, which suggests that our compiler switches and linkage issues were 
+</I>&gt;&gt;<i>resolved OK.
+</I> &gt;&gt;
+ &gt;&gt; But we are still having a problem compiling the Judd/Cottel 
+&gt;&gt;<i>BeamformEx code 
+</I>&gt;&gt;<i>(<A HREF="http://hpec-si.com/MinimumVarianceBeamformerExample.pdf">http://hpec-si.com/MinimumVarianceBeamformerExample.pdf</A>) in files 
+</I>&gt;&gt;<i>BeamformEx.cpp and beam_steer_coeff.cpp
+</I> &gt;&gt; [See listing compile/link commands and errors at end of this
+message]
+ &gt;&gt;
+ &gt;&gt; BeamformEx.cpp: pg 7
+ &gt;&gt; // Create a cholesky object
+ &gt;&gt;  vsip::chold&lt;vsip::cscalar_f, vsip::by_reference&gt;
+ &gt;&gt;           chold_object(vsip::chold&lt;vsip::cscalar_f, 
+&gt;&gt;<i>vsip::by_reference&gt;::lower,nh);
+</I> &gt;&gt; I was able to get this to compile by changing the first parameter of
+
+&gt;&gt;<i>the constructor to (vsip::mat_uplo)0, since it seems to be looking for
+</I>
+&gt;&gt;<i>an enumeration of zero.
+</I>
+&gt;<i>'lower' is no longer part of the chold object, rather it is in the
+</I>&gt;<i>vsip namespace.  You might try changing parameter to vsip::lower.
+</I>
+That worked.
+
+ &gt;&gt;
+ &gt;&gt; beam_steer_coeff.cpp: pg37
+ &gt;&gt; k *= (2.0 * M_PI/sv);
+ &gt;&gt; This statement causes the error, possibly due to incorrect
+ &gt;&gt; overloading of *= operator.
+ &gt;&gt;
+ &gt;&gt; I can get all of the beamformer files to compile and link if I
+ &gt;&gt; comment out this last statement.  Is this still a config problem, or
+ &gt;&gt; is this code possibly out of date? A comment on page 43 suggests
+ &gt;&gt; that this is using a very early implementation of VSIPL++.
+
+&gt;<i>That statement should work.  From the error message below, the library
+</I>&gt;<i>may be failing to include a header file.
+</I>
+&gt;<i>Can you try adding the following include
+</I>
+&gt;<i>	#include &lt;vsip/map.hpp&gt;
+</I>
+&gt;<i>and recompiling?
+</I>
+That worked. 
+Also tried replacing both includes with a single #include
+&lt;vsip/signal.h&gt; and that worked too.
+
+ &gt;&gt;  We are trying to get this beamformer working to do signal
+ &gt;&gt;  processing on some towed-array sonar data. Are there any other
+ &gt;&gt;  adaptive beamformers available similar to this in the VSIPL++
+ &gt;&gt;  community, either commercially or as free software?
+
+&gt;<i>There is a K-Omega beamformer (also originating from Randy Judd) that
+</I>&gt;<i>was included with the old VSIPL++ reference implementation.  However,
+</I>&gt;<i>I am not sure if it is adaptive.
+</I> 
+We found this presentation with code snippets, 
+<A HREF="http://hpec-si.com/S14-HPEC-SI-VSIPL++.ppt#298,12,VSIPL++">http://hpec-si.com/S14-HPEC-SI-VSIPL++.ppt#298,12,VSIPL++</A> Version
+
+...but can't find the entire source code. How might we obtain this code
+or similar VSIPL++ implementations? (We are under Navy contract, so
+might reuse some old government code, if any exists).
+
+Thanks,
+John Day
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+This electronic message and any files transmitted with it contain information which may be privileged and/or proprietary. The information is intended for use solely by the intended recipient(s). If you are not the intended recipient, be aware that any disclosure, copying, distribution or use of this information is prohibited. If you have received this electronic message in error, please advise the sender by reply email or by telephone (301-939-7000) and delete the message.
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001142.html">[vsipl++] fftm compile problem
+</A></li>
+	<LI>Next message: <A HREF="001144.html">[vsipl++] fftm compile problem
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1143">[ date ]</a>
+              <a href="thread.html#1143">[ thread ]</a>
+              <a href="subject.html#1143">[ subject ]</a>
+              <a href="author.html#1143">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">More information about the vsipl++
+mailing list</a><br>
+</body></html>

@@ -1,0 +1,198 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [PATCH] Kill Unwrap&lt;&gt;
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20Kill%20Unwrap%3C%3E&In-Reply-To=%3C400C2957.6090706%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001508.html">
+   <LINK REL="Next"  HREF="001512.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[PATCH] Kill Unwrap&lt;&gt;</H1>
+    <B>Jeffrey D. Oldham</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20Kill%20Unwrap%3C%3E&In-Reply-To=%3C400C2957.6090706%40codesourcery.com%3E"
+       TITLE="[PATCH] Kill Unwrap&lt;&gt;">oldham at codesourcery.com
+       </A><BR>
+    <I>Mon Jan 19 19:00:39 UTC 2004</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001508.html">[PATCH] Kill Unwrap&lt;&gt;
+</A></li>
+        <LI>Next message: <A HREF="001512.html">[pooma-dev] Re: [PATCH] Kill Unwrap&lt;&gt;
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1510">[ date ]</a>
+              <a href="thread.html#1510">[ thread ]</a>
+              <a href="subject.html#1510">[ subject ]</a>
+              <a href="author.html#1510">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Richard Guenther wrote:
+&gt;<i> Hi!
+</I>&gt;<i> 
+</I>&gt;<i> This patch kills previously introduced Unwrap&lt;&gt; and instead provides a
+</I>&gt;<i> fallback in OpMask&lt;&gt;.  This way we don't forget places to update (as I did
+</I>&gt;<i> with PartialReduction in case of OpenMP).
+</I>&gt;<i> 
+</I>&gt;<i> Tested on serial ia64 linux with no regressions.
+</I>&gt;<i> 
+</I>&gt;<i> Ok?
+</I>
+Thanks for fixing this.  I agree it's a good idea to have the default 
+values do the right thing.  Are there any other operators that need 
+modification as well?  Is it OK to have an additional if in the Where 
+operator?  Will this impact performance?
+
+OK to commit.
+
+&gt;<i> Richard.
+</I>&gt;<i> 
+</I>&gt;<i> 
+</I>&gt;<i> 2004Jan17  Richard Guenther &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">richard.guenther at uni-tuebingen.de</A>&gt;
+</I>&gt;<i> 
+</I>&gt;<i> 	* src/Engine/RemoteEngine.h: kill use of Unwrap&lt;&gt;.
+</I>&gt;<i> 	src/Evaluator/Reduction.h: likewise.
+</I>&gt;<i> 	src/Tulip/ReduceOverContexts.h: likewise.
+</I>&gt;<i> 	src/Evaluator/OpMask.h: likewise, provide fallback in
+</I>&gt;<i> 	OpMask instead.
+</I>&gt;<i> 
+</I>&gt;<i> diff -Nru a/r2/src/Engine/RemoteEngine.h b/r2/src/Engine/RemoteEngine.h
+</I>&gt;<i> --- a/r2/src/Engine/RemoteEngine.h	Sat Jan 17 20:16:00 2004
+</I>&gt;<i> +++ b/r2/src/Engine/RemoteEngine.h	Sat Jan 17 20:16:00 2004
+</I>&gt;<i> @@ -2193,12 +2193,12 @@
+</I>&gt;<i>        {
+</I>&gt;<i>  	ret = vals[0];
+</I>&gt;<i>  	for (j = 1; j &lt; n; j++)
+</I>&gt;<i> -	  Unwrap&lt;Op&gt;::unwrap(op)(ret, vals[j]);
+</I>&gt;<i> +	  op(ret, vals[j]);
+</I>&gt;<i>        }
+</I>&gt;<i> 
+</I>&gt;<i>      delete [] vals;
+</I>&gt;<i> 
+</I>&gt;<i> -    ReduceOverContexts&lt;T, typename Unwrap&lt;Op&gt;::Op_t&gt; finalReduction(ret, 0, n &gt; 0);
+</I>&gt;<i> +    ReduceOverContexts&lt;T, Op&gt; finalReduction(ret, 0, n &gt; 0);
+</I>&gt;<i>      if (Pooma::context() == 0)
+</I>&gt;<i>        ret = finalReduction;
+</I>&gt;<i> 
+</I>&gt;<i> diff -Nru a/r2/src/Evaluator/OpMask.h b/r2/src/Evaluator/OpMask.h
+</I>&gt;<i> --- a/r2/src/Evaluator/OpMask.h	Sat Jan 17 20:16:00 2004
+</I>&gt;<i> +++ b/r2/src/Evaluator/OpMask.h	Sat Jan 17 20:16:00 2004
+</I>&gt;<i> @@ -150,16 +150,25 @@
+</I>&gt;<i>    OpMask(const Op &amp;op) : op_m(op) { }
+</I>&gt;<i>    ~OpMask() { }
+</I>&gt;<i> 
+</I>&gt;<i> +  /// WhereProxy Op, embed a conditional operation.
+</I>&gt;<i>    template&lt;class T1, class T2&gt;
+</I>&gt;<i> -  inline T1&amp;
+</I>&gt;<i> -  operator()(T1 &amp;a, const T2 &amp;b) const
+</I>&gt;<i> +  inline void
+</I>&gt;<i> +  operator()(T1 &amp;a, const MaskAssign&lt;T2&gt; &amp;b) const
+</I>&gt;<i>    {
+</I>&gt;<i>      if (b.defined())
+</I>&gt;<i>      {
+</I>&gt;<i>        op_m(a, b.value());
+</I>&gt;<i>      }
+</I>&gt;<i> -    return a;
+</I>&gt;<i>    }
+</I>&gt;<i> +
+</I>&gt;<i> +  /// Fall back to native operation.
+</I>&gt;<i> +  template&lt;class T1, class T2&gt;
+</I>&gt;<i> +  inline void
+</I>&gt;<i> +  operator()(T1 &amp;a, const T2 &amp;b) const
+</I>&gt;<i> +  {
+</I>&gt;<i> +    op_m(a, b);
+</I>&gt;<i> +  }
+</I>&gt;<i> +
+</I>&gt;<i>    Op op_m;
+</I>&gt;<i>  };
+</I>&gt;<i> 
+</I>&gt;<i> @@ -167,18 +176,6 @@
+</I>&gt;<i>  struct BinaryReturn&lt;T1, T2, OpMask&lt;Op&gt; &gt;
+</I>&gt;<i>  {
+</I>&gt;<i>    typedef T1 &amp;Type_t;
+</I>&gt;<i> -};
+</I>&gt;<i> -
+</I>&gt;<i> -template &lt;class Op&gt;
+</I>&gt;<i> -struct Unwrap {
+</I>&gt;<i> -  typedef Op Op_t;
+</I>&gt;<i> -  static inline const Op_t&amp; unwrap(const Op &amp;op) { return op; }
+</I>&gt;<i> -};
+</I>&gt;<i> -
+</I>&gt;<i> -template &lt;class Op&gt;
+</I>&gt;<i> -struct Unwrap&lt;OpMask&lt;Op&gt; &gt; {
+</I>&gt;<i> -  typedef typename Unwrap&lt;Op&gt;::Op_t Op_t;
+</I>&gt;<i> -  static inline const Op_t&amp; unwrap(const OpMask&lt;Op&gt; &amp;op) { return Unwrap&lt;Op&gt;::unwrap(op.op_m); }
+</I>&gt;<i>  };
+</I>&gt;<i> 
+</I>&gt;<i>  template &lt;class Op, class T&gt;
+</I>&gt;<i> diff -Nru a/r2/src/Evaluator/Reduction.h b/r2/src/Evaluator/Reduction.h
+</I>&gt;<i> --- a/r2/src/Evaluator/Reduction.h	Sat Jan 17 20:16:00 2004
+</I>&gt;<i> +++ b/r2/src/Evaluator/Reduction.h	Sat Jan 17 20:16:00 2004
+</I>&gt;<i> @@ -259,7 +259,7 @@
+</I>&gt;<i> 
+</I>&gt;<i>      ret = vals[0];
+</I>&gt;<i>      for (j = 1; j &lt; n; j++)
+</I>&gt;<i> -      Unwrap&lt;Op&gt;::unwrap(op)(ret, vals[j]);
+</I>&gt;<i> +      op(ret, vals[j]);
+</I>&gt;<i>      delete [] vals;
+</I>&gt;<i>    }
+</I>&gt;<i>  };
+</I>&gt;<i> diff -Nru a/r2/src/Tulip/ReduceOverContexts.h b/r2/src/Tulip/ReduceOverContexts.h
+</I>&gt;<i> --- a/r2/src/Tulip/ReduceOverContexts.h	Sat Jan 17 20:16:00 2004
+</I>&gt;<i> +++ b/r2/src/Tulip/ReduceOverContexts.h	Sat Jan 17 20:16:00 2004
+</I>&gt;<i> @@ -274,7 +274,7 @@
+</I>&gt;<i>  	    if (!v.valid())
+</I>&gt;<i>  	      v = *v2;
+</I>&gt;<i>  	    else
+</I>&gt;<i> -	      Unwrap&lt;ReductionOp&gt;::Op_t()(v.value(), v2-&gt;value());
+</I>&gt;<i> +	      ReductionOp()(v.value(), v2-&gt;value());
+</I>&gt;<i>            }
+</I>&gt;<i>            Serialize_t::cleanup(v2);
+</I>&gt;<i>          }
+</I>&gt;<i> @@ -325,7 +325,7 @@
+</I>&gt;<i>  	  }
+</I>&gt;<i>  	else
+</I>&gt;<i>  	  {
+</I>&gt;<i> -	    Unwrap&lt;ReductionOp&gt;::Op_t()(me-&gt;value_m, v.value());
+</I>&gt;<i> +	    ReductionOp()(me-&gt;value_m, v.value());
+</I>&gt;<i>  	  }
+</I>&gt;<i>        }
+</I>&gt;<i> 
+</I>
+
+-- 
+Jeffrey D. Oldham
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">oldham at codesourcery.com</A>
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001508.html">[PATCH] Kill Unwrap&lt;&gt;
+</A></li>
+	<LI>Next message: <A HREF="001512.html">[pooma-dev] Re: [PATCH] Kill Unwrap&lt;&gt;
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1510">[ date ]</a>
+              <a href="thread.html#1510">[ thread ]</a>
+              <a href="subject.html#1510">[ subject ]</a>
+              <a href="author.html#1510">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

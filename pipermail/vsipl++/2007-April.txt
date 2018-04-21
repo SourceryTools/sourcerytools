@@ -1,0 +1,2941 @@
+From assem at codesourcery.com  Tue Apr  3 01:31:17 2007
+From: assem at codesourcery.com (Assem Salama)
+Date: Mon, 02 Apr 2007 21:31:17 -0400
+Subject: parallel Generator_expr_block
+Message-ID: <4611AE65.5070605@codesourcery.com>
+
+Everyone,
+  This patch allows a Generator_expr_block to act as a distributed 
+vector. This allows the user to do dist_vector=ramp(0.0, 1.0, size);
+
+Thanks,
+Assem
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: svn.diff.04022007.1.log
+Type: text/x-log
+Size: 6597 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20070402/e2f01312/attachment.bin>
+
+From jules at codesourcery.com  Tue Apr  3 21:06:51 2007
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Tue, 03 Apr 2007 17:06:51 -0400
+Subject: [vsipl++] parallel Generator_expr_block
+In-Reply-To: <4611AE65.5070605@codesourcery.com>
+References: <4611AE65.5070605@codesourcery.com>
+Message-ID: <4612C1EB.102@codesourcery.com>
+
+Assem Salama wrote:
+ > Everyone,
+ >  This patch allows a Generator_expr_block to act as a distributed
+ > vector. This allows the user to do dist_vector=ramp(0.0, 1.0, size);
+
+Assem,
+
+Can you also
+
+  - Create a vramp benchmark?  It should cover both local and distributed
+    vectors.  Also, for comparison it should cover using an explicit loop.
+
+    case 1: Local_map  vector = ramp(...);
+    case 2: Map        vector = ramp(...);
+    case 3: Global_map vector = ramp(...);
+
+    case 4: Local_map  for (i=0; i<size; ++i) vector.put(i, ...);
+    case 5: Map        for (i=0; i<size; ++i) vector.put(i, ...);
+    case 6: Global_map for (i=0; i<size; ++i) vector.put(i, ...);
+
+  - Create a test to cover using ramp in a distributed expression?
+
+    It should cover assignment
+
+      Local_map  vector = ramp(...);
+      Map        vector = ramp(...);
+      Global_Map vector = ramp(...);
+
+    use in a simple operation
+
+      Local_map  vector += ramp(...);
+      Map        vector += ramp(...);
+      Global_Map vector += ramp(...);
+
+    and use in more complex operations
+
+    for example (but not limited too):
+
+      Map<...> map_root(1);
+      Map<...> map_all(num_processors());
+
+      map_all_vector = map_root_vector + ramp(...);
+
+    and any other tests you can think of.  Bonus points if you break
+    it!
+
+
+ >
+ > Thanks,
+ > Assem
+ >
+ >
+ > ------------------------------------------------------------------------
+ >
+ > Index: src/vsip/core/expr/generator_block.hpp
+ > ===================================================================
+ > --- src/vsip/core/expr/generator_block.hpp	(revision 165174)
+ > +++ src/vsip/core/expr/generator_block.hpp	(working copy)
+ > @@ -89,8 +89,79 @@
+ >    map_type    map_;
+ >  };
+ >
+ > +template <dimension_type Dim>
+ > +Index<Dim>
+ > +convert_index(Index<Dim> idx, Domain<Dim> const& dom)
+ > +{
+ > +  Index<Dim> res_idx;
+ > +  index_type i;
+ > +  for(i=0;i<Dim;i++) {
+ > +    res_idx[i] = dom.first() + idx[i]*dom.stride();
+ > +  }
+ > +  return res_idx;
+ > +}
+
+[1] There is already a function that does this called 'domain_nth' in
+domain_utils.hpp.  Can you use that instead?
+
+The name derives from the 'impl_nth' member function of Domain<1> that
+returns the 'nth' element in the domain (first * n * stride).
+
+Also, in future when creating functions that go into header files,
+they should be 'inline'.  Non-template non-inline functions will
+cause the function to be defined multiple times if the header is
+included by different object files, resulting in a link-time error.
+Template non-inline functions are handled OK but the GNU toolchain,
+but not so well by other toolchains (in particular with GreenHills/MCOE
+you're forced to explicitly specify the instantiatiations you want).
+So it is best to avoid template non-inline functions.
+
+ >
+ > +template <dimension_type Dim,
+ > +	  typename       Generator>
+ > +class Subset_block<Generator_expr_block<Dim, Generator> const>
+ > +  : public Non_assignable
+ > +{
+
+[2] Why do we need to specialize Subset_block for
+Generator_expr_block?
+
+
+ > @@ -158,7 +229,15 @@
+ >  }
+ >
+ >
+ > +template <dimension_type Dim, typename Generator>
+ > +struct Choose_peb<Generator_expr_block<Dim, Generator> const>
+ > +{ typedef Peb_remap_tag type; };
+ >
+ > +template <dimension_type Dim, typename Generator>
+ > +struct Choose_peb<Generator_expr_block<Dim, Generator> >
+ > +{ typedef Peb_remap_tag type; };
+ > +
+ > +
+
+[3] Looks good.
+
+ > @@ -166,7 +245,7 @@
+ >  			   Generator_expr_block<Dim, Generator> const>
+ >  {
+ >  #if 1
+ > -  typedef Generator_expr_block<Dim, Generator> const block_type;
+ > +  typedef Generator_expr_block<Dim, Generator> block_type;
+ >    typedef typename CombineT::template return_type<block_type>::type
+ >  		type;
+ >    typedef typename CombineT::template tree_type<block_type>::type
+ > @@ -208,7 +287,7 @@
+ >    Generator_expr_block<Dim, Generator> const& block)
+ >  {
+ >  #if 1
+ > -  return combine.apply_const(block);
+ > +  return combine.apply(block);
+ >  #else
+ >    typedef typename Combine_return_type<
+ >      CombineT,
+
+[4] This looks good.  While you're in here fixing things, can you take
+out the old #ifdef as well.
+
+
+
+ > Index: src/vsip/core/parallel/expr.hpp
+ > ===================================================================
+ > --- src/vsip/core/parallel/expr.hpp	(revision 165174)
+ > +++ src/vsip/core/parallel/expr.hpp	(working copy)
+ > @@ -177,8 +177,67 @@
+ >    typename View_block_storage<BlockT>::expr_type blk_;
+ >  };
+ >
+ > +template <dimension_type Dim,
+ > +	  typename       MapT,
+ > +	  typename       BlockT>
+ > +class Par_expr_block<Dim, MapT, BlockT, Peb_remap_tag> : Non_copyable
+ > +{
+ > +public:
+ > +  static dimension_type const dim = Dim;
+ >
+ > +  typedef typename BlockT::value_type           value_type;
+ > +  typedef typename BlockT::reference_type       reference_type;
+ > +  typedef typename BlockT::const_reference_type const_reference_type;
+ > +  typedef MapT                                  map_type;
+ >
+ > +
+ > +  typedef Subset_block<BlockT const>                local_block_type;
+ > +  typedef Distributed_block<BlockT, MapT> dst_block_type;
+ > +
+ > +  typedef typename View_of_dim<Dim, value_type, dst_block_type>::type
+ > +		dst_view_type;
+ > +  typedef typename View_of_dim<Dim, value_type, BlockT>::const_type
+ > +		src_view_type;
+
+[5] src_view_type, dst_view_type, and dst_block_type are not used.
+You can delete them.
+
+ > +
+ > +
+ > +public:
+ > +  Par_expr_block(MapT const& map, BlockT const& block)
+ > +    : map_ (map),
+ > +      blk_ (const_cast<BlockT&>(block))
+
+[6] Why do you need to strip the const off?  blk_ is a 'BlockT
+const&'.
+
+ > +  {}
+ > +
+ > +  ~Par_expr_block() {}
+ > +
+ > +  void exec() {}
+ > +
+ > +  // Accessors.
+ > +public:
+ > +  length_type size() const VSIP_NOTHROW { return blk_.size(); }
+ > +  length_type size(dimension_type blk_dim, dimension_type d) const 
+VSIP_NOTHROW
+ > +  { return blk_.size(blk_dim, d); }
+ > +
+ > +  void increment_count() const VSIP_NOTHROW {}
+ > +  void decrement_count() const VSIP_NOTHROW {}
+ > +
+ > +  // Distributed Accessors
+ > +public:
+ > +  local_block_type get_local_block() const
+ > +    {
+ > +      Domain<Dim> my_local_domain =
+ > +        map_.template impl_global_domain<Dim>(map_.subblock(), 0);
+ > +
+ > +      Subset_block<BlockT const> subblock(my_local_domain,blk_);
+ > +      return subblock;
+ > +    }
+
+[7] If possible 'subblock' should be created during the constructor,
+and just returned here.  That way if this parallel expression is
+"captured" in a Setup_assign statement, the overhead of creating the
+subblock (and doing the reference counting) is done just once, not
+each time the expression is evalauted.
+
+ > +
+ > +
+ > +  // Member data.
+ > +private:
+ > +  MapT const&     map_;
+ > +  BlockT const& blk_;
+
+[8] You should rarely store a block directly as a reference.
+
+First, some background.  Some blocks are stored by reference, others
+by value.  In particular, blocks that own memory are stored by
+reference.  This way they can be reference counted and their memory
+deallocted when they are no longer needed.  Blocks that don't own
+memory (and just refer to other blocks) are stored by value.  This
+avoids the overhead of reference counting, which is important to get
+good performance with loop fusion.
+
+The impact of this is:
+
+a) If you hold a reference to a by-reference reference counted block,
+you may have to manually increment/decrement the reference count.
+This is both painful and difficult to make exception safe.  (In some
+cases it is OK to hold a reference without doing reference counting,
+in particular in expression blocks).
+
+b) If you hold a reference to a by-value block, there is a good chance
+that the original block lives on the stack and that the reference will
+become invalid.
+
+The right thing to do is use View_block_storage to give you the
+appropriate type.
+
+If you want to do reference counting, you would use:
+
+	View_block_storage<BlockT>::type
+
+For reference counted BlockT's this results in a special reference
+holder type (Ref_counted_ptr) that handles reference counting for you
+automatically.
+
+If you're not doing reference counting, you would use:
+
+	View_block_storage<BlockT>::expr_type
+
+or
+	
+	View_block_storage<BlockT>::plain_type
+
+(The difference is that expr_type throws in a const.)
+
+In this case, you're nearly in an expression block, so
+
+	View_block_storage<BlockT>::expr_type
+
+is the way to go.
+
+ > +};
+ > +
+ > +
+ >  /// 'Combine' functor to construct an expression of Par_expr_blocks 
+from an
+ >  /// expression of distributed blockes.
+ >
+ > @@ -441,7 +500,7 @@
+ >  	  typename       MapT,
+ >  	  typename       BlockT,
+ >  	  typename       ImplTag>
+ > -typename Par_expr_block<Dim, MapT, BlockT, ImplTag>::local_block_type&
+ > +typename Par_expr_block<Dim, MapT, BlockT, ImplTag>::local_block_type
+
+[9] Similar to above comment about passing blocks by reference and by
+value.
+
+Passing a value happens to be the right thing when local_block_type is
+a subset block, but it is probably not OK for other local_block_types.
+Since this function is used for all ImplTags, not just Peb_remap_tag,
+this will break the other ImplTags.
+
+The right thing to do is use View_block_storage to massage
+local_block_type.  Here you would want to use plain_type since you
+don't want the const.
+
+
+ >  get_local_block(
+ >    Par_expr_block<Dim, MapT, BlockT, ImplTag> const& block)
+ >  {
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From assem at codesourcery.com  Wed Apr  4 16:26:37 2007
+From: assem at codesourcery.com (Assem Salama)
+Date: Wed, 04 Apr 2007 12:26:37 -0400
+Subject: parallel Generator_expr_block
+Message-ID: <4613D1BD.5060809@codesourcery.com>
+
+Everyone,
+  This patch addresses Jule's comments. I took out specialization of 
+Subset_block and changed return type of get_local_block to 
+Par_expr_block... :: local_block_ret_type.
+
+Thanks,
+Assem
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: svn.diff.04042007.1.log
+Type: text/x-log
+Size: 6121 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20070404/37460481/attachment.bin>
+
+From jules at codesourcery.com  Thu Apr  5 14:35:48 2007
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Thu, 05 Apr 2007 10:35:48 -0400
+Subject: [vsipl++] parallel Generator_expr_block
+In-Reply-To: <4613D1BD.5060809@codesourcery.com>
+References: <4613D1BD.5060809@codesourcery.com>
+Message-ID: <46150944.9090704@codesourcery.com>
+
+Assem Salama wrote:
+> Everyone,
+>  This patch addresses Jule's comments. I took out specialization of 
+> Subset_block and changed return type of get_local_block to 
+> Par_expr_block... :: local_block_ret_type.
+
+Assem,
+
+This looks good, please check it in.
+
+			-- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From assem at codesourcery.com  Thu Apr  5 21:15:34 2007
+From: assem at codesourcery.com (Assem Salama)
+Date: Thu, 05 Apr 2007 17:15:34 -0400
+Subject: vramp test
+Message-ID: <461566F6.80004@codesourcery.com>
+
+Everyone,
+  This test tests the functionality of ramp.
+
+Thanks,
+Assem
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: svn.diff.04052007.1.log
+Type: text/x-log
+Size: 8436 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20070405/f8b18363/attachment.bin>
+
+From assem at codesourcery.com  Fri Apr  6 00:26:11 2007
+From: assem at codesourcery.com (Assem Salama)
+Date: Thu, 05 Apr 2007 20:26:11 -0400
+Subject: vramp benchmark
+Message-ID: <461593A3.2050202@codesourcery.com>
+
+Everyone,
+  This is a benchmark for ramp.
+
+Thanks,
+Assem
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: svn.diff.04052007.2.log
+Type: text/x-log
+Size: 4301 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20070405/a0024a8e/attachment.bin>
+
+From don at codesourcery.com  Sat Apr  7 23:27:33 2007
+From: don at codesourcery.com (Don McCoy)
+Date: Sat, 07 Apr 2007 17:27:33 -0600
+Subject: [patch] Fast convolution enhancments
+Message-ID: <461828E5.1060607@codesourcery.com>
+
+The attached patch adds support for interleaved-complex fast convolution 
+with unique coefficients for each row of input/output.   This matches 
+the way the problem is framed for the HPEC Challenge benchmarks.
+
+It also supports coefficients that are already transformed from the time 
+domain into the frequency domain.  The benchmarks may be run either 
+way.  As expected, transforming them first is a big win performance-wise 
+(30-40%).
+
+The good news is that the performance of
+
+    out = inv_fftm_(vmmul<0>(weights_, for_fftm_(in)));
+
+should match this
+
+    out = inv_fftm_(weights_ * for_fftm_(in)));
+
+even though the latter transfers about twice as much data to the SPEs as 
+the former, due to the fact that it transfers one row of input data and 
+one row of weights for each row of output.  Fortunately, the DMA 
+bandwidth limit has not yet been reached, so this has little or no 
+impact on performance.
+
+Support for the second expression will be posted in a separate patch.
+
+Regards,
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: fcmc2.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20070407/43916a14/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: fcmc2.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20070407/43916a14/attachment-0001.ksh>
+
+From jules at codesourcery.com  Mon Apr  9 15:37:28 2007
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Mon, 09 Apr 2007 11:37:28 -0400
+Subject: [vsipl++] [patch] Fast convolution enhancments
+In-Reply-To: <461828E5.1060607@codesourcery.com>
+References: <461828E5.1060607@codesourcery.com>
+Message-ID: <461A5DB8.2010608@codesourcery.com>
+
+Don McCoy wrote:
+ > The attached patch adds support for interleaved-complex fast convolution
+ > with unique coefficients for each row of input/output.   This matches
+ > the way the problem is framed for the HPEC Challenge benchmarks.
+
+Don,
+
+This looks good.  I have a couple of minor comments below, but
+otherwise, please check it in.
+
+				thanks,
+				-- Jules
+
+
+ > Index: src/vsip/opt/cbe/ppu/fastconv.cpp
+ > ===================================================================
+
+ > +    // Note: for a matrix of coefficients, unique rows are transferred.
+ > +    // For the normal case, the address is constant because the same
+ > +    // vector is sent repeatedly.
+
+Is a single vector really sent repeatedly?  Shouldn't this be:
+
+"... the address is constant because a single vector is sent once and
+used repeatedly."
+
+ > +    params.ea_kernel += (dim == 1 ? 0 : sizeof(T) * my_rows * length);
+ >      params.ea_input  += sizeof(T) * my_rows * length;
+ >      params.ea_output += sizeof(T) * my_rows * length;
+ >    }
+
+
+ > Index: src/vsip/opt/cbe/ppu/fastconv.hpp
+ > ===================================================================
+
+ >  public:
+ >    template <typename Block>
+ > -  Fastconv_base(Vector<T, Block> coeffs, length_type input_size,
+ > +  Fastconv_base(Vector<T, Block> coeffs, Domain<dim> input_size,
+
+It should be more efficient to pass Domains as const references.  This
+avoids the need to call Domain's copy constructor.
+
+
+ > +  template <typename Block>
+ > +  Fastconv_base(Matrix<T, Block> coeffs, Domain<dim> input_size,
+
+Here too
+
+
+ > +  // Member data.
+ > +  Domain<dim> input_size_;
+
+Is input_size_ used?
+
+ > +  kernel_view_type kernel_;
+ >    bool transform_kernel_;
+ >    length_type size_;
+ >    aligned_array<T> twiddle_factors_;
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From don at codesourcery.com  Mon Apr  9 17:36:41 2007
+From: don at codesourcery.com (Don McCoy)
+Date: Mon, 09 Apr 2007 11:36:41 -0600
+Subject: [vsipl++] [patch] Fast convolution enhancments
+In-Reply-To: <461A5DB8.2010608@codesourcery.com>
+References: <461828E5.1060607@codesourcery.com> <461A5DB8.2010608@codesourcery.com>
+Message-ID: <461A79A9.3000309@codesourcery.com>
+
+Checked in with noted minor changes.
+
+Don
+
+
+
+Jules Bergmann wrote:
+> > +    // Note: for a matrix of coefficients, unique rows are 
+> transferred.
+> > +    // For the normal case, the address is constant because the same
+> > +    // vector is sent repeatedly.
+>
+> Is a single vector really sent repeatedly?  Shouldn't this be:
+>
+> "... the address is constant because a single vector is sent once and
+> used repeatedly."
+>
+Er, yes.  Thanks for catching that!
+
+
+> > -  Fastconv_base(Vector<T, Block> coeffs, length_type input_size,
+> > +  Fastconv_base(Vector<T, Block> coeffs, Domain<dim> input_size,
+>
+> It should be more efficient to pass Domains as const references.  This
+> avoids the need to call Domain's copy constructor.
+>
+Done.
+
+>
+> > +  // Member data.
+> > +  Domain<dim> input_size_;
+>
+> Is input_size_ used?
+>
+No.  Removed.
+
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+
+
+
+From don at codesourcery.com  Thu Apr 12 17:27:51 2007
+From: don at codesourcery.com (Don McCoy)
+Date: Thu, 12 Apr 2007 11:27:51 -0600
+Subject: [patch] Fast convolution expression templates
+Message-ID: <461E6C17.3050104@codesourcery.com>
+
+The attached patch adds expression templates to support these 
+single-line, multiple-row fast convolutions using unique weights for 
+each row ('weights_' is a matrix as well).
+
+   out = inv_fftm_(weights_ * for_fftm_(in)));
+
+and
+
+   out = inv_fftm_(for_fftm_(in) * weights_));
+
+
+Note: the weights must be transformed into the frequency space prior to 
+calling.  If using the Cell/B.E. back end, this may be avoided by 
+calling the cbe::Fastconv object directly, but pre-transforming the 
+weights is preferred for the performance advantage it offers.  This 
+differs from the 'vector of coefficients' case where the cost of the 
+single FFT required to do the transform is negligible due to the fact 
+that the kernel is able to store the transformed kernel and use it 
+multiple times (provided the instance of the Fastconv object does not 
+change).
+
+
+New test cases and benchmark cases are provided as well.
+
+Regards,
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: fcb.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20070412/7e0367be/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: fcb.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20070412/7e0367be/attachment-0001.ksh>
+
+From jules at codesourcery.com  Fri Apr 13 15:47:39 2007
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Fri, 13 Apr 2007 11:47:39 -0400
+Subject: [vsipl++] [patch] Fast convolution expression templates
+In-Reply-To: <461E6C17.3050104@codesourcery.com>
+References: <461E6C17.3050104@codesourcery.com>
+Message-ID: <461FA61B.8070308@codesourcery.com>
+
+Don McCoy wrote:
+ > The attached patch adds expression templates to support these
+ > single-line, multiple-row fast convolutions using unique weights for
+ > each row ('weights_' is a matrix as well).
+
+Don,
+
+This looks good.  I have a copule of comments below, mostly adding
+additional checks to the evaluators.  Otherwise, please check it in.
+
+				thanks,
+				-- Jules
+
+
+ > +template <typename       DstBlock,
+ > +	  typename       T,
+ > +	  typename       CoeffsMatBlockT,
+ > +	  typename       MatBlockT,
+ > +	  typename       Backend1T,
+ > +	  typename       Workspace1T,
+ > +	  typename       Backend2T,
+ > +	  typename       Workspace2T>
+ > +struct Serial_expr_evaluator<2, DstBlock,
+ > +  const Return_expr_block<2, T,
+ > +    fft::Fft_return_functor<2, T,
+ > +      const Binary_expr_block<2, op::Mult,
+ > +        CoeffsMatBlockT, T,
+ > +        const Return_expr_block<2, T,
+ > +          fft::Fft_return_functor<2, T,
+ > +            MatBlockT,
+ > +            Backend2T, Workspace2T>
+ > +        >, T
+ > +      >,
+ > +      Backend1T, Workspace1T>
+ > +    >,
+ > +    Cbe_sdk_tag
+ > +  >
+ > +{
+ > +  static char const* name() { return "Cbe_sdk_tag"; }
+ > +
+ > +  typedef
+ > +  Return_expr_block<2, T,
+ > +    fft::Fft_return_functor<2, T,
+ > +      const Binary_expr_block<2, op::Mult,
+ > +        CoeffsMatBlockT, T,
+ > +        const Return_expr_block<2, T,
+ > +          fft::Fft_return_functor<2, T,
+ > +            MatBlockT,
+ > +            Backend2T, Workspace2T>
+ > +        >, T
+ > +      >,
+ > +      Backend1T, Workspace1T>
+ > +    >
+ > +    SrcBlock;
+ > +
+ > +  typedef typename DstBlock::value_type dst_type;
+ > +  typedef typename SrcBlock::value_type src_type;
+ > +  typedef typename Block_layout<DstBlock>::complex_type complex_type;
+ > +  typedef impl::cbe::Fastconv_base<2, T, complex_type> fconv_type;
+ > +
+ > +  static bool const ct_valid = Type_equal<T, std::complex<float> 
+ >::value;
+
+[1] We should enforce that MatBlockT::value_type == complex<float>
+
+ > +
+ > +  static bool rt_valid(DstBlock& dst, SrcBlock const& /*src*/)
+ > +  {
+ > +    return fconv_type::rt_valid_size(dst.size(2, 1));
+
+[2] Do we need to enforce any other run-time constaints?  Ext_data 
+access OK?
+Unit-stride?  etc.
+
+Or are those handled by Fastconv_base?
+
+We should definitely check FFT scaling (see ifdef'd out check in
+opt/expr/eval_fastconv).  IIRC that check was expensive for some
+reason, although I believe it shouldn't be.  If it proves to be
+expensive here, we can leave it out for the time being.
+
+
+ > Index: benchmarks/fastconv.cpp
+ > ===================================================================
+
+ > -    double error = error_db(data, chk);
+ > +    double error = error_db(LOCAL(data), LOCAL(chk));
+
+[3] The global version failed to compile right?  I think I've run
+across this too.  There is a bug in error_db and/or the reductions
+that I need to track down.  Your work around is better than mine, I
+just commented out the test altogether! :)
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From don at codesourcery.com  Fri Apr 13 17:59:17 2007
+From: don at codesourcery.com (Don McCoy)
+Date: Fri, 13 Apr 2007 11:59:17 -0600
+Subject: [vsipl++] [patch] Fast convolution expression templates
+In-Reply-To: <461FA61B.8070308@codesourcery.com>
+References: <461E6C17.3050104@codesourcery.com> <461FA61B.8070308@codesourcery.com>
+Message-ID: <461FC4F5.8090003@codesourcery.com>
+
+Jules Bergmann wrote:
+> > +  static bool const ct_valid = Type_equal<T, std::complex<float> 
+> >::value;
+>
+> [1] We should enforce that MatBlockT::value_type == complex<float>
+>
+What about CoeffsMatBlockT?  And isn't the type of MatBlockT at least 
+captured somehow as part of fft::Fft_return_functor?
+
+Come to think of it, what about VecBlockT in the previous expression?  
+These are a little tricky -- I could stand to solidify my understanding 
+a bit here.  :)
+
+
+> > +
+> > +  static bool rt_valid(DstBlock& dst, SrcBlock const& /*src*/)
+> > +  {
+> > +    return fconv_type::rt_valid_size(dst.size(2, 1));
+>
+> [2] Do we need to enforce any other run-time constaints?  Ext_data 
+> access OK?
+> Unit-stride?  etc.
+>
+> Or are those handled by Fastconv_base?
+Probably both, and no.  The second is through Ext_cost or similar?
+
+>
+> We should definitely check FFT scaling (see ifdef'd out check in
+> opt/expr/eval_fastconv).  IIRC that check was expensive for some
+> reason, although I believe it shouldn't be.  If it proves to be
+> expensive here, we can leave it out for the time being.
+>
+So do we need those checks in *all* evaluators then?  And on that note, 
+do we want to add evaluators for the Fc_expr_tag as well (so it will 
+work for non Cell/B.E. platforms)?
+
+
+>
+> > Index: benchmarks/fastconv.cpp
+> > ===================================================================
+>
+> > -    double error = error_db(data, chk);
+> > +    double error = error_db(LOCAL(data), LOCAL(chk));
+>
+> [3] The global version failed to compile right?  I think I've run
+> across this too.  There is a bug in error_db and/or the reductions
+> that I need to track down.  Your work around is better than mine, I
+> just commented out the test altogether! :)
+>
+Yes.  At least I think so.  It is the same bug that happens when 
+PARALLEL_FASTCONV is forced to 0, IIRC.
+
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+
+
+
+From jules at codesourcery.com  Fri Apr 13 19:31:45 2007
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Fri, 13 Apr 2007 15:31:45 -0400
+Subject: [vsipl++] [patch] Fast convolution expression templates
+In-Reply-To: <461FC4F5.8090003@codesourcery.com>
+References: <461E6C17.3050104@codesourcery.com> <461FA61B.8070308@codesourcery.com> <461FC4F5.8090003@codesourcery.com>
+Message-ID: <461FDAA1.80502@codesourcery.com>
+
+Don McCoy wrote:
+> Jules Bergmann wrote:
+>> > +  static bool const ct_valid = Type_equal<T, std::complex<float> 
+>> >::value;
+>>
+>> [1] We should enforce that MatBlockT::value_type == complex<float>
+>>
+> What about CoeffsMatBlockT?  And isn't the type of MatBlockT at least 
+> captured somehow as part of fft::Fft_return_functor?
+
+Good questions.
+
+CoeffsMatBlockT should have value_type of T, since the Binary_expr_block 
+captures both the block type and value type as template parameters. 
+Making the check explicit wouldn't hurt, just slow the compiler down a tad.
+
+The Fft_return_functor explicitly captures the output type (that is the 
+second template parameter), but the input type is implicit from 
+MatBlockT's value_type.  I.e. it is possible to capture a real->complex 
+as a Return_expr_block / Fft_return_functor combination.
+
+> 
+> Come to think of it, what about VecBlockT in the previous expression?  
+> These are a little tricky -- I could stand to solidify my understanding 
+> a bit here.  :)
+
+Good catch!  We should check VecBlockT in the previous expression.  It 
+could be a scalar, or a complex<double>, etc.
+
+
+> 
+> 
+>> > +
+>> > +  static bool rt_valid(DstBlock& dst, SrcBlock const& /*src*/)
+>> > +  {
+>> > +    return fconv_type::rt_valid_size(dst.size(2, 1));
+>>
+>> [2] Do we need to enforce any other run-time constaints?  Ext_data 
+>> access OK?
+>> Unit-stride?  etc.
+>>
+>> Or are those handled by Fastconv_base?
+> Probably both, and no.  The second is through Ext_cost or similar?
+
+The general rule of thumb is we only want a special evaluator to apply if:
+
+1) the blocks all support direct access,
+
+    i.e. check at compile time that:
+
+	Ext_data_cost<BlockT>::value == 0
+
+2) the data is in the format we require (usually lowest order dimension
+    unit stride), i.e. check at run time that:
+
+	Ext_data<BlockT> ext(block);
+	...
+	ext.stride(lowest_order_dim) == 1;
+
+Otherwise, it will be necessary to allocate a temporary and copy data, 
+which is usually expensive enough to outweight using the evaluator.
+
+Obviously, in some cases we may want to break that rule of thumb.  For 
+the "original" (non-CBE) Fastconv evaluator, neither (1) nor (2) is 
+checked.  However, the problem is broken down into smaller problems for 
+single rows that are redispatched back to Fft and vmul.  If given data 
+with non-optimal layout, the Fft may choose to reorganize a row at a 
+time, while vmul will fall back to loop fusion.  Arguably, this should 
+be semi-efficient, esp compared to evaluating everything with loop fusion.
+
+For the Cbe evaluator, we only want to use the evaluator when all the 
+stars line up correctly.
+
+> 
+>>
+>> We should definitely check FFT scaling (see ifdef'd out check in
+>> opt/expr/eval_fastconv).  IIRC that check was expensive for some
+>> reason, although I believe it shouldn't be.  If it proves to be
+>> expensive here, we can leave it out for the time being.
+>>
+> So do we need those checks in *all* evaluators then?
+
+Yes, we should add the check to the FFTM/vmmul/FFTM Cbe evaluator.
+
+   And on that note,
+> do we want to add evaluators for the Fc_expr_tag as well (so it will 
+> work for non Cell/B.E. platforms)?
+
+Yes!  excellent that would be good!
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From jules at codesourcery.com  Fri Apr 13 21:33:15 2007
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Fri, 13 Apr 2007 17:33:15 -0400
+Subject: [patch] Misc fixes for Cbe bindings
+Message-ID: <461FF71B.7000700@codesourcery.com>
+
+This patch fixes two bugs:
+
+* First, the vmul was not updating the length processed by the main DMA 
+loop properly, which caused the cleanup code to get a bogus length. 
+Fixed, and added regression to cover this.
+
+* Second, using reinterpret cast to convert pointers to 64-bit unsigned 
+long longs does not work properly if the high-order bit of the pointer 
+was set.  A 32-bit pointer like 0x8000000 is converted to a 64-bit value 
+0xffffffff80000000.  I.e. even though both the pointer and the result 
+are unsigned, sign extension was going on.
+
+Don't know if that is the right behavior from a C/C++ point of view.  It 
+does not seem intuitive to sign-extend when the result is unsigned.
+
+Regardless, this patch adds a new function 'ea_from_ptr()' that should 
+convert 32-bit and 64-bit pointers to unsigned long longs.
+
+This bug showed up when the weights for vmmul were allocated in a huge 
+page, which had the high-order address bit set.  The sign extended 
+address caused mfc_get to hang.
+
+However, we've been giving sign extended addresses to ALF for a while 
+now, and it "works" OK.  Something in ALF must be broken when dealing 
+with 64-bit addresses that causes it to ignore the high-order 32-bits.
+
+Ok to commit?
+
+Don, if you would like to commit the fastconv patch first, then I can 
+merge this in.
+
+				-- Jules
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: cbe.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20070413/f258d882/attachment.ksh>
+
+From jules at codesourcery.com  Mon Apr 16 19:26:26 2007
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Mon, 16 Apr 2007 15:26:26 -0400
+Subject: [patch] Fix distributed error_db
+Message-ID: <4623CDE2.8060909@codesourcery.com>
+
+This patch fixes various bits to make error_db work with distributed 
+data, along with a new regression test.
+
+Patch applied.
+
+				-- Jules
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: error_db.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20070416/36707bc2/attachment.ksh>
+
+From don at codesourcery.com  Mon Apr 16 20:34:03 2007
+From: don at codesourcery.com (Don McCoy)
+Date: Mon, 16 Apr 2007 14:34:03 -0600
+Subject: [vsipl++] [patch] Fast convolution expression templates
+In-Reply-To: <461FDAA1.80502@codesourcery.com>
+References: <461E6C17.3050104@codesourcery.com> <461FA61B.8070308@codesourcery.com> <461FC4F5.8090003@codesourcery.com> <461FDAA1.80502@codesourcery.com>
+Message-ID: <4623DDBB.5060603@codesourcery.com>
+
+Committed as attached, with notes below...
+
+
+Jules Bergmann wrote:
+> The general rule of thumb is we only want a special evaluator to apply 
+> if:
+>
+> 1) the blocks all support direct access,
+>
+>    i.e. check at compile time that:
+>
+>     Ext_data_cost<BlockT>::value == 0
+>
+> 2) the data is in the format we require (usually lowest order dimension
+>    unit stride), i.e. check at run time that:
+>
+>     Ext_data<BlockT> ext(block);
+>     ...
+>     ext.stride(lowest_order_dim) == 1;
+>
+> Otherwise, it will be necessary to allocate a temporary and copy data, 
+> which is usually expensive enough to outweight using the evaluator.
+>
+These checks have been added all around.
+
+
+>>> We should definitely check FFT scaling (see ifdef'd out check in
+>>> opt/expr/eval_fastconv).  IIRC that check was expensive for some
+>>> reason, although I believe it shouldn't be.  If it proves to be
+>>> expensive here, we can leave it out for the time being.
+>>>
+>> So do we need those checks in *all* evaluators then?
+>
+This did turn out to be expensive, so I did leave it out for the time 
+being.  I guess this needs looking into.  Any idea what makes it so? 
+
+
+> Yes, we should add the check to the FFTM/vmmul/FFTM Cbe evaluator.
+>
+>   And on that note,
+>> do we want to add evaluators for the Fc_expr_tag as well (so it will 
+>> work for non Cell/B.E. platforms)?
+>
+> Yes!  excellent that would be good!
+>
+>
+I'll make a note to do this real quick.
+
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: fcb2.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20070416/4308245d/attachment.ksh>
+
+From jules at codesourcery.com  Mon Apr 16 21:23:11 2007
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Mon, 16 Apr 2007 17:23:11 -0400
+Subject: [patch] Fix bug in ea_from_ptr for 64-bit pointers
+Message-ID: <4623E93F.1040204@codesourcery.com>
+
+Oops!  Thanks Don for catching this.  Patch applied. -- Jules
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: ea.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20070416/d70163e5/attachment.ksh>
+
+From don at codesourcery.com  Tue Apr 17 07:00:50 2007
+From: don at codesourcery.com (Don McCoy)
+Date: Tue, 17 Apr 2007 01:00:50 -0600
+Subject: [vsipl++] [patch] Fast convolution expression templates
+In-Reply-To: <4623DDBB.5060603@codesourcery.com>
+References: <461E6C17.3050104@codesourcery.com> <461FA61B.8070308@codesourcery.com> <461FC4F5.8090003@codesourcery.com> <461FDAA1.80502@codesourcery.com> <4623DDBB.5060603@codesourcery.com>
+Message-ID: <462470A2.1020807@codesourcery.com>
+
+Don McCoy wrote:
+>
+> Jules Bergmann wrote:
+>>
+>>> do we want to add evaluators for the Fc_expr_tag as well (so it will 
+>>> work for non Cell/B.E. platforms)?
+>>
+>> Yes!  excellent that would be good!
+>>
+>>
+> I'll make a note to do this real quick.
+
+The attached patch adds these evaluators.  Tested both by using the 
+-diag option with the fastconv benchmark and then by configuring first 
+for Cell/B.E. (where its evaluators are used) and then for generic Power 
+(where it falls back on these).
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: fce.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20070417/c6ff8f2a/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: fce.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20070417/c6ff8f2a/attachment-0001.ksh>
+
+From walis at sho4it.com  Mon Apr 16 23:18:01 2007
+From: walis at sho4it.com (Al Walid Adada)
+Date: 17 Apr 2007 01:18:01 +0200
+Subject: From Saudi Arabia
+Message-ID: <20070416231801.13435.qmail@s15202730.onlinehome-server.info>
+
+An HTML attachment was scrubbed...
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20070417/af7d0289/attachment.html>
+
+From jules at codesourcery.com  Wed Apr 18 14:40:41 2007
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Wed, 18 Apr 2007 10:40:41 -0400
+Subject: [patch] Changes for 1.3.1
+Message-ID: <46262DE9.9020700@codesourcery.com>
+
+This patch is against branches/1.3, which will become release-1.3.1.
+
+It
+  - fixes configure to deal with IPP 5.1 ia32
+  - fixes configure to disable lapack when using the ref-impl
+  - fixes configure to deal with ubuntu's atlas (which has no cblas)
+  - fixes the C-VSIP Fftm backend to work on distributed data.
+  - fixes atlas configure to better detect various architectures.
+
+The configure and C-VSIP changes are already checked into trunk.  I will 
+check the atlas changes in later today.
+
+				-- Jules
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: 13a.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20070418/3e8c01c3/attachment.ksh>
+
+From jules at codesourcery.com  Wed Apr 18 14:48:35 2007
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Wed, 18 Apr 2007 10:48:35 -0400
+Subject: [vsipl++] [patch] Fast convolution expression templates
+In-Reply-To: <462470A2.1020807@codesourcery.com>
+References: <461E6C17.3050104@codesourcery.com> <461FA61B.8070308@codesourcery.com> <461FC4F5.8090003@codesourcery.com> <461FDAA1.80502@codesourcery.com> <4623DDBB.5060603@codesourcery.com> <462470A2.1020807@codesourcery.com>
+Message-ID: <46262FC3.6040202@codesourcery.com>
+
+
+ > The attached patch adds these evaluators.  Tested both by using the
+ > -diag option with the fastconv benchmark and then by configuring first
+ > for Cell/B.E. (where its evaluators are used) and then for generic Power
+ > (where it falls back on these).
+
+Don, This looks good, please check it in.  thanks, -- Jules
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From jules at codesourcery.com  Wed Apr 18 15:32:13 2007
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Wed, 18 Apr 2007 11:32:13 -0400
+Subject: [vsipl++] vramp test
+In-Reply-To: <461566F6.80004@codesourcery.com>
+References: <461566F6.80004@codesourcery.com>
+Message-ID: <462639FD.6060602@codesourcery.com>
+
+Assem Salama wrote:
+ > Everyone,
+ >  This test tests the functionality of ramp.
+
+Assem,
+
+This looks good.  I like the flexibility of the tester.  I have a few
+comments, but once they are addressed, please check it in.
+
+Since vramp.hpp is only used by vramp.cpp, it would be better to merge
+them together as a single .cpp file.  That way the tests are in the
+same file as the test driver, which makes it easier to read,
+understand, etc.  It also means you don't have to worry about making
+vramp.hpp "self-contained", i.e. including all necessary headers and
+not relying on vramp.cpp to do that before including it.
+
+I also have a few minor comments below.
+
+				thanks,
+				-- Jules
+
+
+ > ------------------------------------------------------------------------
+ >
+ > Index: ChangeLog
+ > ===================================================================
+ > --- ChangeLog	(revision 168042)
+ > +++ ChangeLog	(working copy)
+ > @@ -1,3 +1,9 @@
+ > +2007-04-05  Assem Salama <assem at codesourcery.com>
+
+[1] To be consistent with the other ChangeLog entries, please put a
+blank line between the date/author line (above) and the change log
+entry (below).
+
+ > +	* tests/parallel/vram.cpp: New file. This file tests the ramp
+ > +	  function.
+
+[2] There's a typo in the file name.  Video RAM?  Image processing,
+eh?  :)
+
+
+ > +	* tests/parallel/vramp.hpp: New file. This file contains the
+ > +	  do_test structure which holds the tests to be performed.
+ > +
+ >  2007-04-02  Assem Salama <assem at codesourcery.com>
+ >  	* src/vsip/core/expr/generator_block.hpp: Made Choose_peb of
+ >  	  Generator_expr_block a Peb_remap_tag. Changed apply function to call
+ > Index: tests/parallel/vramp.cpp
+ > ===================================================================
+ > --- tests/parallel/vramp.cpp	(revision 0)
+ > +++ tests/parallel/vramp.cpp	(revision 0)
+ > @@ -0,0 +1,115 @@
+ > +/* Copyright (c) 2007 by CodeSourcery.  All rights reserved.
+ > +
+ > +   This file is available for license from CodeSourcery, Inc. under 
+the terms
+ > +   of a commercial license and under the GPL.  It is not part of the 
+VSIPL++
+ > +   reference implementation and is not available under the BSD license.
+ > +*/
+ > +/** @file    tests/parallel/vramp.cpp
+ > +    @author  Assem Salama
+ > +    @date    2005-04-05
+
+[3] The date is wrong.
+
+
+
+ > +
+ > +template <int test_num,
+ > +          typename ViewT,
+ > +	  typename MapT>
+ > +int test_vramp(Domain<ViewT::dim> sz)
+ > +{
+ > +
+ > +  const dimension_type                                    dim = 
+ViewT::dim;
+ > +  typedef typename ViewT::value_type                      T;
+ > +  typedef Dense<dim,T,typename Row_major<dim>::type,MapT> block_type;
+ > +  typedef typename View_of_dim<dim, T, block_type>::type  view_type;
+ > +
+ > +  assert(dim == 1); // ramp doesn't work for anything except vectors 
+for now
+
+[4] The "for now" implies that eventually we may fix this (i.e. either
+Sourcery VSIPL++ doesn't fully implement the spec, or we're planning
+to extend the spec).
+
+Since it is a "limitation" of the spec, in the sense that it ony defines
+1D ramp, I would say something like:
+
+	"// ramp only works on vectors."
+
+ > +
+ > +  // create view
+ > +  MapT                map = Create_map<MapT>::exec();
+ > +  block_type          block(sz,map);
+ > +  view_type           view(block);
+ > +
+ > +  // assign to a ramp
+ > +  do_test<test_num>::exec(view, sz.size());
+ > +
+ > +#if DEBUG == 1
+ > +  std::cout << "View of test "<<test_num<<"\n";
+ > +  std::cout << view;
+ > +#endif
+ > +
+ > +  // check results
+ > +  {
+ > +    Index<dim> idx;
+ > +    Length<dim> ext = extent(view);
+ > +    T val = T(0);
+ > +    for(;valid(ext,idx);next(ext,idx)) {
+ > +      assert(do_test<test_num>::check(view,idx,val));
+
+[5] Use test_assert in tests!  assert() gets disabled when -NDEBUG
+defined, which we do when compiling the library to go fast.
+
+ > +    }
+ > +  }
+ > +
+ > +  return 0;
+ > +}
+ > +
+ > +
+ > +int main(int argc, char **argv)
+ > +{
+ > +  int size=16;
+
+[6] It is good practice to make 'size' a 'length_type' instead of an
+'int'.
+
+ > +
+ > +  vsipl vpp(argc,argv);
+ > +
+ > +  test_vramp<1,Vector<float>, Local_map>     (Domain<1>(size));
+ > +  test_vramp<1,Vector<float>, Map<> >        (Domain<1>(size));
+ > +  test_vramp<1,Vector<float>, Global_map<1> >(Domain<1>(size));
+ > +
+ > +  test_vramp<2,Vector<float>, Local_map>     (Domain<1>(size));
+ > +  test_vramp<2,Vector<float>, Map<> >        (Domain<1>(size));
+ > +  test_vramp<2,Vector<float>, Global_map<1> >(Domain<1>(size));
+ > +
+ > +  test_vramp<3,Vector<float>, Map<> >        (Domain<1>(size));
+ > +  test_vramp<4,Vector<float>, Map<> >        (Domain<1>(size));
+ > +  test_vramp<5,Vector<float>, Map<> >        (Domain<1>(size));
+ > +  test_vramp<6,Vector<float>, Map<> >        (Domain<1>(size));
+ > +
+ > +  return 0;
+ > +}
+ > Index: tests/parallel/vramp.hpp
+ > ===================================================================
+ > --- tests/parallel/vramp.hpp	(revision 0)
+ > +++ tests/parallel/vramp.hpp	(revision 0)
+ > @@ -0,0 +1,145 @@
+ > +/* Copyright (c) 2007 by CodeSourcery.  All rights reserved.
+ > +
+ > +   This file is available for license from CodeSourcery, Inc. under 
+the terms
+ > +   of a commercial license and under the GPL.  It is not part of the 
+VSIPL++
+ > +   reference implementation and is not available under the BSD license.
+ > +*/
+ > +/** @file    tests/parallel/vramp.hpp
+ > +    @author  Assem Salama
+ > +    @date    2005-04-05
+ > +    @brief   VSIPL++ Library: Header file for tests of ramp function
+ > +*/
+ > +
+ > +#ifndef TESTS_PARALLEL_VRAMP_HPP
+ > +#define TESTS_PARALLEL_VRAMP_HPP
+ > +
+ > +template <int test_num>
+ > +struct do_test;
+ > +
+ > +
+ > +// declare all tests here
+ > +
+ > +// TEST1: A simple assignment, view = ramp
+ > +template <>
+ > +struct do_test<1>
+ > +{
+ > +  template <typename ViewT>
+ > +  static void exec(ViewT& view, length_type size)
+ > +    { typedef typename ViewT::value_type T; view = 
+ramp(T(0),T(1),size); }
+ > +
+ > +  template <typename ViewT, typename T>
+ > +  static int check(ViewT& view, Index<ViewT::dim> idx, T& val)
+
+[7] For efficiency, you should pass structures like 'idx' as a const
+references, i.e.  'Index<ViewT::dim> const& idx'.  Performance doesn't
+matter too much here in a test, but its a good habit to get into.
+
+ > +    { return (get(view,idx) == val++); }
+ > +};
+ > +
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From jules at codesourcery.com  Wed Apr 18 17:54:02 2007
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Wed, 18 Apr 2007 13:54:02 -0400
+Subject: [vsipl++] [patch] Changes for 1.3.1
+In-Reply-To: <46262DE9.9020700@codesourcery.com>
+References: <46262DE9.9020700@codesourcery.com>
+Message-ID: <46265B3A.4020902@codesourcery.com>
+
+Jules Bergmann wrote:
+
+>  - fixes atlas configure to better detect various architectures.
+> 
+> The configure and C-VSIP changes are already checked into trunk.  I will 
+> check the atlas changes in later today.
+
+Patch applied.  -- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: atlas-cfg.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20070418/5d5f351c/attachment.ksh>
+
+From walis at sho4it.com  Mon Apr 16 19:00:13 2007
+From: walis at sho4it.com (Al Walid Adada)
+Date: 16 Apr 2007 21:00:13 +0200
+Subject: From Saudi Arabia
+Message-ID: <20070416190013.17767.qmail@s15202730.onlinehome-server.info>
+
+An HTML attachment was scrubbed...
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20070416/a485890f/attachment.html>
+
+From xoMEGUSox at aol.com  Thu Apr 19 15:03:15 2007
+From: xoMEGUSox at aol.com (Gabe Barfield)
+Date: Thu, 19 Apr 2007 11:03:15 -0400
+Subject: VSIPL++ Performance
+Message-ID: <462784B3.10805@aol.com>
+
+Hello,
+    I am a research assistant at the University of Florida conducting 
+experiments using SAR, GMTI, and HSI applications all of which I believe 
+can utilize the advantages of your product.  But before I begin using 
+VSIPL++ I wanted to do a some research regarding what types of 
+performance increases can be expected.  I noticed that CodeSourcery has 
+submitted and presented several conference papers and presentations for 
+HPEC; however none of these contain the results I seek with regards to 
+single processor performance.  Also I noticed that MIT LL has been a 
+significant contributor to the development of VSIPL++ and was wondering 
+if you may have any performance results of VSIPL++ pertaining to their 
+recently presented HPEC Challenge Suite.
+
+Thank you,
+Gabriel Barfield
+
+
+**Gabriel Barfield, Research Assistant**
+NSF Center for High-performance Reconfigurable Computing (CHREC)
+High-performance Computing & Simulation (HCS) Research Laboratory
+ 
+**University**** of Florida****, Dept. of Electrical and Computer 
+Engineering**
+327 Larsen Hall, POB 116200, Gainesville, FL, 32611-6200
+Lab: (352)392-9034/9046
+
+
+
+From jules at codesourcery.com  Thu Apr 19 17:39:52 2007
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Thu, 19 Apr 2007 13:39:52 -0400
+Subject: [patch] Source configuration for package.py
+Message-ID: <4627A968.60909@codesourcery.com>
+
+This patch adds a source configuration input to the package.py script. 
+It is intended for the 1.3 branch, but will also go into trunk.
+
+The source configuration is a file that describes which SVN directories 
+and revisions to check out to build a source package, as well as a list 
+of patches to apply after checkout.
+
+A source configuration to build the 1.3.1 release using the commercial 
+FFTW will look something like:
+
+	cfg.svpp_dir='csl/vpp/branches/1.3'
+	cfg.fftw_dir='csl/fftw-commercial/trunk'
+	cfg.patches=['docbook.diff']
+
+The directories are SVN paths relative to /svk/Repository.  By default, 
+the HEAD revision is checked out, but another revision could be 
+specified by setting 'cfg.svpp_rev'.
+
+Ok to commit?
+
+				-- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: src_cfg.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20070419/6a07d158/attachment.ksh>
+
+From stefan at codesourcery.com  Thu Apr 19 17:56:20 2007
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Thu, 19 Apr 2007 13:56:20 -0400
+Subject: [vsipl++] [patch] Source configuration for package.py
+In-Reply-To: <4627A968.60909@codesourcery.com>
+References: <4627A968.60909@codesourcery.com>
+Message-ID: <4627AD44.7020103@codesourcery.com>
+
+Jules Bergmann wrote:
+> This patch adds a source configuration input to the package.py script.
+> It is intended for the 1.3 branch, but will also go into trunk.
+> 
+> The source configuration is a file that describes which SVN directories
+> and revisions to check out to build a source package, as well as a list
+> of patches to apply after checkout.
+> 
+> A source configuration to build the 1.3.1 release using the commercial
+> FFTW will look something like:
+> 
+>     cfg.svpp_dir='csl/vpp/branches/1.3'
+>     cfg.fftw_dir='csl/fftw-commercial/trunk'
+>     cfg.patches=['docbook.diff']
+> 
+> The directories are SVN paths relative to /svk/Repository.  By default,
+> the HEAD revision is checked out, but another revision could be
+> specified by setting 'cfg.svpp_rev'.
+
+Jules,
+
+I have a couple of high-level questions:
+
+1) Why do you keep the source configuration in a new file, instead of
+   integrating it into the existing 'config' machinery ? (I'd really like
+   to be able to integrate these changes into our buildbot setup at some
+   point, so we can easily drive the whole release candidate testing by
+   the same harness as everything else (as we used to, at least :-) ).
+
+2) Why do we apply patches to a fftw working copy, as opposed to keeping
+   them merged in the repository ? (why don't we use a branch for that ?)
+
+3) How is the fftw working copy combined with the vpp working copy after
+   the checkout ? (sorry if that is obvious from the code, I couldn't find
+   the related code)
+
+Thanks,
+		Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+
+
+From jules at codesourcery.com  Thu Apr 19 21:28:43 2007
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Thu, 19 Apr 2007 17:28:43 -0400
+Subject: [vsipl++] [patch] Source configuration for package.py
+In-Reply-To: <4627AD44.7020103@codesourcery.com>
+References: <4627A968.60909@codesourcery.com> <4627AD44.7020103@codesourcery.com>
+Message-ID: <4627DF0B.1080000@codesourcery.com>
+
+
+> Jules,
+> 
+> I have a couple of high-level questions:
+> 
+> 1) Why do you keep the source configuration in a new file, instead of
+>    integrating it into the existing 'config' machinery ?
+
+I think merging the two would be a good idea, however because of 
+orthogonality (the choice of source modules is mostly independent of how 
+the binary packages are built) and ignorance of python, I have them 
+separated right now.
+
+Is there (and there must be, it is python!) a good way to include one 
+configure file from another?
+
+That would allow the 1.3.1 commercial config to be:
+
+	cfg.svpp_dir='csl/vpp/branches/1.3'
+	cfg.fftw_dir='csl/fftw-commercial/trunk'
+	cfg.patches=['docbook.diff']
+	include standard_config
+
+and the GPL config to be
+
+	cfg.svpp_dir='csl/vpp/branches/1.3'
+	cfg.fftw_dir='csl/fftw/trunk'
+	cfg.patches=['docbook.diff']
+	include standard_config
+
+Where 'standard_config' is the current 'config' file.
+
+
+
+> 
+> 2) Why do we apply patches to a fftw working copy, as opposed to keeping
+>    them merged in the repository ? (why don't we use a branch for that ?)
+
+Are you asking about the 'cfg.patches'?
+
+That isn't necessarily for FFTW.  In putting out the past releases, I've 
+found that prior to getting everything just right, there are usually a 
+small number of changes necessary.  Rather than checking in each change 
+individually and starting a new build, I collect them up in a patch that 
+is applied to the checkout.  Once everything is in order, that patch 
+gets checked in so the final build is from a clean checkout.
+
+So ideally for the final package, the patches list would be empty.
+
+However ... the patch mechanism also lets us work around things like the 
+font size issue in docbook.  That is how it is being used above.
+
+> 
+> 3) How is the fftw working copy combined with the vpp working copy after
+>    the checkout ? (sorry if that is obvious from the code, I couldn't find
+>    the related code)
+
+Good question.  We've designed our build system to pretty much use a 
+stock FFTW source package without modification.  The FFTW working copy 
+is placed in the VSIPL++ working copy's vendor/fftw directory.  That's 
+it!  Sort of a manual external.
+
+				-- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From stefan at codesourcery.com  Thu Apr 19 21:42:01 2007
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Thu, 19 Apr 2007 17:42:01 -0400
+Subject: [vsipl++] [patch] Source configuration for package.py
+In-Reply-To: <4627DF0B.1080000@codesourcery.com>
+References: <4627A968.60909@codesourcery.com> <4627AD44.7020103@codesourcery.com> <4627DF0B.1080000@codesourcery.com>
+Message-ID: <4627E229.4040300@codesourcery.com>
+
+Jules Bergmann wrote:
+> 
+>> Jules,
+>>
+>> I have a couple of high-level questions:
+>>
+>> 1) Why do you keep the source configuration in a new file, instead of
+>>    integrating it into the existing 'config' machinery ?
+> 
+> I think merging the two would be a good idea, however because of
+> orthogonality (the choice of source modules is mostly independent of how
+> the binary packages are built) and ignorance of python, I have them
+> separated right now.
+> 
+> Is there (and there must be, it is python!) a good way to include one
+> configure file from another?
+
+from other_config import *
+
+? :-)
+
+I'm not sure I understand the orthogonality argument. The config file
+contains everything that needs to be known to build packages. And that
+includes compilation flags, and may well include information about
+where to obtain the sources from.
+
+You are right, though, that we may set up two such config instances,
+and multiply them with the existing package instances to get a commercial
+as well as a gpl version for each package.
+In that respect it's just another (new) parameter to the packaging harness.
+
+> That would allow the 1.3.1 commercial config to be:
+> 
+>     cfg.svpp_dir='csl/vpp/branches/1.3'
+>     cfg.fftw_dir='csl/fftw-commercial/trunk'
+>     cfg.patches=['docbook.diff']
+>     include standard_config
+> 
+> and the GPL config to be
+> 
+>     cfg.svpp_dir='csl/vpp/branches/1.3'
+>     cfg.fftw_dir='csl/fftw/trunk'
+>     cfg.patches=['docbook.diff']
+>     include standard_config
+> 
+> Where 'standard_config' is the current 'config' file.
+
+Yep.
+
+>> 2) Why do we apply patches to a fftw working copy, as opposed to keeping
+>>    them merged in the repository ? (why don't we use a branch for that ?)
+> 
+> Are you asking about the 'cfg.patches'?
+
+Yes.
+
+> That isn't necessarily for FFTW.  In putting out the past releases, I've
+> found that prior to getting everything just right, there are usually a
+> small number of changes necessary.  Rather than checking in each change
+> individually and starting a new build, I collect them up in a patch that
+> is applied to the checkout.  Once everything is in order, that patch
+> gets checked in so the final build is from a clean checkout.
+> 
+> So ideally for the final package, the patches list would be empty.
+
+Hmm.
+
+> However ... the patch mechanism also lets us work around things like the
+> font size issue in docbook.  That is how it is being used above.
+
+Are you saying that such small a patch isn't worth a branch ?
+
+>> 3) How is the fftw working copy combined with the vpp working copy after
+>>    the checkout ? (sorry if that is obvious from the code, I couldn't
+>> find
+>>    the related code)
+> 
+> Good question.  We've designed our build system to pretty much use a
+> stock FFTW source package without modification.  The FFTW working copy
+> is placed in the VSIPL++ working copy's vendor/fftw directory.  That's
+> it!  Sort of a manual external.
+
+OK, that's what I suspected. Thanks for confirming it ! :-)
+
+
+Thanks,
+		Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+
+
+From mark at codesourcery.com  Thu Apr 19 21:53:00 2007
+From: mark at codesourcery.com (Mark Mitchell)
+Date: 19 Apr 2007 14:53:00 -0700
+Subject: [vsipl++] [patch] Source configuration for package.py
+Message-ID: <3259839225.1592905@mail.codesourcery.com>
+
+Sorry for the brief reply -- Treo typing...
+
+1.  It might be a good idea to look at the SG++ release configs.  We would handle this situation by having a different SVN URI in the two configs.
+
+2.  For good or ill, we  never use patches on SG++.  For the font size issue, we would just make a branch.  Branches are cheap. :-)
+
+FWIW,
+
+--
+Mark Mitchell
+CodeSourcery
+mark at codesourcery.com
+(650) 331-6685 x713
+-----Original Message-----
+From: Stefan Seefeld <stefan at codesourcery.com>
+Date: Thursday, Apr 19, 2007 2:42 pm
+Subject: Re: [vsipl++] [patch] Source configuration for package.py
+
+Jules Bergmann wrote:
+ 
+> Jules,
+>
+> I have a couple of high-level questions:
+>
+> 1) Why do you keep the source configuration in a new file, instead of
+>    integrating it into the existing 'config' machinery ?
+ 
+ I think merging the two would be a good idea, however because of
+ orthogonality (the choice of source modules is mostly independent of how
+ the binary packages are built) and ignorance of python, I have them
+ separated right now.
+ 
+ Is there (and there must be, it is python!) a good way to include one
+ configure file from another?
+
+from other_config import *
+
+? :-)
+
+I'm not sure I understand the orthogonality argument. The config file contains everything that needs to be known to build packages. And that includes compilation flags, and may well include information about
+where to obtain the sources from.
+
+You are right, though, that we may set up two such config instances, and multiply them with the existing package instances to get a commercial as well as a gpl version for each package.
+In that respect it's just another (new) parameter to the packaging harness.
+
+> That would allow the 1.3.1 commercial config to be:
+ 
+     cfg.svpp_dir='csl/vpp/branches/1.3'
+     cfg.fftw_dir='csl/fftw-commercial/trunk'
+     cfg.patches=['docbook.diff']
+     include standard_config
+ 
+ and the GPL config to be
+ 
+     cfg.svpp_dir='csl/vpp/branches/1.3'
+     cfg.fftw_dir='csl/fftw/trunk'
+     cfg.patches=['docbook.diff']
+     include standard_config
+ 
+ Where 'standard_config' is the current 'config' file.
+
+Yep.
+
+>> 2) Why do we apply patches to a fftw working copy, as opposed to keeping
+>    them merged in the repository ? (why don't we use a branch for that ?)
+ 
+ Are you asking about the 'cfg.patches'?
+
+Yes.
+
+> That isn't necessarily for FFTW.  In putting out the past releases, I've
+ found that prior to getting everything just right, there are usually a
+ small number of changes necessary.  Rather than checking in each change
+ individually and starting a new build, I collect them up in a patch that
+ is applied to the checkout.  Once everything is in order, that patch
+ gets checked in so the final build is from a clean checkout.
+ 
+ So ideally for the final package, the patches list would be empty.
+
+Hmm.
+
+> However ... the patch mechanism also lets us work around things like the
+ font size issue in docbook.  That is how it is being used above.
+
+Are you saying 
+
+
+
+From jules at codesourcery.com  Fri Apr 20 00:12:41 2007
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Thu, 19 Apr 2007 20:12:41 -0400
+Subject: [vsipl++] [patch] Source configuration for package.py
+In-Reply-To: <4627E229.4040300@codesourcery.com>
+References: <4627A968.60909@codesourcery.com> <4627AD44.7020103@codesourcery.com> <4627DF0B.1080000@codesourcery.com> <4627E229.4040300@codesourcery.com>
+Message-ID: <46280579.9060103@codesourcery.com>
+
+Stefan Seefeld wrote:
+
+> 
+> from other_config import *
+
+Ok, that sounds good.
+
+
+>> However ... the patch mechanism also lets us work around things like the
+>> font size issue in docbook.  That is how it is being used above.
+> 
+> Are you saying that such small a patch isn't worth a branch ?
+
+Yes, but that wasn't a good decision on my part.  Having a patch outside 
+of version control, even for something as simple as the font size, 
+breaks reproducibility.
+
+				-- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From jules at codesourcery.com  Fri Apr 20 00:45:13 2007
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Thu, 19 Apr 2007 20:45:13 -0400
+Subject: [vsipl++] [patch] Source configuration for package.py
+In-Reply-To: <4627E229.4040300@codesourcery.com>
+References: <4627A968.60909@codesourcery.com> <4627AD44.7020103@codesourcery.com> <4627DF0B.1080000@codesourcery.com> <4627E229.4040300@codesourcery.com>
+Message-ID: <46280D19.1040601@codesourcery.com>
+
+
+>>
+>> Is there (and there must be, it is python!) a good way to include one
+>> configure file from another?
+> 
+> from other_config import *
+
+If the file "other_config" is has a full path "a/b/c/other_config", and 
+that path is stored in a variable cfg_path, how would you write this 
+statement?  Would this work:
+
+	from '%s/other_config'%cfg_path import *
+
+
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From stefan at codesourcery.com  Fri Apr 20 04:29:33 2007
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Fri, 20 Apr 2007 00:29:33 -0400
+Subject: [vsipl++] [patch] Source configuration for package.py
+In-Reply-To: <46280D19.1040601@codesourcery.com>
+References: <4627A968.60909@codesourcery.com> <4627AD44.7020103@codesourcery.com> <4627DF0B.1080000@codesourcery.com> <4627E229.4040300@codesourcery.com> <46280D19.1040601@codesourcery.com>
+Message-ID: <462841AD.9070403@codesourcery.com>
+
+Jules Bergmann wrote:
+> 
+>>>
+>>> Is there (and there must be, it is python!) a good way to include one
+>>> configure file from another?
+>>
+>> from other_config import *
+> 
+> If the file "other_config" is has a full path "a/b/c/other_config", and
+> that path is stored in a variable cfg_path, how would you write this
+> statement?  Would this work:
+> 
+>     from '%s/other_config'%cfg_path import *
+
+No. I would add cfg_path to the module search path:
+
+import sys
+sys.path.insert(0, cfg_path)
+from other_config import *
+
+(One has to be careful not to pick up other unwanted python modules
+that happen to lie in the cfg_path directory, of course.)
+
+Regards,
+		Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+
+
+From jules at codesourcery.com  Fri Apr 20 12:38:15 2007
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Fri, 20 Apr 2007 08:38:15 -0400
+Subject: [vsipl++] [patch] Source configuration for package.py
+In-Reply-To: <462841AD.9070403@codesourcery.com>
+References: <4627A968.60909@codesourcery.com> <4627AD44.7020103@codesourcery.com> <4627DF0B.1080000@codesourcery.com> <4627E229.4040300@codesourcery.com> <46280D19.1040601@codesourcery.com> <462841AD.9070403@codesourcery.com>
+Message-ID: <4628B437.7060306@codesourcery.com>
+
+
+ > import sys
+ > sys.path.insert(0, cfg_path)
+ > from other_config import *
+
+Stefan,
+
+The new config file looks like this:
+
+	import sys
+	sys.path.insert(0, configdir)
+	print "configdir: %s"%configdir
+
+	class MySource(Source):
+	    svpp_dir='csl/vpp/branches/1.3'
+	    fftw_dir='csl/fftw-commercial/trunk'
+	    patches=['docbook.diff']
+
+	from config import *
+
+Where 'config' is our current config file.
+
+However, I get the following error:
+
+configdir: /home/jules/csl/src/vpp/svn-1.3-com/scripts
+Traceback (most recent call last):
+   File "/home/jules/csl/src/vpp/svn-1.3-com/scripts/package.py", line 
+427, in ?
+     main(sys.argv)
+   File "/home/jules/csl/src/vpp/svn-1.3-com/scripts/package.py", line 
+407, in main
+     packages, cfg = read_config_file(configfile, parameters)
+   File "/home/jules/csl/src/vpp/svn-1.3-com/scripts/package.py", line 
+47, in read_config_file
+     exec open(filename, 'r').read() in env
+   File "<string>", line 10, in ?
+ImportError: No module named config
+
+
+There is a file named 'config' in the directory
+'/home/jules/csl/src/vpp/svn-1.3-com/scripts' (aka 'configdir').
+
+Is python expecting included files to have an implicit suffix?
+
+				-- Jules
+
+
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From jules at codesourcery.com  Fri Apr 20 16:44:32 2007
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Fri, 20 Apr 2007 12:44:32 -0400
+Subject: [patch] configure fixes
+Message-ID: <4628EDF0.90903@codesourcery.com>
+
+This patch updates configure to
+  - probe for exception support by the compiler (ccmc/ghs does not
+    enable exceptions by default)
+  - disable the builtin ATLAS when cross compiling (falling back to
+    the simple CLAPACK/CBLAS instead).
+
+Patch applied to branches/1.3 and trunk.
+
+				-- Jules
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: conf.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20070420/6d5881c9/attachment.ksh>
+
+From jules at codesourcery.com  Fri Apr 20 17:06:42 2007
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Fri, 20 Apr 2007 13:06:42 -0400
+Subject: [vsipl++] [patch] Source configuration for package.py
+In-Reply-To: <4627A968.60909@codesourcery.com>
+References: <4627A968.60909@codesourcery.com>
+Message-ID: <4628F322.8090409@codesourcery.com>
+
+Here's an update to the previous patch that incorporates some of the 
+feedback (thanks Stefan and Mark).
+
+The new patch uses a single config file for both the source layout info 
+and the existing package/configuration info.  It also supports the 
+inclusion of one config file from another.
+
+The 1.3 commercial configuration looks like:
+
+	class MySource(Source):
+	    svpp_dir='csl/vpp/branches/1.3'
+	    fftw_dir='csl/fftw-commercial/trunk'
+
+	include("config")
+
+Where 'include("config")' includes the exisitng 'config' file.
+
+Ok to apply?
+
+				-- Jules
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: pkg.cl
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20070420/4aff5f1d/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: cfg.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20070420/4aff5f1d/attachment-0001.ksh>
+
+From jules at codesourcery.com  Tue Apr 24 02:22:18 2007
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Mon, 23 Apr 2007 22:22:18 -0400
+Subject: [patch] Commercial license
+Message-ID: <462D69DA.5070703@codesourcery.com>
+
+Add document describing commercial license and refer to it.  Patch 
+applied to branches/1.3 and pending to trunk.
+
+			-- Jules
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: lic.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20070423/b4ca9d71/attachment.ksh>
+
+From jules at codesourcery.com  Wed Apr 25 02:05:22 2007
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Tue, 24 Apr 2007 22:05:22 -0400
+Subject: Ideas on overlapping distributions
+Message-ID: <462EB762.2070602@codesourcery.com>
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: stencils-overlap
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20070424/c71c4bbc/attachment.ksh>
+
+From stefan at codesourcery.com  Wed Apr 25 13:52:38 2007
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Wed, 25 Apr 2007 09:52:38 -0400
+Subject: [vsipl++] Ideas on overlapping distributions
+In-Reply-To: <462EB762.2070602@codesourcery.com>
+References: <462EB762.2070602@codesourcery.com>
+Message-ID: <462F5D26.6000002@codesourcery.com>
+
+Jules,
+
+thanks for writing this up. Are you going to add that to the Stencil wiki page ?
+
+
+Jules Bergmann wrote:
+
+> Use cases
+> ---------
+> 
+> 1. STAP
+> 
+>   Start with tensor of processed radar data.
+>   Compute weights based on solving linear system consisting of neighborhood
+>   around pixel
+> 
+>   Distributed processing requires overlap, potentially wrap-around
+>   to deal with circular frequencies.
+
+Interesting. So we have at least three different 'boundary conditions' already:
+
+1) zero padding
+2) constant padding (use the boundary value to fill)
+3) periodic boundary conditions
+
+> 3. Physics.
+> 
+> TODO: processing example that requires guard cells.
+
+I guess any PDE would do. Depending on the degree, this may involve a single
+line of boundary cells, or two (e.g. for diffusion-like equations, involving a
+Laplacian).
+
+> Strawman proposal
+> -----------------
+>  - Add overlap to Block_dist (default value is 0).
+>    (possibly have separate left and right overlap).
+
+...and potentially using different boundary conditions in the two dimensions,
+depending on the stencil operator.
+
+
+I need to read and understand all the rest in order to be able to give some
+educated comments there. :-)
+
+Thanks,
+
+		Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+
+
+From jules at codesourcery.com  Wed Apr 25 20:32:09 2007
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Wed, 25 Apr 2007 16:32:09 -0400
+Subject: [patch] Updates from 1.3 branch
+Message-ID: <462FBAC9.60103@codesourcery.com>
+
+This patch to trunk contains update made to the 1.3 branch.
+
+Patch applied.
+
+				-- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: 13updates.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20070425/cd03dd01/attachment.ksh>
+
+From don at codesourcery.com  Wed Apr 25 23:04:52 2007
+From: don at codesourcery.com (Don McCoy)
+Date: Wed, 25 Apr 2007 17:04:52 -0600
+Subject: [patch] Benchmark update
+Message-ID: <462FDE94.3020800@codesourcery.com>
+
+This patch changes the benchmark test driver classes to derive from the 
+base class used to support diagnostic mode.   With this patch, the files 
+that lack diagnostics will compile without error.
+
+Ok to commit?
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: bb.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20070425/c02518ee/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: bb.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20070425/c02518ee/attachment-0001.ksh>
+
+From assem at codesourcery.com  Thu Apr 26 00:31:08 2007
+From: assem at codesourcery.com (Assem Salama)
+Date: Wed, 25 Apr 2007 20:31:08 -0400
+Subject: Generator expr blocks using cyclic blocks
+Message-ID: <462FF2CC.8000404@codesourcery.com>
+
+Everyone,
+  This patch allows Generator expr blocks to get assigned to cyclic blocks.
+
+Thanks,
+Assem
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: svn.diff.04252007.1.log
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20070425/f533e148/attachment.ksh>
+
+From jules at codesourcery.com  Thu Apr 26 13:11:14 2007
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Thu, 26 Apr 2007 09:11:14 -0400
+Subject: [vsipl++] [patch] Benchmark update
+In-Reply-To: <462FDE94.3020800@codesourcery.com>
+References: <462FDE94.3020800@codesourcery.com>
+Message-ID: <4630A4F2.2090108@codesourcery.com>
+
+Don McCoy wrote:
+> This patch changes the benchmark test driver classes to derive from the 
+> base class used to support diagnostic mode.   With this patch, the files 
+> that lack diagnostics will compile without error.
+> 
+> Ok to commit?
+
+Yep, looks good.  Please check it in.  -- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From jules at codesourcery.com  Thu Apr 26 13:32:10 2007
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Thu, 26 Apr 2007 09:32:10 -0400
+Subject: [vsipl++] [patch] Diag mode for benchmarks
+In-Reply-To: <462FDC32.2070004@codesourcery.com>
+References: <45D37ACC.9070507@codesourcery.com> <462FDC32.2070004@codesourcery.com>
+Message-ID: <4630A9DA.1010304@codesourcery.com>
+
+
+>>   
+> I think vaxpy.hpp is missing.
+> 
+
+Thanks Don for catching this.
+
+This patch is a temporary fix (it takes advantage of the fact that the 
+benchmark case using vaxpy.hpp is ifdef'd out).  I will check in 
+vaxpy.hpp soon.
+
+Patch applied.
+
+				-- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: vma.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20070426/2c6c6595/attachment.ksh>
+
+From jules at codesourcery.com  Thu Apr 26 15:42:16 2007
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Thu, 26 Apr 2007 11:42:16 -0400
+Subject: [patch] Characterization scripts
+Message-ID: <4630C858.9050903@codesourcery.com>
+
+This patch adds a characterization script (char.pl) and parameter data 
+(char.db).  It automates the running of multiple benchmarks with various 
+configurations.
+
+The basic flow for char.pl is:
+
+First, you create a parameter entry for the benchmark in the char.db 
+file (or in another .db file if you're doing something special).  For 
+example, if you want to characterize vector multiply (the 'vmul' 
+benchmark) and are interested in single precision scalar (case 1) and 
+complex (case 2) performance, you would create an entry like so:
+
+	# comment ... vmul entry
+	set: vmul
+	  pgm:   vmul
+	  cases: 1 2
+	
+The .db file format is a bit of a hack.  In particular, indentation 
+matters.  'set:' must be at the beginning of a line, the parameters 
+('pgm:', 'cases:', etc) must be indented.
+	
+
+Then, you use the 'char.pl' script to run the benchmarks.  It assumes 
+you are in the build directory (i.e. where you ran configure).  To run 
+the vmul benchmark cases, you would type:
+
+	> $srcdir/scripts/char.pl			\
+		-db $srcdir/scripts/char.db		\
+		vmul
+
+This will
+  - Build the benchmark executable ('benchmarks/vmul' in this case) if it
+    doesn't already exist (hacker beware: it doesn't check dependencies.
+    If the executable is there, but hopelessly out of data ... oops!)
+  - Run the benchmark for each of the cases, putting the output in the
+    file:
+
+	$pgm-$case-$np.dat
+
+    For the vmul, this will create 'vmul-1-1.dat' and 'vmul-2-1'.dat.
+
+    If the .dat file is already there, the case will be skipped.
+    (Again, dependencies are not checked).
+
+The benchmark is run in the '-data' mode, which collects enough info to 
+reconstruct the ops/s, iob/s, pts/s, etc metrics.  This data isn't easy 
+to plot directly, but that's another script/patch.
+
+Other bits:
+  - You can run benchmarks in parallel:
+
+    First, in the char.db file, specify the number of processors
+    that may be used with the case.  For example, if vmul can only
+    be run with 1, 2, and 4 processors (but not 3, for some reason),
+    you would say:
+
+	set: vmul
+	  pgm: vmul
+	  cases: 1 2
+	  nps: 1 2 4
+
+    The default for nps is '1'.  If the benchmark works for any number
+    of processors, you can set nps to 'all'.
+
+    Second, run char.pl with a number of processors in mpi mode:
+
+	> $srcdir/scripts/char.pl -db ... -mode mpi -np 1,2,3,4 vmul
+
+    This will run each benchmark case for each numbeer of processors in
+    the intersection of the 'nps' db entry and the '-np' command line
+    option.
+
+    For vmul, this would result in vmul-1-1.dat, vmul-1-2.dat,
+    vmul-1-4.dat, vmul-2-1.dat, vmul-2-2.dat, vmul-2-4.dat.
+
+  - You can control the numbers of SPEs used:
+
+    First, similar to 'nps', in the char.db file specify the number of
+    SPEs that may be used with the case:
+
+	set: vmul
+	  pgm: vmul
+	  cases: 1 2
+	  spes: 0 8 16
+
+    The default value for 'spes' is "0 1 8 16".
+
+    Second, run char.pl with the number of SPEs in 'cell' mode:
+
+	> $srcdir/scripts/char.pl -db ... -mode cell -spes 1,8,16
+
+    In 'cell' mode, the format of the data file names changes to
+
+	$pgm-$case-$np-$spe.dat
+
+  - You can create macros in the db file to run a group of sets
+    under a single set name.
+
+    For example, if vmul had once benchmark case that did not work
+    in parallel, you might say:
+
+	set: vmul-ser
+	  pgm: vmul
+	  cases: 1
+	  nps: 1 # only works with 1 processor
+
+	set: vmul-par
+	  pgm: vmul
+	  cases: 2
+	  nps: all
+
+	macro: vmul vmul-ser vmul-par
+
+  - You can run all benchmarks with the '-all' option to char.pl
+
+  - Benchmarks can have "requirements".  For example, if want to add
+    a db entry to run the sal/fft benchmark, but only want it to run
+    when the library has SAL configured in, you would put a 'req:' entry
+
+	set: sal-fft
+	  pgm: sal/fft
+	  cases: 1
+	  req: sal
+
+    char.pl will only run sal-fft benchmark cases when it is given the
+    options '-have sal'.  This is useful when running the '-all' command.
+
+Let me know if you have any questions on using this or ideas on how to 
+improve it.  Next I'm going to clean up and post a patch for plotting 
+the data files generated by char.pl.
+
+				-- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: char.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20070426/e026bc9b/attachment.ksh>
+
+From jules at codesourcery.com  Thu Apr 26 18:23:36 2007
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Thu, 26 Apr 2007 14:23:36 -0400
+Subject: [vsipl++] Generator expr blocks using cyclic blocks
+In-Reply-To: <462FF2CC.8000404@codesourcery.com>
+References: <462FF2CC.8000404@codesourcery.com>
+Message-ID: <4630EE28.1020404@codesourcery.com>
+
+Assem Salama wrote:
+ > Everyone,
+ >  This patch allows Generator expr blocks to get assigned to cyclic 
+blocks.
+
+
+Assem,
+
+This looks good.  I have a couple of comments, once you address them,
+please check it in.
+
+As I read it, the Distributed_generator_block isn't a generator block,
+but instead a Subset block that uses a map to convert the subset index
+back into the parent block index insead of a domain (as Subset_block
+does).  It could be used with an existing Generator_block, or with any
+other block type.
+
+This is compared to a Generator_block, which converts a generator
+function object into a block.  Because the function object's
+operator() looks like a get() call, they are similar.
+
+Fortunately, this is just a matter of naming for the most part.  It
+would be better if 'Distributed_generator_block' had a name that
+emphasized its more general capability, such as 'Map_subset_block' or
+'Map_subblock_block'.  Also, since the 'Generator' template parameter
+needs to be a block, it should be 'BlockT'.  Likewise, the 'op_'
+member variable should be something along the lines of 'blk_' or
+'block_'.
+
+Also, the new class should go into its own header file, probably in
+the same directory as par/expr.hpp.
+
+			thanks,
+			-- Jules
+
+
+
+ > Index: src/vsip/core/expr/generator_block.hpp
+ > ===================================================================
+
+ > +template <typename Generator,
+ > +          typename MapT>
+ > +class Distributed_generator_block
+ > +{
+
+ > +  // Constructors.
+ > +public:
+ > +  Distributed_generator_block(Domain<dim> const& dom, Generator& op,
+ > +                              MapT const& map)
+ > +    : op_(op),
+ > +      dom_(dom),
+ > +      map_(map)
+ > +    {}
+
+Because dom is entirely determined from map (i.e. it is 'map.template
+impl_subblock_domain<Dim>(map.subblock())'), and because it has to be
+that way (i.e. it wouldn't make sense to set it to something else),
+it would be better for Map_subset_block's constructor to take two
+parameters (blk and map) and then determine dom_ from map.
+
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From assem at codesourcery.com  Thu Apr 26 19:43:32 2007
+From: assem at codesourcery.com (Assem Salama)
+Date: Thu, 26 Apr 2007 15:43:32 -0400
+Subject: Generator expr blocks using Cyclic_dist
+Message-ID: <463100E4.4000105@codesourcery.com>
+
+Everyone,
+  This patch address Jule's comments. Changed the name of the class to 
+Map_subset_block and changed template name to Block.
+
+Thanks,
+Assem
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: svn.diff.04262007.1.log
+Type: text/x-log
+Size: 5916 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20070426/28443711/attachment.bin>
+
+From assem at codesourcery.com  Thu Apr 26 20:10:26 2007
+From: assem at codesourcery.com (Assem Salama)
+Date: Thu, 26 Apr 2007 16:10:26 -0400
+Subject: fftw3
+Message-ID: <46310732.9060908@codesourcery.com>
+
+Everyone,
+  This patch address Jule's comments. Took out create_plan_defs.hpp and 
+added a new file, fftw_support.hpp that contains overloaded functions 
+for creating plans. Also, using Rt_tuple and Applied_layout in the 
+create functions.
+
+Thanks,
+Assem
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: svn.diff.04262007.2.log
+Type: text/x-log
+Size: 28832 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20070426/e38d6f1f/attachment.bin>
+
+From jules at codesourcery.com  Thu Apr 26 20:57:13 2007
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Thu, 26 Apr 2007 16:57:13 -0400
+Subject: [vsipl++] Generator expr blocks using Cyclic_dist
+In-Reply-To: <463100E4.4000105@codesourcery.com>
+References: <463100E4.4000105@codesourcery.com>
+Message-ID: <46311229.8070208@codesourcery.com>
+
+Assem Salama wrote:
+> Everyone,
+>  This patch address Jule's comments. Changed the name of the class to 
+> Map_subset_block and changed template name to Block.
+
+Assem, this looks good, please check it in.  thanks, -- Jules
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From davygrvy at pobox.com  Thu Apr 26 21:18:27 2007
+From: davygrvy at pobox.com (David Gravereaux)
+Date: Thu, 26 Apr 2007 14:18:27 -0700
+Subject: newb can't make it go
+Message-ID: <46311723.10902@pobox.com>
+
+Am I doing this right?  Here's my first source, that is completely empty thus far:
+
+---- vsiplCmds.cpp ----
+
+/* TASP VSIPL Core Plus v0.85 */
+#include <vsip.h>
+#pragma comment(lib, "vsip.lib")
+
+/* Sourcery VSIPL++ v1.3 */
+#include <vsip/core/vsip.hpp>
+#pragma comment(lib, "libsvpp.lib")
+
+/* Project header file */
+#include "tpscope.h"
+
+---- end ----
+
+Compiler is "Microsoft (R) 32-bit C/C++ Optimizing Compiler Version 12.00.8804 for
+80x86"  aka MSVC++ 6.0 IDE.  The errors I get are the following just trying to
+compile the empty source:
+
+--------------------Configuration: tpscope - Win32 Release--------------------
+Compiling...
+vsiplCmds.cpp
+SourceryVSIPL++/include\vsip/support.hpp(186) : error C2258: illegal pure syntax,
+must be '= 0'
+        SourceryVSIPL++/include\vsip/support.hpp(189) : see reference to class
+template instantiation 'vsip::tuple<dim0,dim1,dim2>' being compiled
+SourceryVSIPL++/include\vsip/support.hpp(186) : error C2252: 'impl_dim0' : pure
+specifier can only be specified for functions
+        SourceryVSIPL++/include\vsip/support.hpp(189) : see reference to class
+template instantiation 'vsip::tuple<dim0,dim1,dim2>' being compiled
+SourceryVSIPL++/include\vsip/support.hpp(187) : error C2258: illegal pure syntax,
+must be '= 0'
+        SourceryVSIPL++/include\vsip/support.hpp(189) : see reference to class
+template instantiation 'vsip::tuple<dim0,dim1,dim2>' being compiled
+SourceryVSIPL++/include\vsip/support.hpp(187) : error C2252: 'impl_dim1' : pure
+specifier can only be specified for functions
+        SourceryVSIPL++/include\vsip/support.hpp(189) : see reference to class
+template instantiation 'vsip::tuple<dim0,dim1,dim2>' being compiled
+SourceryVSIPL++/include\vsip/support.hpp(188) : error C2258: illegal pure syntax,
+must be '= 0'
+        SourceryVSIPL++/include\vsip/support.hpp(189) : see reference to class
+template instantiation 'vsip::tuple<dim0,dim1,dim2>' being compiled
+SourceryVSIPL++/include\vsip/support.hpp(188) : error C2252: 'impl_dim2' : pure
+specifier can only be specified for functions
+        SourceryVSIPL++/include\vsip/support.hpp(189) : see reference to class
+template instantiation 'vsip::tuple<dim0,dim1,dim2>' being compiled
+SourceryVSIPL++/include\vsip/core/refcount.hpp(264) : error C2989: 'Mutable<Obj>'
+: template class has already been defined as a non-template class
+SourceryVSIPL++/include\vsip/core/refcount.hpp(264) : error C2908: explicit
+specialization; 'Mutable<Obj>' has already been instantiated from the primary template
+SourceryVSIPL++/include\vsip/core/refcount.hpp(264) : error C2988: unrecognizable
+template declaration/definition
+SourceryVSIPL++/include\vsip/core/vertex.hpp(43) : error C2989: 'Vertex<T,1>' :
+template class has already been defined as a non-template class
+SourceryVSIPL++/include\vsip/core/vertex.hpp(43) : warning C4099: 'Vertex<T,1>' :
+type name first seen using 'struct' now seen using 'class'
+SourceryVSIPL++/include\vsip/core/vertex.hpp(43) : error C2988: unrecognizable
+template declaration/definition
+SourceryVSIPL++/include\vsip/core/vertex.hpp(58) : error C2989: 'Vertex<T,2>' :
+template class has already been defined as a non-template class
+SourceryVSIPL++/include\vsip/core/vertex.hpp(58) : warning C4099: 'Vertex<T,2>' :
+type name first seen using 'struct' now seen using 'class'
+SourceryVSIPL++/include\vsip/core/vertex.hpp(58) : error C2988: unrecognizable
+template declaration/definition
+SourceryVSIPL++/include\vsip/core/vertex.hpp(73) : error C2989: 'Vertex<T,3>' :
+template class has already been defined as a non-template class
+SourceryVSIPL++/include\vsip/core/vertex.hpp(73) : warning C4099: 'Vertex<T,3>' :
+type name first seen using 'struct' now seen using 'class'
+SourceryVSIPL++/include\vsip/core/vertex.hpp(73) : error C2988: unrecognizable
+template declaration/definition
+SourceryVSIPL++/include\vsip/core/vertex.hpp(77) : error C2039: '__ctor' : is not
+a member of 'Vertex<T,2>'
+        SourceryVSIPL++/include\vsip/core/vertex.hpp(58) : see declaration of
+'Vertex<T,2>'
+SourceryVSIPL++/include\vsip/core/vertex.hpp(77) : error C2935: 'Vertex<T,2>' :
+template-class-id redefined as a global function
+        SourceryVSIPL++/include\vsip/core/vertex.hpp(58) : see declaration of
+'Vertex<T,2>'
+SourceryVSIPL++/include\vsip/core/vertex.hpp(85) : error C2039: '[]' : is not a
+member of 'Vertex<T,2>'
+        SourceryVSIPL++/include\vsip/core/vertex.hpp(58) : see declaration of
+'Vertex<T,2>'
+SourceryVSIPL++/include\vsip/core/vertex.hpp(89) : error C2270: '[]' : modifiers
+not allowed on nonmember functions
+SourceryVSIPL++/include\vsip/core/vertex.hpp(93) : error C2039: '[]' : is not a
+member of 'Vertex<T,2>'
+        SourceryVSIPL++/include\vsip/core/vertex.hpp(58) : see declaration of
+'Vertex<T,2>'
+SourceryVSIPL++/include\vsip/core/vertex.hpp(101) : error C2039: '__ctor' : is not
+a member of 'Vertex<T,3>'
+        SourceryVSIPL++/include\vsip/core/vertex.hpp(73) : see declaration of
+'Vertex<T,3>'
+SourceryVSIPL++/include\vsip/core/vertex.hpp(101) : error C2935: 'Vertex<T,3>' :
+template-class-id redefined as a global function
+        SourceryVSIPL++/include\vsip/core/vertex.hpp(73) : see declaration of
+'Vertex<T,3>'
+SourceryVSIPL++/include\vsip/core/vertex.hpp(110) : error C2039: '[]' : is not a
+member of 'Vertex<T,3>'
+        SourceryVSIPL++/include\vsip/core/vertex.hpp(73) : see declaration of
+'Vertex<T,3>'
+SourceryVSIPL++/include\vsip/core/vertex.hpp(114) : error C2270: '[]' : modifiers
+not allowed on nonmember functions
+SourceryVSIPL++/include\vsip/core/vertex.hpp(114) : error C2995: '[]' : template
+function has already been defined
+        SourceryVSIPL++/include\vsip/core/vertex.hpp(85) : see declaration of '[]'
+SourceryVSIPL++/include\vsip/core/vertex.hpp(118) : error C2039: '[]' : is not a
+member of 'Vertex<T,3>'
+        SourceryVSIPL++/include\vsip/core/vertex.hpp(73) : see declaration of
+'Vertex<T,3>'
+SourceryVSIPL++/include\vsip/core/vertex.hpp(122) : error C2995: '[]' : template
+function has already been defined
+        SourceryVSIPL++/include\vsip/core/vertex.hpp(93) : see declaration of '[]'
+SourceryVSIPL++/include\vsip/core/vertex.hpp(146) : error C2061: syntax error :
+identifier 'Vertex<`template-parameter257',2>'
+SourceryVSIPL++/include\vsip/core/vertex.hpp(150) : error C2809: 'operator ==' has
+no formal parameters
+SourceryVSIPL++/include\vsip/core/vertex.hpp(152) : error C2954: template
+definitions cannot nest
+SourceryVSIPL++/include\vsip/core/vertex.hpp(154) : error C2061: syntax error :
+identifier 'Vertex<`template-parameter257',2>'
+SourceryVSIPL++/include\vsip/core/vertex.hpp(158) : error C2809: 'operator !=' has
+no formal parameters
+SourceryVSIPL++/include\vsip/core/vertex.hpp(160) : error C2954: template
+definitions cannot nest
+SourceryVSIPL++/include\vsip/core/vertex.hpp(162) : error C2061: syntax error :
+identifier 'Vertex<`template-parameter257',3>'
+SourceryVSIPL++/include\vsip/core/vertex.hpp(170) : error C2954: template
+definitions cannot nest
+SourceryVSIPL++/include\vsip/core/vertex.hpp(172) : error C2061: syntax error :
+identifier 'Vertex<`template-parameter257',3>'
+SourceryVSIPL++/include\vsip/domain.hpp(25) : error C2954: template definitions
+cannot nest
+SourceryVSIPL++/include\vsip/domain.hpp(27) : warning C4099: 'Index<1>' : type
+name first seen using 'struct' now seen using 'class'
+SourceryVSIPL++/include\vsip/domain.hpp(28) : error C2504: 'Vertex<unsigned
+int,1>' : base class undefined
+SourceryVSIPL++/include\vsip/domain.hpp(31) : error C2955: 'Index' : use of class
+template requires template argument list
+        SourceryVSIPL++/include\vsip/domain.hpp(25) : see declaration of 'Index'
+SourceryVSIPL++/include\vsip/domain.hpp(31) : error C2912: explicit
+specialization; 'struct vsip::Index<1> __cdecl vsip::Index(unsigned int)' is not a
+function template
+        SourceryVSIPL++/include\vsip/domain.hpp(31) : see declaration of 'Index'
+SourceryVSIPL++/include\vsip/domain.hpp(31) : error C2912: explicit
+specialization; 'struct vsip::Index<1> __cdecl vsip::Index(unsigned int)' is not a
+function template
+        SourceryVSIPL++/include\vsip/domain.hpp(31) : see declaration of 'Index'
+SourceryVSIPL++/include\vsip/domain.hpp(31) : error C2550: 'Index' : constructor
+initializer lists are only allowed on constructor definitions
+SourceryVSIPL++/include\vsip/domain.hpp(36) : error C2061: syntax error :
+identifier 'dimension_type'
+SourceryVSIPL++/include\vsip/domain.hpp(38) : error C2061: syntax error :
+identifier 'Index'
+SourceryVSIPL++/include\vsip/domain.hpp(44) : error C2809: 'operator ==' has no
+formal parameters
+SourceryVSIPL++/include\vsip/domain.hpp(54) : fatal error C1903: unable to recover
+from previous error(s); stopping compilation
+Error executing cl.exe.
+
+vsiplCmds.obj - 46 error(s), 4 warning(s)
+
+
+Am I not setting the proper macros for compiling because I'm not using a GNU
+environment, or is a C++ conformance thingie?
+
+-- 
+   "The dynamics of inter-being and mono logical imperatives in Dick and Jane :
+A study in psychic transrelational gender modes". Academia, here I come.
+		  -- Calvin
+
+
+From jules at codesourcery.com  Thu Apr 26 22:42:46 2007
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Thu, 26 Apr 2007 18:42:46 -0400
+Subject: [vsipl++] newb can't make it go
+In-Reply-To: <46311723.10902@pobox.com>
+References: <46311723.10902@pobox.com>
+Message-ID: <46312AE6.7020806@codesourcery.com>
+
+David Gravereaux wrote:
+> Am I doing this right?  Here's my first source, that is completely empty thus far:
+
+> 
+> Compiler is "Microsoft (R) 32-bit C/C++ Optimizing Compiler Version 12.00.8804 for
+> 80x86"  aka MSVC++ 6.0 IDE.  The errors I get are the following just trying to
+> compile the empty source:
+
+> Am I not setting the proper macros for compiling because I'm not using a GNU
+> environment, or is a C++ conformance thingie?
+
+David,
+
+Unfortunately, it is a C++ conformance thing.  None of the Microsoft C++ 
+compilers are ISO C++ conformant, even more recent ones than 6.0.
+
+However, the Intel C++ compilers do meet the ISO standard, produce code 
+that is ABI compliant with the Microsoft compilers, and even plug in to 
+the Visual IDE.  We have tested Sourcery VSIPL++ with Intel C++ 9.1.
+
+				-- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From jules at codesourcery.com  Fri Apr 27 14:58:53 2007
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Fri, 27 Apr 2007 10:58:53 -0400
+Subject: [patch] Configure fixes
+Message-ID: <46320FAD.2040106@codesourcery.com>
+
+This patch:
+  - fixes a bug when using SAL that introduces an empty -L option
+    when no explicit path to the SAL libraries are provided.
+
+  - always defines some PAS AC_DEFINES so that the same acconfig
+    file can be used for serial and parallel MCOE package variants.
+
+Patch applied to trunk and branches/1.3
+
+				-- Jules
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: cfg.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20070427/d4cb7934/attachment.ksh>
+
+From jules at codesourcery.com  Fri Apr 27 16:04:04 2007
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Fri, 27 Apr 2007 12:04:04 -0400
+Subject: [vsipl++] vramp benchmark
+In-Reply-To: <461593A3.2050202@codesourcery.com>
+References: <461593A3.2050202@codesourcery.com>
+Message-ID: <46321EF4.1070108@codesourcery.com>
+
+Assem Salama wrote:
+> Everyone,
+>  This is a benchmark for ramp.
+
+Assem,
+
+This looks good.  Can you move the do_test and Create_map classes from 
+vramp.hpp into vramp.cpp so the benchmark fits into a single file?  Once 
+that is done, please check it in.
+
+				thanks,
+				-- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From assem at codesourcery.com  Sat Apr 28 19:14:57 2007
+From: assem at codesourcery.com (Assem Salama)
+Date: Sat, 28 Apr 2007 15:14:57 -0400
+Subject: Generator expr blocks
+Message-ID: <46339D31.8000008@codesourcery.com>
+
+Everyone,
+  This patch makes the local_block_type a Subset_block if a normal 
+Block_dist map is used.
+
+Thanks,
+Assem
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: svn.diff.04282007.1.log
+Type: text/x-log
+Size: 2703 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20070428/5700fdfb/attachment.bin>
+
+From don at codesourcery.com  Mon Apr 30 21:27:09 2007
+From: don at codesourcery.com (Don McCoy)
+Date: Mon, 30 Apr 2007 15:27:09 -0600
+Subject: [patch] HPEC Challenge Benchmark, Firbank enhancement
+Message-ID: <46365F2D.7000104@codesourcery.com>
+
+This patch adds a new case to the Firbank benchmark for all platforms:  
+fused fast convolution using a matrix of coefficients (support for which 
+was recently added to the library).  This allows fast convolution on 
+multiple inputs, using unique filters, all in a single, one-line expression.
+
+Performance on the Cell/B.E. platform is much improved for this 
+particular case.  Because the entire operation is seen by the compiler, 
+a good deal of redundant data movement and code reloading on the SPEs is 
+avoided.
+
+Some minor cleanup of the other benchmarks is included.
+
+Regards,
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: hbb.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20070430/cd87270d/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: hbb.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20070430/cd87270d/attachment-0001.ksh>
+
+From stefan at codesourcery.com  Mon Apr 30 21:37:58 2007
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Mon, 30 Apr 2007 17:37:58 -0400
+Subject: [vsipl++] [patch] HPEC Challenge Benchmark, Firbank enhancement
+In-Reply-To: <46365F2D.7000104@codesourcery.com>
+References: <46365F2D.7000104@codesourcery.com>
+Message-ID: <463661B6.5020607@codesourcery.com>
+
+Don McCoy wrote:
+
+> Some minor cleanup of the other benchmarks is included.
+
+> -struct t_firbank_base<T, ImplFull> : public t_local_view<T>
+> +struct t_firbank_base<T, ImplFull> : public t_local_view<T>,  Benchmark_base
+
+Could you please consistently either put the access specifier ('public') everywhere
+or nowhere ? (I'd prefer nowhere, as for structs it is implied.)
+
+Thanks,
+		Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+
+

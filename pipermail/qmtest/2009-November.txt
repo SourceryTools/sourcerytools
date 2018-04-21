@@ -1,0 +1,77 @@
+From gmyuan at ucdavis.edu  Wed Nov 18 19:24:22 2009
+From: gmyuan at ucdavis.edu (Gary Yuan)
+Date: Wed, 18 Nov 2009 11:24:22 -0800
+Subject: QMTest running concurrent threads
+In-Reply-To: <f79ff2200911181122v196e8e8ai945e5a074f41a8e3@mail.gmail.com>
+References: <f79ff2200911181122v196e8e8ai945e5a074f41a8e3@mail.gmail.com>
+Message-ID: <f79ff2200911181124i6cd2e597s2011ab03db8b7981@mail.gmail.com>
+
+Hi,
+
+I have a problem when running QMTest using the -j# concurrent option.
+The executable I am testing requires it to be run in a certain
+directory away from the QM testdatabase since it needs to open certain
+resource and definition files (assuming they reside in the present
+working directory). I've implemented a test extension to this effect
+using a mechanism like BASH's pusp/pop directory directive. The
+problem is that when running when concurrent threads, QMTest doesn't
+use a new sandbox environment for each thread but rather picks up
+where any current test leaves off. This has the problem of trying to
+push a directory from an unintended location, i.e. a directory that
+was already pushed. Do you know of any clean solution to this problem?
+
+Thanks.
+
+Gary Yuan.
+
+
+From stefan at codesourcery.com  Wed Nov 18 20:22:29 2009
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Wed, 18 Nov 2009 15:22:29 -0500
+Subject: [qmtest] QMTest running concurrent threads
+In-Reply-To: <f79ff2200911181124i6cd2e597s2011ab03db8b7981@mail.gmail.com>
+References: <f79ff2200911181122v196e8e8ai945e5a074f41a8e3@mail.gmail.com> <f79ff2200911181124i6cd2e597s2011ab03db8b7981@mail.gmail.com>
+Message-ID: <4B045785.5060801@codesourcery.com>
+
+On 11/18/2009 02:24 PM, Gary Yuan wrote:
+> Hi,
+>
+> I have a problem when running QMTest using the -j# concurrent option.
+> The executable I am testing requires it to be run in a certain
+> directory away from the QM testdatabase since it needs to open certain
+> resource and definition files (assuming they reside in the present
+> working directory). I've implemented a test extension to this effect
+> using a mechanism like BASH's pusp/pop directory directive. The
+> problem is that when running when concurrent threads, QMTest doesn't
+> use a new sandbox environment for each thread but rather picks up
+> where any current test leaves off.
+
+It is the test's responsability to do whatever is necessary to protect 
+the QMTest application's state from whatever it is that your test is doing.
+
+>   This has the problem of trying to
+> push a directory from an unintended location, i.e. a directory that
+> was already pushed. Do you know of any clean solution to this problem?
+>    
+
+How exactly are you "pushing" the directory ? Are you calling something 
+akin to Python's os.chdir() ? That changes the application's global 
+state, and thus is a dangerous thing to do, in particular when running 
+multi-threaded.
+
+You may encapsulate all this into a wrapper (shell) script that gets 
+executed by your test's Run() method. That has the advantage of 
+preventing any such changes to affect QMTest's own global state, and 
+thus, isolates tests from each other.
+
+Regards,
+         Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+
+
+

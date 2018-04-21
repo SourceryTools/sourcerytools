@@ -1,0 +1,188 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [vsipl++] Atlas patch
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20Atlas%20patch&In-Reply-To=%3C448F271F.20407%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000512.html">
+   <LINK REL="Next"  HREF="000514.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[vsipl++] Atlas patch</H1>
+    <B>Jules Bergmann</B> 
+    <A HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20Atlas%20patch&In-Reply-To=%3C448F271F.20407%40codesourcery.com%3E"
+       TITLE="[vsipl++] Atlas patch">jules at codesourcery.com
+       </A><BR>
+    <I>Tue Jun 13 20:59:11 UTC 2006</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000512.html">[vsipl++] Atlas patch
+</A></li>
+        <LI>Next message: <A HREF="000514.html">[vsipl++] Atlas patch
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#513">[ date ]</a>
+              <a href="thread.html#513">[ thread ]</a>
+              <a href="subject.html#513">[ subject ]</a>
+              <a href="author.html#513">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Stefan Seefeld wrote:
+&gt;<i> Assem Salama wrote:
+</I>&gt;<i> 
+</I>&gt;&gt;&gt;<i> I notice you have taken out this and a couple of other link
+</I>&gt;&gt;&gt;<i> generations. What's the rationale
+</I>&gt;&gt;&gt;<i> for that ?
+</I>&gt;&gt;&gt;<i>   
+</I>&gt;&gt;<i> When I tried to do a make, this link produced an error because there
+</I>&gt;&gt;<i> already was a lib in vendor/clapack/F2CLIBS/libF77/libF77.a
+</I>&gt;<i> 
+</I>&gt;<i> Sounds like a bug. I should check whether that file already exists,
+</I>&gt;<i> before creating it (or alternatively first removing it).
+</I>&gt;<i> But just removing the link generation surely doesn't solve that bug. :-)
+</I>&gt;<i> 
+</I>&gt;&gt;&gt;<i> Could you summarize / document the build logic a bit ? This last line
+</I>&gt;&gt;&gt;<i> actually happens inside the 'ifdef USE_SIMPLE_LAPACK' conditional, so
+</I>&gt;&gt;&gt;<i> the following targets are only defined if both variables
+</I>&gt;&gt;&gt;<i> (USE_SIMPLE_LAPACK as well
+</I>&gt;&gt;&gt;<i> as USE_FORTRAN_LAPACK) are defined. Is that intended ?
+</I>&gt;&gt;&gt;<i>   
+</I>&gt;&gt;<i> I think you are correct, this is redundant because FORTRAN_LAPACK should
+</I>&gt;&gt;<i> never be defined with SIMPLE_LAPACK.
+</I>&gt;<i> 
+</I>&gt;<i> But can it not be defined (used) without SIMPLE_LAPACK ?
+</I>&gt;<i> 
+</I>&gt;<i> Thanks,
+</I>&gt;<i> 		Stefan
+</I>&gt;<i> 
+</I>
+Roughly, we have three configurations for builtin lapack:
+
+  --with-lapack=builtin
+    =&gt; build ATLAS (provides full CBLAS, partial LAPACK)
+    =&gt; build ref CLAPACK (provides remainder of LAPACK)
+    =&gt; build libF77 (provides fortran bits for CLAPACK)
+
+  --with-lapack=fortran-builtin
+    =&gt; build ATLAS (provides full CBLAS, partial LAPACK)
+    =&gt; build ref LAPACK (provides remainder of LAPACK)
+    (libg2c is required for this approach)
+
+  --with-lapack=simple-builtin
+    =&gt; build ref CLAPACK/BLAS (provides full BLAS)
+    =&gt; build ref CLAPACK (provides full LAPACK)
+    =&gt; build libF77
+
+
+
+To avoid duplicating rules in vendor/GNUmakefile.inc.in, let's change 
+the logic to be more explicit:
+
+ifdef BUILD_REF_LAPACK
+    ... rules to build vendor/lapack/SRC
+endif
+
+ifdef BUILD_REF_CLAPACK
+    ... rules to build vendor/clapack/SRC
+endif
+
+ifdef BUILD_REF_CLAPACK_BLAS
+    ... rules to bild vendor/clapack/BLAS/SRC
+endif
+
+ifdef BUILD_ATLAS
+    rules for vendor/atlas
+
+    if BUILD_REF_LAPACK
+       rule to install ATLAS libf77
+    endif
+endif
+
+
+ifdef BUILD_LIBF77
+    rules to build vendor/clapack/F2CLIBS/libF77
+endif
+
+
+ifdef USE_ATLAS_LAPACK
+    rules to merge lapack (either Fortran or C) with atlas
+          to generate final lapack
+endif
+
+ifdef USE_SIMPLE_LAPACK
+    rules to install vendor/clapack/SRC and
+                     vendor/clapack/BLAS/SRC
+endif
+
+
+
+
+Inside of configure, our options would map to Makefile variables as follows:
+
+  --with-lapack=builtin
+     BUILD_ATLAS            = 1
+     BUILD_REF_LAPACK       = 0
+     BUILD_REF_CLAPACK      = 1
+     BUILD_REF_CLAPACK_BLAS = 0
+     BUILD_LIBF77           = 1
+     USE_ATLAS_LAPACK       = 1
+     USE_SIMPLE_LAPACK      = 0
+
+  --with-lapack=fortran-builtin
+     BUILD_ATLAS            = 1
+     BUILD_REF_LAPACK       = 1
+     BUILD_REF_CLAPACK      = 0
+     BUILD_REF_CLAPACK_BLAS = 0
+     BUILD_LIBF77           = 0
+     USE_ATLAS_LAPACK       = 1
+     USE_SIMPLE_LAPACK      = 0
+
+  --with-lapack=simple-builtin
+     BUILD_ATLAS            = 0
+     BUILD_REF_LAPACK       = 0
+     BUILD_REF_CLAPACK      = 1
+     BUILD_REF_CLAPACK_BLAS = 1
+     BUILD_LIBF77           = 1
+     USE_ATLAS_LAPACK       = 0
+     USE_SIMPLE_LAPACK      = 1
+
+How does this sound?
+
+				-- Jules
+-- 
+Jules Bergmann
+CodeSourcery
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">jules at codesourcery.com</A>
+(650) 331-3385 x705
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000512.html">[vsipl++] Atlas patch
+</A></li>
+	<LI>Next message: <A HREF="000514.html">[vsipl++] Atlas patch
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#513">[ date ]</a>
+              <a href="thread.html#513">[ thread ]</a>
+              <a href="subject.html#513">[ subject ]</a>
+              <a href="author.html#513">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">More information about the vsipl++
+mailing list</a><br>
+</body></html>

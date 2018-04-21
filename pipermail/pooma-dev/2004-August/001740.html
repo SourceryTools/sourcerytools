@@ -1,0 +1,141 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [PATCH] Fix reductions for MPI operation
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20Fix%20reductions%20for%20MPI%20operation&In-Reply-To=%3C412A84EB.3070902%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001728.html">
+   <LINK REL="Next"  HREF="001729.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[PATCH] Fix reductions for MPI operation</H1>
+    <B>Jeffrey D. Oldham</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20Fix%20reductions%20for%20MPI%20operation&In-Reply-To=%3C412A84EB.3070902%40codesourcery.com%3E"
+       TITLE="[PATCH] Fix reductions for MPI operation">oldham at codesourcery.com
+       </A><BR>
+    <I>Mon Aug 23 23:59:39 UTC 2004</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001728.html">[PATCH] Fix reductions for MPI operation
+</A></li>
+        <LI>Next message: <A HREF="001729.html">[PATCH] Fix compiling Doof2d
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1740">[ date ]</a>
+              <a href="thread.html#1740">[ thread ]</a>
+              <a href="subject.html#1740">[ subject ]</a>
+              <a href="author.html#1740">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Richard Guenther wrote:
+
+&gt;<i>
+</I>&gt;<i> This patch fixes (works around) a previously discovered problem 
+</I>&gt;<i> (remember the WaitingIterate).  I'm sure there is a real problem
+</I>&gt;<i> to fix (at least for MPI - I'm not sure about Cheetah), and this
+</I>&gt;<i> is the least intrusive way of fixing it until the right idea for
+</I>&gt;<i> a cross-context csem like mechanism pops up.
+</I>&gt;<i>
+</I>&gt;<i> Without this patch random lockups during reductions may occour.
+</I>&gt;<i>
+</I>&gt;<i> Ok?
+</I>&gt;<i>
+</I>&gt;<i> Richard.
+</I>&gt;<i>
+</I>&gt;<i>
+</I>&gt;<i> 2004Aug21  Richard Guenther &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">richard.guenther at uni-tuebingen.de</A>&gt;
+</I>&gt;<i>
+</I>&gt;<i>     * src/Engine/RemoteEngine.h: For MPI avoid doing blocking
+</I>&gt;<i>     operation during reductions while iterates are still pending.
+</I>
+Yes, this is fine.
+
+&gt;<i>------------------------------------------------------------------------
+</I>&gt;<i>
+</I>&gt;<i>Index: src/Engine/RemoteEngine.h
+</I>&gt;<i>===================================================================
+</I>&gt;<i>RCS file: /home/pooma/Repository/r2/src/Engine/RemoteEngine.h,v
+</I>&gt;<i>retrieving revision 1.42
+</I>&gt;<i>diff -u -u -r1.42 RemoteEngine.h
+</I>&gt;<i>--- src/Engine/RemoteEngine.h	19 Jan 2004 22:04:33 -0000	1.42
+</I>&gt;<i>+++ src/Engine/RemoteEngine.h	21 Aug 2004 20:10:06 -0000
+</I>&gt;<i>@@ -2065,6 +2065,11 @@
+</I>&gt;<i>     Pooma::scheduler().endGeneration();
+</I>&gt;<i> 
+</I>&gt;<i>     csem.wait();
+</I>&gt;<i>+#if POOMA_MPI
+</I>&gt;<i>+    // The above single thread waiting has the same problem as with
+</I>&gt;<i>+    // the MultiPatch variant.  So fix it.
+</I>&gt;<i>+    Pooma::blockAndEvaluate();
+</I>&gt;<i>+#endif
+</I>&gt;<i> 
+</I>&gt;<i>     RemoteProxy&lt;T&gt; globalRet(ret, computationContext);
+</I>&gt;<i>     ret = globalRet;  
+</I>&gt;<i>@@ -2186,6 +2191,27 @@
+</I>&gt;<i> 
+</I>&gt;<i>     Pooma::scheduler().endGeneration();
+</I>&gt;<i>     csem.wait();
+</I>&gt;<i>+#if POOMA_MPI
+</I>&gt;<i>+    // We need to wait for Reductions on _all_ contexts to complete
+</I>&gt;<i>+    // here, as we may else miss to issue a igc update send iterate that a
+</I>&gt;<i>+    // remote context waits for.  Consider the 2-patch setup
+</I>&gt;<i>+    //  a,b     |         g|  |          g|
+</I>&gt;<i>+    // with the expressions
+</I>&gt;<i>+    //  a(I) = b(I+1);
+</I>&gt;<i>+    //  bool res = all(a(I) == 0);
+</I>&gt;<i>+    // here we issue the following iterates:
+</I>&gt;<i>+    //  0: guard receive from 1 (write request b)
+</I>&gt;<i>+    //  1: guard send to 0      (read request b)
+</I>&gt;<i>+    //  0/1: expression iterate (read request b, write request a)
+</I>&gt;<i>+    //  0/1: reduction (read request a)
+</I>&gt;<i>+    //  0/1: blocking MPI_XXX
+</I>&gt;<i>+    // here the guard send from 1 to 0 can be skipped starting the
+</I>&gt;<i>+    // blocking MPI operation prematurely while context 0 needs to
+</I>&gt;<i>+    // wait for this send to complete in order to execute the expression.
+</I>&gt;<i>+    //
+</I>&gt;<i>+    // The easiest way (and the only available) is to blockAndEvaluate().
+</I>&gt;<i>+    Pooma::blockAndEvaluate();
+</I>&gt;<i>+#endif
+</I>&gt;<i> 
+</I>&gt;<i>     if (n &gt; 0)
+</I>&gt;<i>       {
+</I>&gt;<i>  
+</I>&gt;<i>
+</I>
+
+-- 
+Jeffrey D. Oldham
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">oldham at codesourcery.com</A>
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001728.html">[PATCH] Fix reductions for MPI operation
+</A></li>
+	<LI>Next message: <A HREF="001729.html">[PATCH] Fix compiling Doof2d
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1740">[ date ]</a>
+              <a href="thread.html#1740">[ thread ]</a>
+              <a href="subject.html#1740">[ subject ]</a>
+              <a href="author.html#1740">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

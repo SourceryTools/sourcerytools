@@ -1,0 +1,321 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [vsipl++] [patch] Built-in function profiling
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20%5Bpatch%5D%20Built-in%20function%20profiling&In-Reply-To=%3C44B264A6.6090302%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000551.html">
+   <LINK REL="Next"  HREF="000556.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[vsipl++] [patch] Built-in function profiling</H1>
+    <B>Jules Bergmann</B> 
+    <A HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20%5Bpatch%5D%20Built-in%20function%20profiling&In-Reply-To=%3C44B264A6.6090302%40codesourcery.com%3E"
+       TITLE="[vsipl++] [patch] Built-in function profiling">jules at codesourcery.com
+       </A><BR>
+    <I>Mon Jul 10 14:31:02 UTC 2006</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000551.html">[patch] Built-in function profiling 
+</A></li>
+        <LI>Next message: <A HREF="000556.html">[vsipl++] [patch] Built-in function profiling
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#553">[ date ]</a>
+              <a href="thread.html#553">[ thread ]</a>
+              <a href="subject.html#553">[ subject ]</a>
+              <a href="author.html#553">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Don McCoy wrote:
+&gt;<i> This is the first of a series of patches to add built-in profiling 
+</I>&gt;<i> capability to VSIPL++.  For this initial version, only the FFT, 
+</I>&gt;<i> Convolution and Correlation objects have been modified.
+</I>&gt;<i> 
+</I>&gt;<i> An example of how to use the profiling features is included in the 
+</I>&gt;<i> examples/fft.cpp directory.  In brief, it shows the exact type of 
+</I>&gt;<i> operation performed, the total amount of time spent (even over multiple 
+</I>&gt;<i> calls), the number of times called, the operation count per call and 
+</I>&gt;<i> finally, the (calculated) rate of operations (in MFLOPS).  Full 
+</I>&gt;<i> documentation will be provided in an upcoming patch.
+</I>
+Don, this looks good.  I have several comments below.  Can you please 
+address #1 and #3-#5 before checking in?  We can address #2 later.
+
+				thanks
+				-- Jules
+
+
+&gt;<i> @@ -171,6 +179,7 @@
+</I>&gt;<i>  Profiler::dump(char* filename, char /*mode*/)
+</I>&gt;<i>  {
+</I>&gt;<i>    std::ofstream    file;
+</I>&gt;<i> +  const char delim[] = &quot; : &quot;;
+</I>
+While the spaces improve the human readability, they are more difficult 
+to post-process in a languages like perl and python (although the extra 
+difficulty is pretty minor).  Let's leave the space in, but in general 
+we should &quot;error&quot; on the side of easier post-processing rather than 
+readability since the profiling output will have a lot of raw 
+information that will be difficult to digest without some reduction.
+
+&gt;<i>  
+</I>&gt;<i>    file.open(filename);
+</I>&gt;<i>  
+</I>&gt;<i> @@ -179,16 +188,20 @@
+</I>&gt;<i>      file &lt;&lt; &quot;# mode: pm_trace&quot; &lt;&lt; std::endl;
+</I>&gt;<i>      file &lt;&lt; &quot;# timer: &quot; &lt;&lt; TP::name() &lt;&lt; std::endl;
+</I>&gt;<i>      file &lt;&lt; &quot;# clocks_per_sec: &quot; &lt;&lt; TP::ticks(TP::clocks_per_sec) &lt;&lt; std::endl;
+</I>&gt;<i> +    file &lt;&lt; &quot;# &quot; &lt;&lt; std::endl;
+</I>&gt;<i> +    file &lt;&lt; &quot;# index&quot; &lt;&lt; delim &lt;&lt; &quot;tag&quot; &lt;&lt; delim &lt;&lt; &quot;ticks&quot; &lt;&lt; delim &lt;&lt; &quot;open id&quot; 
+</I>&gt;<i> +         &lt;&lt; delim &lt;&lt; &quot;op count&quot; &lt;&lt; std::endl;
+</I>&gt;<i>  
+</I>
+&gt;<i>      for (iterator cur = accum_.begin(); cur != accum_.end(); ++cur)
+</I>&gt;<i>      {
+</I>&gt;<i> -      file &lt;&lt; (*cur).first &lt;&lt; &quot;:&quot;
+</I>&gt;<i> -	   &lt;&lt; TP::ticks((*cur).second.total) &lt;&lt; &quot;:&quot;
+</I>&gt;<i> -	   &lt;&lt; (*cur).second.count &lt;&lt; std::endl;
+</I>&gt;<i> +      float mflops = (*cur).second.count * (*cur).second.value /
+</I>&gt;<i> +        (1e6 * TP::seconds((*cur).second.total));
+</I>&gt;<i> +      file &lt;&lt; (*cur).first 
+</I>&gt;<i> +           &lt;&lt; delim &lt;&lt; TP::ticks((*cur).second.total)
+</I>&gt;<i> +           &lt;&lt; delim &lt;&lt; (*cur).second.count
+</I>&gt;<i> +           &lt;&lt; delim &lt;&lt; (*cur).second.value
+</I>&gt;<i> +           &lt;&lt; delim &lt;&lt; mflops
+</I>&gt;<i> +           &lt;&lt; std::endl;
+</I>&gt;<i> +      // clear log
+</I>&gt;<i>        cur-&gt;second.total = TP::zero();
+</I>&gt;<i>        cur-&gt;second.count = 0;
+</I>
+[1] I think this should also clear 'value' too.
+
+
+&gt;<i>  
+</I>&gt;<i> +namespace conv
+</I>&gt;<i> +{
+</I>&gt;<i> +template &lt;typename T&gt;
+</I>&gt;<i> +struct Op_count
+</I>&gt;<i> +{
+</I>&gt;<i> +  static length_type
+</I>&gt;<i> +  apply(length_type kernel_len, length_type output_len)
+</I>&gt;<i> +  {
+</I>&gt;<i> +    return static_cast&lt;length_type&gt;(kernel_len * output_len *
+</I>&gt;<i> +      (Ops_info&lt;T&gt;::mul + Ops_info&lt;T&gt;::add));
+</I>&gt;<i> +  }
+</I>&gt;<i> +};
+</I>
+This could also have been a template function:
+
+	template &lt;typename T&gt;
+	inline length_type
+	op_count(...)
+	{
+	   return ...
+	}
+
+Using a template function slightly simplifies the definition and use, 
+but it makes it difficult to use partial specializations (for example, 
+if you needed to compute the ops counts for complex versus non-complex 
+differently).  However, the 'Ops_info' class makes such specialization 
+unnecessary.
+
+Either way (class template as it currently is, or function template) is 
+fine.
+
+&gt;<i> +} // namespace conv
+</I>
+&gt;<i>  } // namespace impl
+</I>&gt;<i>  
+</I>&gt;<i>  template &lt;template &lt;typename, typename&gt; class ConstViewT,
+</I>&gt;<i> @@ -110,7 +124,11 @@
+</I>&gt;<i>      impl_View&lt;V2, Block2, T, dim&gt;       out)
+</I>&gt;<i>      VSIP_NOTHROW
+</I>&gt;<i>    {
+</I>&gt;<i> -    timer_.start();
+</I>&gt;<i> +    length_type const M = this-&gt;kernel_size()[0].size();
+</I>&gt;<i> +    length_type const P = this-&gt;output_size()[0].size();
+</I>&gt;<i> +    int ops = impl::conv::Op_count&lt;T&gt;::apply(M, P);
+</I>&gt;<i> +    impl::profile::Scope_event scope_event(&quot;convolve_impl_view&quot;, ops);
+</I>&gt;<i> +    impl::profile::Time_in_scope scope(this-&gt;timer_);
+</I>
+[2] This is correct in functionality, but it would be good to abstract 
+it somewhat so that each scope_event doesn't need to compute the ops count.
+
+One way to do this is with a new class 'Profile_event' or 
+'Persistent_event' that was initialized with its name and ops count::
+
+	class Convolution
+	{
+	  ...
+
+	  Convolution(...)
+	  : ...
+	    event_(&quot;convolve_vector&quot;, ... precompute ops count ...)
+	  { ... }
+
+	  // Member data
+	  Profile_event event_;
+	};
+
+This would then be used in the operator
+
+	  impl::profile::Event_in_scope scope(this-&gt;event_);
+
+We could remove the duplicated effort between this-&gt;event_ and 
+this-&gt;timer_ by having the 'Profile_event' class be able to return its 
+accumulated time and invocation count:
+
+	  this-&gt;event_-&gt;total() and this-&gt;event_-&gt;count()
+
+Since not all users of 'Profile_event' will need this ability, it could 
+be made a policy::
+
+	  Profile_event&lt;Accumulate_time&gt; event_;
+
+or
+
+	  Profile_event&lt;No_accumulate_time&gt; event_;
+
+
+
+&gt;<i>      for (dimension_type d=0; d&lt;dim; ++d)
+</I>&gt;<i>        assert(in.size(d) == this-&gt;input_size()[d].size());
+</I>&gt;<i>  
+</I>
+&gt;<i>  
+</I>&gt;<i>      return out;
+</I>&gt;<i>    }
+</I>&gt;<i> @@ -152,7 +172,11 @@
+</I>&gt;<i>      Matrix&lt;T, Block2&gt;       out)
+</I>&gt;<i>      VSIP_NOTHROW
+</I>&gt;<i>    {
+</I>&gt;<i> -    timer_.start();
+</I>&gt;<i> +    length_type const M = this-&gt;kernel_size()[0].size();
+</I>&gt;<i> +    length_type const P = this-&gt;output_size()[0].size();
+</I>&gt;<i> +    int ops = impl::conv::Op_count&lt;T&gt;::apply(M, P);
+</I>
+[3a] For a matrix convolution, the ops count will also depend on the 
+kernel_size()[1].size() and output_size()[1].size().  (The ops 
+computation in the original impl_performance was also broken for matrices).
+
+&gt;<i> +    impl::profile::Scope_event scope_event(&quot;convolve_matrix&quot;, ops);
+</I>&gt;<i> +    impl::profile::Time_in_scope scope(this-&gt;timer_);
+</I>&gt;<i>      for (dimension_type d=0; d&lt;dim; ++d)
+</I>&gt;<i>        assert(in.size(d) == this-&gt;input_size()[d].size());
+</I>
+&gt;<i>    {
+</I>&gt;<i>      if (!strcmp(what, &quot;mflops&quot;))
+</I>&gt;<i>      {
+</I>&gt;<i> -      int count = timer_.count();
+</I>&gt;<i>        length_type const M = this-&gt;kernel_size()[0].size();
+</I>&gt;<i>        length_type const P = this-&gt;output_size()[0].size();
+</I>&gt;<i> -      float ops = 2.f * count * P * M;
+</I>&gt;<i> -      return ops / (1e6*timer_.total());
+</I>&gt;<i> +      int ops = impl::conv::Op_count&lt;T&gt;::apply(M, P);
+</I>&gt;<i> +      return timer_.count() * ops / (1e6 * timer_.total());
+</I>
+[3b] also correct matrix ops count here.
+
+
+&gt;<i> @@ -124,7 +141,11 @@
+</I>&gt;<i>      Matrix&lt;T, Block2&gt;       out)
+</I>&gt;<i>      VSIP_NOTHROW
+</I>&gt;<i>    {
+</I>&gt;<i> -    impl::profile::Scope_timer t(timer_);
+</I>&gt;<i> +    length_type const M = this-&gt;reference_size()[0].size();
+</I>&gt;<i> +    length_type const P = this-&gt;output_size()[0].size();
+</I>&gt;<i> +    int ops = impl::corr::Op_count&lt;T&gt;::apply(M, P);
+</I>
+[3c] matrix ops count
+
+&gt;<i> +    impl::profile::Scope_event scope_event(&quot;correlate_matrix&quot;, ops);
+</I>&gt;<i> +    impl::profile::Time_in_scope scope(this-&gt;timer_);
+</I>&gt;<i>  
+</I>&gt;<i>      for (dimension_type d=0; d&lt;dim; ++d)
+</I>&gt;<i>      {
+</I>&gt;<i> @@ -142,11 +163,10 @@
+</I>&gt;<i>    {
+</I>&gt;<i>      if (!strcmp(what, &quot;mflops&quot;))
+</I>&gt;<i>      {
+</I>&gt;<i> -      int count = timer_.count();
+</I>&gt;<i> -      length_type const M = this-&gt;kernel_size()[0].size();
+</I>&gt;<i> +      length_type const M = this-&gt;reference_size()[0].size();
+</I>&gt;<i>        length_type const P = this-&gt;output_size()[0].size();
+</I>&gt;<i> -      float ops = 2.f * count * P * M;
+</I>&gt;<i> -      return ops / (1e6*timer_.total());
+</I>&gt;<i> +      int ops = impl::corr::Op_count&lt;T&gt;::apply(M, P);
+</I>
+[3d] matrix ops count
+
+&gt;<i> +      return timer_.count() * ops / (1e6 * timer_.total());
+</I>
+
+
+&gt;<i> +
+</I>&gt;<i> +template &lt;typename T&gt;
+</I>&gt;<i> +struct Ops_info
+</I>&gt;<i> +{
+</I>&gt;<i> +  static int const div = 1;
+</I>&gt;<i> +  static int const sqr = 1;
+</I>&gt;<i> +  static int const mul = 1;
+</I>&gt;<i> +  static int const add = 1;
+</I>
+[4] if we change these from 'int' to 'unsigned', we can get rid of the 
+static_casts in the Ops_count::apply functions.
+
+
+&gt;<i>  
+</I>&gt;<i> +length_type
+</I>&gt;<i> +op_count(length_type len)
+</I>&gt;<i> +{ 
+</I>&gt;<i> +  return static_cast&lt;length_type&gt;(5 * len * std::log((float)len) / 
+</I>&gt;<i> +                                  std::log(2.f)); 
+</I>&gt;<i> +}
+</I>&gt;<i> +
+</I>
+[5] This should take into account the FFT input/output types to 
+determine if the transform is C to C (in which case the ops count is 
+correct at 5 * len * log2(len)), or R to C / C to R (in which case the 
+ops count is halved).
+
+
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">jules at codesourcery.com</A>
+(650) 331-3385 x705
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000551.html">[patch] Built-in function profiling 
+</A></li>
+	<LI>Next message: <A HREF="000556.html">[vsipl++] [patch] Built-in function profiling
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#553">[ date ]</a>
+              <a href="thread.html#553">[ thread ]</a>
+              <a href="subject.html#553">[ subject ]</a>
+              <a href="author.html#553">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">More information about the vsipl++
+mailing list</a><br>
+</body></html>

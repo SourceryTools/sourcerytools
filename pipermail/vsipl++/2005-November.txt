@@ -1,0 +1,2007 @@
+From jules at codesourcery.com  Wed Nov  2 13:06:18 2005
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Wed, 02 Nov 2005 08:06:18 -0500
+Subject: [patch] Parallel support for vmmul, and for unary and ternary expr
+ ops.
+Message-ID: <4368B9CA.8020002@codesourcery.com>
+
+This patch adds some functionality necessary for the parallel quick
+start example.  In particular, it:
+
+  - Adds parallel support and tests for vector-matrix multiply.  In
+    particular, it supports:
+     - vectors and matrices that are mapped to the same processor,
+     - global vectors and matrices not distributed along vector dimension
+     - distributed vectors and matrices with same distribution along
+       vector dimension and not distributed perpendicular to vector
+       dimension.
+  - Adds parallel support and tests for unary and ternary operators.
+  - Adds a check at Dispatch_assign whether an expression can be
+    reorganized, that is its data redistributed to owner computes.
+    Currently, expressions with vmmul cannot be reorganized.
+  - Extends Block_fill to handle distributed blocks.
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: vm2.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20051102/a6578d04/attachment.ksh>
+
+From stefan at codesourcery.com  Thu Nov  3 01:52:55 2005
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Wed, 02 Nov 2005 20:52:55 -0500
+Subject: proposal: a typed alloc_align()
+Message-ID: <43696D77.5010506@codesourcery.com>
+
+I'v seen expressions such as
+
+foo = static_cast<some_type>(alloc_align(align, size));
+
+a lot recently, and I wonder whether this could be tidied up a bit by parametrizing
+alloc_align (i.e. internalizing the static_cast):
+
+template <typename R>
+inline
+R
+alloc_align(size_t align, size_t size)
+{
+   return static_cast<R>(alloc_align(align, size));
+}
+
+and then be able to write
+
+foo = alloc_align<some_type>(align, size);
+
+That avoids users of alloc_align being exposed to void *.
+
+Thoughts ?
+
+Regards,
+		Stefan
+
+
+From jules at codesourcery.com  Thu Nov  3 12:16:40 2005
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Thu, 03 Nov 2005 07:16:40 -0500
+Subject: [vsipl++] proposal: a typed alloc_align()
+In-Reply-To: <43696D77.5010506@codesourcery.com>
+References: <43696D77.5010506@codesourcery.com>
+Message-ID: <4369FFA8.30005@codesourcery.com>
+
+Stefan,
+
+This sounds good.
+
+We could also move the 'sizeof(T)' scaling into the alloc_align as well 
+(requested sizes are usually 'number of elements x sizeof(T)').
+
+Given this, should the template parameter be the type being allocated, 
+or a the type of the resulting pointer?  I.e.
+
+	float* foo = alloc_align<float*>(align, elem*sizeof(T));
+
+or
+
+	float* foo = alloc_align<float>(align, elem);
+
+I vote for the second.
+
+				-- Jules
+
+Stefan Seefeld wrote:
+> I'v seen expressions such as
+> 
+> foo = static_cast<some_type>(alloc_align(align, size));
+> 
+> a lot recently, and I wonder whether this could be tidied up a bit by 
+> parametrizing
+> alloc_align (i.e. internalizing the static_cast):
+> 
+> template <typename R>
+> inline
+> R
+> alloc_align(size_t align, size_t size)
+> {
+>   return static_cast<R>(alloc_align(align, size));
+
+perhaps:
+
+     return static_cast<R*>(alloc_align(align, size*sizeof(R));
+
+> }
+> 
+> and then be able to write
+> 
+> foo = alloc_align<some_type>(align, size);
+> 
+> That avoids users of alloc_align being exposed to void *.
+> 
+> Thoughts ?
+> 
+> Regards,
+>         Stefan
+
+
+From mark at codesourcery.com  Thu Nov  3 15:58:00 2005
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Thu, 03 Nov 2005 07:58:00 -0800
+Subject: [vsipl++] proposal: a typed alloc_align()
+In-Reply-To: <4369FFA8.30005@codesourcery.com>
+References: <43696D77.5010506@codesourcery.com> <4369FFA8.30005@codesourcery.com>
+Message-ID: <436A3388.3020001@codesourcery.com>
+
+Jules Bergmann wrote:
+
+>     float* foo = alloc_align<float>(align, elem);
+
+Note that you could spell this like:
+
+  new (vsip::impl::align (16)) float[elem]
+
+Then, the compiler will do the cast to float * for you, handle the
+multiplication, etc.  You would have a little wrapper class:
+
+  class align {
+    align(size_t align): align_(align);
+    size_t align_;
+  };
+
+and:
+
+  void *operator new[](size_t, const align&) ...
+
+-- 
+Mark Mitchell
+CodeSourcery, LLC
+mark at codesourcery.com
+(916) 791-8304
+
+
+From ncm at codesourcery.com  Thu Nov  3 18:48:36 2005
+From: ncm at codesourcery.com (Nathan (Jasper) Myers)
+Date: Thu, 3 Nov 2005 10:48:36 -0800
+Subject: [vsipl++] proposal: a typed alloc_align()
+In-Reply-To: <436A3388.3020001@codesourcery.com>
+References: <43696D77.5010506@codesourcery.com> <4369FFA8.30005@codesourcery.com> <436A3388.3020001@codesourcery.com>
+Message-ID: <20051103184836.GA12088@codesourcery.com>
+
+On Thu, Nov 03, 2005 at 07:58:00AM -0800, Mark Mitchell wrote:
+> Jules Bergmann wrote:
+> 
+> >     float* foo = alloc_align<float>(align, elem);
+> 
+> Note that you could spell this like:
+> 
+>   new(vsip::impl::align(16)) float[elem]
+
+Be careful.  Conventionally, storage obtained via op new is 
+released via op delete.  The compiler enforces that: if you said 
+"new (vsip::impl::align (16)) vsip::Fft<>", for example, and the
+Fft<> constructor threw an exception, the implicit code generated
+by the compiler would call ::op delete itself.
+
+As a library, we can't replace ::op delete ourselves; that choice
+is reserved to the main program.
+
+This inflexibility is an unfortunate legacy of early C++, although 
+to this day I don't know how it might have been done better.
+Probably any such improvement would involve templates.
+
+Nathan Myers
+ncm
+
+
+From mark at codesourcery.com  Thu Nov  3 18:54:19 2005
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Thu, 03 Nov 2005 10:54:19 -0800
+Subject: [vsipl++] proposal: a typed alloc_align()
+In-Reply-To: <20051103184836.GA12088@codesourcery.com>
+References: <43696D77.5010506@codesourcery.com> <4369FFA8.30005@codesourcery.com> <436A3388.3020001@codesourcery.com> <20051103184836.GA12088@codesourcery.com>
+Message-ID: <436A5CDB.70800@codesourcery.com>
+
+Nathan (Jasper) Myers wrote:
+> On Thu, Nov 03, 2005 at 07:58:00AM -0800, Mark Mitchell wrote:
+> 
+>>Jules Bergmann wrote:
+>>
+>>
+>>>    float* foo = alloc_align<float>(align, elem);
+>>
+>>Note that you could spell this like:
+>>
+>>  new(vsip::impl::align(16)) float[elem]
+> 
+> 
+> Be careful.  Conventionally, storage obtained via op new is 
+> released via op delete.  The compiler enforces that: if you said 
+> "new (vsip::impl::align (16)) vsip::Fft<>", for example, and the
+> Fft<> constructor threw an exception, the implicit code generated
+> by the compiler would call ::op delete itself.
+> 
+> As a library, we can't replace ::op delete ourselves; that choice
+> is reserved to the main program.
+
+Yes, this may be a dumb idea, if any of our ways of allocating aligned
+memory do not permit you to just call "free" on the returned pointer.
+
+-- 
+Mark Mitchell
+CodeSourcery, LLC
+mark at codesourcery.com
+(916) 791-8304
+
+
+From ncm at codesourcery.com  Thu Nov  3 19:30:28 2005
+From: ncm at codesourcery.com (Nathan (Jasper) Myers)
+Date: Thu, 3 Nov 2005 11:30:28 -0800
+Subject: [vsipl++] proposal: a typed alloc_align()
+In-Reply-To: <20051103184836.GA12088@codesourcery.com>
+References: <43696D77.5010506@codesourcery.com> <4369FFA8.30005@codesourcery.com> <436A3388.3020001@codesourcery.com> <20051103184836.GA12088@codesourcery.com>
+Message-ID: <20051103193028.GB12088@codesourcery.com>
+
+On Thu, Nov 03, 2005 at 10:48:36AM -0800, Nathan (Jasper) Myers wrote:
+> On Thu, Nov 03, 2005 at 07:58:00AM -0800, Mark Mitchell wrote:
+> > Note that you could spell this like:
+> > 
+> >   new(vsip::impl::align(16)) float[elem]
+> 
+> Be careful.  Conventionally, storage obtained via op new is 
+> released via op delete.  The compiler enforces that: if you said 
+> "new (vsip::impl::align (16)) vsip::Fft<>", for example, and the
+> Fft<> constructor threw an exception, the implicit code generated
+> by the compiler would call ::op delete itself.
+
+I'm wrong.  If you provided an op delete(void*, vsip::impl::align&)
+then (5.3.4 para 19) the compiler would generate a call to it if 
+the constructor were to throw.  However, there's no syntax for a 
+delete-expression to call it, and anyway no mechanism to tell (e.g.) 
+std::auto_ptr<>() to use the right op delete overload.
+
+Also, if the user were also to provide a placement delete operator 
+that happens to be ambiguous with ours, then in the event of an
+exception the memory would just leak.  (I hope the compiler would
+warn about this, but I have no reason to expect so; placement delete
+is rarely used, for obvious reasons.)
+
+Nathan Myers
+ncm
+
+
+From mark at codesourcery.com  Thu Nov  3 19:41:28 2005
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Thu, 03 Nov 2005 11:41:28 -0800
+Subject: [vsipl++] proposal: a typed alloc_align()
+In-Reply-To: <20051103193028.GB12088@codesourcery.com>
+References: <43696D77.5010506@codesourcery.com> <4369FFA8.30005@codesourcery.com> <436A3388.3020001@codesourcery.com> <20051103184836.GA12088@codesourcery.com> <20051103193028.GB12088@codesourcery.com>
+Message-ID: <436A67E8.8050900@codesourcery.com>
+
+Nathan (Jasper) Myers wrote:
+
+> I'm wrong.  If you provided an op delete(void*, vsip::impl::align&)
+> then (5.3.4 para 19) the compiler would generate a call to it if 
+> the constructor were to throw.  However, there's no syntax for a 
+> delete-expression to call it, and anyway no mechanism to tell (e.g.) 
+> std::auto_ptr<>() to use the right op delete overload.
+
+Right, my suggestion was to have:
+
+1. The overloaded placement-new operator for the allocation.
+
+2. The placement-delete operator to handle the exception.
+
+3. An ordinary functon ("vsip::impl::free_aligned") to call to
+deallocate the memory.  This would probably be implemented in terms of
+the placement-delete operator, or vice versa.
+
+There are other potentially bad aspects of my idea, though.  For
+example, for a class type with a destructor, the compiler will allocate
+extra storage to record how many entries are in the array; we may not
+want that extra storage.  The extra storage comes at the start of the
+array, and would mess up the intended alignment of the array elements.
+
+-- 
+Mark Mitchell
+CodeSourcery, LLC
+mark at codesourcery.com
+(916) 791-8304
+
+
+From don at codesourcery.com  Fri Nov  4 19:36:22 2005
+From: don at codesourcery.com (Don McCoy)
+Date: Fri, 04 Nov 2005 12:36:22 -0700
+Subject: [patch] BLAS dispatch
+Message-ID: <436BB836.6060702@codesourcery.com>
+
+The attached patch adds dispatch support for certain BLAS functions.  
+Two things that are worth drawing attention to are: 1) The row-major 
+cases for outer() with complex values and 2) The various run-time and 
+compile-time checks used in the blas evaluator functions.
+
+For 1), my concern is that the BLAS 'ger' variant used can only 
+conjugate the second vector argument.  I'm using the non-conj version 
+and performing the conjugation on the first vector argument manually.  
+It involves memory allocation and an extra loop through one of the 
+vectors.  I'd like to know if there is a more efficient way to do this.
+
+For 2), just want to make sure I didn't omit any checks that would 
+dispatch a call to BLAS that it cannot handle.  I was careful to verify 
+that BLAS was only called when it should be, but it would be easy to 
+overlook something if there is not a corresponding test case for it.  In 
+cases like outer, it is not tested with a column-major result matrix if 
+only the vsip::outer() is called (because it allocates the matrix with 
+the default block).  So, for the test, I added the col-major cases 
+explicitly by calling vsip::impl::outer() directly.  There may be other 
+cases where we should add specific tests for col-major layouts.
+
+Regards,
+
+-- 
+Don McCoy
+CodeSourcery, LLC
+
+
+
+
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: bd.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20051104/ab806a17/attachment.ksh>
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: bd.diff
+Type: text/x-patch
+Size: 56225 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20051104/ab806a17/attachment.bin>
+
+From jules at codesourcery.com  Tue Nov  8 03:19:31 2005
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Mon, 07 Nov 2005 22:19:31 -0500
+Subject: [vsipl++] [patch] BLAS dispatch
+In-Reply-To: <436BB836.6060702@codesourcery.com>
+References: <436BB836.6060702@codesourcery.com>
+Message-ID: <43701943.1000405@codesourcery.com>
+
+
+
+Don McCoy wrote:
+> The attached patch adds dispatch support for certain BLAS functions.  
+> Two things that are worth drawing attention to are: 1) The row-major 
+> cases for outer() with complex values and 2) The various run-time and 
+> compile-time checks used in the blas evaluator functions.
+
+This patch looks good.  I have two small comments below, please check it 
+in once they're addressed.
+
+> 
+> For 1), my concern is that the BLAS 'ger' variant used can only 
+> conjugate the second vector argument.  I'm using the non-conj version 
+> and performing the conjugation on the first vector argument manually.  
+> It involves memory allocation and an extra loop through one of the 
+> vectors.  I'd like to know if there is a more efficient way to do this.
+
+The choices here seem to be:
+  1) use generic implementation
+  2) compute result in wrong dimension order, then tranpose in place.
+  3) conjugate in-place, compute outer, reverse conjugate
+  4) allocate temporary storage to store conjugate (as you currently do)
+
+Let's go with either (1) or (3).  (2) would be good, but although we 
+have a stub in Ext_data to reorgnize data, its not implemented yet.  We 
+can't do (4), the current approach, because of the memory allocation. 
+We need to avoid memory allocation that would occur during the inner 
+loop of an application.
+
+> 
+> For 2), just want to make sure I didn't omit any checks that would 
+> dispatch a call to BLAS that it cannot handle.  I was careful to verify 
+> that BLAS was only called when it should be, but it would be easy to 
+> overlook something if there is not a corresponding test case for it.  In 
+> cases like outer, it is not tested with a column-major result matrix if 
+> only the vsip::outer() is called (because it allocates the matrix with 
+> the default block).  So, for the test, I added the col-major cases 
+> explicitly by calling vsip::impl::outer() directly.  There may be other 
+> cases where we should add specific tests for col-major layouts.
+
+This sounds good.
+
+				-- Jules
+
+
+> ===================================================================
+> RCS file: /home/cvs/Repository/vpp/src/vsip/impl/general_dispatch.hpp,v
+> retrieving revision 1.1
+> diff -c -p -r1.1 general_dispatch.hpp
+> *** src/vsip/impl/general_dispatch.hpp	12 Oct 2005 12:45:05 -0000	1.1
+> --- src/vsip/impl/general_dispatch.hpp	4 Nov 2005 19:32:27 -0000
+> *************** namespace impl
+> *** 35,40 ****
+> --- 35,42 ----
+>   
+>   struct Op_prod_vv;	// vector-vector dot-product
+
+Let's create seperate tags for dot-product and outer-product to avoid 
+confusion.  Perhaps Op_prod_vv_dot and Op_prod_vv_outer?
+
+>   struct Op_prod_mm;	// matrix-matrix product
+> + struct Op_prod_mv;	// matrix-vector product
+> + struct Op_prod_vm;	// vector-matrix product
+>   
+
+
+From don at codesourcery.com  Fri Nov 11 00:11:10 2005
+From: don at codesourcery.com (Don McCoy)
+Date: Thu, 10 Nov 2005 17:11:10 -0700
+Subject: [vsipl++] [patch] BLAS dispatch
+In-Reply-To: <43701943.1000405@codesourcery.com>
+References: <436BB836.6060702@codesourcery.com> <43701943.1000405@codesourcery.com>
+Message-ID: <4373E19E.6030203@codesourcery.com>
+
+Jules Bergmann wrote:
+
+> Don McCoy wrote:
+>
+>> The attached patch adds dispatch support for certain BLAS functions.  
+>> Two things that are worth drawing attention to are: 1) The row-major 
+>> cases for outer() with complex values and 2) The various run-time and 
+>> compile-time checks used in the blas evaluator functions.
+>
+>
+> This patch looks good.  I have two small comments below, please check 
+> it in once they're addressed.
+>
+Done.  Patch is committed now.
+
+>> For 1), my concern is that the BLAS 'ger' variant used can only 
+>> conjugate the second vector argument.  I'm using the non-conj version 
+>> and performing the conjugation on the first vector argument 
+>> manually.  It involves memory allocation and an extra loop through 
+>> one of the vectors.  I'd like to know if there is a more efficient 
+>> way to do this.
+>
+>
+> The choices here seem to be:
+>  1) use generic implementation
+>  2) compute result in wrong dimension order, then tranpose in place.
+>  3) conjugate in-place, compute outer, reverse conjugate
+>  4) allocate temporary storage to store conjugate (as you currently do)
+>
+> Let's go with either (1) or (3).  (2) would be good, but although we 
+> have a stub in Ext_data to reorgnize data, its not implemented yet.  
+> We can't do (4), the current approach, because of the memory 
+> allocation. We need to avoid memory allocation that would occur during 
+> the inner loop of an application.
+>
+FYI, I chose 3). 
+
+-- 
+Don McCoy
+CodeSourcery, LLC
+
+
+
+From stefan at codesourcery.com  Fri Nov 11 00:21:35 2005
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Thu, 10 Nov 2005 19:21:35 -0500
+Subject: PATCH: work-around for ghs
+Message-ID: <4373E40F.6040200@codesourcery.com>
+
+The attached patch is necessary to work around ghs getting confused
+by different overloads of operators '&', '|', and '^'.
+
+FYI.
+
+Regards,
+		Stefan
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: ghs.patch
+Type: text/x-patch
+Size: 531 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20051110/2486476d/attachment.bin>
+
+From mark at codesourcery.com  Fri Nov 11 00:36:04 2005
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Thu, 10 Nov 2005 16:36:04 -0800
+Subject: [vsipl++] PATCH: work-around for ghs
+In-Reply-To: <4373E40F.6040200@codesourcery.com>
+References: <4373E40F.6040200@codesourcery.com>
+Message-ID: <4373E774.6000000@codesourcery.com>
+
+Stefan Seefeld wrote:
+
+>>  VSIP_IMPL_ASSIGN_OP_NOFWD(&=, &) // Use the NOFWD variant or else 
+>>  VSIP_IMPL_ASSIGN_OP_NOFWD(|=, |) //   ghs will be confused
+>>  VSIP_IMPL_ASSIGN_OP_NOFWD(^=, ^)
+
+For this kind of patch, you need to add more comments.
+
+This kind of change is very hard to understand three years later.  The
+GCC source code has lots of "Must be like this because otherwise HP
+compiler gets confused" and nobody understands what that stuff is for
+anymore, or whether it can be removed.
+
+I'd say something like:
+
+/* If we do not use the NOFWD variant, then the Green Hills X.Y C++
+compiler issues the following error:
+
+...
+
+because it cannot handle the following combination of overloaded functions:
+
+...
+
+*/
+
+That way, we can try some later Green Hills compiler in the future, and
+figure out if the bug is still there.  We'll also have something that
+will subliminally remind of us of the kind of bug it has, so that we
+don't add more code that triggers the bug elsewhere.
+
+-- 
+Mark Mitchell
+CodeSourcery, LLC
+mark at codesourcery.com
+(916) 791-8304
+
+
+From stefan at codesourcery.com  Fri Nov 11 03:48:02 2005
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Thu, 10 Nov 2005 22:48:02 -0500
+Subject: [vsipl++] PATCH: work-around for ghs
+In-Reply-To: <4373E774.6000000@codesourcery.com>
+References: <4373E40F.6040200@codesourcery.com> <4373E774.6000000@codesourcery.com>
+Message-ID: <43741472.70301@codesourcery.com>
+
+Mark Mitchell wrote:
+> Stefan Seefeld wrote:
+> 
+> 
+>>> VSIP_IMPL_ASSIGN_OP_NOFWD(&=, &) // Use the NOFWD variant or else 
+>>> VSIP_IMPL_ASSIGN_OP_NOFWD(|=, |) //   ghs will be confused
+>>> VSIP_IMPL_ASSIGN_OP_NOFWD(^=, ^)
+> 
+> 
+> For this kind of patch, you need to add more comments.
+
+Fair enough. Here is a new, more descriptive patch.
+
+Regards,
+		Stefan
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: ghs.patch
+Type: text/x-patch
+Size: 859 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20051110/ce1c75ff/attachment.bin>
+
+From jules at codesourcery.com  Fri Nov 11 13:59:24 2005
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Fri, 11 Nov 2005 08:59:24 -0500
+Subject: [patch] RFA mercury's missing std::abs
+Message-ID: <4374A3BC.6050708@codesourcery.com>
+
+This patch checks for missing std::abs overloads for float and double at 
+configure time.  If missing (and ::abs overloads exist), 
+VSIP_IMPL_FIX_MISSING_ABS is defined, which causes vsip::mag and 
+vsip::magsq to use a blend of vsip::abs and ::abs.
+
+This should be more robust than relying on the order of <cmath> and 
+<cstdlib> (which might break if users include standard headers before 
+including vsip headers -- something I tend to do).
+
+Comments?
+
+Patch also
+
+  - uses vsip::mag in tests/test.hpp instead of std::abs.
+
+  - throws an exception if general dispatch fails (instead of assert).
+    Right thing to do, and fixes greenhills warning about function
+    not returning a value.
+
+				-- Jules
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: mc.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20051111/07bf06e1/attachment.ksh>
+
+From stefan at codesourcery.com  Fri Nov 11 14:07:29 2005
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Fri, 11 Nov 2005 09:07:29 -0500
+Subject: [vsipl++] [patch] RFA mercury's missing std::abs
+In-Reply-To: <4374A3BC.6050708@codesourcery.com>
+References: <4374A3BC.6050708@codesourcery.com>
+Message-ID: <4374A5A1.3070403@codesourcery.com>
+
+Jules Bergmann wrote:
+> This patch checks for missing std::abs overloads for float and double at 
+> configure time.  If missing (and ::abs overloads exist), 
+> VSIP_IMPL_FIX_MISSING_ABS is defined, which causes vsip::mag and 
+> vsip::magsq to use a blend of vsip::abs and ::abs.
+> 
+> This should be more robust than relying on the order of <cmath> and 
+> <cstdlib> (which might break if users include standard headers before 
+> including vsip headers -- something I tend to do).
+> 
+> Comments?
+
+Since we now understand exactly what is going wrong (i.e. the
+
+namespace std { using ::abs;}
+
+line is issued before the relevant declarations have been seen),
+why don't we simply place such a using-directive close to our own
+inclusion of <cmath> ? That would have the exact same effect as
+including <cstdlib> after <cmath>, without relying on its header guards
+not being active.
+
+Regards,
+		Stefan
+
+
+From stefan at codesourcery.com  Fri Nov 11 14:31:18 2005
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Fri, 11 Nov 2005 09:31:18 -0500
+Subject: overriding autoconf's own exeext detection
+Message-ID: <4374AB36.6000202@codesourcery.com>
+
+I'm using autoconf with a greenhills cross-compiler.
+It compiles source code into .ppc executables, but
+generates auxiliary files with other extensions on-the-fly
+(.map, for example).
+
+Unfortunately, the way autoconf detects a compiler's
+default executable extension is by making some guesses,
+and eventually picking up the first extension not listed
+in an exclusion list. Thus, in my case, configure thinks
+that 'test.map' is the name of the executable, which leads
+to failures later on.
+
+Is there any way around this ? For my own build system
+I added options --with-obj-exe and --with-exe-ext, but
+those obviously don't affect tests run by configure
+internally.
+
+ From a look into the relevant code it seems it would be
+possible to fix this by adding some extensions to the
+exclusion list, though I'm not sure how robust / scalable
+a solution that is.
+
+Any help is greatly appreciated !
+
+Thanks,
+		Stefan
+
+
+From jules at codesourcery.com  Fri Nov 11 14:58:56 2005
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Fri, 11 Nov 2005 09:58:56 -0500
+Subject: [vsipl++] [patch] RFA mercury's missing std::abs
+In-Reply-To: <4374A5A1.3070403@codesourcery.com>
+References: <4374A3BC.6050708@codesourcery.com> <4374A5A1.3070403@codesourcery.com>
+Message-ID: <4374B1B0.5000804@codesourcery.com>
+
+
+
+Stefan Seefeld wrote:
+> Jules Bergmann wrote:
+> 
+>> This patch checks for missing std::abs overloads for float and double 
+>> at configure time.  If missing (and ::abs overloads exist), 
+>> VSIP_IMPL_FIX_MISSING_ABS is defined, which causes vsip::mag and 
+>> vsip::magsq to use a blend of vsip::abs and ::abs.
+>>
+>> This should be more robust than relying on the order of <cmath> and 
+>> <cstdlib> (which might break if users include standard headers before 
+>> including vsip headers -- something I tend to do).
+>>
+>> Comments?
+> 
+> 
+> Since we now understand exactly what is going wrong (i.e. the
+> 
+> namespace std { using ::abs;}
+> 
+> line is issued before the relevant declarations have been seen),
+> why don't we simply place such a using-directive close to our own
+> inclusion of <cmath> ? That would have the exact same effect as
+> including <cstdlib> after <cmath>, without relying on its header guards
+> not being active.
+
+My initial reaction is that we shouldn't put stuff into std namespace 
+because it may break some application's expectations.  Of course, such 
+apps are in trouble, since a change in cmath/cstdlib include order would 
+break their assumptions.
+
+If we do go with 'namespace std { using ::abs; }', we should still have 
+a configure check and only much with std:: when necessary.
+
+				-- Jules
+
+
+From Ralf.Wildenhues at gmx.de  Fri Nov 11 17:00:26 2005
+From: Ralf.Wildenhues at gmx.de (Ralf Wildenhues)
+Date: Fri, 11 Nov 2005 18:00:26 +0100
+Subject: overriding autoconf's own exeext detection
+In-Reply-To: <4374AB36.6000202@codesourcery.com>
+References: <4374AB36.6000202@codesourcery.com>
+Message-ID: <20051111170026.GA22634@iam.uni-bonn.de>
+
+Hi Stefan,
+
+* Stefan Seefeld wrote on Fri, Nov 11, 2005 at 03:31:18PM CET:
+> I'm using autoconf with a greenhills cross-compiler.
+> It compiles source code into .ppc executables, but
+> generates auxiliary files with other extensions on-the-fly
+> (.map, for example).
+
+Does the patch below fix it?
+
+> From a look into the relevant code it seems it would be
+> possible to fix this by adding some extensions to the
+> exclusion list, though I'm not sure how robust / scalable
+> a solution that is.
+
+Well, a shell pattern for exclusion is cheap, and the number of
+different things to exclude seems not so high, so I think that's
+the best solution for now.  Until one compiler produces an extension
+that needs to be excluded for another one.
+
+Cheers,
+Ralf
+
+        * lib/autoconf/lang.m4 (_AC_COMPILER_OBJEXT_REJECT):
+        Add `*.map' for Green Hills compiler.
+        Reported by Stefan Seefeld <stefan at codesourcery.com>.
+
+Index: lib/autoconf/lang.m4
+===================================================================
+RCS file: /cvsroot/autoconf/autoconf/lib/autoconf/lang.m4,v
+retrieving revision 1.171
+diff -u -r1.171 lang.m4
+--- lib/autoconf/lang.m4	14 May 2005 07:00:40 -0000	1.171
++++ lib/autoconf/lang.m4	11 Nov 2005 16:59:37 -0000
+@@ -421,6 +421,9 @@
+ #
+ # - *.xSYM
+ #   Created on BeOS.  Seems to be per executable.
++# 
++# - *.map
++#   Created by the Green Hills compiler.
+ 
+ 
+ # _AC_COMPILER_OBJEXT_REJECT
+@@ -428,7 +431,7 @@
+ # Case/esac pattern matching the files to be ignored when looking for
+ # compiled object files.
+ m4_define([_AC_COMPILER_OBJEXT_REJECT],
+-[*.$ac_ext | *.xcoff | *.tds | *.d | *.pdb | *.xSYM | *.bb | *.bbg])
++[*.$ac_ext | *.xcoff | *.tds | *.d | *.pdb | *.xSYM | *.bb | *.bbg | *.map])
+ 
+ 
+ # _AC_COMPILER_EXEEXT_REJECT
+
+
+From don at codesourcery.com  Fri Nov 11 17:05:23 2005
+From: don at codesourcery.com (Don McCoy)
+Date: Fri, 11 Nov 2005 10:05:23 -0700
+Subject: [patch] unconditional SAL dependency
+Message-ID: <4374CF53.1050909@codesourcery.com>
+
+This patch corrects a test that required SAL unconditionally.
+
+Committed.
+
+-- 
+Don McCoy
+CodeSourcery, LLC
+
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: sa.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20051111/bde51d12/attachment.ksh>
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: sa.diff
+Type: text/x-patch
+Size: 1448 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20051111/bde51d12/attachment.bin>
+
+From stefan at codesourcery.com  Fri Nov 11 17:08:29 2005
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Fri, 11 Nov 2005 12:08:29 -0500
+Subject: [vsipl++] Re: overriding autoconf's own exeext detection
+In-Reply-To: <20051111170026.GA22634@iam.uni-bonn.de>
+References: <4374AB36.6000202@codesourcery.com> <20051111170026.GA22634@iam.uni-bonn.de>
+Message-ID: <4374D00D.1030207@codesourcery.com>
+
+Ralf Wildenhues wrote:
+
+> Does the patch below fix it?
+
+It looks good, though there is at least one more extension: '.inf',
+which is generated with optimization. Other files with extensions
+'.dbo', '.dla', etc. are created when object files are produces,
+but these don't seem to confuse configure.
+
+>>From a look into the relevant code it seems it would be
+>>possible to fix this by adding some extensions to the
+>>exclusion list, though I'm not sure how robust / scalable
+>>a solution that is.
+> 
+> 
+> Well, a shell pattern for exclusion is cheap, and the number of
+> different things to exclude seems not so high, so I think that's
+> the best solution for now.  Until one compiler produces an extension
+> that needs to be excluded for another one.
+
+That's exactly my concern. As you can see above, the list of
+extensions to be excluded is growing...
+
+Also, if I want to avoid upgrading autoconf, is there a way
+to fix the problem locally, say, in my aclocal.m4 file ?
+
+Thanks,
+		Stefan
+
+
+From stefan at codesourcery.com  Fri Nov 11 17:19:39 2005
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Fri, 11 Nov 2005 12:19:39 -0500
+Subject: PATCH: restrict vsip::operator! to view types
+Message-ID: <4374D2AB.1070307@codesourcery.com>
+
+As the subject-line says, the attached patch uses sfinae
+to restrict the unary operators '!' and '~' to operate
+on view types only.
+The patch doesn't seem to introduce regressions for g++ 3.4.2,
+and makes a number of tests compile with ghs.
+
+Regards,
+		Stefan
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: patch
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20051111/7d50a50d/attachment.ksh>
+
+From mark at codesourcery.com  Fri Nov 11 17:38:58 2005
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Fri, 11 Nov 2005 09:38:58 -0800
+Subject: [vsipl++] [patch] RFA mercury's missing std::abs
+In-Reply-To: <4374A5A1.3070403@codesourcery.com>
+References: <4374A3BC.6050708@codesourcery.com> <4374A5A1.3070403@codesourcery.com>
+Message-ID: <4374D732.6090302@codesourcery.com>
+
+Stefan Seefeld wrote:
+> Jules Bergmann wrote:
+> 
+>> This patch checks for missing std::abs overloads for float and double
+>> at configure time.  If missing (and ::abs overloads exist),
+>> VSIP_IMPL_FIX_MISSING_ABS is defined, which causes vsip::mag and
+>> vsip::magsq to use a blend of vsip::abs and ::abs.
+>>
+>> This should be more robust than relying on the order of <cmath> and
+>> <cstdlib> (which might break if users include standard headers before
+>> including vsip headers -- something I tend to do).
+>>
+>> Comments?
+> 
+> 
+> Since we now understand exactly what is going wrong (i.e. the
+> 
+> namespace std { using ::abs;}
+> 
+> line is issued before the relevant declarations have been seen),
+> why don't we simply place such a using-directive close to our own
+> inclusion of <cmath> ? That would have the exact same effect as
+> including <cstdlib> after <cmath>, without relying on its header guards
+> not being active.
+
+As Jules said, I think this would be very dangerous; it might break
+programs that otherwise work with Green Hills.  This is just an ugly
+fact of trying to write portable software: compilers are broken and you
+have to work around their problems.
+
+-- 
+Mark Mitchell
+CodeSourcery, LLC
+mark at codesourcery.com
+(916) 791-8304
+
+
+From mark at codesourcery.com  Fri Nov 11 17:39:53 2005
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Fri, 11 Nov 2005 09:39:53 -0800
+Subject: [vsipl++] PATCH: restrict vsip::operator! to view types
+In-Reply-To: <4374D2AB.1070307@codesourcery.com>
+References: <4374D2AB.1070307@codesourcery.com>
+Message-ID: <4374D769.70004@codesourcery.com>
+
+Stefan Seefeld wrote:
+> As the subject-line says, the attached patch uses sfinae
+> to restrict the unary operators '!' and '~' to operate
+> on view types only.
+> The patch doesn't seem to introduce regressions for g++ 3.4.2,
+> and makes a number of tests compile with ghs.
+
+That's a nice solution; it will probably avoid other cases that might
+confuse us or users as well!
+
+-- 
+Mark Mitchell
+CodeSourcery, LLC
+mark at codesourcery.com
+(916) 791-8304
+
+
+From stefan at codesourcery.com  Fri Nov 11 18:12:00 2005
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Fri, 11 Nov 2005 13:12:00 -0500
+Subject: [vsipl++] PATCH: restrict vsip::operator! to view types
+In-Reply-To: <4374D2AB.1070307@codesourcery.com>
+References: <4374D2AB.1070307@codesourcery.com>
+Message-ID: <4374DEF0.70202@codesourcery.com>
+
+Stefan Seefeld wrote:
+> As the subject-line says, the attached patch uses sfinae
+> to restrict the unary operators '!' and '~' to operate
+> on view types only.
+
+Well, that patch seems to be a little too restrictive. ;-)
+Here is a new one, this time with unit test.
+
+Regards,
+		Stefan
+
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: patch
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20051111/0da018c3/attachment.ksh>
+
+From stefan at codesourcery.com  Fri Nov 11 18:18:27 2005
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Fri, 11 Nov 2005 13:18:27 -0500
+Subject: [vsipl++] PATCH: restrict vsip::operator! to view types
+In-Reply-To: <4374D2AB.1070307@codesourcery.com>
+References: <4374D2AB.1070307@codesourcery.com>
+Message-ID: <4374E073.8060208@codesourcery.com>
+
+Stefan Seefeld wrote:
+> As the subject-line says, the attached patch uses sfinae
+> to restrict the unary operators '!' and '~' to operate
+> on view types only.
+
+Well, that patch seems to be a little too restrictive. ;-)
+Here is a new one, this time with unit test.
+
+Regards,
+		Stefan
+
+
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: patch
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20051111/e36e4d74/attachment.ksh>
+
+From jules at codesourcery.com  Fri Nov 11 18:55:35 2005
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Fri, 11 Nov 2005 13:55:35 -0500
+Subject: test message
+Message-ID: <4374E927.3070805@codesourcery.com>
+
+
+
+From stefan at codesourcery.com  Fri Nov 11 21:31:56 2005
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Fri, 11 Nov 2005 16:31:56 -0500
+Subject: compiler warnings
+Message-ID: <43750DCC.4050805@codesourcery.com>
+
+Working on ghs support I notice that some dummy (i.e. unreachable)
+return statements which we inserted only recently to make icc
+happy now generate warnings with ghs.
+
+I wonder how to address this and similar issues. A possible
+solution for this particular case seems to be to define an 'UNREACHABLE_RETURN'
+function macro such that
+
+UNREACHABLE_RETURN(foobar)
+
+would map to 'return foobar;' for compilers that would complain
+about a missing return, and '' (i.e. nothing) for others warning
+about unreachable statements.
+
+This macro would be provided by config.hh, so we can adjust it to
+individual compilers.
+
+Thoughts ?
+
+
+Regards,
+		Stefan
+
+
+From jules at codesourcery.com  Fri Nov 11 22:21:49 2005
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Fri, 11 Nov 2005 17:21:49 -0500
+Subject: [vsipl++] compiler warnings
+In-Reply-To: <43750DCC.4050805@codesourcery.com>
+References: <43750DCC.4050805@codesourcery.com>
+Message-ID: <4375197D.8060908@codesourcery.com>
+
+
+
+Stefan Seefeld wrote:
+> Working on ghs support I notice that some dummy (i.e. unreachable)
+> return statements which we inserted only recently to make icc
+> happy now generate warnings with ghs.
+> 
+> I wonder how to address this and similar issues. A possible
+> solution for this particular case seems to be to define an 
+> 'UNREACHABLE_RETURN'
+> function macro such that
+> 
+> UNREACHABLE_RETURN(foobar)
+> 
+> would map to 'return foobar;' for compilers that would complain
+> about a missing return, and '' (i.e. nothing) for others warning
+> about unreachable statements.
+> 
+> This macro would be provided by config.hh, so we can adjust it to
+> individual compilers.
+> 
+> Thoughts ?
+
+I don't see any harm in adding such a macro (it would have to be called 
+VSIP_IMPL_UNREACHABLE_RETURN of course).
+
+What unreachable returns are you seeing?  Yesterday, two from dist.hpp 
+(line 623 and line 633) showed up quite a bit, but that was about it.
+
+				-- Jules
+
+
+
+From stefan at codesourcery.com  Fri Nov 11 22:33:32 2005
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Fri, 11 Nov 2005 17:33:32 -0500
+Subject: [vsipl++] compiler warnings
+In-Reply-To: <4375197D.8060908@codesourcery.com>
+References: <43750DCC.4050805@codesourcery.com> <4375197D.8060908@codesourcery.com>
+Message-ID: <43751C3C.1070907@codesourcery.com>
+
+Jules Bergmann wrote:
+
+> I don't see any harm in adding such a macro (it would have to be called 
+> VSIP_IMPL_UNREACHABLE_RETURN of course).
+
+Right.
+
+> What unreachable returns are you seeing?  Yesterday, two from dist.hpp 
+> (line 623 and line 633) showed up quite a bit, but that was about it.
+
+These, as well as map.hpp:413, map.hpp:509, map.hpp:458. They were
+issued each time the templates were instantiated, or so it appears.
+We need to silence them both, to make our test pass (well, we could
+filter them out from inside the test harness), as well as to make
+users happy.
+
+Regards,
+		Stefan
+
+
+From mark at codesourcery.com  Fri Nov 11 23:04:29 2005
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Fri, 11 Nov 2005 15:04:29 -0800
+Subject: [vsipl++] compiler warnings
+In-Reply-To: <43751C3C.1070907@codesourcery.com>
+References: <43750DCC.4050805@codesourcery.com> <4375197D.8060908@codesourcery.com> <43751C3C.1070907@codesourcery.com>
+Message-ID: <4375237D.8020607@codesourcery.com>
+
+Stefan Seefeld wrote:
+
+> These, as well as map.hpp:413, map.hpp:509, map.hpp:458.
+
+Those three are going to cause warnings with almost all compilers when
+using -DNDEBUG, i.e., when assert is an empty macro.  In that case, most
+compilers will think that you're "falling off" the switch, and,
+therefore, the function.
+
+One way to fix this would be to use a single return (with a local
+variable to store the value), and then it would be obvious to all
+compilers that there was no problem, e.g.:
+
+  subblocks_type s;
+
+  assert (d < VSIP_MAX_DIMENSION);
+
+  switch(d) {
+    case 0: s = dist0._num_subblocks();
+    case 1: s = dist1._num_subblocks();
+    case 2: s = dist2._num_subblocks();
+    default: assert(false);
+  }
+
+  return s;
+
+However, that could result in a warning about s being uninitialized, so
+you'll probably need to write "s = 0" first.  And, that's bad, because
+the compiler will not eliminate that assignment when optimizing because
+it will not know that d is smaller than VSIP_MAX_DIMENSION, because the
+assert will be gone.  It also won't work if the variable has no default
+constructor.
+
+Some compilers (but, not yet, GCC) have a magic __builtin_assert
+function.  You can use this like so:
+
+  __builtin_assert (d < VSIP_MAX_DIMENSION);
+
+In debug mode, this is like an ordinary assert -- but in optimized mode
+it tells the optimizer that the condition is always true.  So, the
+compiler would know that the default case was unreachable, and could
+eliminate the unreachable case.
+
+Here is the trick I would use:
+
+  switch(d) {
+    default: assert(false);
+    case 0: return dist0_.num_subblocks();
+    case 1: return dist1_.num_subblocks();
+    case 2: return dist2_.num_subblocks();
+  }
+
+That way, when the assert is gone, you'll just fall into the "0" case,
+which is OK, because you never expect it to happen, but the compiler
+will see that you never fall off the end of the switch.
+
+-- 
+Mark Mitchell
+CodeSourcery, LLC
+mark at codesourcery.com
+(916) 791-8304
+
+
+From Ralf.Wildenhues at gmx.de  Sat Nov 12 14:13:40 2005
+From: Ralf.Wildenhues at gmx.de (Ralf Wildenhues)
+Date: Sat, 12 Nov 2005 15:13:40 +0100
+Subject: [vsipl++] Re: overriding autoconf's own exeext detection
+In-Reply-To: <4374D00D.1030207@codesourcery.com>
+References: <4374AB36.6000202@codesourcery.com> <20051111170026.GA22634@iam.uni-bonn.de> <4374D00D.1030207@codesourcery.com>
+Message-ID: <20051112141340.GB10504@iam.uni-bonn.de>
+
+Hi Stefan,
+
+* Stefan Seefeld wrote on Fri, Nov 11, 2005 at 06:08:29PM CET:
+> Ralf Wildenhues wrote:
+> 
+> >Does the patch below fix it?
+> 
+> It looks good, though there is at least one more extension: '.inf',
+> which is generated with optimization. Other files with extensions
+> '.dbo', '.dla', etc. are created when object files are produces,
+> but these don't seem to confuse configure.
+
+I believe we do not need to add the other extensions (except for .inf)
+to _AC_COMPILER_OBJEXT_REJECT, unless the compiler uses neither `.o' nor
+`.obj' for object.  `configure' *should* in fact remove the other files
+created during its tests.
+
+> >Well, a shell pattern for exclusion is cheap, and the number of
+> >different things to exclude seems not so high, so I think that's
+> >the best solution for now.  Until one compiler produces an extension
+> >that needs to be excluded for another one.
+> 
+> That's exactly my concern. As you can see above, the list of
+> extensions to be excluded is growing...
+
+I don't know a compiler that creates executables with these extensions
+(but I haven't been around much in this regard).
+
+OTOH, one of the most valuable assets of Autoconf is the number of very
+experienced participants of its mailing list.  Let's just wait a few
+days, someone may speak up if above assumptions are wrong.  :)
+
+> Also, if I want to avoid upgrading autoconf, is there a way
+> to fix the problem locally, say, in my aclocal.m4 file ?
+
+Not that I know of.  You can always define your own macro, for example
+a fixed version with the same name.  But that may be very fragile, not
+compatible with the next or previous Autoconf, or anything, so I would
+not recommend it.  Maybe AC_EXEEXT should offer a possibility to
+override it.
+
+Updated patch below.
+
+Cheers,
+Ralf
+
+        * lib/autoconf/lang.m4 (_AC_COMPILER_OBJEXT_REJECT):
+        Add `*.map' and `.inf' for Green Hills compiler.
+        Reported by Stefan Seefeld <stefan at codesourcery.com>.
+
+Index: lib/autoconf/lang.m4
+===================================================================
+RCS file: /cvsroot/autoconf/autoconf/lib/autoconf/lang.m4,v
+retrieving revision 1.171
+diff -u -r1.171 lang.m4
+--- lib/autoconf/lang.m4	14 May 2005 07:00:40 -0000	1.171
++++ lib/autoconf/lang.m4	12 Nov 2005 14:11:15 -0000
+@@ -421,6 +421,9 @@
+ #
+ # - *.xSYM
+ #   Created on BeOS.  Seems to be per executable.
++# 
++# - *.map, *.inf
++#   Created by the Green Hills compiler.
+ 
+ 
+ # _AC_COMPILER_OBJEXT_REJECT
+@@ -428,7 +431,7 @@
+ # Case/esac pattern matching the files to be ignored when looking for
+ # compiled object files.
+ m4_define([_AC_COMPILER_OBJEXT_REJECT],
+-[*.$ac_ext | *.xcoff | *.tds | *.d | *.pdb | *.xSYM | *.bb | *.bbg])
++[*.$ac_ext | *.xcoff | *.tds | *.d | *.pdb | *.xSYM | *.bb | *.bbg | *.map | *.inf])
+ 
+ 
+ # _AC_COMPILER_EXEEXT_REJECT
+
+
+From stefan at codesourcery.com  Sat Nov 12 15:24:39 2005
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Sat, 12 Nov 2005 10:24:39 -0500
+Subject: [vsipl++] Re: overriding autoconf's own exeext detection
+In-Reply-To: <20051112141340.GB10504@iam.uni-bonn.de>
+References: <4374AB36.6000202@codesourcery.com> <20051111170026.GA22634@iam.uni-bonn.de> <4374D00D.1030207@codesourcery.com> <20051112141340.GB10504@iam.uni-bonn.de>
+Message-ID: <43760937.60309@codesourcery.com>
+
+Ralf Wildenhues wrote:
+> Hi Stefan,
+> 
+> * Stefan Seefeld wrote on Fri, Nov 11, 2005 at 06:08:29PM CET:
+> 
+>>Ralf Wildenhues wrote:
+>>
+>>
+>>>Does the patch below fix it?
+>>
+>>It looks good, though there is at least one more extension: '.inf',
+>>which is generated with optimization. Other files with extensions
+>>'.dbo', '.dla', etc. are created when object files are produces,
+>>but these don't seem to confuse configure.
+> 
+> 
+> I believe we do not need to add the other extensions (except for .inf)
+> to _AC_COMPILER_OBJEXT_REJECT, unless the compiler uses neither `.o' nor
+> `.obj' for object.  `configure' *should* in fact remove the other files
+> created during its tests.
+
+The default object extension for that compiler is '.oppc', fwiw.
+
+[...]
+
+>>Also, if I want to avoid upgrading autoconf, is there a way
+>>to fix the problem locally, say, in my aclocal.m4 file ?
+> 
+> 
+> Not that I know of.  You can always define your own macro, for example
+> a fixed version with the same name.  But that may be very fragile, not
+> compatible with the next or previous Autoconf, or anything, so I would
+> not recommend it.  Maybe AC_EXEEXT should offer a possibility to
+> override it.
+
+AC_EXEEXT is marked as obsolete, as autoconf detects the extension 'automatically'.
+Oh well. It might have been better if autoconf, recognizing its limitations, would
+keep a backdoor for developers to override settings instead of forcing them to live
+with false guesses.
+
+> Updated patch below.
+
+Ok, that seems to work. Thanks !
+
+Regards,
+		Stefan
+
+
+From jules at codesourcery.com  Mon Nov 14 13:38:02 2005
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Mon, 14 Nov 2005 08:38:02 -0500
+Subject: [vsipl++] compiler warnings
+In-Reply-To: <4375237D.8020607@codesourcery.com>
+References: <43750DCC.4050805@codesourcery.com> <4375197D.8060908@codesourcery.com> <43751C3C.1070907@codesourcery.com> <4375237D.8020607@codesourcery.com>
+Message-ID: <4378933A.7040208@codesourcery.com>
+
+Mark Mitchell wrote:
+
+> 
+> Here is the trick I would use:
+> 
+>   switch(d) {
+>     default: assert(false);
+>     case 0: return dist0_.num_subblocks();
+>     case 1: return dist1_.num_subblocks();
+>     case 2: return dist2_.num_subblocks();
+>   }
+
+Mark, good idea!
+
+Stefan, can you give this a try?
+
+			thanks,
+			-- Jules
+
+
+From stefan at codesourcery.com  Mon Nov 14 15:33:52 2005
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Mon, 14 Nov 2005 10:33:52 -0500
+Subject: [vsipl++] compiler warnings
+In-Reply-To: <4378933A.7040208@codesourcery.com>
+References: <43750DCC.4050805@codesourcery.com> <4375197D.8060908@codesourcery.com> <43751C3C.1070907@codesourcery.com> <4375237D.8020607@codesourcery.com> <4378933A.7040208@codesourcery.com>
+Message-ID: <4378AE60.1080309@codesourcery.com>
+
+The attached patch silences two more ghs warnings.
+
+Regards,
+		Stefan
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: ghs.patch
+Type: text/x-patch
+Size: 4163 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20051114/1225ca89/attachment.bin>
+
+From jules at codesourcery.com  Mon Nov 14 15:46:06 2005
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Mon, 14 Nov 2005 10:46:06 -0500
+Subject: [vsipl++] compiler warnings
+In-Reply-To: <4378AE60.1080309@codesourcery.com>
+References: <43750DCC.4050805@codesourcery.com> <4375197D.8060908@codesourcery.com> <43751C3C.1070907@codesourcery.com> <4375237D.8020607@codesourcery.com> <4378933A.7040208@codesourcery.com> <4378AE60.1080309@codesourcery.com>
+Message-ID: <4378B13E.10809@codesourcery.com>
+
+
+
+Stefan Seefeld wrote:
+> The attached patch silences two more ghs warnings.
+
+Looks good. -- Jules
+
+> 
+> Regards,
+>         Stefan
+
+>  
+> +#if 0
+
+How should we set this?  Via a configure check or based on compiler 
+version macros?
+
+How about:
+
+#if __ghs__
+
+> +// Define the macro for those compilers that would complain about
+> +// missing return statements in non-void functions.
+> +# define VSIP_IMPL_UNREACHABLE_RETURN(expr) return expr;
+> +#else
+> +# define VSIP_IMPL_UNREACHABLE_RETURN(expr)
+> +#endif
+
+We should add a comment with our current knowledge of compiler state:
+
+// GCC: doesn't care
+// Intel C++: complains about unreachable returns
+// GreenHills: complains about missing unreachable returns
+
+
+From stefan at codesourcery.com  Mon Nov 14 15:56:28 2005
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Mon, 14 Nov 2005 10:56:28 -0500
+Subject: [vsipl++] compiler warnings
+In-Reply-To: <4378B13E.10809@codesourcery.com>
+References: <43750DCC.4050805@codesourcery.com> <4375197D.8060908@codesourcery.com> <43751C3C.1070907@codesourcery.com> <4375237D.8020607@codesourcery.com> <4378933A.7040208@codesourcery.com> <4378AE60.1080309@codesourcery.com> <4378B13E.10809@codesourcery.com>
+Message-ID: <4378B3AC.9020703@codesourcery.com>
+
+Jules Bergmann wrote:
+
+>> +#if 0
+> 
+> 
+> How should we set this?  Via a configure check or based on compiler 
+> version macros?
+> 
+> How about:
+> 
+> #if __ghs__
+
+I believe I introduced the two offending return statements specifically
+to make icc happy. Thus I'd suggest to replace the #if 0 by something
+like #if __icc__. I'll look into it as soon as I have access to icc
+again.
+
+
+> We should add a comment with our current knowledge of compiler state:
+> 
+> // GCC: doesn't care
+> // Intel C++: complains about unreachable returns
+> // GreenHills: complains about missing unreachable returns
+
+Indeed. I'll take care of this as soon as I can confirm that it was icc
+which requires the macro to be set.
+
+Regards,
+		Stefan
+
+
+From stefan at codesourcery.com  Mon Nov 14 21:31:06 2005
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Mon, 14 Nov 2005 16:31:06 -0500
+Subject: [vsipl++] compiler warnings
+In-Reply-To: <4378B3AC.9020703@codesourcery.com>
+References: <43750DCC.4050805@codesourcery.com> <4375197D.8060908@codesourcery.com> <43751C3C.1070907@codesourcery.com> <4375237D.8020607@codesourcery.com> <4378933A.7040208@codesourcery.com> <4378AE60.1080309@codesourcery.com> <4378B13E.10809@codesourcery.com> <4378B3AC.9020703@codesourcery.com>
+Message-ID: <4379021A.8020800@codesourcery.com>
+
+Stefan Seefeld wrote:
+> Jules Bergmann wrote:
+> 
+>>> +#if 0
+>>
+>>
+>>
+>> How should we set this?  Via a configure check or based on compiler 
+>> version macros?
+>>
+>> How about:
+>>
+>> #if __ghs__
+> 
+> 
+> I believe I introduced the two offending return statements specifically
+> to make icc happy. Thus I'd suggest to replace the #if 0 by something
+> like #if __icc__. I'll look into it as soon as I have access to icc
+> again.
+
+It appears I introduced these dummy return statements when doing the
+initial port to ghs. At the time, we were using --disable-exceptions,
+and with that option we would call 'fatal_exception()' instead of
+throwing an exception. As it happens that function is marked up
+as '__noreturn__', but the markup code was only visible if __GCC__ >= 2.
+
+As it turns out, ghs understands GCC attributes, so this revised patch
+simply enables the VSIP_IMPL_NORETURN macro for ghs, too.
+
+This means that now all three supported compilers (gcc, icc, ghs)
+recognize the __noreturn__ attribute, and thus no dummy return
+statement is needed any more.
+
+The code is tested with gcc as well as ghs, both with and without
+--disable-exceptions.
+
+Regards,
+		Stefan
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: ghs.patch
+Type: text/x-patch
+Size: 1415 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20051114/69273aeb/attachment.bin>
+
+From jules at codesourcery.com  Mon Nov 14 21:40:57 2005
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Mon, 14 Nov 2005 16:40:57 -0500
+Subject: [vsipl++] compiler warnings
+In-Reply-To: <4379021A.8020800@codesourcery.com>
+References: <43750DCC.4050805@codesourcery.com> <4375197D.8060908@codesourcery.com> <43751C3C.1070907@codesourcery.com> <4375237D.8020607@codesourcery.com> <4378933A.7040208@codesourcery.com> <4378AE60.1080309@codesourcery.com> <4378B13E.10809@codesourcery.com> <4378B3AC.9020703@codesourcery.com> <4379021A.8020800@codesourcery.com>
+Message-ID: <43790469.7070508@codesourcery.com>
+
+
+
+Stefan Seefeld wrote:
+
+> 
+> 
+> It appears I introduced these dummy return statements when doing the
+> initial port to ghs. At the time, we were using --disable-exceptions,
+> and with that option we would call 'fatal_exception()' instead of
+> throwing an exception. As it happens that function is marked up
+> as '__noreturn__', but the markup code was only visible if __GCC__ >= 2.
+> 
+> As it turns out, ghs understands GCC attributes, so this revised patch
+> simply enables the VSIP_IMPL_NORETURN macro for ghs, too.
+> 
+> This means that now all three supported compilers (gcc, icc, ghs)
+> recognize the __noreturn__ attribute, and thus no dummy return
+> statement is needed any more.
+> 
+> The code is tested with gcc as well as ghs, both with and without
+> --disable-exceptions.
+> 
+
+Looks good, please check this in. -- Jules
+
+
+
+From don at codesourcery.com  Tue Nov 15 04:01:27 2005
+From: don at codesourcery.com (Don McCoy)
+Date: Mon, 14 Nov 2005 21:01:27 -0700
+Subject: [vsipl++] [patch] SAL dispatch for matrix and vector products
+In-Reply-To: <4360D61B.6040508@codesourcery.com>
+References: <435FDD81.9070002@codesourcery.com> <4360D61B.6040508@codesourcery.com>
+Message-ID: <43795D97.40008@codesourcery.com>
+
+Here is an updated patch for SAL.  In addition to the matrix-vector 
+products, it includes outer and gemp.  Some comments are included below...
+
+Jules Bergmann wrote:
+
+> Don McCoy wrote:
+>
+>> I am working on BLAS dispatch as well.  Patch to follow.  This one 
+>> just includes SAL.  Hopefully I've separated them well.
+>>
+>> Two issues worth pointing out:
+>>
+>>    1) The exec() function checks for row-major ordering because it 
+>> calls the newer SAL functions (mat_mul) that allow the column-stride 
+>> to be specified.   I believe the rows must be unit stride.  This is a 
+>> little less general than the older ones (mulx) which allow non-unit 
+>> strides.  Recently, we heard back from Mercury that the older ones 
+>> perform better (at this time).  Given that the older ones handle 
+>> non-unit strides and are faster, should we revert to using those?  If 
+>> Mercury changes in the future, then we can follow.
+>
+> Yes, we should revert to the old ones for now.
+>
+> Because the old and new functions have different dispatch requirements 
+> (for supported strides and mixing of dimension orderings), we should 
+> have separate evaluators for each (as opposed to trying to hide the 
+> different in sal::mmul).
+
+I added SAL_USE_MAT_MUL for use in selecting the newer functions.  The 
+default (0) selects the old ones.  It is tempting to make this a 
+configuration option, but i really don't anticipate changing this switch 
+back and forth.  I'm sure we'll just change it to a 1 when Mercury 
+indicates it is a good time to do so.
+
+>>    2) Split-complex products (other than vector-vector) are not 
+>> handled at this time.  Just a reminder that we were going to discuss 
+>> how to address this issue sometime.
+>
+>
+> We should be able to handle this by:
+>
+>  - providing overloads of sal::mmul for std::pair<T*, T*>, and
+>  - checking that all the matrices have the same complex format in 
+> ct_valid.
+>
+> Granted, we wont be able to fully exercise this until we get prod 
+> integrated into the expression templates.
+>
+
+I added a function in tests/matvec-prod.cpp that calls 'generic_prod()' 
+directly with split-complex data.  This lets us see that it is working 
+now.  Until we change prod() itself, it will select the generic 
+evaluator that returns the data in interleaved form, regardless of the 
+layout of the inputs.
+
+
+A note on testing:  The easiest way to test the dispatch mechanism was 
+to insert debugging statements into the code in order to observe the SAL 
+functions being called.  The code in tests/matvec-prod.cpp walks through 
+a very large assortment of types, ordering and matrix sizes.  Checking 
+that SAL is used everywhere it could be is a manual process that is 
+likely to be error prone.  The hope is that I did not miss any cases 
+where SAL could be used (e.g. an error in the rt_valid() function caused 
+the generic evaluator to be selected instead).  Of course, cases where 
+SAL is used where it *shouldn't* be are already taken care of. :)
+
+Coming at this from another angle, we could test each library for 
+certain capabilities and make sure it was used where/when it should be.  
+The only way i can think to do this would involve inserting code that 
+would allow us to detect (after a call to the dispatch mechanism) 
+/which/ evaluator succeeded.  It may be too much work for not enough 
+benefit, but I thought I'd throw the idea out there just in case.
+
+Regards,
+
+-- 
+Don McCoy
+CodeSourcery, LLC
+
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: sd2.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20051114/9dee1876/attachment.ksh>
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: sd2.diff
+Type: text/x-patch
+Size: 47497 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20051114/9dee1876/attachment.bin>
+
+From jules at codesourcery.com  Tue Nov 15 20:26:54 2005
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Tue, 15 Nov 2005 15:26:54 -0500
+Subject: [vsipl++] [patch] SAL dispatch for matrix and vector products
+In-Reply-To: <43795D97.40008@codesourcery.com>
+References: <435FDD81.9070002@codesourcery.com> <4360D61B.6040508@codesourcery.com> <43795D97.40008@codesourcery.com>
+Message-ID: <437A448E.9080107@codesourcery.com>
+
+Don, Looks good, please check this in. -- Jules
+
+
+Don McCoy wrote:
+> Here is an updated patch for SAL.  In addition to the matrix-vector 
+> products, it includes outer and gemp.  Some comments are included below...
+
+> 
+> 
+> I added SAL_USE_MAT_MUL for use in selecting the newer functions.
+
+This should start with VSIP_IMPL, i.e. VSIP_IMPL_SAL_USE_MAT_MUL
+
+>  The 
+> default (0) selects the old ones.  It is tempting to make this a 
+> configuration option, but i really don't anticipate changing this switch 
+> back and forth.  I'm sure we'll just change it to a 1 when Mercury 
+> indicates it is a good time to do so.
+
+That's a good idea.  It's possible that people will want to use our 
+library with older versions of SAL.  After checking this in, can you add 
+a configure option?
+
+
+
+From don at codesourcery.com  Tue Nov 15 21:08:00 2005
+From: don at codesourcery.com (Don McCoy)
+Date: Tue, 15 Nov 2005 14:08:00 -0700
+Subject: [vsipl++] [patch] SAL dispatch for matrix and vector products
+In-Reply-To: <437A448E.9080107@codesourcery.com>
+References: <435FDD81.9070002@codesourcery.com> <4360D61B.6040508@codesourcery.com> <43795D97.40008@codesourcery.com> <437A448E.9080107@codesourcery.com>
+Message-ID: <437A4E30.5020509@codesourcery.com>
+
+Jules Bergmann wrote:
+
+>> I added SAL_USE_MAT_MUL for use in selecting the newer functions.
+>
+> This should start with VSIP_IMPL, i.e. VSIP_IMPL_SAL_USE_MAT_MUL
+>
+Fixed.  Committed.
+
+>>  The default (0) selects the old ones.  It is tempting to make this a 
+>> configuration option, but i really don't anticipate changing this 
+>> switch back and forth.  I'm sure we'll just change it to a 1 when 
+>> Mercury indicates it is a good time to do so.
+>
+>
+> That's a good idea.  It's possible that people will want to use our 
+> library with older versions of SAL.  After checking this in, can you 
+> add a configure option?
+>
+Ok.  I'll make it override the above -- i.e. configure can optionally 
+set it and i'll add #ifndef ... to the code so that it still defaults to 
+0.  If there is a alternate method that is preferred, please let me 
+know.  Specifically, did you want it to be a mandatory option (when 
+using SAL) so that the user is forced to select one or the other?
+
+
+-- 
+Don McCoy
+CodeSourcery, LLC
+
+
+
+From jules at codesourcery.com  Wed Nov 16 12:43:33 2005
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Wed, 16 Nov 2005 07:43:33 -0500
+Subject: [vsipl++] [patch] SAL dispatch for matrix and vector products
+In-Reply-To: <437A4E30.5020509@codesourcery.com>
+References: <435FDD81.9070002@codesourcery.com> <4360D61B.6040508@codesourcery.com> <43795D97.40008@codesourcery.com> <437A448E.9080107@codesourcery.com> <437A4E30.5020509@codesourcery.com>
+Message-ID: <437B2975.4070509@codesourcery.com>
+
+
+
+Don McCoy wrote:
+> Jules Bergmann wrote:
+
+>>
+>> That's a good idea.  It's possible that people will want to use our 
+>> library with older versions of SAL.  After checking this in, can you 
+>> add a configure option?
+>>
+> Ok.  I'll make it override the above -- i.e. configure can optionally 
+> set it and i'll add #ifndef ... to the code so that it still defaults to 
+> 0.  If there is a alternate method that is preferred, please let me 
+> know.
+
+If you put something like:
+
+	AC_ARG_ENABLE ... to set sal_use_mat_mul
+
+	if test "$sal_use_mat_mul" = "yes"; then
+	  AC_DEFINE_UNQUOTED(VSIP_IMPL_SAL_USE_MAT_MUL, 1,
+	     [Define to use the new SAL mat_mul functions.])
+         fi
+
+in configure.ac,
+
+then acconfig.hpp will have either (if sal_use_mat_mul != yes):
+
+	/* #undef VSIP_IMPL_SAL_USE_MAT_MUL */
+
+or (if sal_use_mat_mul == yes):
+
+	#define VSIP_IMPL_SAL_USE_MAT_MUL
+
+Then you shouldn't need to optionally set it, i.e. your '#if 
+VSIP_IMPL_SAL_USE_MAT_MUL' will treat VSIP_IMPL_SAL_USE_MAT_MUL the same 
+whether it is 0 or undefined.
+
+> Specifically, did you want it to be a mandatory option (when 
+> using SAL) so that the user is forced to select one or the other?
+> 
+
+No, it doesn't need to be mandatory.  Probably the default should be to 
+not use mat_mul.
+
+				-- Jules
+
+
+From stefan at codesourcery.com  Fri Nov 18 14:31:19 2005
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Fri, 18 Nov 2005 09:31:19 -0500
+Subject: PATCH: ghs workaround
+Message-ID: <437DE5B7.6010409@codesourcery.com>
+
+It appears ghs didn't like the way I used a template default argument
+to combine a unary functor and a binary functor into one.
+This patch separates both, and makes ghs happy.
+
+Regards,
+		Stefan
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: complex.patch
+Type: text/x-patch
+Size: 1664 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20051118/57c5f78a/attachment.bin>
+
+From jules at codesourcery.com  Tue Nov 22 22:34:00 2005
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Tue, 22 Nov 2005 17:34:00 -0500
+Subject: [vsipl++] PATCH: ghs workaround
+In-Reply-To: <437DE5B7.6010409@codesourcery.com>
+References: <437DE5B7.6010409@codesourcery.com>
+Message-ID: <43839CD8.6010409@codesourcery.com>
+
+Stefan,  I'm sorry that I missed this.  Please apply if you haven't done 
+so already.  Also, I'll post the extdata.hpp patch in a bit.  -- Jules
+
+Stefan Seefeld wrote:
+> It appears ghs didn't like the way I used a template default argument
+> to combine a unary functor and a binary functor into one.
+> This patch separates both, and makes ghs happy.
+> 
+> Regards,
+>         Stefan
+> 
+
+
+From don at codesourcery.com  Mon Nov 28 08:19:54 2005
+From: don at codesourcery.com (Don McCoy)
+Date: Mon, 28 Nov 2005 01:19:54 -0700
+Subject: [patch] SAL convolution
+Message-ID: <438ABDAA.9030507@codesourcery.com>
+
+The attached patch integrates SAL's version of convolution.  Only the 
+1-D case is implemented at this time.  The decimation parameter must 
+also be one.
+
+A new set of tests was added for testing support of data strides other 
+than one.  However, because the filter is held in a default Vector<T> as 
+part of the convolution object, it is always unit-stride.  The input and 
+output strides do not have to be the same, but they are at this time.
+
+The SAL functions used for this (*convx) perform time-domain 
+convolution.  According to Mercury's documentation, this is efficient 
+for cases where the filter (or kernel) length is up to 36 (17 for 
+complex values).  This patch reverts to the generic method for 
+convolution for longer lengths.  For the future we may want to use SAL's 
+fast (FFT-based) convolution functions instead.
+
+Regards,
+
+-- 
+Don McCoy
+CodeSourcery, LLC
+
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: sc.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20051128/93f85b45/attachment.ksh>
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: sc.diff
+Type: text/x-patch
+Size: 19651 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20051128/93f85b45/attachment.bin>
+
+From jules at codesourcery.com  Mon Nov 28 16:11:48 2005
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Mon, 28 Nov 2005 11:11:48 -0500
+Subject: [patch] GHS/Mercury fixes for configure and extdata.hpp
+Message-ID: <438B2C44.4040002@codesourcery.com>
+
+An embedded and charset-unspecified text was scrubbed...
+Name: mc.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20051128/67fb0a49/attachment.ksh>
+
+From jules at codesourcery.com  Mon Nov 28 16:36:55 2005
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Mon, 28 Nov 2005 11:36:55 -0500
+Subject: [patch] GHS/Mercury fixes for configure and extdata.hpp
+In-Reply-To: <438B2C44.4040002@codesourcery.com>
+References: <438B2C44.4040002@codesourcery.com>
+Message-ID: <438B3227.1000908@codesourcery.com>
+
+Fix handling of "." for exe extension.  It is necessary for user to 
+supply the ".". -- Jules
+
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: mc.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20051128/1d5af6fd/attachment.ksh>
+
+From stefan at codesourcery.com  Mon Nov 28 16:44:42 2005
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Mon, 28 Nov 2005 11:44:42 -0500
+Subject: [vsipl++] Re: [patch] GHS/Mercury fixes for configure and extdata.hpp
+In-Reply-To: <438B3227.1000908@codesourcery.com>
+References: <438B2C44.4040002@codesourcery.com> <438B3227.1000908@codesourcery.com>
+Message-ID: <438B33FA.9010307@codesourcery.com>
+
+Jules Bergmann wrote:
+> Fix handling of "." for exe extension.  It is necessary for user to 
+> supply the ".". -- Jules
+
+This looks good, thanks !
+
+Stefan
+
+
+From jules at codesourcery.com  Mon Nov 28 20:17:15 2005
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Mon, 28 Nov 2005 15:17:15 -0500
+Subject: [vsipl++] [patch] SAL convolution
+In-Reply-To: <438ABDAA.9030507@codesourcery.com>
+References: <438ABDAA.9030507@codesourcery.com>
+Message-ID: <438B65CB.50107@codesourcery.com>
+
+Don, looks good!  Please check it in.  Thanks -- Jules
+
+Don McCoy wrote:
+> The attached patch integrates SAL's version of convolution.  Only the 
+> 1-D case is implemented at this time.  The decimation parameter must 
+> also be one.
+> 
+> A new set of tests was added for testing support of data strides other 
+> than one.  However, because the filter is held in a default Vector<T> as 
+> part of the convolution object, it is always unit-stride.  The input and 
+> output strides do not have to be the same, but they are at this time.
+> 
+> The SAL functions used for this (*convx) perform time-domain 
+> convolution.  According to Mercury's documentation, this is efficient 
+> for cases where the filter (or kernel) length is up to 36 (17 for 
+> complex values).  This patch reverts to the generic method for 
+> convolution for longer lengths.  For the future we may want to use SAL's 
+> fast (FFT-based) convolution functions instead.
+> 
+> Regards,
+
+
+
+> Index: src/vsip/impl/sal.hpp
+> ===================================================================
+> RCS file: /home/cvs/Repository/vpp/src/vsip/impl/sal.hpp,v
+> retrieving revision 1.2
+> diff -c -p -r1.2 sal.hpp
+> *** src/vsip/impl/sal.hpp	15 Nov 2005 21:01:27 -0000	1.2
+> --- src/vsip/impl/sal.hpp	28 Nov 2005 07:59:21 -0000
+> ***************
+> *** 14,19 ****
+> --- 14,20 ----
+>     Included Files
+>   ***********************************************************************/
+>   
+> + #include <iostream>
+
+Is it necessary to include iostream here?
+
+
+
+
+From don at codesourcery.com  Tue Nov 29 04:36:08 2005
+From: don at codesourcery.com (Don McCoy)
+Date: Mon, 28 Nov 2005 21:36:08 -0700
+Subject: [patch] modulate [math.matvec.misc]
+Message-ID: <438BDAB8.2020103@codesourcery.com>
+
+Please find the attached patch for modulate.  It uses the error_db() 
+function to compare values against the reference calculation.  This is 
+also used by fft and correlation.  Each of those tests have separate 
+definitions that could be moved to a common header at some point.
+
+Regards,
+
+-- 
+Don McCoy
+CodeSourcery, LLC
+
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: mod.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20051128/382967b7/attachment.ksh>
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: mod.diff
+Type: text/x-patch
+Size: 5184 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20051128/382967b7/attachment.bin>
+
+From jules at codesourcery.com  Tue Nov 29 20:43:28 2005
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Tue, 29 Nov 2005 15:43:28 -0500
+Subject: [patch] Builtind ATLAS from VSIPL++ tree
+Message-ID: <438CBD70.9020806@codesourcery.com>
+
+This patch integrates the configuration, build, and install of ATLAS and 
+the LAPACK into VSIPL++.
+
+The default ATLAS configuration, which is an interactive C program, is 
+replaced by an autoconf script.  The autoconf script is currently a 
+subset of the original functionality, enough to build on Linux/x86 
+machines such as Sethra.  The default ATLAS build is used as is, with 
+some changes to build outside of the source trees.
+
+When configuring VSIPL++, the builtin ATLAS gets used if lapack is 
+enabled (--enable-lapack) and no installed ATLAS or LAPACK libraries are 
+found, or if it is explicitly selected (--with-lapack=builtin).
+
+ATLAS doesn't implement the full LAPACK library, so to fill in the 
+missing bits, I added the LAPACK reference implementation to our source 
+tree (as a CVS module -- you will probably need to re-checkout VSIPL++ 
+to get this).
+
+				-- Jules
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: atlas.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20051129/f8062684/attachment.ksh>
+
+From jules at codesourcery.com  Tue Nov 29 20:50:20 2005
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Tue, 29 Nov 2005 15:50:20 -0500
+Subject: [vsipl++] [patch] modulate [math.matvec.misc]
+In-Reply-To: <438BDAB8.2020103@codesourcery.com>
+References: <438BDAB8.2020103@codesourcery.com>
+Message-ID: <438CBF0C.1010201@codesourcery.com>
+
+Don,  This looks good, please check it in. -- Jules
+
+Don McCoy wrote:
+> Please find the attached patch for modulate.  It uses the error_db() 
+> function to compare values against the reference calculation.  This is 
+> also used by fft and correlation.  Each of those tests have separate 
+> definitions that could be moved to a common header at some point.
+> 
+> Regards,
+
+

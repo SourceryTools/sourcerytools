@@ -1,0 +1,103 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> cancellation points report failure
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:c%2B%2B-pthreads%40codesourcery.com?Subject=Re%3A%20cancellation%20points%20report%20failure&In-Reply-To=%3C20031219194503.GA31795%40tofu.dreamhost.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000007.html">
+   <LINK REL="Next"  HREF="000009.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>cancellation points report failure</H1>
+    <B>Nathan Myers</B> 
+    <A HREF="mailto:c%2B%2B-pthreads%40codesourcery.com?Subject=Re%3A%20cancellation%20points%20report%20failure&In-Reply-To=%3C20031219194503.GA31795%40tofu.dreamhost.com%3E"
+       TITLE="cancellation points report failure">ncm at cantrip.org
+       </A><BR>
+    <I>Fri Dec 19 19:45:03 UTC 2003</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000007.html">[c++-pthreads] Re: C++ and POSIX Threads Mailing List
+</A></li>
+        <LI>Next message: <A HREF="000009.html">[c++-pthreads] cancellation points report failure
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#8">[ date ]</a>
+              <a href="thread.html#8">[ thread ]</a>
+              <a href="subject.html#8">[ subject ]</a>
+              <a href="author.html#8">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>On Fri, Dec 19, 2003 at 10:28:46AM -0800, Matt Austern wrote:
+&gt;<i> 
+</I>&gt;<i> One possible solution (perhaps overly drastic): in C++, eliminate
+</I>&gt;<i> all cancelation points except for pthread_testcancel.
+</I>
+Another would be for those functions identified as cancellation 
+points to report failure.  In particular, a read() call should return 
+immediately.  Existing (good) code has to handle normal failures 
+already.  Well-designed library code will propagate the failure up 
+to the point where a check for cancellation, and throw, may occur.  
+
+To me, the whole problem is how to salvage libraries, both C and C++.  
+I don't know how to write C library code to maintain invariants against 
+stack unwinding.  By contrast, a main program that the author knows will 
+be running threaded can reasonably be expected to perform heroics to
+accommodate cancellations.  Our task is to get those cancellations
+propagated, reasonably quickly, to a context that expects them, without
+demanding that the libraries do anything unusual.  Any place where an
+exception is allowed, though (such as operator new() and filebuf::
+overflow()) seems like a reasonable place to turn the cancellation into 
+an exception.
+
+I expect that no matter what we do, some libraries will fail to 
+respond properly to a cancellation.  Code that fails to check for 
+write() failure is common, and for printf() even moreso.  That's too 
+bad, but we needn't agonize over it.  The set of libraries available 
+to threaded programs has always been restricted.  A requirement of 
+correct response to failures seems not to great an additional 
+restriction.
+
+I don't like the idea of ever entirely discarding a cancellation.  If 
+a cancellation exception is thrown, caught, and discarded, I would like
+to see it surface again at the next opportunity.  I think that means 
+that, e.g., I/O operations might be allowed in exception-handling code
+being run during the cancellation unwind, but if one of those handlers 
+were to swallow the exception, the next I/O operation would fail or
+throw another cancellation.  The idea is not to let the thread get
+much further without finding cause to bubble up toward the top-level
+caller that knows it's in a thread, and can die gracefully.
+
+Nathan Myers
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/c++-pthreads">ncm at cantrip.org</A>
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000007.html">[c++-pthreads] Re: C++ and POSIX Threads Mailing List
+</A></li>
+	<LI>Next message: <A HREF="000009.html">[c++-pthreads] cancellation points report failure
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#8">[ date ]</a>
+              <a href="thread.html#8">[ thread ]</a>
+              <a href="subject.html#8">[ subject ]</a>
+              <a href="author.html#8">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/c++-pthreads">More information about the c++-pthreads
+mailing list</a><br>
+</body></html>

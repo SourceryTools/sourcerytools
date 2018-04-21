@@ -1,0 +1,130 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [vsipl++] [patch] Support for Cell FFT's up to 4K points.
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20%5Bpatch%5D%20Support%20for%20Cell%20FFT%27s%20up%20to%204K%20points.&In-Reply-To=%3C45D1C089.5070709%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000881.html">
+   <LINK REL="Next"  HREF="000884.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[vsipl++] [patch] Support for Cell FFT's up to 4K points.</H1>
+    <B>Stefan Seefeld</B> 
+    <A HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20%5Bpatch%5D%20Support%20for%20Cell%20FFT%27s%20up%20to%204K%20points.&In-Reply-To=%3C45D1C089.5070709%40codesourcery.com%3E"
+       TITLE="[vsipl++] [patch] Support for Cell FFT's up to 4K points.">stefan at codesourcery.com
+       </A><BR>
+    <I>Tue Feb 13 13:43:37 UTC 2007</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000881.html">[vsipl++] [patch] Support for Cell FFT's up to 4K points.
+</A></li>
+        <LI>Next message: <A HREF="000884.html">[vsipl++] [patch] Support for Cell FFT's up to 4K points.
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#883">[ date ]</a>
+              <a href="thread.html#883">[ thread ]</a>
+              <a href="subject.html#883">[ subject ]</a>
+              <a href="author.html#883">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Don McCoy wrote:
+
+&gt;&gt;<i> [5] 128 is probably a good alignment.  However, it is kind of a magic
+</I>&gt;&gt;<i> number that should be a macro (VSIP_IMPL_CELL_DMAALIGNMENT, pick a
+</I>&gt;&gt;<i> good name) to call it out.
+</I>&gt;&gt;<i>
+</I>&gt;<i> Changed to VSIP_IMPL_ALLOC_ALIGNMENT, and am compiling with
+</I>&gt;<i> --with-alignment=128.  I can't think of a compelling reason to make a
+</I>&gt;<i> new macro here, but if someone else can, please identify it.
+</I>
+I think this is the right thing to do.
+Jules, we quickly talked about this in the past: should we make the implicit
+memory allocation used by Dense&lt;&gt; (i.e. when not using user-storage) use
+alloc_align&lt;&gt; instead of 'new' ?
+
+&gt;&gt;<i> [8] Do we really have a real-&gt;complex FFT on the SPE?
+</I>&gt;&gt;<i>
+</I>&gt;<i> No, but we could implement these variations fairly easily by putting in
+</I>&gt;<i> an extra copy in the dispatcher.  I'll address this soon.
+</I>
+Are you referring to dispatching a real FFT to complex FFT ? I don't think
+this is a good idea. Doing a real FFT should be substantially faster than
+a complex FFT, and take much less memory.
+
+&gt;&gt;<i> Also, I don't see how you could check for unit-stride here since there
+</I>&gt;&gt;<i> is no layout info.  I need to refresh my memory on rt_valid for FFT
+</I>&gt;&gt;<i> dispatch a bit.
+</I>&gt;&gt;<i>
+</I>&gt;<i> I was looking at the serial expression dispatch code, which of course is
+</I>&gt;<i> different.  I'd like to understand how this is handled in the FFT code
+</I>&gt;<i> though.
+</I>
+Data layout is checked in the operator() implementation(s). Have a look at
+vsip/opt/workspace.hpp:97. We assume unit-stride is supported by all backends,
+so we have a 'fast path' for it.
+In other cases we first need to query the backend whether it supports the
+given layout, by calling backend-&gt;query_layout(), passing in the actual
+layout, and getting back a modified layout that would be accepted.
+Based on this we construct an 'Rt_ext_data' object that will make the
+necessary adjustments (i.e. possibly do a copy internally).
+
+So, as a backend implementer, you should look at the default implementation
+in vsip/core/fft/backend.hpp:51, possibly overriding this from the cbe backends.
+
+&gt;<i> Although this did remind me that we are not passing any flags to the SPU
+</I>&gt;<i> compiler like -Wall.  I changed this to do the following:
+</I>&gt;<i> 
+</I>&gt;<i>    CC_SPU_FLAGS := @CXXFLAGS@
+</I>&gt;<i> 
+</I>&gt;<i> Which passes any PPU flags from the configure line on to the SPU
+</I>&gt;<i> compiler.  Is this ok, at least for now?
+</I>
+This should be
+
+CC_SPU_FLAGS := @CFLAGS@,
+
+since CXXFLAGS may contain C++-specific flags that are not valid when compiling
+C. In the long run we should think of setting CC_SPU_FLAGS from within configure.ac,
+the same way CFLAGS and CXXFLAGS are set, so we can predefine the variable, and then
+only add to that, instead of overwriting it.
+
+Thanks,
+		Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">stefan at codesourcery.com</A>
+(650) 331-3385 x718
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000881.html">[vsipl++] [patch] Support for Cell FFT's up to 4K points.
+</A></li>
+	<LI>Next message: <A HREF="000884.html">[vsipl++] [patch] Support for Cell FFT's up to 4K points.
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#883">[ date ]</a>
+              <a href="thread.html#883">[ thread ]</a>
+              <a href="subject.html#883">[ subject ]</a>
+              <a href="author.html#883">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">More information about the vsipl++
+mailing list</a><br>
+</body></html>

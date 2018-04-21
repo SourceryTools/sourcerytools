@@ -1,0 +1,664 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [PATCH] Add MPI variants for RemoteProxy, CollectFromContexts and ReduceOverContexts
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20Add%20MPI%20variants%20for%20RemoteProxy%2C%20CollectFromContexts%20and%0A%20ReduceOverContexts&In-Reply-To=%3CPine.LNX.4.58.0312302114250.671%40goofy%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001439.html">
+   <LINK REL="Next"  HREF="001441.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[PATCH] Add MPI variants for RemoteProxy, CollectFromContexts and ReduceOverContexts</H1>
+    <B>Richard Guenther</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20Add%20MPI%20variants%20for%20RemoteProxy%2C%20CollectFromContexts%20and%0A%20ReduceOverContexts&In-Reply-To=%3CPine.LNX.4.58.0312302114250.671%40goofy%3E"
+       TITLE="[PATCH] Add MPI variants for RemoteProxy, CollectFromContexts and ReduceOverContexts">rguenth at tat.physik.uni-tuebingen.de
+       </A><BR>
+    <I>Tue Dec 30 20:17:54 UTC 2003</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001439.html">[PATCH] Back to using Cheetah::CHEETAH for serialization
+</A></li>
+        <LI>Next message: <A HREF="001441.html">[PATCH] MPI SendReceive
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1440">[ date ]</a>
+              <a href="thread.html#1440">[ thread ]</a>
+              <a href="subject.html#1440">[ subject ]</a>
+              <a href="author.html#1440">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Hi!
+
+This patch adds native MPI variants of the above messaging abstractions.
+These patches were tested together with the remaining changes with serial,
+Cheetah and MPI.  As POOMA_MPI is never defined (for now), this shouldn't
+introduce regressions there, too.  But of course for it alone, this patch
+is useless.  More to follow.
+
+Ok?
+
+Richard.
+
+
+2003Dec30  Richard Guenther &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">richard.guenther at uni-tuebingen.de</A>&gt;
+
+	* src/Tulip/Messaging.cmpl.cpp: initialize static members for
+	POOMA_CHEETAH only.
+	src/Tulip/CollectFromContexts.h: add MPI variant.
+	src/Tulip/ReduceOverContexts.h: likewise.
+	src/Tulip/RemoteProxy.h: likewise.
+
+--- Messaging.cmpl.cpp	2003-12-09 20:30:07.000000000 +0100
++++ /tmp/Messaging.cmpl.cpp	2003-12-30 21:11:27.000000000 +0100
+@@ -38,12 +38,15 @@
+ #include &quot;Tulip/ReduceOverContexts.h&quot;
+ #include &quot;Tulip/RemoteProxy.h&quot;
+ #include &quot;Tulip/PatchSizeSyncer.h&quot;
++#include &quot;Tulip/SendReceive.h&quot;
+
++#if POOMA_CHEETAH
+ int  ReduceOverContextsBase::tagBase_m = 0;
+ int  CollectFromContextsBase::tagBase_m = 0;
+-
+ bool RemoteProxyBase::ready_m;
+ int  RemoteProxyBase::tag_m = 0;
++#endif
++
+
+ //-----------------------------------------------------------------------------
+ // Tag generator creates a set of tags for global use in r2.  There is a
+--- CollectFromContexts.h	2003-12-09 20:27:38.000000000 +0100
++++ /tmp/CollectFromContexts.h	2003-12-30 21:11:27.000000000 +0100
+@@ -44,12 +44,46 @@
+ // Includes:
+ //-----------------------------------------------------------------------------
+
+-#include &quot;Pooma/Pooma.h&quot;
+ #include &quot;Tulip/Messaging.h&quot;
++#include &quot;Utilities/PAssert.h&quot;
+
+ #include &lt;vector&gt;
+
+
++#if !POOMA_MESSAGING
++
++template&lt;class T&gt;
++class CollectFromContexts
++{
++public:
++
++  CollectFromContexts(const T &amp;val, int context = 0, bool valid = true)
++    {
++      PAssert(valid);
++      PAssert(context == 0);
++      value_m = val;
++    }
++
++  T &amp;operator[](int i)
++    {
++      PAssert(i == 0);
++      return value_m;
++    }
++
++  T operator[](int i) const
++    {
++      PAssert(i == 0);
++      return value_m;
++    }
++
++private:
++  T value_m;
++};
++
++
++#else // POOMA_MESSAGING
++
++
+ /**
+  * This class associates a value with a flag that indicates whether or not
+  * it is valid. It takes special care to not read the value if it is invalid.
+@@ -108,11 +142,8 @@
+ };
+
+
+-#if POOMA_CHEETAH
+-
+ namespace Cheetah {
+
+-
+ /**
+  * This class is used to serialize CollectionValue&lt;T&gt; objects, taking care
+  * not to send invalid values.
+@@ -177,9 +208,8 @@
+
+ } // namespace Cheetah
+
+-#endif
+-
+
++#if POOMA_CHEETAH
+ /**
+  * This struct holds a few static quantities that are shared by all
+  * instantiations of CollectFromContexts&lt;T&gt;. In particular, we want to
+@@ -192,14 +222,14 @@
+
+   static int tagBase_m;
+ };
+-
++#endif
+
+ /**
+  * This class is used to collect all valid values from all contexts.
+  */
+
+ template&lt;class T&gt;
+-class CollectFromContexts : public CollectFromContextsBase
++class CollectFromContexts
+ {
+   typedef CollectFromContexts&lt;T&gt; This_t;
+
+@@ -215,13 +245,50 @@
+   // to read 'val' unless it is a valid value. Values don't have to
+   // valid because not all contexts necessarily contribute to the collection.
+
+-#if POOMA_CHEETAH
++#if POOMA_MPI
++
++  CollectFromContexts(const T &amp;val, int toContext = 0, bool valid = true)
++    : toContext_m(toContext), data_m(Pooma::contexts())
++    {
++      typedef Cheetah::Serialize&lt;Cheetah::CHEETAH, CollectionValue&lt;T&gt; &gt; Serialize_t;
++      CollectionValue&lt;T&gt; v(valid, val);
++      // We need to get at the maximum size we need to transfer per context.
++      // With the valid/invalid mechanism we can't use size(v) for this, and
++      // for dynamic types like Grid&lt;&gt; we can't use CV&lt;T&gt;(true, T()) either.
++      // So for these cases we need to communicate the maximum size needed
++      // (but we might be able to optimize this with appropriate type tags).
++      int thislength = Serialize_t::size(v);
++      thislength = (thislength+7)&amp;~7; // round to qword size
++      int length;
++      MPI_Allreduce(&amp;thislength, &amp;length, 1, MPI_INT, MPI_MAX, MPI_COMM_WORLD);
++      char *buffer = new char[length];
++      char *recvbuffer = NULL;
++      if (Pooma::context() == toContext)
++        recvbuffer = new char[length*Pooma::contexts()];
++      Serialize_t::pack(v, buffer);
++      MPI_Gather(buffer, length, MPI_CHAR,
++                 recvbuffer, length, MPI_CHAR,
++                 toContext, MPI_COMM_WORLD);
++      delete[] buffer;
++      if (Pooma::context() == toContext) {
++        for (int i=0; i&lt;Pooma::contexts(); ++i) {
++          CollectionValue&lt;T&gt; *v2;
++          Serialize_t::unpack(v2, recvbuffer+i*length);
++          if (v2-&gt;valid())
++	    data_m[i] = v2-&gt;value();
++          Serialize_t::cleanup(v2);
++        }
++        delete[] recvbuffer;
++      }
++    }
++
++#elif POOMA_CHEETAH
+
+   CollectFromContexts(const T &amp;val, int toContext = 0, bool valid = true)
+     : toContext_m(toContext), data_m(Pooma::contexts())
+     {
+-      int tagBase = tagBase_m;
+-      tagBase_m += Pooma::contexts();
++      int tagBase = CollectFromContextsBase::tagBase_m;
++      CollectFromContextsBase::tagBase_m += Pooma::contexts();
+
+       if (Pooma::context() == toContext)
+ 	{
+@@ -255,20 +322,6 @@
+ 	    send(toContext, tagBase + Pooma::context(), v);
+ 	}
+     }
+-
+-  T &amp;operator[](int i)
+-    {
+-      PAssert(Pooma::context() == toContext_m);
+-      PAssert(i &gt;= 0 and i &lt; Pooma::contexts());
+-      return data_m[i];
+-    }
+-
+-  T operator[](int i) const
+-    {
+-      PAssert(Pooma::context() == toContext_m);
+-      PAssert(i &gt;= 0 and i &lt; Pooma::contexts());
+-      return data_m[i];
+-    }
+
+ private:
+
+@@ -283,47 +336,43 @@
+
+     me-&gt;toReceive_m--;
+   }
+-
+- // The actual value we're reducing.
+-
+-  std::vector&lt;T&gt; data_m;
+
+   // The number of messages we're receiving.
+
+   int toReceive_m;
+
+-  // The context we're reducing on.
+-
+-  int toContext_m;
+-
+-#else
++#endif
++
++public:
+
+-  CollectFromContexts(const T &amp;val, int = 0, bool valid = true)
+-    {
+-      PAssert(valid);
+-      value_m = val;
+-    }
+-
+   T &amp;operator[](int i)
+     {
+-      PAssert(i == 0);
+-      return value_m;
++      PAssert(Pooma::context() == toContext_m);
++      PAssert(i &gt;= 0 and i &lt; Pooma::contexts());
++      return data_m[i];
+     }
+
+   T operator[](int i) const
+     {
+-      PAssert(i == 0);
+-      return value_m;
++      PAssert(Pooma::context() == toContext_m);
++      PAssert(i &gt;= 0 and i &lt; Pooma::contexts());
++      return data_m[i];
+     }
+
+ private:
+
+-  T value_m;
++  // The actual value we're reducing.
++
++  std::vector&lt;T&gt; data_m;
++
++  // The context we're reducing on.
+
+-#endif // POOMA_CHEETAH
++  int toContext_m;
+
+ };
+
++#endif // POOMA_MESSAGING
++
+ #endif     // POOMA_MESSAGING_COLLECTFROMCONTEXTS_H
+
+ // ACL:rcsinfo
+--- ReduceOverContexts.h	2003-12-09 22:49:22.000000000 +0100
++++ /tmp/ReduceOverContexts.h	2003-12-30 21:11:27.000000000 +0100
+@@ -45,8 +45,8 @@
+ // Includes:
+ //-----------------------------------------------------------------------------
+
+-#include &quot;Pooma/Pooma.h&quot;
+ #include &quot;Tulip/Messaging.h&quot;
++#include &quot;Evaluator/OpMask.h&quot;
+ #include &quot;Tulip/RemoteProxy.h&quot;
+ #include &quot;Evaluator/OpMask.h&quot;
+
+@@ -89,6 +89,7 @@
+
+   bool valid() const { return valid_m; }
+   const T &amp;value() const { PAssert(valid()); return val_m; }
++  T &amp;value() { PAssert(valid()); return val_m; }
+
+ private:
+
+@@ -97,7 +98,7 @@
+ };
+
+
+-#if POOMA_CHEETAH
++#if POOMA_MESSAGING
+
+ namespace Cheetah {
+
+@@ -146,6 +147,9 @@
+
+     vp = new ReductionValue&lt;T&gt;(*pvalid, *pval);
+
++    if (*pvalid)
++      Serialize&lt;CHEETAH, T&gt;::cleanup(pval);
++
+     return nBytes;
+   }
+
+@@ -159,6 +163,8 @@
+
+ #endif
+
++
++#if POOMA_CHEETAH
+ /**
+  * This struct holds a few static quantities that are shared by all
+  * instantiations of ReduceOverContexts&lt;T&gt;. In particular, we want to
+@@ -171,7 +177,7 @@
+
+   static int tagBase_m;
+ };
+-
++#endif
+
+ /**
+  * This class is used to implement the final reduction over contexts used
+@@ -179,7 +185,7 @@
+  */
+
+ template&lt;class T, class ReductionOp&gt;
+-class ReduceOverContexts : public ReduceOverContextsBase
++class ReduceOverContexts
+ {
+   typedef ReduceOverContexts&lt;T, ReductionOp&gt; This_t;
+
+@@ -195,13 +201,15 @@
+   // to read 'val' unless it is a valid value. Values don't have to
+   // valid because not all contexts necessarily contribute to the reduction.
+
++#if POOMA_MESSAGING
++
+ #if POOMA_CHEETAH
+
+   ReduceOverContexts(const T &amp;val, int toContext = 0, bool valid = true)
+     : valid_m(false), toContext_m(toContext)
+     {
+-      int tagBase = tagBase_m;
+-      tagBase_m += Pooma::contexts();
++      int tagBase = ReduceOverContextsBase::tagBase_m;
++      ReduceOverContextsBase::tagBase_m += Pooma::contexts();
+
+       if (Pooma::context() == toContext)
+ 	{
+@@ -235,6 +243,50 @@
+ 	}
+     }
+
++#elif POOMA_MPI
++
++  ReduceOverContexts(const T &amp;val, int toContext = 0, bool valid = true)
++    : toContext_m(toContext)
++    {
++      typedef Cheetah::Serialize&lt;Cheetah::CHEETAH, ReductionValue&lt;T&gt; &gt; Serialize_t;
++      ReductionValue&lt;T&gt; v(valid, val);
++      // invalid size is different (doh!), so use some default for size
++      // strictly speaking this is incorrect, too (see CollectOverContexts),
++      // but we might not have reduction ops over dynamic sized objects...
++      int length = Serialize_t::size(ReductionValue&lt;T&gt;(true, T()));
++      length = (length+7)&amp;~7; // round to qword size
++      char *buffer = new char[length];
++      char *recvbuffer = NULL;
++      if (Pooma::context() == toContext)
++	recvbuffer = new char[length*Pooma::contexts()];
++      Serialize_t::pack(v, buffer);
++      MPI_Gather(buffer, length, MPI_CHAR,
++                 recvbuffer, length, MPI_CHAR,
++		 toContext, MPI_COMM_WORLD);
++      delete[] buffer;
++      if (Pooma::context() == toContext) {
++        for (int i=0; i&lt;Pooma::contexts(); ++i) {
++          if (i == toContext) // this we already have in v
++            continue;
++          ReductionValue&lt;T&gt; *v2;
++          Serialize_t::unpack(v2, recvbuffer+i*length);
++          if (v2-&gt;valid()) {
++	    if (!v.valid())
++	      v = *v2;
++	    else
++	      Unwrap&lt;ReductionOp&gt;::Op_t()(v.value(), v2-&gt;value());
++          }
++          Serialize_t::cleanup(v2);
++        }
++        delete[] recvbuffer;
++        if (v.valid())
++          value_m = v.value();
++      }
++   }
++
++#endif
++
++  // FIXME: with a different API we could use MPI_AllGather here...
+   void broadcast(T &amp;val)
+     {
+       RemoteProxy&lt;T&gt; broadcast(value_m, toContext_m);
+@@ -254,7 +306,7 @@
+       val = value_m;
+     }
+
+-#endif // POOMA_CHEETAH
++#endif // POOMA_MESSAGING
+
+   inline operator T() const { return value_m; }
+
+--- RemoteProxy.h	2003-12-30 20:45:38.000000000 +0100
++++ /tmp/RemoteProxy.h	2003-12-30 21:11:27.000000000 +0100
+@@ -34,7 +34,13 @@
+ /** @file
+  * @ingroup Tulip
+  * @brief
+- * Undocumented.
++ * This is like MPI_Bcast.
++ *
++ * It moves a value from one context to all others.
++ * Special about this is that assigns to a RemoteProxy object
++ * on the owning context is performed to the underlying data,
++ * while on the remote contexts it is just done to the proxy
++ * object.
+  */
+
+ #ifndef POOMA_CHEETAH_REMOTE_PROXY_H
+@@ -54,20 +60,15 @@
+ // Includes:
+ //-----------------------------------------------------------------------------
+
+-#include &quot;Pooma/Pooma.h&quot;
++#include &quot;Tulip/Messaging.h&quot;
+ #include &quot;Domain/Loc.h&quot;
+ #include &quot;Tiny/Vector.h&quot;
+-#include &quot;Tulip/Messaging.h&quot;
+ #include &quot;Functions/ComponentAccess.h&quot;
+
+-#if POOMA_CHEETAH
+-# include &quot;Cheetah/Cheetah.h&quot;
+-#endif
+-
+
+ // For Cheetah support we need to mark more types not delegate.
+
+-#if POOMA_CHEETAH
++#if POOMA_MESSAGING
+ namespace Cheetah {
+
+   /**
+@@ -105,6 +106,22 @@
+ #endif
+
+
++#if POOMA_CHEETAH
++struct RemoteProxyBase
++{
++  /// If we need a remote value, then this flag lets us know when it's
++  /// ready.  This value is static because it is used to block the parse
++  /// thread until the data is received.
++
++  static bool ready_m;
++
++  /// We only need one tag for all the remote proxies.  Perhaps this could
++  /// be packaged with the handler for remote proxies.
++
++  static int tag_m;
++};
++#endif
++
+ /**
+  * This class is the return type of the remote brick engine operator().
+  * We need an object that lets us assign to data on this context, but that
+@@ -122,20 +139,6 @@
+  * value belongs to.
+  */
+
+-struct RemoteProxyBase
+-{
+-  /// If we need a remote value, then this flag lets us know when it's
+-  /// ready.  This value is static because it is used to block the parse
+-  /// thread until the data is received.
+-
+-  static bool ready_m;
+-
+-  /// We only need one tag for all the remote proxies.  Perhaps this could
+-  /// be packaged with the handler for remote proxies.
+-
+-  static int tag_m;
+-};
+-
+ template&lt;class T&gt;
+ class RemoteProxy
+ {
+@@ -147,16 +150,15 @@
+   /// value and broadcast the value to the other contexts.
+   /// Otherwise we receive the value from the owning context.
+
++#if POOMA_CHEETAH
++
+   RemoteProxy(T &amp;val, int owningContext = 0)
+   {
+-#if POOMA_CHEETAH
+     int tag = RemoteProxyBase::tag_m++;
+-#endif
+     if (Pooma::context() == owningContext)
+     {
+       value_m = &val;
+
+-#if POOMA_CHEETAH
+       int toContext;
+       for (toContext = 0; toContext &lt; Pooma::contexts(); ++toContext)
+       {
+@@ -165,11 +167,9 @@
+ 	  Pooma::indexHandler()-&gt;sendWith(Cheetah::CHEETAH(), toContext, tag, val);
+ 	}
+       }
+-#endif
+     }
+     else
+     {
+-#if POOMA_CHEETAH
+       storedValue_m = val;
+       value_m = &amp;storedValue_m;
+
+@@ -182,10 +182,57 @@
+       {
+ 	Pooma::poll();
+       }
+-#endif
+     }
+   }
+
++private:
++  // Handler function for Cheetah.
++
++  static void receive(This_t *me, T &amp;value)
++  {
++    me-&gt;storedValue_m = value;
++    RemoteProxyBase::ready_m = true;
++  }
++
++public:
++#elif POOMA_MPI
++
++  RemoteProxy(T &amp;val, int owningContext = 0)
++  {
++    typedef Cheetah::Serialize&lt;Cheetah::CHEETAH, T&gt; Serialize_t;
++    int length = Serialize_t::size(val);
++    // Only the owningContext can possibly know the actual length for
++    // types like std::vector&lt;&gt;. Maybe we can conditionalize this extra
++    // communication on a tag field in the Cheetah::Serialize type.
++    MPI_Bcast(&amp;length, 1, MPI_INT, owningContext, MPI_COMM_WORLD);
++    char *buffer = new char[length];
++    if (Pooma::context() == owningContext)
++      Serialize_t::pack(val, buffer);
++    MPI_Bcast(buffer, length, MPI_CHAR, owningContext, MPI_COMM_WORLD);
++    if (Pooma::context() == owningContext) {
++      value_m = &val;
++    } else {
++      T *nval;
++      Serialize_t::unpack(nval, buffer);
++      storedValue_m = *nval;
++      value_m = &amp;storedValue_m;
++      Serialize_t::cleanup(nval);
++    }
++    delete[] buffer;
++  }
++
++#else
++
++  RemoteProxy(T &amp;val, int owningContext = 0)
++  {
++    if (Pooma::context() == owningContext)
++    {
++      value_m = &val;
++    }
++  }
++
++#endif
++
+   RemoteProxy(const RemoteProxy&lt;T&gt; &amp;s)
+   {
+     if (s.value_m != &amp;s.storedValue_m)
+@@ -246,14 +293,6 @@
+   }
+
+ private:
+-
+-  // Handler function for Cheetah.
+-
+-  static void receive(This_t *me, T &amp;value)
+-  {
+-    me-&gt;storedValue_m = value;
+-    RemoteProxyBase::ready_m = true;
+-  }
+
+  // Pointer to the actual value represented by this proxy.
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001439.html">[PATCH] Back to using Cheetah::CHEETAH for serialization
+</A></li>
+	<LI>Next message: <A HREF="001441.html">[PATCH] MPI SendReceive
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1440">[ date ]</a>
+              <a href="thread.html#1440">[ thread ]</a>
+              <a href="subject.html#1440">[ subject ]</a>
+              <a href="author.html#1440">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

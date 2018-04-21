@@ -1,0 +1,134 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [vsipl++] [PATCH] Implement Fir&lt;&gt;, native C++ version
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20%5BPATCH%5D%20Implement%20Fir%3C%3E%2C%20native%20C%2B%2B%20version&In-Reply-To=%3C434A7587.2060101%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000080.html">
+   <LINK REL="Next"  HREF="000085.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[vsipl++] [PATCH] Implement Fir&lt;&gt;, native C++ version</H1>
+    <B>Jules Bergmann</B> 
+    <A HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20%5BPATCH%5D%20Implement%20Fir%3C%3E%2C%20native%20C%2B%2B%20version&In-Reply-To=%3C434A7587.2060101%40codesourcery.com%3E"
+       TITLE="[vsipl++] [PATCH] Implement Fir&lt;&gt;, native C++ version">jules at codesourcery.com
+       </A><BR>
+    <I>Mon Oct 10 14:07:03 UTC 2005</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000080.html">[PATCH] Implement Fir&lt;&gt;, native C++ version
+</A></li>
+        <LI>Next message: <A HREF="000085.html">[vsipl++] [PATCH] Implement Fir&lt;&gt;, native C++ version
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#82">[ date ]</a>
+              <a href="thread.html#82">[ thread ]</a>
+              <a href="subject.html#82">[ subject ]</a>
+              <a href="author.html#82">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Nathan, Looks good.  A couple of comments below. -- Jules
+
+Nathan (Jasper) Myers wrote:
+&gt;<i> The following patch has been committed.
+</I>&gt;<i> 
+</I>&gt;<i> It implements vsip::Fir&lt;&gt; using native C++ code, and a comprehensive
+</I>&gt;<i> test of all its modes.  
+</I>&gt;<i> 
+</I>&gt;<i> Note that a few bits of the test are commented out; it uses 
+</I>&gt;<i> vsip::Convolution&lt;&gt; to generate the reference output, and that has 
+</I>&gt;<i> a little bug I haven't got to tracking down yet.
+</I>&gt;<i> 
+</I>&gt;<i> Nathan Myers
+</I>&gt;<i> ncm
+</I>
+&gt;<i> +    order_(kernel.size() * (1 + (symV != vsip::nonsym)) - 
+</I>&gt;<i> +      (symV == vsip::sym_even_len_odd) - 1),
+</I>
+Clever.  This is portable, right?  (i.e. do comparisons portably 
+evaluate to 0 or 1?)
+
+&gt;<i> +    decimation_(decimation),
+</I>&gt;<i> +    skip_(0),
+</I>&gt;<i> +    state_saved_(0),
+</I>&gt;<i> +    state_(this-&gt;order_, T(0)),
+</I>&gt;<i> +    kernel_(this-&gt;order_ + 1)
+</I>&gt;<i> +  {
+</I>&gt;<i> +    assert(input_size &gt; 0);
+</I>&gt;<i> +    assert(this-&gt;order_ + 1 &gt; 1);  // counter unsigned wraparound
+</I>
+What's going on here?  The comment is a bit hard to decipher at first. 
+Perhaps &quot;Use modulo arithmetic to counter the effect of unsigned 
+wraparound&quot;, although that doesn't fit on a single line.
+
+Does this catch symV == odd &amp;&amp; kernel-&gt;size() == 0:
+
+	symV	kernel-&gt;size()	order_
+	nonsym	0		-1
+	nonsym	1		 0
+	even	0		-1
+	even	1		 1
+	odd	0		-2 &lt;&lt;&lt;
+	odd	1		 0
+
+How about
+
+	assert(kernel-&gt;size(0) &gt; 0 &amp;&amp; this-&gt;order_ &gt;= 1);
+
+
+&gt;<i> +      // Compute rough estimate of flop-count.
+</I>&gt;<i> +      unsigned cxmul = impl::Is_complex&lt;T&gt;::value ? 4 : 1; // *(4*,2+), +(2+)
+</I>
+A good approx is that each filter tap is a multiply-add.  For complex 
+this is 6 ops, for real this is 2 ops.
+
+&gt;<i> +      return (this-&gt;timer_.count() * cxmul * 2 *  // 1* 1+
+</I>&gt;<i> +        ((this-&gt;order + 1) * this-&gt;input_size_ / this-&gt;decimation_)) /
+</I>&gt;<i> +          (1e6 * this-&gt;timer_.total());
+</I>&gt;<i> +    }
+</I>&gt;<i> +    else if (!strcmp(what, &quot;time&quot;))
+</I>&gt;<i> +      return this-&gt;timer_.total();
+</I>&gt;<i> +    return 0.f;
+</I>&gt;<i> +  }
+</I>&gt;<i> +
+</I>
+&gt;<i> +  assert(vsip::alltrue(result == reference));
+</I>
+Using '==' for floating point values may cause the test to fail.  For 
+example, if FIR and convolution perform the same operations in different 
+order, they may have different rounding/accumulation errors even though 
+they produce effectively the same answer.  You should try using 
+'view_equal' (which uses almost_equal() underneath) or perhaps 
+'error_db' instead.
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000080.html">[PATCH] Implement Fir&lt;&gt;, native C++ version
+</A></li>
+	<LI>Next message: <A HREF="000085.html">[vsipl++] [PATCH] Implement Fir&lt;&gt;, native C++ version
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#82">[ date ]</a>
+              <a href="thread.html#82">[ thread ]</a>
+              <a href="subject.html#82">[ subject ]</a>
+              <a href="author.html#82">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">More information about the vsipl++
+mailing list</a><br>
+</body></html>

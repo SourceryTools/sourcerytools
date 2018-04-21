@@ -1,0 +1,191 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> Status
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20Status&In-Reply-To=%3Cmailman.47.1331172046.20475.pooma-dev%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000575.html">
+   <LINK REL="Next"  HREF="000579.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>Status</H1>
+    <B>Scott Haney</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20Status&In-Reply-To=%3Cmailman.47.1331172046.20475.pooma-dev%40codesourcery.com%3E"
+       TITLE="Status">scotth at proximation.com
+       </A><BR>
+    <I>Sat Jul  7 17:23:04 UTC 2001</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000575.html">[pooma-dev] status report
+</A></li>
+        <LI>Next message: <A HREF="000579.html">Status
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#576">[ date ]</a>
+              <a href="thread.html#576">[ thread ]</a>
+              <a href="subject.html#576">[ subject ]</a>
+              <a href="author.html#576">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>I finally have a design for a POOMA relations package that I like and 
+have implemented it and started to perform some testing.
+
+To bring people up to speed, the idea, originally developed by the 
+Blanca team, is as follows. A very common pattern in theoretical physics 
+is illustrated by the simple example.
+
+The total energy E is defined
+
+   E = K + U
+
+where
+
+   K = m v^2 / 2
+
+is the kinetic energy and
+
+   U = m g h
+
+is the potential energy and
+
+   v = p / m
+
+where p is the momentum. E, K, U, and v are dependent variables while p 
+and m are independent variables (g is a constant).
+
+Supporting this pattern is a good thing (tm) since it allows our users 
+to more easily model their calculations using POOMA. However, there is 
+an additional benefit in that this pattern gives us (POOMA developers) 
+access to the global structure of the computation. This means that we 
+know the data dependencies: for example, if p changes, we need to 
+re-compute v and then K (but not U)  to get a correct E. This, in turn, 
+allows us to ensure correctness. Also, in principle, we could perform 
+optimizations on the tree to improve performance. We could even cache 
+information learned from early timesteps to improve performance as the 
+simulation progresses.
+
+POOMA 2 has had a rudimentary implementation of this pattern since the 
+start, primarily to support boundary conditions, which took the form
+
+   F = f(F)
+
+where F is a field and f is some function of the field's values. This 
+expression was encapsulated inside an object called an &quot;Updater&quot;. 
+Moreover, each Field contains a list of these updater objects. All 
+updaters have an attribute called a &quot;dirty&quot; flag. The dirty flag for all 
+of the updates associated with F is set whenever F is written to. 
+However, it is important to realize that the expression encapsulated by 
+the updater is not run until someone wants to read from F AND the 
+updater's dirty flag is set.
+
+The Blanca team cleverly realized that this concept can be extended to 
+more complicated situations. For example,
+
+F = f(F, L1, L2)
+
+There is one important difference with the previous case: whenever the 
+fields L1 or L2 become dirty, F must become dirty.
+
+Blanca has implemented an external version of this facility, but it has 
+been clear to me for a long time that this is more properly handled 
+inside of POOMA, both for ease of implementation and to gain the full 
+benefits. I have struggled with the architecture for a while, but I now 
+have a unified design that encompasses the old boundary condition 
+support and the newer relation pattern. This new facility will replace 
+the code the current Updater directory. Since it is a broader 
+abstraction, the new facility is called the &quot;Relations&quot; package. This is 
+also the name originally used by Blanca.
+
+Relations can be packaged in functor objects or in regular or member 
+functions. From our simple example above, these would look like:
+
+// Functor
+
+class ComputeKineticEnergy
+public:
+
+   ComputeKineticEnergy(const ComputeKineticEnergy &amp;, const Field_t &amp;) { }
+
+   void operator()(const Field_t &amp;K, const Field_t &amp;m, const Field_t &amp;v)
+   {
+     K = m * v * v / 2;
+   }
+};
+
+// Function
+
+void computePotentialEnergy(const Field_t &amp;U, const Field &amp;m, const 
+Field &amp;h)
+{
+   U = m * g * h;
+}
+
+// Member function
+
+struct ComputeVelocity
+{
+   void doit(const Field_t &amp;v, const Field_t &amp;p, const Field_t &amp;m)
+   {
+     v = p /  m;
+   }
+};
+
+Functors are primarily useful when the calculation depends on cached 
+data. This is the case with many of the boundary conditions, which 
+pre-compute domain information. The constructor shown is required to 
+allow, in principle, initialization of this auxiliary data.
+
+These relations are added to the appropriate fields using the statements
+
+   Pooma::newRelationFunctor(ComputeKineticEnergy(), K, m, v);
+   Pooma::newRelationFunctionPtr(computePotentialEnergy, U, m, h);
+   Pooma::newRelationMemberPtr(obj, &amp;ComputeVelocity::doit, v, p, m);
+
+Then, the entire calculation is triggered by
+
+   E = K + U;
+
+If we then change p and write
+
+   E.applyRelations();
+
+v, K, and E will be automatically updated.
+
+All of this is working in simple cases. However, there are some subtle 
+issues associated with handling arrays, stencils, and sub-fields that 
+need to be worked out as well as the painful, but simple, work of 
+supporting relations with up to 6 things on the RHS.
+
+Scott
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000575.html">[pooma-dev] status report
+</A></li>
+	<LI>Next message: <A HREF="000579.html">Status
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#576">[ date ]</a>
+              <a href="thread.html#576">[ thread ]</a>
+              <a href="subject.html#576">[ subject ]</a>
+              <a href="author.html#576">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

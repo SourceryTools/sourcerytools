@@ -1,0 +1,154 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [pooma-dev] KCC versus icc (and gcc)
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bpooma-dev%5D%20KCC%20versus%20icc%20%28and%20gcc%29&In-Reply-To=%3C1046773856.1270.51.camel%40cc-intern01%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   
+   <LINK REL="Next"  HREF="001220.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[pooma-dev] KCC versus icc (and gcc)</H1>
+    <B>Tarjei Knapstad</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bpooma-dev%5D%20KCC%20versus%20icc%20%28and%20gcc%29&In-Reply-To=%3C1046773856.1270.51.camel%40cc-intern01%3E"
+       TITLE="[pooma-dev] KCC versus icc (and gcc)">tarjeik at chemcon.no
+       </A><BR>
+    <I>Tue Mar  4 10:30:55 UTC 2003</I>
+    <P><UL>
+        
+        <LI>Next message: <A HREF="001220.html">gcc and inlining
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1219">[ date ]</a>
+              <a href="thread.html#1219">[ thread ]</a>
+              <a href="subject.html#1219">[ subject ]</a>
+              <a href="author.html#1219">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>On Wed, 2003-02-26 at 20:27, Richard Guenther wrote:
+&gt;<i> Hi!
+</I>&gt;<i> 
+</I>&gt;<i> I remember problems with the inliner, i.e. it refused to inline
+</I>&gt;<i> some of the expression template machinery. You might want to search
+</I>&gt;<i> for an option letting you tune the inlining behavior or try profile
+</I>&gt;<i> directed optimizations. With standard -O3 icc is not always faster
+</I>&gt;<i> than gcc3.2.2 with -O3.
+</I>&gt;<i> 
+</I>Just thought I'd add a bit to that. A while back me and some others
+constructed some code to try to measure the performance hit of
+dynamic_cast with the following code (needs the boost libraries):
+
+========== BEGIN CODE ================
+#include &lt;iostream&gt;
+#include &lt;boost/timer.hpp&gt;
+using namespace std;
+
+const int num=10000000;
+
+class TestBase
+{
+public:
+    virtual ~TestBase() {}
+    virtual void f() {}
+    void f2() {}
+};
+
+class Test1 : public TestBase
+{
+public:
+    virtual ~Test1() {}
+    virtual void f() {}
+    void f2() {}
+};
+
+// Ensure that it doesn't optimise away the reading of it in the loops
+volatile TestBase* testBasePtr = new Test1(); 
+
+int main()
+{
+    boost::timer t1;
+
+    for(unsigned int i = 0; i != num; ++i)
+    {
+        Test1* test1 = const_cast&lt;Test1*&gt;(dynamic_cast&lt;volatile
+Test1*&gt;(testBasePtr));
+        if (test1)
+        {
+            test1 -&gt; f2();
+        }
+    }
+    cout &lt;&lt; &quot;Elapsed t1 &quot; &lt;&lt; t1.elapsed() &lt;&lt; &quot; &quot; &lt;&lt; endl;
+
+    boost::timer t2;
+
+    for(unsigned int i = 0; i != num; ++i)
+    {
+        Test1* test1 = const_cast&lt;Test1*&gt;(static_cast&lt;volatile
+Test1*&gt;(testBasePtr));
+        if (test1)
+        {
+            test1 -&gt; f2();
+        }
+    }
+    cout &lt;&lt; &quot;Elapsed t2 &quot; &lt;&lt; t2.elapsed() &lt;&lt; &quot; &quot; &lt;&lt; endl;
+    return 0;
+}
+=========== END CODE ==========
+
+We tried running this on both gcc:
+
+Elapsed t1 0.52 
+Elapsed t2 0.01 
+
+and Intel 7:
+
+Elapsed t1 4.03 
+Elapsed t2 0.12 
+
+with optimizations turned on and the results are quite staggering.
+Similar differences are found when testing boost.lexical_cast on the
+different compilers.
+
+There are quite a lot of advanced compiler optimizations in the Intel
+compiler though, which I haven't had too much time to play around with
+(I'm using gcc and have only played around with icc).
+
+I would also be interested in your findings if you can make icc generate
+code that is more in the vicinity of Kcc's performance.
+
+Regards,
+--
+Tarjei
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	
+	<LI>Next message: <A HREF="001220.html">gcc and inlining
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1219">[ date ]</a>
+              <a href="thread.html#1219">[ thread ]</a>
+              <a href="subject.html#1219">[ subject ]</a>
+              <a href="author.html#1219">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

@@ -1,0 +1,493 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [newfield_revision Patch] StatigraphicFlow: Linear Algebra into ScalarCode
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bnewfield_revision%20Patch%5D%20StatigraphicFlow%3A%20Linear%20Algebra%20into%20ScalarCode&In-Reply-To=%3C20010829102635.A12013%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000659.html">
+   <LINK REL="Next"  HREF="000661.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[newfield_revision Patch] StatigraphicFlow: Linear Algebra into ScalarCode</H1>
+    <B>Jeffrey Oldham</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5Bnewfield_revision%20Patch%5D%20StatigraphicFlow%3A%20Linear%20Algebra%20into%20ScalarCode&In-Reply-To=%3C20010829102635.A12013%40codesourcery.com%3E"
+       TITLE="[newfield_revision Patch] StatigraphicFlow: Linear Algebra into ScalarCode">oldham at codesourcery.com
+       </A><BR>
+    <I>Wed Aug 29 17:26:35 UTC 2001</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000659.html">[pooma-dev] POOMA1 regression test for O2K64 TEMPLATEINST OPTIMIZE (fwd)
+</A></li>
+        <LI>Next message: <A HREF="000661.html">Final patch for newfield_revision
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#660">[ date ]</a>
+              <a href="thread.html#660">[ thread ]</a>
+              <a href="subject.html#660">[ subject ]</a>
+              <a href="author.html#660">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>This patch moves the statigraphic flow's linear algebra computation
+into a ScalarCode object, improving correctness.  The code now
+compiles excepting two missing mesh functions.  One removing
+pseudocode section needs rewriting using mesh functions.
+
+2001-08-29  Jeffrey D. Oldham  &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">oldham at codesourcery.com</A>&gt;
+
+        * StatigraphicFlow.cpp (findIndex): Moved into ComputeGradients.
+        (ComputeGradientsInfo): New structure to support scalar flow code.
+        (ComputeGradients): New structure for linear algebra ScalarCode.
+        (main): Revise pressureGradient's type to a vector.  Move linear
+        algebra computation to a ScalarCode object.  Remove FIXMEs for
+        sum().
+
+Tested:         compiled using sequential Linux gcc 3.0.1
+Approved by:    Stephen Smith
+Applied to:     newfield_revision branch
+
+Thanks,
+Jeffrey D. Oldham
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">oldham at codesourcery.com</A>
+-------------- next part --------------
+Index: StatigraphicFlow.cpp
+===================================================================
+RCS file: /home/pooma/Repository/r2/examples/NewField/StatigraphicFlow/Attic/StatigraphicFlow.cpp,v
+retrieving revision 1.1.2.3
+diff -c -p -r1.1.2.3 StatigraphicFlow.cpp
+*** StatigraphicFlow.cpp	2001/08/23 23:01:20	1.1.2.3
+--- StatigraphicFlow.cpp	2001/08/29 16:03:28
+***************
+*** 1,5 ****
+  // Oldham, Jeffrey D.
+! // 2001Jul25
+  // Pooma
+  
+  // Chevron Kernel Written Using POOMA's Proposed Field Abstraction
+--- 1,5 ----
+  // Oldham, Jeffrey D.
+! // 2001Aug23
+  // Pooma
+  
+  // Chevron Kernel Written Using POOMA's Proposed Field Abstraction
+***************
+*** 107,129 ****
+  /** THE PROGRAM **/
+  
+  
+! // Return the index of the specified field offset in the given list.
+! // Return a negative number if not found.
+  
+  template &lt;int Dim&gt;
+! inline int
+! findIndex(const FieldOffsetList&lt;Dim&gt; &amp;vec,
+! 	  const FieldOffset&lt;Dim&gt; &amp;fo)
+  {
+!   int indx;
+!   for (indx = vec.size()-1;
+!        indx &gt;= 0 &amp;&amp; vec[indx] != fo;
+!        --indx)
+!     ;
+!   return indx;
+! }
+  
+  
+  int main(int argc, char *argv[])
+  {
+    // Set up the Pooma library.
+--- 107,287 ----
+  /** THE PROGRAM **/
+  
+  
+! // Use a linear algebra computation that stores the pressure gradient
+! // values in the four quadrants around the current vertex (loc).
+  
+  template &lt;int Dim&gt;
+! struct ComputeGradientsInfo
+  {
+!   void scalarCodeInfo(ScalarCodeInfo &amp;info) const
+!   {
+!     // ComputeGradients::operator() has 4 arguments: vertices to
+!     // iterate over and three fields.
+! 
+!     info.arguments(5);
+! 
+!     // Only the first such argument is changed.
+! 
+!     info.write(0, false);
+!     info.write(1, true);
+!     info.write(2, false);
+!     info.write(3, false);
+!     info.write(4, false);
+! 
+!     // Does the operation index neighboring cells, i.e., do we need to
+!     // update the internal guard layers?
+!    
+!     info.useGuards(0, false);
+!     info.useGuards(1, true);
+!     info.useGuards(2, true);
+!     info.useGuards(3, true);
+!     info.useGuards(4, true);
+!     
+!     info.dimensions(Dim);
+! 
+!     for (int i = 0; i &lt; Dim; ++i) {
+!       info.lowerExtent(i) = 1;	// We access neighbors.
+!       info.upperExtent(i) = 0;
+!     }
+!   }
+! };
+! 
+! 
+! template &lt;int Dim&gt;
+! struct ComputeGradients
+!   : public ComputeGradientsInfo&lt;Dim&gt;
+! {
+! 
+!   ComputeGradients(const Centering&lt;Dim&gt; &amp;disspoke,
+! 		   const FieldOffsetList&lt;Dim&gt; &amp;gradients,
+! 		   const int nuFluxPoints,
+! 		   const std::vector&lt;FieldOffsetList&lt;Dim&gt; &gt; &amp;disFluxPoints,
+! 		   const Centering&lt;Dim&gt; &amp;subcell)
+!     : disspoke_m(disspoke), gradients_m(gradients),
+!       nuFluxPoints_m(nuFluxPoints), disFluxPoints_m(disFluxPoints),
+!       subcell_m(subcell)
+!   {
+!     PAssert(gradients_m.size() * Dim == nuFluxPoints_m * 2);
+!   }
+! 
+!   // FIXME: Perhaps we want to modify ScalarCode to take a first
+!   // FIXME: argument of a centering.  In the meantime, we just use a
+!   // FIXME: fake field.
+! 
+!   template &lt;class F1, class F2, class F3, class F4, class F5&gt;
+!   inline
+!   void operator()(const F1 &amp;vertexField,
+! 		  F2 &amp;pressureGradient,
+! 		  const F3 &amp;faceDistance,
+! 		  const F4 &amp;directedPermeability,
+! 		  const F5 &amp;pressure,
+! 		  const Loc&lt;Dim&gt; &amp;loc) const
+!   {
+!     const int nuRows = (1 &lt;&lt; Dim) * Dim;
+!     TNT::Matrix&lt;double&gt; A(nuRows, nuRows, 0.0);
+!     TNT::Vector&lt;double&gt; rhs(nuRows, 0.0);
+!     TNT::Vector&lt;TNT::Subscript&gt; ipiv;	// ignored
+! 
+!     // Assign values to the matrix A and vector rhs.
+! 
+!     for (int faceIndex = nuFluxPoints_m-1; faceIndex &gt;= 0; --faceIndex) {
+!       // Work on the &quot;positive&quot; side of the face.
+!       FieldOffset&lt;Dim&gt; fo = disFluxPoints_m[faceIndex][0];
+!       int columnNu =
+! 	findIndex(gradients_m,
+! 		  nearestNeighbors(pressureGradient.centering(),
+! 				   fo, disspoke_m, true)[0]);
+!       // The column number is the pressure gradient corresponding to the
+!       // &quot;positive&quot; side of the face.
+! 
+!       for (int i = 0; i &lt; Dim; ++i)
+! 	A[faceIndex][columnNu] =
+! 	  directedPermeability(nearestNeighbors(directedPermeability.centering(),
+! 						fo, disspoke_m, true)[0],
+! 			       loc+fo.cellOffset())(i);
+!       A[faceIndex+nuFluxPoints_m][columnNu] =
+! 	faceDistance(nearestNeighbors(faceDistance.centering(),
+! 				      fo, disspoke_m, true)[0],
+! 		     loc+fo.cellOffset());
+!       rhs[faceIndex+nuFluxPoints_m] -=
+! 	pressure(nearestNeighbors(pressure.centering(),
+! 				  fo, disspoke_m, true)[0],
+! 		 loc+fo.cellOffset());
+! 
+!       // Work on the &quot;negative&quot; side of the face.
+!       fo = disFluxPoints_m[faceIndex][1];
+!       columnNu =
+! 	findIndex(gradients_m,
+! 		  nearestNeighbors(pressureGradient.centering(),
+! 				   fo, disspoke_m, true)[0]);
+!       // The column number is the pressure gradient corresponding to the
+!       // &quot;positive&quot; side of the face.
+! 
+!       for (int i = 0; i &lt; Dim; ++i)
+! 	A[faceIndex][columnNu] =
+! 	  -directedPermeability(nearestNeighbors(directedPermeability.centering(),
+! 						 fo, disspoke_m, true)[0],
+! 				loc+fo.cellOffset())(i);
+!       A[faceIndex+nuFluxPoints_m][columnNu] =
+! 	-faceDistance(nearestNeighbors(faceDistance.centering(),
+! 				       fo, disspoke_m, true)[0],
+! 		      loc+fo.cellOffset());
+!       rhs[faceIndex+nuFluxPoints_m] -=
+! 	-pressure(nearestNeighbors(pressure.centering(),
+! 				   fo, disspoke_m, true)[0],
+! 		  loc+fo.cellOffset());
+!     }
+! 
+!     // Solve for the pressure gradients.
+! 
+!     TNT::LU_solve(A, ipiv, rhs);
+! 
+!     // Now, rhs has the pressure gradients.
+! 
+!     for (int faceIndex = nuFluxPoints_m-1; faceIndex &gt;= 0; --faceIndex)
+!       for (int i = 0; i &lt; Dim; ++i)
+! 	pressureGradient(gradients_m[faceIndex], loc)(i) = rhs[faceIndex+i];
+! 
+!     return;
+!   }
+! 
+!   // Return the index of the specified field offset in the given list.
+!   // Return a negative number if not found.
+! 
+!   static
+!   inline int
+!   findIndex(const FieldOffsetList&lt;Dim&gt; &amp;vec,
+! 	    const FieldOffset&lt;Dim&gt; &amp;fo)
+!   {
+!     int indx;
+!     for (indx = vec.size()-1;
+! 	 indx &gt;= 0 &amp;&amp; vec[indx] != fo;
+! 	 --indx)
+!       ;
+!     return indx;
+!   }
+! 
+! private:
+  
++   // Discontinuous spokes.
++   const Centering&lt;Dim&gt; &amp;disspoke_m;
+  
++   // The pressure gradients.
++   const FieldOffsetList&lt;Dim&gt; &amp;gradients_m;
++ 
++   // The number of flux points for a cell.
++   const int nuFluxPoints_m;
++ 
++   // For every i, disFluxPoints_m[i] is two discontinuous positions on
++   // &quot;either side&quot; of the face represented by the flux points
++   // fluxPoints[i].
++   const std::vector&lt;FieldOffsetList&lt;Dim&gt; &gt; &amp;disFluxPoints_m;
++ 
++   // One cell value in each quadrant.
++   const Centering&lt;Dim&gt; &amp;subcell_m;
++ };
++ 
++ 
+  int main(int argc, char *argv[])
+  {
+    // Set up the Pooma library.
+*************** int main(int argc, char *argv[])
+*** 172,178 ****
+    position(1) = 0.75; subcell.addValue(Orientation(1), position);
+    position(0) = 0.75; subcell.addValue(Orientation(1), position);
+    position(1) = 0.25; subcell.addValue(Orientation(1), position);
+!   Fields_t pressureGradient	(subcell, meshLayout, origin, spacings);
+  
+    // Spoke-centered Field.
+  
+--- 330,336 ----
+    position(1) = 0.75; subcell.addValue(Orientation(1), position);
+    position(0) = 0.75; subcell.addValue(Orientation(1), position);
+    position(1) = 0.25; subcell.addValue(Orientation(1), position);
+!   Fieldv_t pressureGradient	(subcell, meshLayout, origin, spacings);
+  
+    // Spoke-centered Field.
+  
+*************** int main(int argc, char *argv[])
+*** 203,211 ****
+  
+    Centering&lt;Dim&gt; disFace = canonicalCentering&lt;Dim&gt;(FaceType, Discontinuous);
+    Fieldv_t directedPermeability	(disFace, meshLayout, origin, spacings);
+! 	// \gamma_{i,j} = K_i^t \dot \hat{n}_j
+    Fields_t faceDistance		(disFace, meshLayout, origin, spacings);
+! 	// distance from cell center to face center
+  
+  
+    /* INITIALIZATION */
+--- 361,369 ----
+  
+    Centering&lt;Dim&gt; disFace = canonicalCentering&lt;Dim&gt;(FaceType, Discontinuous);
+    Fieldv_t directedPermeability	(disFace, meshLayout, origin, spacings);
+!   // \gamma_{i,j} = K_i^t \dot \hat{n}_j
+    Fields_t faceDistance		(disFace, meshLayout, origin, spacings);
+!   // distance from cell center to face center
+  
+  
+    /* INITIALIZATION */
+*************** int main(int argc, char *argv[])
+*** 238,325 ****
+  	      faceDistance.centering());
+  #endif // PSEUDOCODE
+    
+-   const int nuRows = (1 &lt;&lt; Dim) * Dim;
+-   TNT::Matrix&lt;double&gt; A(nuRows, nuRows, 0.0);
+-   TNT::Vector&lt;double&gt; rhs(nuRows, 0.0);
+-   TNT::Vector&lt;TNT::Subscript&gt; ipiv;	// ignored
+- 
+-   // FIXME: Move this code to a stencil so it can be applied across
+-   // the entire grid.
+- 
+-   // Assign values to the matrix A and vector rhs.
+- 
+    const Centering&lt;Dim&gt; vert = canonicalCentering&lt;Dim&gt;(VertexType, Continuous);
+    PInsist(vert.size() == 1, &quot;The vertex centering has too many values.&quot;);
+  
+    const FieldOffsetList&lt;Dim&gt; gradients =
+      nearestNeighbors(pressureGradient.centering(),
+  		     FieldOffset&lt;Dim&gt;(Loc&lt;Dim&gt;(0)) /* cell origin */, vert);
+!     // gradients's order of pressure gradients will be used for the
+!     // matrix and rhs.
+  
+    const FieldOffsetList&lt;Dim&gt; fluxPoints =
+      nearestNeighbors(spokeFlux.centering(),
+  		     FieldOffset&lt;Dim&gt;(Loc&lt;Dim&gt;(0)) /* cell origin */, vert);
+!     // fluxPoints has locations for all faces incident to the vertex.
+!   const int size = fluxPoints.size();
+!   PAssert(gradients.size() * Dim == size * 2);
+  
+    const std::vector&lt;FieldOffsetList&lt;Dim&gt; &gt; disFluxPoints =
+      nearestNeighbors(disspoke, fluxPoints, spokeFlux.centering());
+!     // For every i, disFluxPoints[i] is two discontinuous positions on
+!     // &quot;either side&quot; of the face represented by fluxPoints[i].
+! 
+!   for (int faceIndex = size-1; faceIndex &gt;= 0; --faceIndex) {
+!     // Work on the &quot;positive&quot; side of the face.
+!     FieldOffset&lt;Dim&gt; fo = disFluxPoints[faceIndex][0];
+!     int columnNu =
+!       findIndex(gradients,
+! 		nearestNeighbors(pressureGradient.centering(),
+! 				 fo, disspoke, true)[0]);
+!       // The column number is the pressure gradient corresponding to the
+!       // &quot;positive&quot; side of the face.
+! 
+!     // FIXME: The lhs (double) and rhs (vector field) do not match.
+! 
+!     A[faceIndex][columnNu] =
+!       directedPermeability(nearestNeighbors(directedPermeability.centering(),
+! 					    fo, disspoke, true)[0]);
+!     A[faceIndex+size][columnNu] =
+!       faceDistance(nearestNeighbors(faceDistance.centering(),
+! 				    fo, disspoke, true)[0]);
+!     rhs[faceIndex+size] -=
+!       pressure(nearestNeighbors(pressure.centering(),
+! 				fo, disspoke, true)[0]);
+! 
+!     fo = disFluxPoints[faceIndex][1];
+!     columnNu =
+!       findIndex(gradients,
+! 		nearestNeighbors(pressureGradient.centering(),
+! 				 fo, disspoke, true)[0]);
+!       // The column number is the pressure gradient corresponding to the
+!       // &quot;positive&quot; side of the face.
+! 
+!     A[faceIndex][columnNu] =
+!       -directedPermeability(nearestNeighbors(directedPermeability.centering(),
+! 					     fo, disspoke, true)[0]);
+!     A[faceIndex+size][columnNu] =
+!       -faceDistance(nearestNeighbors(faceDistance.centering(),
+! 				     fo, disspoke, true)[0]);
+!     rhs[faceIndex+size] -=
+!       -pressure(nearestNeighbors(pressure.centering(),
+! 				 fo, disspoke, true)[0]);
+!   }
+! 
+!   // Solve for the pressure gradients.
+! 
+!   TNT::LU_solve(A, ipiv, rhs);
+! 
+!   // Now, rhs has the pressure gradients.
+  
+!   for (int faceIndex = size-1; faceIndex &gt;= 0; --faceIndex)
+!     // FIXME: Is this type of assignment supported by the current code base?
+!     pressureGradient(gradients[faceIndex], subcell) = rhs[faceIndex];
+  
+  
+    // Compute the spoke fluxes.
+  
+--- 396,433 ----
+  	      faceDistance.centering());
+  #endif // PSEUDOCODE
+    
+    const Centering&lt;Dim&gt; vert = canonicalCentering&lt;Dim&gt;(VertexType, Continuous);
+    PInsist(vert.size() == 1, &quot;The vertex centering has too many values.&quot;);
+  
+    const FieldOffsetList&lt;Dim&gt; gradients =
+      nearestNeighbors(pressureGradient.centering(),
+  		     FieldOffset&lt;Dim&gt;(Loc&lt;Dim&gt;(0)) /* cell origin */, vert);
+!   // gradients's order of pressure gradients will be used for the
+!   // matrix and rhs.
+  
+    const FieldOffsetList&lt;Dim&gt; fluxPoints =
+      nearestNeighbors(spokeFlux.centering(),
+  		     FieldOffset&lt;Dim&gt;(Loc&lt;Dim&gt;(0)) /* cell origin */, vert);
+!   // fluxPoints has locations for all faces incident to the vertex.
+! 
+!   const int nuFluxPoints = fluxPoints.size();
+  
+    const std::vector&lt;FieldOffsetList&lt;Dim&gt; &gt; disFluxPoints =
+      nearestNeighbors(disspoke, fluxPoints, spokeFlux.centering());
+!   // For every i, disFluxPoints[i] is two discontinuous positions on
+!   // &quot;either side&quot; of the face represented by fluxPoints[i].
+  
+!   typedef ComputeGradients&lt;Dim&gt; CG_t;
+!   CG_t cG(disspoke, gradients, nuFluxPoints, disFluxPoints, subcell);
+!   ScalarCode&lt;CG_t&gt; computeGradients(cG);
+! 
+!   // FIXME: Use an otherwise unused field for the ScalarCode
+!   // FIXME: iteration over vertices.
+!   Fields_t vertexField(canonicalCentering&lt;Dim&gt;(VertexType, Continuous),
+! 		       meshLayout, origin, spacings);
+  
++   computeGradients(vertexField, pressureGradient,
++ 		   faceDistance, directedPermeability, pressure);
+  
+    // Compute the spoke fluxes.
+  
+*************** int main(int argc, char *argv[])
+*** 346,359 ****
+  
+    totalFlux =
+      sum(spokeFlux.mesh().normals().signedMagnitude() *
+- 	// FIXME: This is not yet implemented.  We want a
+- 	// FIXME: data-parallel sum.  This is we want a function
+- 	// FIXME: Field_t sum(/* input */ Field_t,
+- 	// FIXME: std::vector&lt;FieldOffsetList&gt;, /*output */
+- 	// FIXME: Centering).  The vector's length == the output
+- 	// centering's length.  The function works by using the input
+- 	// field with each FieldOffsetList to form one value in the
+- 	// output field.
+  	sum(spokeFlux,
+  	    nearestNeighbors(spokeFlux.centering(), disFace),
+  	    disFace),
+--- 454,459 ----
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000659.html">[pooma-dev] POOMA1 regression test for O2K64 TEMPLATEINST OPTIMIZE (fwd)
+</A></li>
+	<LI>Next message: <A HREF="000661.html">Final patch for newfield_revision
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#660">[ date ]</a>
+              <a href="thread.html#660">[ thread ]</a>
+              <a href="subject.html#660">[ subject ]</a>
+              <a href="author.html#660">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

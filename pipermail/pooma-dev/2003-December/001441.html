@@ -1,0 +1,636 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [PATCH] MPI SendReceive
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20MPI%20SendReceive&In-Reply-To=%3CPine.LNX.4.58.0312302136140.671%40goofy%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="001440.html">
+   <LINK REL="Next"  HREF="001442.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[PATCH] MPI SendReceive</H1>
+    <B>Richard Guenther</B> 
+    <A HREF="mailto:pooma-dev%40codesourcery.com?Subject=Re%3A%20%5BPATCH%5D%20MPI%20SendReceive&In-Reply-To=%3CPine.LNX.4.58.0312302136140.671%40goofy%3E"
+       TITLE="[PATCH] MPI SendReceive">rguenth at tat.physik.uni-tuebingen.de
+       </A><BR>
+    <I>Tue Dec 30 20:41:07 UTC 2003</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="001440.html">[PATCH] Add MPI variants for RemoteProxy, CollectFromContexts and ReduceOverContexts
+</A></li>
+        <LI>Next message: <A HREF="001442.html">[PATCH] Optimize guard update copy
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1441">[ date ]</a>
+              <a href="thread.html#1441">[ thread ]</a>
+              <a href="subject.html#1441">[ subject ]</a>
+              <a href="author.html#1441">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>Hi!
+
+This is now the MPI version of SendReceive.h, including changes to
+RemoteEngine.h which handles (de-)serialization of engines.  The latter
+change allows optimizing away one of the three(!) copies we are doing
+currently for communicating an engine at receive time:
+- receive into message buffer
+- deserialize into temporary brick engine
+- copy temporary brick engine to target view
+
+the message buffer is now directly deserialized into the target view (for
+non-Cheetah operation, with Cheetah this is not possible).  Patch which
+removes a fourth(!!) copy we're doing at guard update follows.
+
+Tested as usual.
+
+Ok?
+
+Richard.
+
+
+2003Dec30  Richard Guenther &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">richard.guenther at uni-tuebingen.de</A>&gt;
+
+	* src/Engine/RemoteEngine.h: add deserializer into existing
+	engine.
+	src/Tulip/SendReceive.h: add MPI variant.
+
+===== RemoteEngine.h 1.9 vs 1.16 =====
+--- 1.9/r2/src/Engine/RemoteEngine.h	Wed Dec 10 11:19:05 2003
++++ 1.16/r2/src/Engine/RemoteEngine.h	Tue Dec 30 21:26:06 2003
+@@ -1239,6 +1241,7 @@
+     t = *a;
+     buffer_m   += change;
+     total_m    += change;
++    Cheetah::Serialize&lt;Cheetah::CHEETAH, T&gt;::cleanup(a);
+   }
+
+   char *buffer_m;
+@@ -1248,6 +1251,9 @@
+
+ namespace Cheetah {
+
++// All these serializers/deserializers share a common header,
++// namely domain and compressed flag.
++
+ template&lt;int Dim, class T&gt;
+ class Serialize&lt;CHEETAH, Engine&lt;Dim, T, BrickView&gt; &gt;
+ {
+@@ -1261,6 +1267,8 @@
+     int nBytes=0;
+
+     nBytes += Serialize&lt;CHEETAH, Domain_t&gt;::size(a.domain());
++    bool compressed = false;
++    nBytes += Serialize&lt;CHEETAH, bool&gt;::size(compressed);
+     nBytes += a.domain().size() * Serialize&lt;CHEETAH, T&gt;::size(T());
+
+     return nBytes;
+@@ -1278,6 +1286,11 @@
+     buffer += change;
+     nBytes += change;
+
++    bool compressed = false;
++    change = Serialize&lt;CHEETAH, bool&gt;::pack(compressed, buffer);
++    buffer += change;
++    nBytes += change;
++
+     EngineElemSerialize op(buffer);
+
+     change = EngineBlockSerialize::apply(op, a, dom);
+@@ -1287,20 +1300,54 @@
+     return nBytes;
+   }
+
++  // We support a special unpack to avoid an extra copy.
++
+   static inline int
+-  unpack(Engine_t* &amp;a, char *buffer)
++  unpack(Engine_t &amp;a, char *buffer)
+   {
+-    // We'll unpack into a Brick rather than a BrickView, since
+-    // we just copy from it anyway.
++    Interval&lt;Dim&gt; *dom;
+
+-    PAssert(false);
+-  }
++    int change;
++    int nBytes=0;
+
+-  static inline void
+-  cleanup(Engine_t* a)
+-  {
+-    delete a;
++    change = Serialize&lt;CHEETAH, Domain_t&gt;::unpack(dom, buffer);
++    buffer += change;
++    nBytes += change;
++
++    bool *compressed;
++    change = Serialize&lt;CHEETAH, bool&gt;::unpack(compressed, buffer);
++    buffer += change;
++    nBytes += change;
++
++    // domains dont match probably, but at least their sizes must
++    for (int i=0; i&lt;Dim; ++i)
++      PAssert((*dom)[i].size() == a.domain()[i].size());
++
++    if (*compressed)
++    {
++      T *value;
++      change = Serialize&lt;CHEETAH, T&gt;::unpack(value, buffer);
++
++      // we can't use usual array assignment here, because this would
++      // irritate the scheduler and lead to bogous results
++      Array&lt;Engine_t::dimensions, T, typename Engine_t::Tag_t&gt; lhs;
++      lhs.engine() = a;
++      Array&lt;Engine_t::dimensions, T, ConstantFunction&gt; rhs(*dom);
++      rhs.engine().setConstant(*value);
++      KernelEvaluator&lt;InlineKernelTag&gt;::evaluate(lhs, OpAssign(), rhs);
++    } else {
++      EngineElemDeSerialize op(buffer);
++
++      change = EngineBlockSerialize::apply(op, a, a.domain());
++    }
++    nBytes += change;
++
++    Serialize&lt;CHEETAH, Domain_t&gt;::cleanup(dom);
++    Serialize&lt;CHEETAH, bool&gt;::cleanup(compressed);
++
++    return nBytes;
+   }
++
+ };
+
+ template&lt;int Dim, class T&gt;
+@@ -1316,6 +1363,8 @@
+     int nBytes=0;
+
+     nBytes += Serialize&lt;CHEETAH, Domain_t&gt;::size(a.domain());
++    bool compressed = false;
++    nBytes += Serialize&lt;CHEETAH, bool&gt;::size(compressed);
+     nBytes += a.domain().size() * Serialize&lt;CHEETAH, T&gt;::size(T());
+
+     return nBytes;
+@@ -1333,6 +1382,11 @@
+     buffer += change;
+     nBytes += change;
+
++    bool compressed = false;
++    change = Serialize&lt;CHEETAH, bool&gt;::pack(compressed, buffer);
++    buffer += change;
++    nBytes += change;
++
+     EngineElemSerialize op(buffer);
+
+     change = EngineBlockSerialize::apply(op, a, dom);
+@@ -1342,6 +1396,8 @@
+     return nBytes;
+   }
+
++  // Old-style unpack with extra copy.
++
+   static inline int
+   unpack(Engine_t* &amp;a, char *buffer)
+   {
+@@ -1354,6 +1410,12 @@
+     buffer += change;
+     nBytes += change;
+
++    bool *compressed;
++    change = Serialize&lt;CHEETAH, bool&gt;::unpack(compressed, buffer);
++    buffer += change;
++    nBytes += change;
++    PAssert(!*compressed);
++
+     a = new Engine&lt;Dim, T, Brick&gt;(*dom);
+
+     EngineElemDeSerialize op(buffer);
+@@ -1362,6 +1424,9 @@
+
+     nBytes += change;
+
++    Serialize&lt;CHEETAH, Domain_t&gt;::cleanup(dom);
++    Serialize&lt;CHEETAH, bool&gt;::cleanup(compressed);
++
+     return nBytes;
+   }
+
+@@ -1370,6 +1435,7 @@
+   {
+     delete a;
+   }
++
+ };
+
+ template&lt;int Dim, class T&gt;
+@@ -1386,7 +1452,10 @@
+
+     nBytes += Serialize&lt;CHEETAH, Domain_t&gt;::size(a.domain());
+
+-    bool compressed = a.compressed();
++    // we cannot use a.compressed() here, because we need to
++    // set up a big enough receive buffer and the compressed
++    // flag is not valid across contexts.
++    bool compressed = false;
+     nBytes += Serialize&lt;CHEETAH, bool&gt;::size(compressed);
+
+     if (compressed)
+@@ -1433,6 +1502,8 @@
+     return nBytes;
+   }
+
++  // Old-style unpack with extra copy.
++
+   static inline int
+   unpack(Engine_t* &amp;a, char *buffer)
+   {
+@@ -1446,7 +1517,6 @@
+     nBytes += change;
+
+     bool *compressed;
+-
+     change = Serialize&lt;CHEETAH, bool&gt;::unpack(compressed, buffer);
+     buffer += change;
+     nBytes += change;
+@@ -1469,6 +1539,9 @@
+     }
+     nBytes += change;
+
++    Serialize&lt;CHEETAH, Domain_t&gt;::cleanup(dom);
++    Serialize&lt;CHEETAH, bool&gt;::cleanup(compressed);
++
+     return nBytes;
+   }
+
+@@ -1477,6 +1550,7 @@
+   {
+     delete a;
+   }
++
+ };
+
+ template&lt;int Dim, class T&gt;
+@@ -1493,7 +1567,10 @@
+
+     nBytes += Serialize&lt;CHEETAH, Domain_t&gt;::size(a.domain());
+
+-    bool compressed = a.compressed();
++    // we cannot use a.compressed() here, because we need to
++    // set up a big enough receive buffer and the compressed
++    // flag is not valid across contexts.
++    bool compressed = false;
+     nBytes += Serialize&lt;CHEETAH, bool&gt;::size(compressed);
+
+     if (compressed)
+@@ -1541,8 +1618,10 @@
+     return nBytes;
+   }
+
++  // We support a special unpack to avoid an extra copy.
++
+   static inline int
+-  unpack(Engine_t* &amp;a, char *buffer)
++  unpack(Engine_t &amp;a, char *buffer)
+   {
+     Interval&lt;Dim&gt; *dom;
+
+@@ -1554,40 +1633,36 @@
+     nBytes += change;
+
+     bool *compressed;
+-
+     change = Serialize&lt;CHEETAH, bool&gt;::unpack(compressed, buffer);
+     buffer += change;
+     nBytes += change;
+
++    // domains dont match probably, but at least their sizes must
++    for (int i=0; i&lt;Dim; ++i)
++      PAssert((*dom)[i].size() == a.domain()[i].size());
++
+     if (*compressed)
+     {
+       T *value;
+
+       change = Serialize&lt;CHEETAH, T&gt;::unpack(value, buffer);
+
+-      Engine&lt;Dim, T, CompressibleBrick&gt; foo(*dom, *value);
+-
+-      a = new Engine_t(foo, *dom);
++      // we can't use usual array assignment here, because this would
++      // irritate the scheduler and lead to bogous results
++      a.compressedReadWrite() = *value;
+     }
+     else
+     {
+-      Engine&lt;Dim, T, CompressibleBrick&gt; foo(*dom);
+-
+       EngineElemDeSerialize op(buffer);
+
+-      change = EngineBlockSerialize::apply(op, foo, *dom);
+-
+-      a = new Engine_t(foo, *dom);
++      change = EngineBlockSerialize::apply(op, a, *dom);
+     }
+     nBytes += change;
+
+-    return nBytes;
+-  }
++    Serialize&lt;CHEETAH, Domain_t&gt;::cleanup(dom);
++    Serialize&lt;CHEETAH, bool&gt;::cleanup(compressed);
+
+-  static inline void
+-  cleanup(Engine_t* a)
+-  {
+-    delete a;
++    return nBytes;
+   }
+ };
+
+--- SendReceive.h	2003-10-21 20:47:59.000000000 +0200
++++ /tmp/SendReceive.h	2003-12-30 21:34:17.000000000 +0100
+@@ -57,9 +57,11 @@
+ // Includes:
+ //-----------------------------------------------------------------------------
+
++#include &quot;Tulip/Messaging.h&quot;
+ #include &quot;Pooma/Pooma.h&quot;
+ #include &quot;Evaluator/InlineEvaluator.h&quot;
+-#include &quot;Tulip/Messaging.h&quot;
++#include &quot;Evaluator/RequestLocks.h&quot;
++#include &quot;Engine/DataObject.h&quot;
+ #include &quot;Utilities/PAssert.h&quot;
+
+ //-----------------------------------------------------------------------------
+@@ -268,14 +270,228 @@
+   {
+     PAssert(fromContext &gt;= 0);
+     int tag = Pooma::receiveTag(fromContext);
+-    Pooma::scheduler().handOff(new ReceiveIterate&lt;View,
+-			       IncomingView&gt;(view,
+-					     fromContext, tag));
++    Pooma::scheduler().handOff(new ReceiveIterate&lt;View, IncomingView&gt;
++					(view, fromContext, tag));
+   }
+ };
+
+
+-#else // not POOMA_CHEETAH
++#elif POOMA_MPI
++
++
++/**
++ * A SendIterate requests a read lock on a piece of data.  When that read lock
++ * is granted, we call a cheetah matching handler to send the data to the
++ * appropriate context.  We construct the SendIterate with a tag that is used
++ * to match the appropriate ReceiveIterate on the remote context.
++ */
++
++template&lt;class View&gt;
++class SendIterate
++  : public Pooma::Iterate_t
++{
++public:
++  SendIterate(const View &amp;view, int toContext, int tag)
++    : Pooma::Iterate_t(Pooma::scheduler()),
++      toContext_m(toContext),
++      tag_m(tag),
++      view_m(view)
++  {
++    PAssert(toContext &gt;= 0);
++
++    hintAffinity(engineFunctor(view_m,
++			       DataObjectRequest&lt;BlockAffinity&gt;()));
++
++#if POOMA_REORDER_ITERATES
++    // Priority interface was added to r2 version of serial async so that
++    // message send iterates would run before any other iterates.
++    priority(-1);
++#endif
++
++    DataObjectRequest&lt;WriteRequest&gt; writeReq(*this);
++    DataObjectRequest&lt;ReadRequest&gt; readReq(writeReq);
++    engineFunctor(view_m, readReq);
++  }
++
++  virtual void run()
++  {
++    typedef Cheetah::Serialize&lt;Cheetah::CHEETAH, View&gt; Serialize_t;
++
++    // serialize and send buffer
++    int length = Serialize_t::size(view_m);
++    buffer_m = new char[length];
++    Serialize_t::pack(view_m, buffer_m);
++    MPI_Request *request = Smarts::SystemContext::getMPIRequest(this);
++    int res = MPI_Isend(buffer_m, length, MPI_CHAR, toContext_m, tag_m,
++			MPI_COMM_WORLD, request);
++    PAssert(res == MPI_SUCCESS);
++
++    // release locks
++    DataObjectRequest&lt;WriteRelease&gt; writeReq;
++    DataObjectRequest&lt;ReadRelease&gt; readReq(writeReq);
++    engineFunctor(view_m, readReq);
++  }
++
++  virtual ~SendIterate()
++  {
++    // cleanup temporary objects.
++    delete[] buffer_m;
++  }
++
++private:
++
++  // Context we're sending the data to.
++
++  int toContext_m;
++
++  // A tag used to match the sent data with the right receive.
++
++  int tag_m;
++
++  // Communication buffer.
++
++  char *buffer_m;
++
++  // The data we're sending (typically a view of an array).
++
++  View view_m;
++};
++
++
++/**
++ * ReceiveIterate requests a write lock on a piece of data.  When that lock
++ * is granted, we register the data with the cheetah matching handler which
++ * will fill the block when a message arrives.  The write lock is released
++ * by the matching handler.
++ */
++
++template&lt;class View, class IncomingView&gt;
++class ReceiveIterate
++  : public Pooma::Iterate_t
++{
++public:
++
++  typedef ReceiveIterate&lt;View, IncomingView&gt; This_t;
++
++  ReceiveIterate(const View &amp;view, int fromContext, int tag)
++    : Pooma::Iterate_t(Pooma::scheduler()),
++      fromContext_m(fromContext),
++      tag_m(tag), buffer_m(NULL),
++      view_m(view)
++  {
++    PAssert(fromContext &gt;= 0);
++
++    hintAffinity(engineFunctor(view,
++			       DataObjectRequest&lt;BlockAffinity&gt;()));
++
++#if POOMA_REORDER_ITERATES
++    // Priority interface was added to r2 version of serial async so that
++    // message receive iterates would run after any other iterates.
++    priority(-1);
++#endif
++
++    DataObjectRequest&lt;WriteRequest&gt; writeReq(*this);
++    engineFunctor(view, writeReq);
++
++    Pooma::addIncomingMessage();
++
++    // pre-allocate incoming buffer and issue async receive
++    // we may hog on requests here - so maybe we need to conditionalize
++    // this a bit on request availability?
++    if (Smarts::SystemContext::haveLotsOfMPIRequests()) {
++      int length = Cheetah::Serialize&lt;Cheetah::CHEETAH, View&gt;::size(view_m);
++      buffer_m = new char[length];
++      MPI_Request *request = Smarts::SystemContext::getMPIRequest(this);
++      int res = MPI_Irecv(buffer_m, length, MPI_CHAR, fromContext_m, tag_m,
++			  MPI_COMM_WORLD, request);
++      PAssert(res == MPI_SUCCESS);
++    }
++  }
++
++  virtual void run()
++  {
++    // nothing - work is done in destructor, if we had enough requests free
++    if (!buffer_m) {
++      int length = Cheetah::Serialize&lt;Cheetah::CHEETAH, View&gt;::size(view_m);
++      buffer_m = new char[length];
++      MPI_Request *request = Smarts::SystemContext::getMPIRequest(this);
++      int res = MPI_Irecv(buffer_m, length, MPI_CHAR, fromContext_m, tag_m,
++			  MPI_COMM_WORLD, request);
++      PAssert(res == MPI_SUCCESS);
++    }
++  }
++
++  virtual ~ReceiveIterate()
++  {
++    typedef Cheetah::Serialize&lt;Cheetah::CHEETAH, View&gt; Serialize_t;
++
++    // de-serialize into target view directly
++    Serialize_t::unpack(view_m, buffer_m);
++
++    // cleanup temporary objects
++    delete[] buffer_m;
++
++    // release locks
++    DataObjectRequest&lt;WriteRelease&gt; writeReq;
++    engineFunctor(view_m, writeReq);
++
++    Pooma::gotIncomingMessage();
++  }
++
++private:
++
++  // Context we're sending the data to.
++
++  int fromContext_m;
++
++  // A tag used to match the sent data with the right send.
++
++  int tag_m;
++
++  // Communication buffer.
++
++  char *buffer_m;
++
++  // The place to put the data we're receiving (typically a view of the
++  // engine).;
++
++  View view_m;
++};
++
++/**
++ * SendReceive contains two static functions, send(view, context) and
++ * receive(view, context).  These functions encapsulate generating matching
++ * tags for the send and receive and launching the iterates to perform the
++ * send and receive.
++ */
++
++struct SendReceive
++{
++  template&lt;class View&gt;
++  static
++  void send(const View &amp;view, int toContext)
++  {
++    int tag = Pooma::sendTag(toContext);
++    Pooma::scheduler().handOff(new SendIterate&lt;View&gt;(view, toContext, tag));
++  }
++};
++
++template&lt;class IncomingView&gt;
++struct Receive
++{
++  template&lt;class View&gt;
++  static
++  void receive(const View &amp;view, int fromContext)
++  {
++    PAssert(fromContext &gt;= 0);
++    int tag = Pooma::receiveTag(fromContext);
++    Pooma::scheduler().handOff(new ReceiveIterate&lt;View, IncomingView&gt;
++					(view, fromContext, tag));
++  }
++};
++
++
++#else // not POOMA_MESSAGING
+
+
+ /**
+@@ -305,7 +521,8 @@
+   }
+ };
+
+-#endif // not POOMA_CHEETAH
++
++#endif // not POOMA_MESSAGING
+
+ //////////////////////////////////////////////////////////////////////
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="001440.html">[PATCH] Add MPI variants for RemoteProxy, CollectFromContexts and ReduceOverContexts
+</A></li>
+	<LI>Next message: <A HREF="001442.html">[PATCH] Optimize guard update copy
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#1441">[ date ]</a>
+              <a href="thread.html#1441">[ thread ]</a>
+              <a href="subject.html#1441">[ subject ]</a>
+              <a href="author.html#1441">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/pooma-dev">More information about the pooma-dev
+mailing list</a><br>
+</body></html>

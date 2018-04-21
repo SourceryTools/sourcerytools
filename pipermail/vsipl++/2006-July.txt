@@ -1,0 +1,5310 @@
+From assem at codesourcery.com  Thu Jul  6 16:30:30 2006
+From: assem at codesourcery.com (Assem Salama)
+Date: Thu, 06 Jul 2006 12:30:30 -0400
+Subject: Matlab IO
+Message-ID: <44AD3AA6.1070708@codesourcery.com>
+
+Everyone,
+  New Matlab IO patch with Jule's suggestions.
+
+Thanks,
+Assem
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: cvs.diff.07062006.1.log
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060706/ddfb4282/attachment.ksh>
+
+From jules at codesourcery.com  Thu Jul  6 21:16:35 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Thu, 06 Jul 2006 17:16:35 -0400
+Subject: [vsipl++] Matlab IO
+In-Reply-To: <44AD3AA6.1070708@codesourcery.com>
+References: <44AD3AA6.1070708@codesourcery.com>
+Message-ID: <44AD7DB3.7070306@codesourcery.com>
+
+Assem, I have 8 comments below.  -- Jules
+
+ > +  template <vsip::dimension_type Dim>
+ > +  struct view_header
+ > +  {
+ > +    data_element header;
+ > +    data_element array_flags_header;
+ > +    uint32_t array_flags[2];
+ > +    data_element dim_header;
+ > +    uint32_t dim[Dim + Dim%2]; //the dim has to be aligned to an 8 
+byte boundary
+
+[1] Can you make sure this comment fits into 80-columns?
+
+ > +    data_element array_name_header;
+ > +  };
+
+ > +  // the read function for real or complex depending of the view 
+that was
+ > +  // passed in
+ > +  template <typename T1,
+ > +	    typename ViewT>
+ > +  void read(std::istream& is,ViewT v,bool swap_bytes)
+ > +  {
+ > +    vsip::dimension_type const View_dim = ViewT::dim;
+ > +    vsip::Index<View_dim> my_index;
+ > +    vsip::impl::Length<View_dim> v_extent = extent(v);
+ > +    T1 data;
+ > +    typedef typename ViewT::value_type scalar_type;
+ > +
+ > +    // get num_points
+ > +    vsip::length_type num_points = v.size();
+ > +
+ > +    // read all the points
+ > +    for(vsip::index_type i=0;i<num_points;i++) {
+ > +      is.read(reinterpret_cast<char*>(&data),sizeof(data));
+ > +      swap<T1>(&data,swap_bytes);
+
+[2] The intent of the wrapper template function 'swap' is to let the
+compiler infer template parameters automatically.  Since 'data' is of
+type 'T1', you can just say:
+
+	swap(&data, swap_bytes);
+
+Unless the inferred type would be incorrect, can you remove the explicit 
+parameter?
+
+
+ > +
+ > +// operator to read view from matlab file
+ > +template <typename T,
+ > +          typename Block0,
+ > +	  template <typename,typename> class View>
+ > +inline
+ > +std::istream&
+ > +operator>>(
+ > +  std::istream&                                       is,
+ > +  Matlab_bin_formatter<View<T,Block0> >               mbf)
+ > +{
+ > +  matlab::data_element temp_data_element;
+ > +  matlab::view_header<vsip::impl::Dim_of_view<View>::dim> m_view;
+ > +  typedef typename vsip::impl::Scalar_of<T>::type scalar_type;
+ > +  typedef matlab::Subview_helper<View<T,Block0> > subview;
+ > +  typedef typename subview::realview_type r_v;
+ > +  typedef typename subview::imagview_type i_v;
+ > +  vsip::dimension_type v_dim = vsip::impl::Dim_of_view<View>::dim;
+ > +
+ > +
+ > +  // read header
+ > +  is.read(reinterpret_cast<char*>(&m_view),sizeof(m_view));
+ > +
+
+[3] When does mbf.header.endian get initialized?  Have you written a
+unit test for these routines?  (If not, please do that next).
+
+
+ > +  // do we need to swap fields?
+ > +  matlab::swap_header(m_view,mbf.header.endian);
+
+[4] The second arg to swap_header is a bool indicating if bytes should
+be swapped.  Passing mbf.header.endian (a uint16_t) will nearly always
+be true (unless the matlab file is corrupted).  Can you do something
+like:
+
+	bool swap_bytes;
+
+	if      (mbf.header.endian == 'M' << 8 | 'I') swap_bytes = false;
+	else if (mbf.header.endian == 'I' << 8 | 'M') swap_bytes = true;
+	else
+	  VSIP_IMPL_THROW(std::runtime_error(
+	    "Matlab file header has invalid endian field"));
+
+	matlab::swap_header(m_view, swap_bytes);
+
+
+ > +
+ > +  // is this complex?
+ > +  if(vsip::impl::Is_complex<T>::value && 
+!(m_view.array_flags[0]&(1<<11)))
+ > +    VSIP_IMPL_THROW(std::runtime_error(
+ > +      "Trying to read complex matrix into a real matrix"));
+
+[5] Please change this to "Trying to read a complex view into a real view"
+
+ > +
+ > +
+ > +  // is this the same class?
+ > +  if(!((m_view.array_flags[0] & 0xff) ==
+ > +            (matlab::Matlab_header_traits<sizeof(scalar_type),
+ > +                  std::numeric_limits<scalar_type>::is_signed,
+ > + 
+std::numeric_limits<scalar_type>::is_integer>::class_type)
+ > +	    ))
+ > +    VSIP_IMPL_THROW(std::runtime_error(
+ > +      "Trying to read a matrix of a different class"));
+
+[6] Please change this to "Trying to read a view with different class of 
+value type"
+
+ > +
+ > +  // do dimensions agree?
+ > +  if(v_dim == 1) m_view.dim_header.size -= 4; // special case for 
+vectors
+ > +  if(v_dim != (m_view.dim_header.size/4))
+ > +    VSIP_IMPL_THROW(std::runtime_error(
+ > +      "Trying to read a matrix of different dimensions"));
+
+[7] Please change this to "Trying to read a view with different dimension"
+
+ > +
+ > +  for(vsip::dimension_type i=0;i<v_dim;i++)
+ > +    if(mbf.view.size(i) != m_view.dim[i])
+ > +      VSIP_IMPL_THROW(std::runtime_error(
+ > +        "Matrix dimensions don't agree"));
+
+[8] Please change this to "View dimensions don't agree"
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From assem at codesourcery.com  Fri Jul  7 04:18:47 2006
+From: assem at codesourcery.com (Assem Salama)
+Date: Fri, 07 Jul 2006 00:18:47 -0400
+Subject: Matlab IO
+Message-ID: <44ADE0A7.5090008@codesourcery.com>
+
+Everyone,
+  New patch with Jule's suggestions.
+
+Assem
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: cvs.diff.07062006.2.log
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060707/eb328db6/attachment.ksh>
+
+From assem at codesourcery.com  Fri Jul  7 04:20:46 2006
+From: assem at codesourcery.com (Assem Salama)
+Date: Fri, 07 Jul 2006 00:20:46 -0400
+Subject: [vsipl++] Matlab IO
+In-Reply-To: <44AD7DB3.7070306@codesourcery.com>
+References: <44AD3AA6.1070708@codesourcery.com> <44AD7DB3.7070306@codesourcery.com>
+Message-ID: <44ADE11E.9020107@codesourcery.com>
+
+Jules Bergmann wrote:
+> Assem, I have 8 comments below.  -- Jules
+>
+> > +  template <vsip::dimension_type Dim>
+> > +  struct view_header
+> > +  {
+> > +    data_element header;
+> > +    data_element array_flags_header;
+> > +    uint32_t array_flags[2];
+> > +    data_element dim_header;
+> > +    uint32_t dim[Dim + Dim%2]; //the dim has to be aligned to an 8 
+> byte boundary
+>
+> [1] Can you make sure this comment fits into 80-columns?
+Yes it is.
+>
+> > +    data_element array_name_header;
+> > +  };
+>
+> > +  // the read function for real or complex depending of the view 
+> that was
+> > +  // passed in
+> > +  template <typename T1,
+> > +        typename ViewT>
+> > +  void read(std::istream& is,ViewT v,bool swap_bytes)
+> > +  {
+> > +    vsip::dimension_type const View_dim = ViewT::dim;
+> > +    vsip::Index<View_dim> my_index;
+> > +    vsip::impl::Length<View_dim> v_extent = extent(v);
+> > +    T1 data;
+> > +    typedef typename ViewT::value_type scalar_type;
+> > +
+> > +    // get num_points
+> > +    vsip::length_type num_points = v.size();
+> > +
+> > +    // read all the points
+> > +    for(vsip::index_type i=0;i<num_points;i++) {
+> > +      is.read(reinterpret_cast<char*>(&data),sizeof(data));
+> > +      swap<T1>(&data,swap_bytes);
+>
+> [2] The intent of the wrapper template function 'swap' is to let the
+> compiler infer template parameters automatically.  Since 'data' is of
+> type 'T1', you can just say:
+>
+>     swap(&data, swap_bytes);
+>
+> Unless the inferred type would be incorrect, can you remove the 
+> explicit parameter?
+>
+>
+> > +
+> > +// operator to read view from matlab file
+> > +template <typename T,
+> > +          typename Block0,
+> > +      template <typename,typename> class View>
+> > +inline
+> > +std::istream&
+> > +operator>>(
+> > +  std::istream&                                       is,
+> > +  Matlab_bin_formatter<View<T,Block0> >               mbf)
+> > +{
+> > +  matlab::data_element temp_data_element;
+> > +  matlab::view_header<vsip::impl::Dim_of_view<View>::dim> m_view;
+> > +  typedef typename vsip::impl::Scalar_of<T>::type scalar_type;
+> > +  typedef matlab::Subview_helper<View<T,Block0> > subview;
+> > +  typedef typename subview::realview_type r_v;
+> > +  typedef typename subview::imagview_type i_v;
+> > +  vsip::dimension_type v_dim = vsip::impl::Dim_of_view<View>::dim;
+> > +
+> > +
+> > +  // read header
+> > +  is.read(reinterpret_cast<char*>(&m_view),sizeof(m_view));
+> > +
+>
+> [3] When does mbf.header.endian get initialized?  Have you written a
+> unit test for these routines?  (If not, please do that next).
+>
+mbf.header gets initialized in the constructor. I have a test that 
+writes and read vectors,matrices,and tensors.
+>
+> > +  // do we need to swap fields?
+> > +  matlab::swap_header(m_view,mbf.header.endian);
+>
+> [4] The second arg to swap_header is a bool indicating if bytes should
+> be swapped.  Passing mbf.header.endian (a uint16_t) will nearly always
+> be true (unless the matlab file is corrupted).  Can you do something
+> like:
+>
+>     bool swap_bytes;
+>
+>     if      (mbf.header.endian == 'M' << 8 | 'I') swap_bytes = false;
+>     else if (mbf.header.endian == 'I' << 8 | 'M') swap_bytes = true;
+>     else
+>       VSIP_IMPL_THROW(std::runtime_error(
+>         "Matlab file header has invalid endian field"));
+>
+>     matlab::swap_header(m_view, swap_bytes);
+>
+>
+> > +
+> > +  // is this complex?
+> > +  if(vsip::impl::Is_complex<T>::value && 
+> !(m_view.array_flags[0]&(1<<11)))
+> > +    VSIP_IMPL_THROW(std::runtime_error(
+> > +      "Trying to read complex matrix into a real matrix"));
+>
+> [5] Please change this to "Trying to read a complex view into a real 
+> view"
+>
+> > +
+> > +
+> > +  // is this the same class?
+> > +  if(!((m_view.array_flags[0] & 0xff) ==
+> > +            (matlab::Matlab_header_traits<sizeof(scalar_type),
+> > +                  std::numeric_limits<scalar_type>::is_signed,
+> > + std::numeric_limits<scalar_type>::is_integer>::class_type)
+> > +        ))
+> > +    VSIP_IMPL_THROW(std::runtime_error(
+> > +      "Trying to read a matrix of a different class"));
+>
+> [6] Please change this to "Trying to read a view with different class 
+> of value type"
+>
+> > +
+> > +  // do dimensions agree?
+> > +  if(v_dim == 1) m_view.dim_header.size -= 4; // special case for 
+> vectors
+> > +  if(v_dim != (m_view.dim_header.size/4))
+> > +    VSIP_IMPL_THROW(std::runtime_error(
+> > +      "Trying to read a matrix of different dimensions"));
+>
+> [7] Please change this to "Trying to read a view with different 
+> dimension"
+>
+> > +
+> > +  for(vsip::dimension_type i=0;i<v_dim;i++)
+> > +    if(mbf.view.size(i) != m_view.dim[i])
+> > +      VSIP_IMPL_THROW(std::runtime_error(
+> > +        "Matrix dimensions don't agree"));
+>
+> [8] Please change this to "View dimensions don't agree"
+>
+>
+
+
+
+From assem at codesourcery.com  Fri Jul  7 04:22:14 2006
+From: assem at codesourcery.com (Assem Salama)
+Date: Fri, 07 Jul 2006 00:22:14 -0400
+Subject: Matlab IO
+Message-ID: <44ADE176.2030702@codesourcery.com>
+
+Everyone,
+  Sorry I missed a change in the last patch. This one has it.
+
+Assem
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: cvs.diff.07062006.2.log
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060707/c2e0642d/attachment.ksh>
+
+From jules at codesourcery.com  Fri Jul  7 16:22:53 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Fri, 07 Jul 2006 12:22:53 -0400
+Subject: [vsipl++] Matlab IO
+In-Reply-To: <44ADE176.2030702@codesourcery.com>
+References: <44ADE176.2030702@codesourcery.com>
+Message-ID: <44AE8A5D.8060902@codesourcery.com>
+
+Assem Salama wrote:
+> Everyone,
+>  Sorry I missed a change in the last patch. This one has it.
+
+Assem, This looks good, please check it in.  thanks! -- Jules
+
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From don at codesourcery.com  Fri Jul  7 22:01:37 2006
+From: don at codesourcery.com (Don McCoy)
+Date: Fri, 07 Jul 2006 16:01:37 -0600
+Subject: [vsipl++] [patch] Benchmarks update
+In-Reply-To: <44999567.2040902@codesourcery.com>
+References: <4493531F.5080605@codesourcery.com> <44999567.2040902@codesourcery.com>
+Message-ID: <44AED9C1.40401@codesourcery.com>
+
+Jules Bergmann wrote:
+> Don, This looks good.  Please check it in. -- Jules
+> 
+> Don McCoy wrote:
+>> The attached patch fixes one bug (in firbank.cpp) and cleans up the 
+>> makefiles used to build the benchmarks.
+...
+
+Just a note that this patch has now been committed.
+
+Regards,
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+
+
+From don at codesourcery.com  Sat Jul  8 00:01:24 2006
+From: don at codesourcery.com (Don McCoy)
+Date: Fri, 07 Jul 2006 18:01:24 -0600
+Subject: [patch] Built-in function profiling 
+Message-ID: <44AEF5D4.5020805@codesourcery.com>
+
+This is the first of a series of patches to add built-in profiling 
+capability to VSIPL++.  For this initial version, only the FFT, 
+Convolution and Correlation objects have been modified.
+
+An example of how to use the profiling features is included in the 
+examples/fft.cpp directory.  In brief, it shows the exact type of 
+operation performed, the total amount of time spent (even over multiple 
+calls), the number of times called, the operation count per call and 
+finally, the (calculated) rate of operations (in MFLOPS).  Full 
+documentation will be provided in an upcoming patch.
+
+Regards,
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: pf1.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060707/42f6adcc/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: pf1.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060707/42f6adcc/attachment-0001.ksh>
+
+From assem at codesourcery.com  Sun Jul  9 17:33:57 2006
+From: assem at codesourcery.com (Assem Salama)
+Date: Sun, 09 Jul 2006 13:33:57 -0400
+Subject: [vsipl++] Matlab IO
+In-Reply-To: <44AE8A5D.8060902@codesourcery.com>
+References: <44ADE176.2030702@codesourcery.com> <44AE8A5D.8060902@codesourcery.com>
+Message-ID: <44B13E05.9010601@codesourcery.com>
+
+Jules,
+  Should I check this in using svn?
+
+Thanks,
+Assem
+
+Jules Bergmann wrote:
+> Assem Salama wrote:
+>> Everyone,
+>>  Sorry I missed a change in the last patch. This one has it.
+>
+> Assem, This looks good, please check it in.  thanks! -- Jules
+>
+>
+>
+
+
+
+From jules at codesourcery.com  Mon Jul 10 14:31:02 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Mon, 10 Jul 2006 10:31:02 -0400
+Subject: [vsipl++] [patch] Built-in function profiling
+In-Reply-To: <44AEF5D4.5020805@codesourcery.com>
+References: <44AEF5D4.5020805@codesourcery.com>
+Message-ID: <44B264A6.6090302@codesourcery.com>
+
+Don McCoy wrote:
+> This is the first of a series of patches to add built-in profiling 
+> capability to VSIPL++.  For this initial version, only the FFT, 
+> Convolution and Correlation objects have been modified.
+> 
+> An example of how to use the profiling features is included in the 
+> examples/fft.cpp directory.  In brief, it shows the exact type of 
+> operation performed, the total amount of time spent (even over multiple 
+> calls), the number of times called, the operation count per call and 
+> finally, the (calculated) rate of operations (in MFLOPS).  Full 
+> documentation will be provided in an upcoming patch.
+
+Don, this looks good.  I have several comments below.  Can you please 
+address #1 and #3-#5 before checking in?  We can address #2 later.
+
+				thanks
+				-- Jules
+
+
+> @@ -171,6 +179,7 @@
+>  Profiler::dump(char* filename, char /*mode*/)
+>  {
+>    std::ofstream    file;
+> +  const char delim[] = " : ";
+
+While the spaces improve the human readability, they are more difficult 
+to post-process in a languages like perl and python (although the extra 
+difficulty is pretty minor).  Let's leave the space in, but in general 
+we should "error" on the side of easier post-processing rather than 
+readability since the profiling output will have a lot of raw 
+information that will be difficult to digest without some reduction.
+
+>  
+>    file.open(filename);
+>  
+> @@ -179,16 +188,20 @@
+>      file << "# mode: pm_trace" << std::endl;
+>      file << "# timer: " << TP::name() << std::endl;
+>      file << "# clocks_per_sec: " << TP::ticks(TP::clocks_per_sec) << std::endl;
+> +    file << "# " << std::endl;
+> +    file << "# index" << delim << "tag" << delim << "ticks" << delim << "open id" 
+> +         << delim << "op count" << std::endl;
+>  
+
+>      for (iterator cur = accum_.begin(); cur != accum_.end(); ++cur)
+>      {
+> -      file << (*cur).first << ":"
+> -	   << TP::ticks((*cur).second.total) << ":"
+> -	   << (*cur).second.count << std::endl;
+> +      float mflops = (*cur).second.count * (*cur).second.value /
+> +        (1e6 * TP::seconds((*cur).second.total));
+> +      file << (*cur).first 
+> +           << delim << TP::ticks((*cur).second.total)
+> +           << delim << (*cur).second.count
+> +           << delim << (*cur).second.value
+> +           << delim << mflops
+> +           << std::endl;
+> +      // clear log
+>        cur->second.total = TP::zero();
+>        cur->second.count = 0;
+
+[1] I think this should also clear 'value' too.
+
+
+>  
+> +namespace conv
+> +{
+> +template <typename T>
+> +struct Op_count
+> +{
+> +  static length_type
+> +  apply(length_type kernel_len, length_type output_len)
+> +  {
+> +    return static_cast<length_type>(kernel_len * output_len *
+> +      (Ops_info<T>::mul + Ops_info<T>::add));
+> +  }
+> +};
+
+This could also have been a template function:
+
+	template <typename T>
+	inline length_type
+	op_count(...)
+	{
+	   return ...
+	}
+
+Using a template function slightly simplifies the definition and use, 
+but it makes it difficult to use partial specializations (for example, 
+if you needed to compute the ops counts for complex versus non-complex 
+differently).  However, the 'Ops_info' class makes such specialization 
+unnecessary.
+
+Either way (class template as it currently is, or function template) is 
+fine.
+
+> +} // namespace conv
+
+>  } // namespace impl
+>  
+>  template <template <typename, typename> class ConstViewT,
+> @@ -110,7 +124,11 @@
+>      impl_View<V2, Block2, T, dim>       out)
+>      VSIP_NOTHROW
+>    {
+> -    timer_.start();
+> +    length_type const M = this->kernel_size()[0].size();
+> +    length_type const P = this->output_size()[0].size();
+> +    int ops = impl::conv::Op_count<T>::apply(M, P);
+> +    impl::profile::Scope_event scope_event("convolve_impl_view", ops);
+> +    impl::profile::Time_in_scope scope(this->timer_);
+
+[2] This is correct in functionality, but it would be good to abstract 
+it somewhat so that each scope_event doesn't need to compute the ops count.
+
+One way to do this is with a new class 'Profile_event' or 
+'Persistent_event' that was initialized with its name and ops count::
+
+	class Convolution
+	{
+	  ...
+
+	  Convolution(...)
+	  : ...
+	    event_("convolve_vector", ... precompute ops count ...)
+	  { ... }
+
+	  // Member data
+	  Profile_event event_;
+	};
+
+This would then be used in the operator
+
+	  impl::profile::Event_in_scope scope(this->event_);
+
+We could remove the duplicated effort between this->event_ and 
+this->timer_ by having the 'Profile_event' class be able to return its 
+accumulated time and invocation count:
+
+	  this->event_->total() and this->event_->count()
+
+Since not all users of 'Profile_event' will need this ability, it could 
+be made a policy::
+
+	  Profile_event<Accumulate_time> event_;
+
+or
+
+	  Profile_event<No_accumulate_time> event_;
+
+
+
+>      for (dimension_type d=0; d<dim; ++d)
+>        assert(in.size(d) == this->input_size()[d].size());
+>  
+
+>  
+>      return out;
+>    }
+> @@ -152,7 +172,11 @@
+>      Matrix<T, Block2>       out)
+>      VSIP_NOTHROW
+>    {
+> -    timer_.start();
+> +    length_type const M = this->kernel_size()[0].size();
+> +    length_type const P = this->output_size()[0].size();
+> +    int ops = impl::conv::Op_count<T>::apply(M, P);
+
+[3a] For a matrix convolution, the ops count will also depend on the 
+kernel_size()[1].size() and output_size()[1].size().  (The ops 
+computation in the original impl_performance was also broken for matrices).
+
+> +    impl::profile::Scope_event scope_event("convolve_matrix", ops);
+> +    impl::profile::Time_in_scope scope(this->timer_);
+>      for (dimension_type d=0; d<dim; ++d)
+>        assert(in.size(d) == this->input_size()[d].size());
+
+>    {
+>      if (!strcmp(what, "mflops"))
+>      {
+> -      int count = timer_.count();
+>        length_type const M = this->kernel_size()[0].size();
+>        length_type const P = this->output_size()[0].size();
+> -      float ops = 2.f * count * P * M;
+> -      return ops / (1e6*timer_.total());
+> +      int ops = impl::conv::Op_count<T>::apply(M, P);
+> +      return timer_.count() * ops / (1e6 * timer_.total());
+
+[3b] also correct matrix ops count here.
+
+
+> @@ -124,7 +141,11 @@
+>      Matrix<T, Block2>       out)
+>      VSIP_NOTHROW
+>    {
+> -    impl::profile::Scope_timer t(timer_);
+> +    length_type const M = this->reference_size()[0].size();
+> +    length_type const P = this->output_size()[0].size();
+> +    int ops = impl::corr::Op_count<T>::apply(M, P);
+
+[3c] matrix ops count
+
+> +    impl::profile::Scope_event scope_event("correlate_matrix", ops);
+> +    impl::profile::Time_in_scope scope(this->timer_);
+>  
+>      for (dimension_type d=0; d<dim; ++d)
+>      {
+> @@ -142,11 +163,10 @@
+>    {
+>      if (!strcmp(what, "mflops"))
+>      {
+> -      int count = timer_.count();
+> -      length_type const M = this->kernel_size()[0].size();
+> +      length_type const M = this->reference_size()[0].size();
+>        length_type const P = this->output_size()[0].size();
+> -      float ops = 2.f * count * P * M;
+> -      return ops / (1e6*timer_.total());
+> +      int ops = impl::corr::Op_count<T>::apply(M, P);
+
+[3d] matrix ops count
+
+> +      return timer_.count() * ops / (1e6 * timer_.total());
+
+
+
+> +
+> +template <typename T>
+> +struct Ops_info
+> +{
+> +  static int const div = 1;
+> +  static int const sqr = 1;
+> +  static int const mul = 1;
+> +  static int const add = 1;
+
+[4] if we change these from 'int' to 'unsigned', we can get rid of the 
+static_casts in the Ops_count::apply functions.
+
+
+>  
+> +length_type
+> +op_count(length_type len)
+> +{ 
+> +  return static_cast<length_type>(5 * len * std::log((float)len) / 
+> +                                  std::log(2.f)); 
+> +}
+> +
+
+[5] This should take into account the FFT input/output types to 
+determine if the transform is C to C (in which case the ops count is 
+correct at 5 * len * log2(len)), or R to C / C to R (in which case the 
+ops count is halved).
+
+
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From jules at codesourcery.com  Mon Jul 10 19:09:26 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Mon, 10 Jul 2006 15:09:26 -0400
+Subject: [vsipl++] Matlab IO
+In-Reply-To: <44B13E05.9010601@codesourcery.com>
+References: <44ADE176.2030702@codesourcery.com> <44AE8A5D.8060902@codesourcery.com> <44B13E05.9010601@codesourcery.com>
+Message-ID: <44B2A5E6.7070605@codesourcery.com>
+
+Assem Salama wrote:
+> Jules,
+>  Should I check this in using svn?
+
+Yes.
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From assem at codesourcery.com  Tue Jul 11 17:48:00 2006
+From: assem at codesourcery.com (Assem Salama)
+Date: Tue, 11 Jul 2006 13:48:00 -0400
+Subject: Matlab IO
+Message-ID: <44B3E450.90204@codesourcery.com>
+
+Everyone,
+  This patch is the new Matlab_IO using iterators.
+
+Thanks,
+Assem
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: svn.diff.07112006.1.log
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060711/c26c30ba/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: ChangeLog.07112006
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060711/c26c30ba/attachment-0001.ksh>
+
+From don at codesourcery.com  Tue Jul 11 20:17:17 2006
+From: don at codesourcery.com (Don McCoy)
+Date: Tue, 11 Jul 2006 14:17:17 -0600
+Subject: [vsipl++] [patch] Built-in function profiling
+In-Reply-To: <44B264A6.6090302@codesourcery.com>
+References: <44AEF5D4.5020805@codesourcery.com> <44B264A6.6090302@codesourcery.com>
+Message-ID: <44B4074D.7010404@codesourcery.com>
+
+Jules Bergmann wrote:
+> Don, this looks good.  I have several comments below.  Can you please 
+> address #1 and #3-#5 before checking in?  We can address #2 later.
+> 
+Sounds good.  Almost there.
+
+>> @@ -171,6 +179,7 @@
+>>  Profiler::dump(char* filename, char /*mode*/)
+>>  {
+>>    std::ofstream    file;
+>> +  const char delim[] = " : ";
+> 
+> While the spaces improve the human readability, they are more difficult 
+> to post-process in a languages like perl and python (although the extra 
+> difficulty is pretty minor).  Let's leave the space in, but in general 
+> we should "error" on the side of easier post-processing rather than 
+> readability since the profiling output will have a lot of raw 
+> information that will be difficult to digest without some reduction.
+> 
+I'll leave it as is, but you can see I was thinking the same thing by 
+making it easy to change in the future.  It might even be nice to allow 
+it to be overridden by the user.  This will help people who would find 
+it easier or preferable to use X over whatever default we settle on.
+
+>>      for (iterator cur = accum_.begin(); cur != accum_.end(); ++cur)
+>>      {
+>> -      file << (*cur).first << ":"
+>> -       << TP::ticks((*cur).second.total) << ":"
+>> -       << (*cur).second.count << std::endl;
+>> +      float mflops = (*cur).second.count * (*cur).second.value /
+>> +        (1e6 * TP::seconds((*cur).second.total));
+>> +      file << (*cur).first +           << delim << 
+>> TP::ticks((*cur).second.total)
+>> +           << delim << (*cur).second.count
+>> +           << delim << (*cur).second.value
+>> +           << delim << mflops
+>> +           << std::endl;
+>> +      // clear log
+>>        cur->second.total = TP::zero();
+>>        cur->second.count = 0;
+> 
+> [1] I think this should also clear 'value' too.
+> 
+I ran into some strange behavior (incorrect results, missing ops value) 
+when I did this initially.  Looking at the method used for 'data_' (not 
+shown, but it is a vector<> rather than a map<>) so I changed it to:
+
+	accum_.clear();  (after the for loop)
+
+Is there a reason to avoid this?  It seems to be the right thing, but 
+there may have been a reason not to that is not obvious at first glance.
+
+
+> 
+>>  
+>> +namespace conv
+>> +{
+>> +template <typename T>
+>> +struct Op_count
+>> +{
+>> +  static length_type
+>> +  apply(length_type kernel_len, length_type output_len)
+>> +  {
+>> +    return static_cast<length_type>(kernel_len * output_len *
+>> +      (Ops_info<T>::mul + Ops_info<T>::add));
+>> +  }
+>> +};
+> 
+> This could also have been a template function:
+> 
+>     template <typename T>
+>     inline length_type
+>     op_count(...)
+>     {
+>        return ...
+>     }
+> 
+I reverted it to be a template function.  Not sure what I did wrong the 
+first time I attempted that, but it was giving me an error compiling it 
+that I couldn't figure out at the time.
+
+
+>> @@ -152,7 +172,11 @@
+>>      Matrix<T, Block2>       out)
+>>      VSIP_NOTHROW
+>>    {
+>> -    timer_.start();
+>> +    length_type const M = this->kernel_size()[0].size();
+>> +    length_type const P = this->output_size()[0].size();
+>> +    int ops = impl::conv::Op_count<T>::apply(M, P);
+> 
+> [3a] For a matrix convolution, the ops count will also depend on the 
+> kernel_size()[1].size() and output_size()[1].size().  (The ops 
+> computation in the original impl_performance was also broken for matrices).
+> 
+Corrected.  I should have caught that -- I'm glad you did.
+
+
+Working on [4] and [5].  Thanks for the feedback.
+
+Regards,
+
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+
+
+From jules at codesourcery.com  Tue Jul 11 20:42:30 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Tue, 11 Jul 2006 16:42:30 -0400
+Subject: [vsipl++] [patch] Built-in function profiling
+In-Reply-To: <44B4074D.7010404@codesourcery.com>
+References: <44AEF5D4.5020805@codesourcery.com> <44B264A6.6090302@codesourcery.com> <44B4074D.7010404@codesourcery.com>
+Message-ID: <44B40D36.3080907@codesourcery.com>
+
+Don McCoy wrote:
+
+>>> @@ -171,6 +179,7 @@
+>>>  Profiler::dump(char* filename, char /*mode*/)
+>>>  {
+>>>    std::ofstream    file;
+>>> +  const char delim[] = " : ";
+>>
+>> While the spaces improve the human readability, they are more 
+>> difficult to post-process in a languages like perl and python 
+>> (although the extra difficulty is pretty minor).  Let's leave the 
+>> space in, but in general we should "error" on the side of easier 
+>> post-processing rather than readability since the profiling output 
+>> will have a lot of raw information that will be difficult to digest 
+>> without some reduction.
+>>
+> I'll leave it as is, but you can see I was thinking the same thing by 
+> making it easy to change in the future.  It might even be nice to allow 
+> it to be overridden by the user.  This will help people who would find 
+> it easier or preferable to use X over whatever default we settle on.
+
+Sounds good!
+
+
+>>> +      // clear log
+>>>        cur->second.total = TP::zero();
+>>>        cur->second.count = 0;
+>>
+>> [1] I think this should also clear 'value' too.
+>>
+> I ran into some strange behavior (incorrect results, missing ops value) 
+> when I did this initially.
+
+That is strange.
+
+>  Looking at the method used for 'data_' (not 
+> shown, but it is a vector<> rather than a map<>) so I changed it to:
+> 
+>     accum_.clear();  (after the for loop)
+> 
+> Is there a reason to avoid this?  It seems to be the right thing, but 
+> there may have been a reason not to that is not obvious at first glance.
+
+The reason I avoided using clear is because it deletes both the keys and 
+the values.  If you are using measuring the same thing over and over in 
+accumulate mode and every so often want to dump out your results, 
+clear() will introduce a extra overhead because the map's B-tree (or 
+whatever structure it uses internally) has to be recreated after the clear.
+
+An example of this is using accumulate mode to profile a benchmark.  It 
+makes sense to zero out the accumulated data when switching from one 
+problem size to the next.  However, since the next problem size will be 
+doing the same events, keeping the keys around will avoids recreating 
+the map's internal search tree.
+
+However, all that said, I think we should also be more explicit in 
+naming the events (adding the data type, size, etc).  That takes away my 
+original reason for avoiding clear().  In fact, it makes using clear() a 
+good idea since it will remove crufty old entries.
+
+Bottom line: let's use clear().
+
+				-- Jules
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From don at codesourcery.com  Tue Jul 11 22:05:56 2006
+From: don at codesourcery.com (Don McCoy)
+Date: Tue, 11 Jul 2006 16:05:56 -0600
+Subject: [vsipl++] [patch] Built-in function profiling
+In-Reply-To: <44B40D36.3080907@codesourcery.com>
+References: <44AEF5D4.5020805@codesourcery.com> <44B264A6.6090302@codesourcery.com> <44B4074D.7010404@codesourcery.com> <44B40D36.3080907@codesourcery.com>
+Message-ID: <44B420C4.4050608@codesourcery.com>
+
+Revised as suggested.  Ok to commit?
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: pf2.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060711/fdf99f79/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: pf2.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060711/fdf99f79/attachment-0001.ksh>
+
+From jules at codesourcery.com  Wed Jul 12 13:57:16 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Wed, 12 Jul 2006 09:57:16 -0400
+Subject: [vsipl++] Matlab IO
+In-Reply-To: <44B3E450.90204@codesourcery.com>
+References: <44B3E450.90204@codesourcery.com>
+Message-ID: <44B4FFBC.3070601@codesourcery.com>
+
+Assem Salama wrote:
+ > Everyone,
+ >  This patch is the new Matlab_IO using iterators.
+
+Assem, Thanks, I have several (8) comments below.  -- Jules
+
+[1] What directory are these files going in to?
+
+In general, if you do an 'svn diff' in the top level of your checkout,
+it should include the path as part of the filename.
+
+If you want to only diff a subdirectory of your checkout, instead of
+going into that directory (and losing the path name), you can do this
+from the top level by giving 'svn diff' a path name, i.e.
+
+	svn diff vsip_csl
+
+ >
+ >
+ > ------------------------------------------------------------------------
+ >
+ > Index: matlab_file.cpp
+ > ===================================================================
+ > --- matlab_file.cpp	(revision 0)
+ > +++ matlab_file.cpp	(revision 0)
+ > @@ -0,0 +1,39 @@
+ > +/* Copyright (c) 2005, 2006 by CodeSourcery.  All rights reserved. */
+
+[2] The copyright shouldn't include 2005 (unless this code was started
+back then).
+
+ > +
+ > +/** @file    vsip_csl/matlab_file.cpp
+ > +    @author  Assem Salama
+ > +    @date    2006-06-21
+ > +    @brief   VSIPL++ CodeSourcery Library: Matlab_file class functions
+ > +*/
+ > +#include "vsip_csl/matlab_bin_formatter.hpp"
+ > +#include "vsip_csl/matlab_file.hpp"
+
+[3] In general, these should be angle bracket includes "#include
+<...>"
+
+ > +
+ > +namespace vsip_csl
+ > +{
+ > +
+ > +Matlab_file::Matlab_file(std::string fname) :
+ > +  is_(fname.c_str()),
+ > +  begin_iterator_(&is_,false),
+ > +  end_iterator_(&is_,true)
+ > +
+ > +{
+ > +  // read header to make sure it is matlab file
+ > +  is_ >> matlab_header_;
+ > +
+ > +  // get length of file
+ > +  {
+ > +    std::istream::off_type temp_offset = 0;
+ > +    std::istream::pos_type temp_pos = is_.tellg();
+ > +    is_.seekg(temp_offset,std::ios::end);
+ > +    begin_iterator_.set_length(static_cast<uint32_t>(is_.tellg()));
+ > +    is_.seekg(temp_pos);
+ > +  }
+ > +  begin_iterator_.set_endian(matlab_header_.endian == ('I' << 8|'M'));
+ > +
+ > +  // read first header
+ > +  begin_iterator_.read_header();
+ > +
+ > +}
+ > +
+ > +}
+
+ > Index: matlab_file.hpp
+ > ===================================================================
+ > --- matlab_file.hpp	(revision 0)
+ > +++ matlab_file.hpp	(revision 0)
+ > @@ -0,0 +1,217 @@
+ > +/* Copyright (c) 2005, 2006 by CodeSourcery.  All rights reserved. */
+ > +
+ > +/** @file    vsip_csl/matlab_file.hpp
+ > +    @author  Assem Salama
+ > +    @date    2006-06-21
+ > +    @brief   VSIPL++ CodeSourcery Library: Matlab file class that 
+handles
+ > +             Matlab files using an iterator.
+ > +*/
+ > +
+ > +#ifndef VSIP_CSL_MATLAB_FILE_HPP
+ > +#define VSIP_CSL_MATLAB_FILE_HPP
+ > +
+ > +#include <iostream>
+ > +#include <fstream>
+ > +#include "vsip_csl/matlab_bin_formatter.hpp"
+ > +
+ > +namespace vsip_csl
+ > +{
+ > +
+ > +class Matlab_file
+ > +{
+ > +  public:
+ > +    // Constructors
+ > +    Matlab_file(std::string fname);
+
+[4] When creating a class, you need to consider
+
+  - what constructors are necessary?
+
+  - How will copies and assignment will be handled?
+  - should copy be shallow, deep, or disallowed?
+
+    Since you haven't defined a copy constructor, C++ will create a
+    default copy constructor that does a shallow copy:
+
+    	Matlab_file(Matlab_file const& obj)
+	 : matlab_header_ (obj.matlab_header_),
+	   is_            (obj.is_),
+	   begin_iterator_(obj.begin_iterator_),
+	   end_iterator_  (obj.end_iterator_)
+	{}
+
+    Shallow copy is OK if the object only has data that does not need
+    to be deallocated (i.e. an 'int' member variable), refers to data
+    not owned by the object (such as a pointer to external data that
+    will not be deallocated when the object is destroyed), or that
+    manages its own deallocation (such as a reference counted object).
+
+    For Matlab_file, whether this is OK depends on std::ifstream.
+    What does its copy constructor do, and how does this interact
+    with the destructor?  For example, if std::ifstream uses a
+    reference count to determine how many copies have been made and
+    only deallocates its resources when the last copy is destroyed,
+    then a shallow copy is alright.  On the other hand, if
+    std::ifstream does a shallow copy and destroying an ifstream
+    deallocates resources, then having Matlab_file also do a
+    shallow copy is dangerous.
+
+    I suspect that std::ifstream does the "right thing", making
+    a shallow copy for Matlab_file OK, but you need to check.
+    If the default copy is OK, you should include a comment
+    "default copy constructor is OK."
+
+
+    Another consideration is what is the behavior of a copy? What does
+    it mean if two Matlab_file objects refer to the same file?  Can
+    iterators from the two objects be used simultaneous, or does
+    incrementing one iterator affect the state of the other?
+
+    One way to prevent changes in one object from affecting the other
+    is with a deep copy (instead of having both objects refer to the
+    same file object, have the copy refer to a clone of the original).
+
+    Another way is to prevent copies from being made by making the
+    copy constructor private.
+
+  - what should assignment do?
+
+    Similar to copy, if you do not provide an assignment operator,
+    C++ provides one for you that does a shallow assignment.  Is this
+    the right thing?
+
+  - Is a destructor necessary?
+
+    Is there any cleanup that needs to be done when an object is destroyed?
+
+    If you don't specify the destructor, C++ will create a default
+    destructor that just destroys the object's members:
+
+    	~Matlab_file() {} // default destructor
+
+    Similar to shallow copy, this is OK for non-allocated data,
+    pointers to external data, and data that cleans itself up when
+    destroyed.
+
+    Is this OK for Matlab_file?  In particular what happens to an ifstream
+    object when destroyed?
+
+    If it is OK, you should put a comment like: "default destructor OK",
+    or explicitly define the default constructor.
+
+ > +
+ > +  // classes
+ > +  public:
+ > +    class iterator
+ > +    {
+ > +      public:
+
+ > +	  ifs_(ifs), end_of_file_(end_of_file),
+ > +	  read_data_(false) {}
+
+[5] You need to answer the same questions for 'iterator'.  Are the default
+copy-constructor, assignment operator, and destructor OK?
+
+Unlike Matlab_file, we can't make the copy-constructor and assignment
+operator private, because they're needed to use the iterator, i.e.:
+
+	Matlab_file mfile("xyz.mat");
+	Matlab_file::iterator cur = mfile.begin();
+	Matlab_file::iterator end = mfile.end();
+
+	while (cur != end)
+	{
+	  // process data at 'cur'
+	  ++cur;
+	}
+
+Some questions:
+
+  - what does it mean if you call 'mfile.begin()' a second time?
+
+  - what are the semantics if you copy an iteraror?  How does using
+    one affect the other
+
+    	Matlab_file iterator cur  = mfile.begin();
+	Matlab_file iterator copy = begin;
+
+	++cur;
+
+    Is 'copy' unchanged, updated to reflect the new state of the file, or
+    invalidated?  This needs to be documented.
+
+    I suspect the answer is "invalidated", which may be unintuitive to the
+    user.  For example, if the iterator is inadvertently copied to call
+    a function:
+
+    	void
+	process(Matlab_file::iterator cur)
+	{
+	  cur.read(...);
+         }
+
+	while (cur != end)
+	{
+	  process(cur);
+	  ++cur;
+	}
+
+    The changes to iterator state made inside of 'process' (reading the
+    file, which sets the 'read_data_' flag) will invalidate 'cur'.
+
+    While this can be avoided by requiring the user to pass the
+    iterator by reference:
+
+    	void
+	process(Matlab_file::iterator& cur)
+	{
+	  cur.read(...);
+         }
+
+    It would be better avoid this altogether.
+
+    One way to do this is to have the Matlab_file object maintain the
+    state, and have the iterators refer to the Matlab_file object, along
+    with an indication of whether they are the special 'end' iterator.
+
+ > +
+ > +	bool is_eof() { return end_of_file_; }
+
+ > +	void set_endian(bool swap_bytes)
+ > +	  { view_header_.swap_bytes = swap_bytes;}
+
+[6] This shouldn't be called 'set_endian' because it is not actually
+setting the endianness.  'set_swap_bytes' would be a better name.
+
+ > +	void set_length(uint32_t length) { length_ = length; }
+ > +	void read_header() { (*ifs_) >> view_header_; }
+ > +	std::istream *get_stream() { return ifs_; }
+ > +
+ > +      // operators
+ > +      public:
+ > +        iterator& operator++()
+ > +	{
+ > +	  if(!read_data_)
+ > +	  {
+ > +	    // advance file pointer to next header
+ > +	    // make sure that we don't go beyond the end of file!
+ > +	    if(view_header_.next_header >= length_)
+ > +	      end_of_file_ = true;
+ > +	    else
+ > +	      ifs_->seekg(view_header_.next_header);
+ > +
+ > +	  }
+ > +	  if(!end_of_file_) // read next header
+ > +	    (*ifs_) >> view_header_;
+ > +
+ > +	  read_data_ = false;
+ > +	  return *this;
+ > +	}
+ > +
+ > +	bool operator==(iterator &i1)
+ > +	{
+
+[7] Since this is a member function of class iterator, it can see the
+members of both 'this' and 'i1'.  Hence you can do:
+
+	return i1.end_of_file == this->end_of_file_;
+
+Which removes the need for the 'is_eof()' member function.
+
+ > +	  return i1.is_eof() == end_of_file_;
+ > +	}
+ > +
+ > +	bool operator!=(iterator &i1)
+ > +	{
+ > +	  return i1.is_eof() != end_of_file_;
+ > +	}
+ > +
+ > +	Matlab_view_header*
+ > +	operator*()
+ > +	{
+ > +	  return &view_header_;
+ > +	}
+ > +
+ > +
+ > +      private:
+ > +        Matlab_view_header view_header_;
+ > +	std::ifstream *ifs_;
+ > +	bool end_of_file_;
+ > +	bool read_data_;
+ > +	uint32_t length_;
+ > +    };
+ > +
+ > +  public:
+ > +    // iterator functions
+ > +    iterator begin() { return begin_iterator_; };
+ > +    iterator end() { return end_iterator_; };
+ > +
+
+[8] Should this be a member of 'Matlab_file' or of 'Matlab_file::iterator'?
+
+Since the view header is accessed by dereferencing the iterator, making
+the read function an iterator member would be more intuitive:
+
+	while (cur != end)
+	{
+	  if (*cur.header->num_dims == 1 &&
+	      *cur.header->class_type == ... float...)
+	  {
+	    length_type size = *cur.header->dims[0];
+	    Vector<float> vec(size);
+	    cur.read(vec);
+	    // process data in 'vec'
+	  }
+	  ++cur;
+	}
+
+ > +    // read a view from a matlab file after reading the header
+ > +    template <typename T,
+ > +	      typename Block0,
+ > +	      template <typename,typename> class View>
+ > +    void read_view(View<T,Block0> view, iterator  &iter);
+ > +
+ > +  private:
+ > +    Matlab_bin_hdr                    matlab_header_;
+ > +    std::ifstream                     is_;
+ > +    iterator                          begin_iterator_;
+ > +    iterator                          end_iterator_;
+ > +
+ > +
+ > +};
+ > +
+ > +
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From jules at codesourcery.com  Wed Jul 12 14:16:20 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Wed, 12 Jul 2006 10:16:20 -0400
+Subject: [vsipl++] [patch] Built-in function profiling
+In-Reply-To: <44B420C4.4050608@codesourcery.com>
+References: <44AEF5D4.5020805@codesourcery.com> <44B264A6.6090302@codesourcery.com> <44B4074D.7010404@codesourcery.com> <44B40D36.3080907@codesourcery.com> <44B420C4.4050608@codesourcery.com>
+Message-ID: <44B50434.5010607@codesourcery.com>
+
+Don McCoy wrote:
+ > Revised as suggested.  Ok to commit?
+
+Don, this looks good, please commit.  Thanks -- Jules
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From don at codesourcery.com  Thu Jul 13 17:44:37 2006
+From: don at codesourcery.com (Don McCoy)
+Date: Thu, 13 Jul 2006 11:44:37 -0600
+Subject: [vsipl++] [patch] Built-in function profiling
+In-Reply-To: <44B50434.5010607@codesourcery.com>
+References: <44AEF5D4.5020805@codesourcery.com> <44B264A6.6090302@codesourcery.com> <44B4074D.7010404@codesourcery.com> <44B40D36.3080907@codesourcery.com> <44B420C4.4050608@codesourcery.com> <44B50434.5010607@codesourcery.com>
+Message-ID: <44B68685.9080604@codesourcery.com>
+
+This patch adds some files missing from the previous patch that are 
+needed for building examples/fft.  I also cleaned up that example and 
+added a 'clean' target to the examples makefile.
+
+In the process, I found a defect in the FFTW clean target that is now 
+corrected.
+
+Regards,
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+
+
+From don at codesourcery.com  Thu Jul 13 17:46:08 2006
+From: don at codesourcery.com (Don McCoy)
+Date: Thu, 13 Jul 2006 11:46:08 -0600
+Subject: [vsipl++] [patch] Built-in function profiling
+In-Reply-To: <44B50434.5010607@codesourcery.com>
+References: <44AEF5D4.5020805@codesourcery.com> <44B264A6.6090302@codesourcery.com> <44B4074D.7010404@codesourcery.com> <44B40D36.3080907@codesourcery.com> <44B420C4.4050608@codesourcery.com> <44B50434.5010607@codesourcery.com>
+Message-ID: <44B686E0.2070608@codesourcery.com>
+
+This patch adds some files missing from the previous patch that are 
+needed for building examples/fft.  I also cleaned up that example and 
+added a 'clean' target to the examples makefile.
+
+In the process, I found a defect in the FFTW clean target that is now 
+corrected.
+
+EDIT: Attached patch.
+
+Regards,
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: pf3.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060713/a773b7ec/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: pf3.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060713/a773b7ec/attachment-0001.ksh>
+
+From don at codesourcery.com  Fri Jul 14 08:12:22 2006
+From: don at codesourcery.com (Don McCoy)
+Date: Fri, 14 Jul 2006 02:12:22 -0600
+Subject: [vsipl++] [patch] Built-in function profiling
+In-Reply-To: <44B686E0.2070608@codesourcery.com>
+References: <44AEF5D4.5020805@codesourcery.com> <44B264A6.6090302@codesourcery.com> <44B4074D.7010404@codesourcery.com> <44B40D36.3080907@codesourcery.com> <44B420C4.4050608@codesourcery.com> <44B50434.5010607@codesourcery.com> <44B686E0.2070608@codesourcery.com>
+Message-ID: <44B751E6.4030603@codesourcery.com>
+
+Don McCoy wrote:
+> This patch adds some files missing from the previous patch that are 
+> needed for building examples/fft.  I also cleaned up that example and 
+> added a 'clean' target to the examples makefile.
+> 
+> In the process, I found a defect in the FFTW clean target that is now 
+> corrected.
+> 
+
+Also reverted duplicate copies of headers in vsip_csl and used svn's 
+move/rename capability to accomplish the same thing while preserving the 
+file histories.  Seems like a Good Thing.
+
+Unfortunately, this necessitated fixing up numerous paths in the tests/ 
+directory as well as taking the 'vsip_csl' namespace into account. 
+Please excuse the size of the attached patch.  This affected a lot of 
+files, but it seemed like a good time to get it out of the way.
+
+Regards,
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: pf4.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060714/068bb9b7/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: pf4.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060714/068bb9b7/attachment-0001.ksh>
+
+From don at codesourcery.com  Fri Jul 14 08:21:16 2006
+From: don at codesourcery.com (Don McCoy)
+Date: Fri, 14 Jul 2006 02:21:16 -0600
+Subject: [vsipl++] [patch] Built-in function profiling
+In-Reply-To: <44B751E6.4030603@codesourcery.com>
+References: <44AEF5D4.5020805@codesourcery.com> <44B264A6.6090302@codesourcery.com> <44B4074D.7010404@codesourcery.com> <44B40D36.3080907@codesourcery.com> <44B420C4.4050608@codesourcery.com> <44B50434.5010607@codesourcery.com> <44B686E0.2070608@codesourcery.com> <44B751E6.4030603@codesourcery.com>
+Message-ID: <44B753FC.3000305@codesourcery.com>
+
+I should add: The previous patch was tested successfully using a 
+configuration identical to the default EM64T binary configuration (MPI, 
+FORTRAN LAPACK, ATLAS and FFTW).
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+
+
+From jules at codesourcery.com  Fri Jul 14 11:13:31 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Fri, 14 Jul 2006 07:13:31 -0400
+Subject: [vsipl++] [patch] Built-in function profiling
+In-Reply-To: <44B751E6.4030603@codesourcery.com>
+References: <44AEF5D4.5020805@codesourcery.com> <44B264A6.6090302@codesourcery.com> <44B4074D.7010404@codesourcery.com> <44B40D36.3080907@codesourcery.com> <44B420C4.4050608@codesourcery.com> <44B50434.5010607@codesourcery.com> <44B686E0.2070608@codesourcery.com> <44B751E6.4030603@codesourcery.com>
+Message-ID: <44B77C5B.9030002@codesourcery.com>
+
+Don McCoy wrote:
+> Don McCoy wrote:
+>> This patch adds some files missing from the previous patch that are 
+>> needed for building examples/fft.  I also cleaned up that example and 
+>> added a 'clean' target to the examples makefile.
+>>
+>> In the process, I found a defect in the FFTW clean target that is now 
+>> corrected.
+>>
+> 
+> Also reverted duplicate copies of headers in vsip_csl and used svn's 
+> move/rename capability to accomplish the same thing while preserving the 
+> file histories.  Seems like a Good Thing.
+> 
+> Unfortunately, this necessitated fixing up numerous paths in the tests/ 
+> directory as well as taking the 'vsip_csl' namespace into account. 
+> Please excuse the size of the attached patch.  This affected a lot of 
+> files, but it seemed like a good time to get it out of the way.
+> 
+
+Don, this looks good, please check it in.  thanks -- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From assem at codesourcery.com  Sat Jul 15 13:10:12 2006
+From: assem at codesourcery.com (Assem Salama)
+Date: Sat, 15 Jul 2006 09:10:12 -0400
+Subject: Matlab IO
+Message-ID: <44B8E934.3060801@codesourcery.com>
+
+Everyone,
+  This patch adds a test to the test directory to test low level Matlab 
+IO interface.
+
+Thanks,
+Assem
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: svn.diff.07142006.1.log
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060715/4e9aa409/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: ChangeLog.07142006
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060715/4e9aa409/attachment-0001.ksh>
+
+From don at codesourcery.com  Mon Jul 17 05:12:18 2006
+From: don at codesourcery.com (Don McCoy)
+Date: Sun, 16 Jul 2006 23:12:18 -0600
+Subject: [patch] Profile_event class
+Message-ID: <44BB1C32.7010608@codesourcery.com>
+
+This patch integrates the functions needed for the impl_performance() 
+interface along with some new functions needed for handling events more 
+efficiently.  It also uses more descriptive names for the FFT events, 
+for example:
+
+# mode: pm_accum
+# timer: x86_64_tsc_time
+# clocks_per_sec: 3591371008
+#
+# tag : total ticks : num calls : op count : mflops
+fwd fft, cplx-cplx, rbv : 102141 : 1 : 51200 : 1800.24
+inv fft, cplx-cplx, rbv : 95490 : 1 : 51200 : 1925.63
+
+Note: rbv = return by value.  The others should be readable.  Full 
+documentation will follow soon.
+
+Regards,
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: pf5.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060716/c836ce6a/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: pf5.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060716/c836ce6a/attachment-0001.ksh>
+
+From jules at codesourcery.com  Mon Jul 17 17:36:13 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Mon, 17 Jul 2006 13:36:13 -0400
+Subject: [patch] Parallel Howto
+Message-ID: <44BBCA8D.6010807@codesourcery.com>
+
+This patch adds a "parallel howto" chapter to the tutorial.
+
+I've put the generated HTML and PDF for the tutorial on the internal 
+downloads:
+
+https://intranet.codesourcery.com/downloads/vsipl/jules/tutorial/chap-parallel-tutorial.html
+
+and
+
+https://intranet.codesourcery.com/downloads/vsipl/jules/tutorial.pdf
+
+Please have a look and let me know what you think.
+
+
+There are several FIXME's still in the patch.  I want to add performance 
+results to compare and contrast the various approaches.  Most of these 
+boil down to running existing u-benchmark cases.  I will fix these 
+before committing.
+
+				thanks,
+				-- Jules
+
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: par-howto.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060717/c8f99efb/attachment.ksh>
+
+From jules at codesourcery.com  Mon Jul 17 19:22:45 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Mon, 17 Jul 2006 15:22:45 -0400
+Subject: [vsipl++] Matlab IO
+In-Reply-To: <44B8E934.3060801@codesourcery.com>
+References: <44B8E934.3060801@codesourcery.com>
+Message-ID: <44BBE385.8010102@codesourcery.com>
+
+Assem Salama wrote:
+ > Everyone,
+ >  This patch adds a test to the test directory to test low level Matlab
+ > IO interface.
+
+Assem,
+
+This looks good, I have 5 comments below, once those are addressed,
+please check this in. -- Jules
+
+ > ------------------------------------------------------------------------
+ >
+ > Index: tests/matlab_bin_file_test.cpp
+ > ===================================================================
+ > --- tests/matlab_bin_file_test.cpp	(revision 0)
+ > +++ tests/matlab_bin_file_test.cpp	(revision 0)
+
+[1] Please add the standard header: copyright, file, author, date,
+and brief description.
+
+
+ > +template <typename T>
+ > +void tensor_test(int m, int n, int o, std::ofstream &ofs, char *name)
+ > +{
+
+[2] instead of representing view dimensions as 'int', can you use
+'length_type' instead?  I expected this type of conversion to be
+caught by GCC's '-W -Wall' but apparently not.
+
+ > +  Tensor<T> a(m,n,o);
+ > +  T         value;
+ > +
+ > +  value = 0;
+ > +  for(int i=0;i<m;i++) {
+ > +    for(int j=0;j<n;j++) {
+ > +      for(int k=0;k<o;k++) {
+ > +        value = increment(value);
+ > +        a.put(i,j,k,value);
+
+[3] Likewise, instead of using 'int' to iterate over indices, can you
+use 'index_type'?
+
+ > +      }
+ > +    }
+ > +  }
+ > +
+ > +  // write it out to file
+ > +  ofs << Matlab_bin_formatter<Tensor<T> >(a,name);
+ > +}
+
+
+ > +template <typename T>
+ > +void vector_input_test(int m, std::ifstream &ifs, char 
+*name,Matlab_bin_hdr &h)
+ > +{
+ > +  Vector<T> a(m);
+ > +  T         value,input_value;
+ > +
+ > +  ifs >> Matlab_bin_formatter<Vector<T> >(a,name,h);
+ > +
+ > +  value = 0;
+ > +  for(int i=0;i<m;i++) {
+ > +    value = increment(value);
+ > +    input_value = a.get(i);
+ > +    assert(value == input_value);
+
+[4] Inside of tests, you should use 'test_assert()' instead of 
+'assert()'. This way, when you configure the library to run fast (which 
+usually means turning off assertions with -DNDEBUG), the tests will 
+still check correctness.
+
+ > +  }
+ > +#if DEBUG == 1
+ > +  cout << a << endl;
+ > +#endif
+ > +
+
+
+ > Index: src/vsip/impl/layout.hpp
+ > ===================================================================
+ > --- src/vsip/impl/layout.hpp	(revision 144405)
+ > +++ src/vsip/impl/layout.hpp	(working copy)
+ > @@ -1089,6 +1089,12 @@
+ >
+ >    static type offset(type ptr, stride_type stride)
+ >    { return ptr + stride; }
+ > +
+ > +  static T* get_real_ptr(type ptr)
+ > +    { return ptr; }
+ > +  static T* get_imag_ptr(type ptr)
+ > +    { return ptr; }
+ > +
+
+[5] I would think that when calling calling get_imag_ptr on a real 
+pointer, it should either return NULL or throw an exception.  To return 
+a pointer to the real data seems wrong.
+
+The idea behind defining this function is to allow code to compile that
+we do not actually expect to execute at runtime, i.e.:
+
+	value_type* ptr;
+
+	if (Is_complex<value_type>::value)
+	{
+	  ...
+	  get_imag_ptr(ptr);
+	  ...
+	}
+	else // must be real
+	{
+	  ... code that doesn't use get_imag_ptr() because ptr refers
+	  ... to real data.  Trying to use get_imag_ptr() is a design
+	  ... error.
+	}
+
+For now, lets throw a std::runtime exception "Accessing imaginary part
+of non-complex pointer".
+
+ >  };
+ >
+ >
+ > @@ -1147,6 +1153,12 @@
+ >
+ >    static type offset(type ptr, stride_type stride)
+ >    { return type(ptr.first + stride, ptr.second + stride); }
+ > +
+ > +  static T* get_real_ptr(type ptr)
+ > +    { return ptr.first; }
+ > +  static T* get_imag_ptr(type ptr)
+ > +    { return ptr.second; }
+ > +
+ >  };
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From jules at codesourcery.com  Mon Jul 17 20:50:34 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Mon, 17 Jul 2006 16:50:34 -0400
+Subject: [vsipl++] [patch] Profile_event class
+In-Reply-To: <44BB1C32.7010608@codesourcery.com>
+References: <44BB1C32.7010608@codesourcery.com>
+Message-ID: <44BBF81A.8010805@codesourcery.com>
+
+Don McCoy wrote:
+ > This patch integrates the functions needed for the impl_performance()
+ > interface along with some new functions needed for handling events more
+ > efficiently.
+
+Don,
+
+This is looking good.  I have several comments below.
+
+Also, we should start thinking about how this should be configured
+and controlled.
+
+Here's a strawman:
+
+Controllable at configure-time:
+
+  - Type of timer (including no timer)
+    Current --with-profile-timer=XXX configure option.
+
+    Perhaps we should change the option name to avoid confusion when
+    timer is enabled but profiling is not.
+    How about --with-timer=XXX ?
+
+    If timer is disabled, than both profiling and impl_performance
+    are also disabled.
+
+  - Whether profiling is enabled (but not whether it is trace or
+    accumulate):
+    New option: --with-profile={no,all}
+
+  - What types of events are profiled (by broad categories).
+    Categories:
+     - objects: signal processing objects and linear algebra solvers
+     - matvec: linear algebra
+     - expr: element-wise expressions
+     - comm: communications
+     - user events
+
+    New option: --with-profile-cat={no,objects,matvec,expr,user,all}
+
+    Default is {no}.
+
+  - Whether performance API (impl_perfromance) is enabled:
+    New option --[enable,disable]-performance-api
+
+
+Controllable at run-time:
+
+  - If profiling configured: profiling mode (trace vs accumulate),
+    profiling duration and profile output (via Profile_in_scope)
+    controlled via API.  If profiling is disabled, this API is still
+    valid but has no effect.  This is currently how we have it.
+
+    We could potentially add command line options that are recognized
+    by the 'vsipl' object to control profiling mode so that a user
+    program built with a profile-configured library can be profiled
+    without changing the app:
+
+	--vsipl++-profile-mode={accum,trace,off}
+	--vsipl++-profile-output={filename}
+
+    Probably most useful for tracing very small programs and accumulating
+    larger programs.
+
+				-- Jules
+
+ >
+ > # mode: pm_accum
+ > # timer: x86_64_tsc_time
+ > # clocks_per_sec: 3591371008
+ > #
+ > # tag : total ticks : num calls : op count : mflops
+ > fwd fft, cplx-cplx, rbv : 102141 : 1 : 51200 : 1800.24
+ > inv fft, cplx-cplx, rbv : 95490 : 1 : 51200 : 1925.63
+ >
+ > Note: rbv = return by value.  The others should be readable.  Full
+ > documentation will follow soon.
+
+Can you add the FFT size to the tag?
+
+
+ > Index: src/vsip/impl/fft.hpp
+ > ===================================================================
+ > --- src/vsip/impl/fft.hpp	(revision 145051)
+ > +++ src/vsip/impl/fft.hpp	(working copy)
+ > @@ -73,7 +73,7 @@
+ >    typedef typename impl::Scalar_of<I>::type scalar_type;
+ >
+ >    length_type
+ > -  op_count(length_type len)
+ > +  op_count(length_type len) const
+ >    {
+ >      length_type ops =
+ >        static_cast<length_type>(5 * len * std::log((float)len) / 
+std::log(2.f));
+ > @@ -81,11 +81,14 @@
+ >      return ops;
+ >    }
+ >
+ > -  base_interface(Domain<D> const &dom, scalar_type scale)
+ > +  base_interface(Domain<D> const &dom, scalar_type scale, 
+std::string event_tag)
+
+Does base_interface have enough context to figure out the event name
+by itself?  If not, it might be worth passing the extra info (i.e.
+adding a template parameter for by_value vs by_reference).  That would
+make it easier to limit the impact of the profiling when it is turned
+off.
+
+ >      : input_size_(io_size<D, I, O, A>::size(dom)),
+ >        output_size_(io_size<D, O, I, A>::size(dom)),
+ > -      scale_(scale)
+ > -  {}
+ > +      scale_(scale), event_(event_tag)
+ > +  {
+ > +    // Pre-compute the FLOP count.  Used for event profiling (if 
+enabled).
+ > +    event_.ops(op_count(this->input_size_.size()));
+
+Why not pass the op count as an argument to the 'Profile_event'
+constructor?
+
+ > +  }
+
+
+ > +class Profile_event
+ > +{
+ > +  typedef DefaultTime    TP;
+ > +
+ > +public:
+ > +  Profile_event(std::string name, unsigned int ops_count = 0)
+ > +    : name_(name), ops_(ops_count)
+ > +  {}
+ > +
+ > +  ~Profile_event() {}
+ > +
+ > +  void ops(unsigned int ops_count) { ops_ = ops_count; }
+ > +
+ > +  const char* name() const { return name_.c_str(); }
+ > +  unsigned int ops() const { return ops_; }
+ > +  float total() const { return 
+TP::seconds(prof->raw_total(this->name_.c_str())); }
+ > +  int count() const { return prof->count(this->name_.c_str()); }
+ > +  float mflops() const { return (prof->count(this->name_.c_str()) * 
+this->ops_) /
+ > +                         (1e6 * this->total()); }
+ > +
+ > +private:
+ > +  std::string name_;
+ > +  unsigned int ops_;
+ > +};
+
+Profile_event should keep track of its accumulated time.  The above
+approach has two problems:
+  - Profile_event (and hence impl_performance) will only work when
+    profiling is turned on in the pm_accum mode.
+  - Objects with the same tag will confound each other's impl_performance
+    results.
+
+One way to have Profile_event keep track of its own time and use the
+same timestamp for profiling is to have Profile_event call
+TP::sample() and then call a Profile::raw_event() function that is
+similar to Profile::event() but takes a time sample.
+
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From don at codesourcery.com  Mon Jul 17 21:38:10 2006
+From: don at codesourcery.com (Don McCoy)
+Date: Mon, 17 Jul 2006 15:38:10 -0600
+Subject: [vsipl++] [patch] Profile_event class
+In-Reply-To: <44BBF81A.8010805@codesourcery.com>
+References: <44BB1C32.7010608@codesourcery.com> <44BBF81A.8010805@codesourcery.com>
+Message-ID: <44BC0342.5020500@codesourcery.com>
+
+Jules Bergmann wrote:
+...
+
+> Also, we should start thinking about how this should be configured
+> and controlled.
+> 
+I like the configuration suggestions so far, but would like to put the 
+one below off until we have the basic stuff implemented first.  For the 
+record though, I see only a very minor benefit to being able to 
+selectively turn these on and off.
+
+>  - What types of events are profiled (by broad categories).
+>    Categories:
+>     - objects: signal processing objects and linear algebra solvers
+>     - matvec: linear algebra
+>     - expr: element-wise expressions
+>     - comm: communications
+>     - user events
+> 
+>    New option: --with-profile-cat={no,objects,matvec,expr,user,all}
+> 
+>    Default is {no}.
+> 
+
+
+>  - Whether performance API (impl_perfromance) is enabled:
+>    New option --[enable,disable]-performance-api
+> 
+Same here, the fewer options, the better...
+
+
+>     --vsipl++-profile-mode={accum,trace,off}
+>     --vsipl++-profile-output={filename}
+> 
+>    Probably most useful for tracing very small programs and accumulating
+>    larger programs.
+
+Ok.  Some benefit here.  Sounds like you're already willing to put this 
+off as a future enhancement.
+
+
+>  > # mode: pm_accum
+>  > # timer: x86_64_tsc_time
+>  > # clocks_per_sec: 3591371008
+>  > #
+>  > # tag : total ticks : num calls : op count : mflops
+>  > fwd fft, cplx-cplx, rbv : 102141 : 1 : 51200 : 1800.24
+>  > inv fft, cplx-cplx, rbv : 95490 : 1 : 51200 : 1925.63
+>  >
+>  > Note: rbv = return by value.  The others should be readable.  Full
+>  > documentation will follow soon.
+> 
+> Can you add the FFT size to the tag?
+> 
+I was going to propose adding a second 'value' field.  We had one that 
+we kind of took over for the op count.  Why not just add one or two more 
+fields and make them general-purpose?  FFTM could put rows and cols, 
+etc.  Other routines could put whatever was most relevant...
+
+In any case, I don't want to add it to the tag because it is a useful 
+numerical value, so we should give it first-class status so a 
+post-processing program can access it more easily.  Plus, I wanted to 
+keep the tags as short as possible as we use them for searching (maybe 
+this doesn't matter so much though).  I also considered removing the 
+spaces and making it more compact, yet more cryptic.  What's the right 
+balance here between short-and-cryptic and long-but-readable?
+
+
+> Does base_interface have enough context to figure out the event name
+> by itself?  If not, it might be worth passing the extra info (i.e.
+> adding a template parameter for by_value vs by_reference).  That would
+> make it easier to limit the impact of the profiling when it is turned
+> off.
+> 
+I'll look at this again, that may be the case.  But I'm not sure how it 
+affects performance.  Can you explain?  Can we afford the slight 
+increase in cost for this since it is taking place when the Fft object 
+is constructed?
+
+
+>  >      : input_size_(io_size<D, I, O, A>::size(dom)),
+>  >        output_size_(io_size<D, O, I, A>::size(dom)),
+>  > -      scale_(scale)
+>  > -  {}
+>  > +      scale_(scale), event_(event_tag)
+>  > +  {
+>  > +    // Pre-compute the FLOP count.  Used for event profiling (if 
+> enabled).
+>  > +    event_.ops(op_count(this->input_size_.size()));
+> 
+> Why not pass the op count as an argument to the 'Profile_event'
+> constructor?
+> 
+There was a problem with that at the time.  I'll need to try it again to 
+see what the exact error was.
+
+
+> 
+> Profile_event should keep track of its accumulated time.  The above
+> approach has two problems:
+>  - Profile_event (and hence impl_performance) will only work when
+>    profiling is turned on in the pm_accum mode.
+>  - Objects with the same tag will confound each other's impl_performance
+>    results.
+> 
+Both can be perceived as benefits -- at least I viewed them that way!
+
+My argument would be that it should not do any profiling, or at least 
+should minimize the effects of the profiling code, when profiling is not 
+enabled.  Secondly, having the same underlying interface to both is good 
+because it is simpler.  Finally, objects having the same tag are doing 
+the same kind of work.  If however, the user desires, they may profile 
+each separately by using different log files, or (if in the same scope) 
+using the profiler in trace mode.
+
+I'm not overtly attached to the above implementation.  Either way is 
+good, and now is a good time to decide.  Maybe I've missed something 
+about how you see impl_performance() being used that I don't.  I'm 
+looking at it as a different interface into the same basic set of 
+profiling features.  Do others have thoughts on this?
+
+Thanks for the feedback!
+
+Regards,
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+
+
+From mark at codesourcery.com  Tue Jul 18 05:55:49 2006
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Mon, 17 Jul 2006 22:55:49 -0700
+Subject: [vsipl++] [patch] Parallel Howto
+In-Reply-To: <44BBCA8D.6010807@codesourcery.com>
+References: <44BBCA8D.6010807@codesourcery.com>
+Message-ID: <44BC77E5.2030008@codesourcery.com>
+
+Jules Bergmann wrote:
+
+> Please have a look and let me know what you think.
+
+I'm excited to see this!  I think it's very important.  (Along with the
+rest of the tutorial.)  As we're learning from the fellow at ARL, the
+Georgia Tech User's Guide is actually worse than useless: it's examples
+apparently don't work at all.
+
+Overall, I think the structure of the tutorial, and of the chapter you
+added, are good.  However, I think the words need a bit of work.  I also
+think the SAR chapter should be integrated with the chapter you wrote,
+or that they should go near each other, at least.
+
+Here are a few nits:
+
+1. Accepted practice is to use the second person for tutorials, user's
+guides, etc.  So, "You will learn how to parallelize the serial
+version", rather than "We will show how to ...".  (That applies in lots
+of places.)  That also means that you can use the imperative case:
+"Next, create data structures" instead of "Next, we need to create data
+structures".
+
+2. I've started saying "uni-processor" and "multi-processor" instead of
+"serial" and "parallel".  What do you think about adopting that
+convention?  The problem is that uniprocessors can be parallel (SIMD
+units, or Cell).
+
+3. In the section on Parallel Fast Convolution, it's not clear what the
+point of the first paragraph is.  Are you explaining what "implicit
+parallelism" is?  Or, suggesting that implicit parallelism is bad, and
+that we want to use maps instead?  Or...?
+
+4. In the section on Explicit Parallelism, drop the sentence "For
+example, if our system had multiple channels, ..."  That sentence
+suggests the VSIPL++ API is missing something (versions for tensors),
+which sounds bad.  And, the next sentence gives a good motivation for
+the rest of the section anyhow.
+
+I'd like to take a whack at editing this on the plane to Orlando next
+Monday.  So, please check it in at some point before that.
+
+Thanks,
+
+-- 
+Mark Mitchell
+CodeSourcery
+mark at codesourcery.com
+(650) 331-3385 x713
+
+
+From toon.knapen at telenet.be  Tue Jul 18 06:41:49 2006
+From: toon.knapen at telenet.be (Toon Knapen)
+Date: Tue, 18 Jul 2006 08:41:49 +0200
+Subject: [vsipl++] [patch] Parallel Howto
+In-Reply-To: <44BC77E5.2030008@codesourcery.com>
+References: <44BBCA8D.6010807@codesourcery.com> <44BC77E5.2030008@codesourcery.com>
+Message-ID: <44BC82AD.9010600@telenet.be>
+
+Mark Mitchell wrote:
+> 2. I've started saying "uni-processor" and "multi-processor" instead of
+> "serial" and "parallel".  What do you think about adopting that
+> convention?  The problem is that uniprocessors can be parallel (SIMD
+> units, or Cell).
+
+We recently have been looking at the wording in our tutorials too and I 
+think it might be confusing to use terms like 'uni-processor' or 
+'multi-processor'. The main reason is that MPI and multi-threading is 
+about processes, not processors. On what processor these processes will 
+be scheduled is up to the OS (generally). My experience is that the 
+scheduling of processes on processors is something very confusing for 
+users and using these terms might add to that confusion. And indeed, 
+once users are dealing with multi-core processors, this will be even 
+more confusing.
+
+Toon Knapen
+
+PS: Hope you don't mind me chipping in this conversation.
+
+
+From jules at codesourcery.com  Tue Jul 18 14:10:59 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Tue, 18 Jul 2006 10:10:59 -0400
+Subject: [vsipl++] [patch] Profile_event class
+In-Reply-To: <44BC0342.5020500@codesourcery.com>
+References: <44BB1C32.7010608@codesourcery.com> <44BBF81A.8010805@codesourcery.com> <44BC0342.5020500@codesourcery.com>
+Message-ID: <44BCEBF3.5010801@codesourcery.com>
+
+Don McCoy wrote:
+ > Jules Bergmann wrote:
+ > ...
+ >
+ >> Also, we should start thinking about how this should be configured
+ >> and controlled.
+ >>
+ > I like the configuration suggestions so far, but would like to put the
+ > one below off until we have the basic stuff implemented first.
+
+Sounds good.
+
+ > For the
+ > record though, I see only a very minor benefit to being able to
+ > selectively turn these on and off.
+
+OK.  I tried to avoid going overboard with the categories.  I think
+the three things that will be most useful:
+
+  - Turn off expression profiling, expressions will be more numerous
+    than the other events, so this may allow longer traces to be
+    collected.
+  - Turn on communication profiling but disable everything else, this
+    way compute times aren't too perturbed by the profiling.
+  - Turn off library profiling but leave user events on.
+
+ >
+ >>  - What types of events are profiled (by broad categories).
+ >>    Categories:
+ >>     - objects: signal processing objects and linear algebra solvers
+ >>     - matvec: linear algebra
+ >>     - expr: element-wise expressions
+ >>     - comm: communications
+ >>     - user events
+ >>
+ >>    New option: --with-profile-cat={no,objects,matvec,expr,user,all}
+ >>
+ >>    Default is {no}.
+ >>
+ >
+ >
+ >>  - Whether performance API (impl_performance) is enabled:
+ >>    New option --[enable,disable]-performance-api
+ >>
+ > Same here, the fewer options, the better...
+ >
+ >
+ >>     --vsipl++-profile-mode={accum,trace,off}
+ >>     --vsipl++-profile-output={filename}
+ >>
+ >>    Probably most useful for tracing very small programs and accumulating
+ >>    larger programs.
+ >
+ > Ok.  Some benefit here.  Sounds like you're already willing to put this
+ > off as a future enhancement.
+
+Yes, low priority for this one.
+
+ >
+ >
+ >>  > # mode: pm_accum
+ >>  > # timer: x86_64_tsc_time
+ >>  > # clocks_per_sec: 3591371008
+ >>  > #
+ >>  > # tag : total ticks : num calls : op count : mflops
+ >>  > fwd fft, cplx-cplx, rbv : 102141 : 1 : 51200 : 1800.24
+ >>  > inv fft, cplx-cplx, rbv : 95490 : 1 : 51200 : 1925.63
+ >>  >
+ >>  > Note: rbv = return by value.  The others should be readable.  Full
+ >>  > documentation will follow soon.
+ >>
+ >> Can you add the FFT size to the tag?
+ >>
+ > I was going to propose adding a second 'value' field.  We had one that
+ > we kind of took over for the op count.  Why not just add one or two more
+ > fields and make them general-purpose?  FFTM could put rows and cols,
+ > etc.  Other routines could put whatever was most relevant...
+
+Putting the size in another field will hurt the utility of the
+accumulate mode.  It will be interesting not only to see how many
+total FFTs a program performs, but also how many FFTs of a given size
+are performed.  Operations of different sizes will have different
+performance.  Aggregating them together will lose this.
+
+For example, if someone was designing an FPGA for a specific VSIPL++
+program to offload FFTs, they would be interested in what size FFTs
+are being performed, and how efficiently those are on the processor.
+
+ > In any case, I don't want to add it to the tag because it is a useful
+ > numerical value, so we should give it first-class status so a
+ > post-processing program can access it more easily.
+
+Making the size part of the name will not make it more difficult to
+post process.  In languages like python and perl it is easy to
+post-process textual output like this, using the delimiters to
+separate different fields and regular-expressions to extract
+information from tags (including size).  Here's how we might
+post-process this in perl:
+
+	while ($line = <FILE>) {
+	   $line =~ s/\s+//g;	# get rid of spaces
+	   my ($tag, $ticks, $calls, $opcount, $mflops) = split(':', $line);
+
+	   # Process the tag
+	   if ($tag =~ /^(fwd|inv)fft,(cplx|real)-(cplx|real),(rbv|rbr),(\d+)$/) {
+	      # 1-D FFT
+	      $dim       = 1;
+	      $dir       = $1;
+	      $from_type = $2;
+	      $to_type   = $3;
+	      $returnby  = $4;
+	      $size[0]   = $5;
+	      }
+	   elsif ($tag =~ 
+/^(fwd|inv)fft,(cplx|real)-(cplx|real),(rbv|rbr),(\d+),(\d+)$/) {
+	      # 2-D FFT
+	      $dim       = 2;
+	      $dir       = $1;
+	      $from_type = $2;
+	      $to_type   = $3;
+	      $returnby  = $4;
+	      $size[0]   = $5;
+	      $size[1]   = $6;
+	      }
+	   }
+	   ...
+	}
+
+ > Plus, I wanted to
+ > keep the tags as short as possible as we use them for searching (maybe
+ > this doesn't matter so much though).
+
+"searching" in the context of using them as keys for the std::map?
+
+ > I also considered removing the
+ > spaces and making it more compact, yet more cryptic.  What's the right
+ > balance here between short-and-cryptic and long-but-readable?
+
+I don't think that removing the spaces will make the tags more
+cryptic.  When trying to visually read a trace file, the biggest
+impediments will be little things like if the columns don't line up,
+if the lines wrap, or if the numbers aren't left-aligned.  However,
+those are things that will be easy to fix in post processing.
+
+The current scheme seems to be about the right level of conciseness,
+perhaps a little on the verbose side for some things.  Things like
+'fwd' and 'fft' are right on.  'cplx' is a little verbose IMHO, also
+how do we distinguish between float and double?  We could use the
+BLAS/LAPACK convention of S - float, C - complex<float>, D - double,
+and Z - complex<double>.
+
+ >
+ >
+ >> Does base_interface have enough context to figure out the event name
+ >> by itself?  If not, it might be worth passing the extra info (i.e.
+ >> adding a template parameter for by_value vs by_reference).  That would
+ >> make it easier to limit the impact of the profiling when it is turned
+ >> off.
+ >>
+ > I'll look at this again, that may be the case.  But I'm not sure how it
+ > affects performance.  Can you explain?  Can we afford the slight
+ > increase in cost for this since it is taking place when the Fft object
+ > is constructed?
+
+There are two issues here.  First, limiting the footprint of the
+profiling code so that it is easier to understand and maintain.  If we
+have enough information to put the name creation in a single place
+(such as base_interface) versus repeated in multiple places (all of
+the FFT objects that derive from base_interface), it makes it easier
+to maintain later (as a general rule, avoiding repetition is a good
+thing).  Putting the name creation together with the construction of
+the Profile_event object that uses the name also improves the
+"locality" of the code, making it easier to understand.
+
+Second, from a performance standpoint, reducing the footprint also
+makes it easier to excise the profiling via #if/#endif if either the
+overhead or other requirements (such as the need to iostream includes)
+ever become problematic.
+
+ >>
+ >> Profile_event should keep track of its accumulated time.  The above
+ >> approach has two problems:
+ >>  - Profile_event (and hence impl_performance) will only work when
+ >>    profiling is turned on in the pm_accum mode.
+ >>  - Objects with the same tag will confound each other's impl_performance
+ >>    results.
+ >>
+ > Both can be perceived as benefits -- at least I viewed them that way!
+ >
+ > My argument would be that it should not do any profiling, or at least
+ > should minimize the effects of the profiling code, when profiling is not
+ > enabled.
+
+That is the intent of the configuration flag for the performance API.
+
+ > Secondly, having the same underlying interface to both is good
+ > because it is simpler.
+
+It is good to be pragmatic about simplicity, but at the same time we
+don't want to create something that is difficult or unintuitive to
+use.
+
+ > Finally, objects having the same tag are doing
+ > the same kind of work.  If however, the user desires, they may profile
+ > each separately by using different log files, or (if in the same scope)
+ > using the profiler in trace mode.
+
+Objects of different sizes are going to have different performance
+characteristics.  Even if size is included in the tag name, there is
+still utility in the impl_performance interface's ability to collect
+the performance of a specific object.  The ability to isolate
+performance information to smaller and smaller contexts is important
+for zeroing in on performance problems.  Of course the trace mode
+offers the ultimate in zeroing in, but the impl_performance is a
+intermediate step between accumulate and trace.
+
+There are two concerns at play here: What functionality will users
+need to optimize the performance of their programs, and how should we
+implement that performance in a clean and intuitive way?
+
+Unfortunately we won't really know what users need to profile their
+programs until they try out what we have and give us feedback.  We can
+make guesses based on requests (AFRL asked for approximately the
+impl_performance interface, LM asked for a impl_performance on
+steroids that collects min/max/histogram -- which might really be done
+by post processing trace output) and our own experience.  Ultimately
+there may not be a single set of things that work for everyone.  We'll
+probably end up expanding the profiling in response to user requests
+to do things like trace a single object, etc
+
+For now, I think the best approach is to define a simple, well defined
+set of tools that users can pick and choose from to fit their own
+needs.
+
+Having something that is well-defined and intuitive is important.  For
+impl_performance, because it is a member function of an individual
+signal processing object, it will be surprising if it returns
+information that is aggregated from other objects.  Side-effects from
+external events, such as turning profiling on and off, or changing
+from accumulate to trace, may also be unintuitive.
+
+ > I'm not overtly attached to the above implementation.  Either way is
+ > good, and now is a good time to decide.  Maybe I've missed something
+ > about how you see impl_performance() being used that I don't.  I'm
+ > looking at it as a different interface into the same basic set of
+ > profiling features.  Do others have thoughts on this?
+ >
+ > Thanks for the feedback!
+
+Thanks, this is coming along well!
+
+				-- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From jules at codesourcery.com  Tue Jul 18 17:26:14 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Tue, 18 Jul 2006 13:26:14 -0400
+Subject: [vsipl++] [patch] Parallel Howto
+In-Reply-To: <44BC77E5.2030008@codesourcery.com>
+References: <44BBCA8D.6010807@codesourcery.com> <44BC77E5.2030008@codesourcery.com>
+Message-ID: <44BD19B6.80302@codesourcery.com>
+
+Mark Mitchell wrote:
+> Jules Bergmann wrote:
+> 
+>> Please have a look and let me know what you think.
+> 
+> I'm excited to see this!  I think it's very important.  (Along with the
+> rest of the tutorial.)  As we're learning from the fellow at ARL, the
+> Georgia Tech User's Guide is actually worse than useless: it's examples
+> apparently don't work at all.
+
+We should work with Dan Campbell to get those fixed.  I'll take an 
+action item to look that over.
+
+> 
+> Overall, I think the structure of the tutorial, and of the chapter you
+> added, are good.  However, I think the words need a bit of work.  I also
+> think the SAR chapter should be integrated with the chapter you wrote,
+> or that they should go near each other, at least.
+
+I agree.  Let's get the parallel howto chapter in good shape first, then 
+we can start to better tie them together.
+
+In terms of linkage, the fast convolution processing done in the 
+parallel howto is very similar to the SAR azimuth processing.
+
+> 
+> Here are a few nits:
+> 
+> 1. Accepted practice is to use the second person for tutorials, user's
+> guides, etc.  So, "You will learn how to parallelize the serial
+> version", rather than "We will show how to ...".  (That applies in lots
+> of places.)  That also means that you can use the imperative case:
+> "Next, create data structures" instead of "Next, we need to create data
+> structures".
+
+Will do.
+
+
+> 
+> 3. In the section on Parallel Fast Convolution, it's not clear what the
+> point of the first paragraph is.  Are you explaining what "implicit
+> parallelism" is?  Or, suggesting that implicit parallelism is bad, and
+> that we want to use maps instead?  Or...?
+
+It is trying to say that implicit data-parallelism is good.  With 
+implicit data-parallelism you map the data and VSIPL++ takes care of the 
+rest.  With explicit data-parallelism, you need to transform the 
+explicit loop from the global space to the local space.
+
+> 
+> 4. In the section on Explicit Parallelism, drop the sentence "For
+> example, if our system had multiple channels, ..."  That sentence
+> suggests the VSIPL++ API is missing something (versions for tensors),
+> which sounds bad.  And, the next sentence gives a good motivation for
+> the rest of the section anyhow.
+
+Well, it is missing something!  It's not necessarily a defect with the 
+API itself, but more of a matter of where do the API draw the line in 
+terms of built-in data-parallel operations, and how do you write 
+applications once they cross that line.
+
+Dropping that sentence weakens the argument somewhat, since there are 
+other ways to write the second example that are both implicitly 
+data-parallel, and a good implementation might be able to perform in a 
+cache friendly way.  For example, if the by-value syntax is used:
+
+	data = inv_fftm(vmmul<row>(for_fftm(data), kernel));
+
+The library would see the entire expression and have the opportunity to 
+process by-row instead of by-operation.  We don't do that (yet).
+
+That said, I don't mind dropping that sentence, since the second example 
+is the basis for the rest of the section.
+
+> 
+> I'd like to take a whack at editing this on the plane to Orlando next
+> Monday.  So, please check it in at some point before that.
+
+OK, will do.  Thanks for the feedback.
+
+				-- Jules
+
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From jules at codesourcery.com  Tue Jul 18 17:27:25 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Tue, 18 Jul 2006 13:27:25 -0400
+Subject: [vsipl++] [patch] Parallel Howto
+In-Reply-To: <44BD19B6.80302@codesourcery.com>
+References: <44BBCA8D.6010807@codesourcery.com> <44BC77E5.2030008@codesourcery.com> <44BD19B6.80302@codesourcery.com>
+Message-ID: <44BD19FD.7040005@codesourcery.com>
+
+Jules Bergmann wrote:
+
+> 
+> That said, I don't mind dropping that sentence, since the second example 
+> is the basis for the rest of the section.
+
+Sorry!  I meant to delete this statement from the original email.  -- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From jules at codesourcery.com  Tue Jul 18 17:53:40 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Tue, 18 Jul 2006 13:53:40 -0400
+Subject: [vsipl++] [patch] Parallel Howto
+In-Reply-To: <44BC82AD.9010600@telenet.be>
+References: <44BBCA8D.6010807@codesourcery.com> <44BC77E5.2030008@codesourcery.com> <44BC82AD.9010600@telenet.be>
+Message-ID: <44BD2024.3000304@codesourcery.com>
+
+Toon Knapen wrote:
+> Mark Mitchell wrote:
+>> 2. I've started saying "uni-processor" and "multi-processor" instead of
+>> "serial" and "parallel".  What do you think about adopting that
+>> convention?  The problem is that uniprocessors can be parallel (SIMD
+>> units, or Cell).
+
+Mark,
+
+I need to look at my usage of serial vs parallel before committing to 
+this.  I'm sure there are some cases where it would be more clear to say 
+"uni-processor" and "multi-processor" instead.  However, in contexts 
+where "parallel" refers to data-parallelism may be exploited in multiple 
+ways (multiple processors doing FFTs in parallel, single processor doing 
+multiple FFTs in parallel with SIMD, etc), that might be the most 
+appropriate word.
+
+As I edit this to clean up the first-person, I'll take a look at how 
+parallel/serial is used.
+
+> 
+> We recently have been looking at the wording in our tutorials too and I 
+> think it might be confusing to use terms like 'uni-processor' or 
+> 'multi-processor'. The main reason is that MPI and multi-threading is 
+> about processes, not processors. On what processor these processes will 
+> be scheduled is up to the OS (generally). My experience is that the 
+> scheduling of processes on processors is something very confusing for 
+> users and using these terms might add to that confusion. And indeed, 
+> once users are dealing with multi-core processors, this will be even 
+> more confusing.
+
+That is a source of potential confusion, especially with MPI; nodes, 
+processors, thread, and now cores.
+
+The VSIPL++ spec has an intentionally vague definition of a "processor" 
+that we can fall back on here.  The mapping from a VSIPL++ processor to 
+actual hardware parallelism is up to the implementation.  The intent is 
+that VSIPL++ processes represent parallelism that could be exploited by 
+MPI processes, threads, etc.  If we did use the term "multi-processor" 
+in the VSIPL++ tutorial it would be well-defined in that sense.
+
+Of course, if you guys have come up with more clear wording, we'd be 
+interested!
+
+				-- Jules
+
+> 
+> Toon Knapen
+> 
+> PS: Hope you don't mind me chipping in this conversation.
+
+Not at all!  That's why the list is public.  Its good to hear from you. 
+-- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From don at codesourcery.com  Wed Jul 19 00:51:39 2006
+From: don at codesourcery.com (Don McCoy)
+Date: Tue, 18 Jul 2006 18:51:39 -0600
+Subject: [patch] Benchmarks build issue.
+In-Reply-To: <44BCEEC3.1030108@codesourcery.com>
+References: <44BC0D0C.6060201@codesourcery.com> <44BCEEC3.1030108@codesourcery.com>
+Message-ID: <44BD821B.2040706@codesourcery.com>
+
+This patch fixes a library path issue with the benchmarks/ directory. 
+The came about due to the change in location of the FFTW library files 
+(from vendor/fftw/lib to lib/).
+
+I did have one question.  In debugging, I noted that $^ contains only 
+the .o files and not the .a files from $(libs).  That is good, because 
+it would work correctly otherwise.  But why is this so?  Reading the 
+documentation didn't seem to help.
+
+ref: http://www.gnu.org/software/make/manual/make.html#Automatic-Variables
+
+In any case, please let me know if the change is correct.
+
+Thanks,
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: ml.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060718/549a48da/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: ml.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060718/549a48da/attachment-0001.ksh>
+
+From mark at codesourcery.com  Wed Jul 19 02:08:04 2006
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Tue, 18 Jul 2006 19:08:04 -0700
+Subject: [vsipl++] [patch] Benchmarks build issue.
+In-Reply-To: <44BD821B.2040706@codesourcery.com>
+References: <44BC0D0C.6060201@codesourcery.com> <44BCEEC3.1030108@codesourcery.com> <44BD821B.2040706@codesourcery.com>
+Message-ID: <44BD9404.2030808@codesourcery.com>
+
+Don McCoy wrote:
+> This patch fixes a library path issue with the benchmarks/ directory.
+> The came about due to the change in location of the FFTW library files
+> (from vendor/fftw/lib to lib/).
+> 
+> I did have one question.  In debugging, I noted that $^ contains only
+> the .o files and not the .a files from $(libs).  That is good, because
+> it would work correctly otherwise.  But why is this so?  Reading the
+> documentation didn't seem to help.
+
+I'm surprised by this too.  But, if it works, I guess it works...
+
+-- 
+Mark Mitchell
+CodeSourcery
+mark at codesourcery.com
+(650) 331-3385 x713
+
+
+From jules at codesourcery.com  Wed Jul 19 04:28:28 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Wed, 19 Jul 2006 00:28:28 -0400
+Subject: [patch] Small fixes for layout.hpp, test.hpp and matlab file test.
+Message-ID: <44BDB4EC.3020805@codesourcery.com>
+
+Patch applied.
+
+			-- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: misc.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060719/37cb6486/attachment.ksh>
+
+From jules at codesourcery.com  Wed Jul 19 14:08:21 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Wed, 19 Jul 2006 10:08:21 -0400
+Subject: [patch] Optimizations for distributed expressions and parallel assignment
+Message-ID: <44BE3CD5.2000702@codesourcery.com>
+
+This patch has two optimizations for distributed/parallel operation:
+
+  - Optimizes the handling distributed expressions (such as A = B + C,
+    where A, B, and C have non-local maps).
+
+    When all views have the same map, these expressions are reduced
+    to local expressions on each processor.  The performance difference
+    between the global and a corresponding local expression is due to
+    the overhead of checking the maps for equivalence. Previously, this
+    equivalence check was inefficient, creating a large amount of
+    overhead.
+
+    This patch optimizes the equivalence check in several ways.
+    First, map data has been moved into a separate reference counted
+    Map_data class.  In the common case that two map's share the same
+    Map_data reference, they are equivalent.   Second, if the maps
+    do not share the same Map_data, the comparison now takes into
+    account the applied dimension of the maps so that only their
+    relevant dimensions are actually compared.
+
+    The patch also optimizes the dispatch-assign handling of
+    distributed expressions to avoid creating temporary views, which
+    creates reference counting overhead.
+
+  - Optimizes the handling of distributed assignments by reducing
+    overhead when replaying the send, recv, and copy command lists.
+
+It also has a number of misc fixes and new functionality:
+  - Adds several SAL wrappers for scalar-vector multiply and add.
+  - Fix wrong libray tags in simd/eval-generic (Thanks Stefan)
+  - Check that operation lengths are greater than zero before calling
+    some IPP routines.
+  - Avoids using GCC vector intrinsics, which aren't portable to ICC.
+  - several others
+
+				-- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: assign.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060719/bfe25234/attachment.ksh>
+
+From assem at codesourcery.com  Wed Jul 19 14:29:13 2006
+From: assem at codesourcery.com (Assem Salama)
+Date: Wed, 19 Jul 2006 10:29:13 -0400
+Subject: CLAPACK and Matlab IO documentation
+Message-ID: <44BE41B9.4070203@codesourcery.com>
+
+Everyone,
+  This patch adds support for simple-builtin option. Sorry about how the 
+vendor/GNUmakefile.inc.in came out in the diff.
+
+Thanks,
+Assem
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: svn.diff.07192006.1.log
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060719/1149f2c2/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: ChangeLog.07192006
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060719/1149f2c2/attachment-0001.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: Matlab_readme.txt
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060719/1149f2c2/attachment.txt>
+
+From assem at codesourcery.com  Wed Jul 19 14:46:32 2006
+From: assem at codesourcery.com (Assem Salama)
+Date: Wed, 19 Jul 2006 10:46:32 -0400
+Subject: SIMD
+Message-ID: <44BE45C8.2060405@codesourcery.com>
+
+Everyone,
+  This patch is for a CFAR update running sum SIMD instruction. I just 
+realized date in previous ChangeLog file is not correct, sorry about that.
+
+Thanks,
+Assem
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: ChangeLog.07192006.2
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060719/71266403/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: svn.diff.07192006.2.log
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060719/71266403/attachment-0001.ksh>
+
+From jules at codesourcery.com  Wed Jul 19 15:19:22 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Wed, 19 Jul 2006 11:19:22 -0400
+Subject: [vsipl++] [patch] Benchmarks build issue.
+In-Reply-To: <44BD821B.2040706@codesourcery.com>
+References: <44BC0D0C.6060201@codesourcery.com> <44BCEEC3.1030108@codesourcery.com> <44BD821B.2040706@codesourcery.com>
+Message-ID: <44BE4D7A.4000905@codesourcery.com>
+
+Don McCoy wrote:
+> This patch fixes a library path issue with the benchmarks/ directory. 
+> The came about due to the change in location of the FFTW library files 
+> (from vendor/fftw/lib to lib/).
+
+Don, this looks good, please check it in. thanks -- Jules
+
+> 
+> I did have one question.  In debugging, I noted that $^ contains only 
+> the .o files and not the .a files from $(libs).  That is good, because 
+> it would work correctly otherwise.  But why is this so?  Reading the 
+> documentation didn't seem to help.
+
+The reason this is OK is that the $(LIBS) variable (which is used in the 
+rule) has the effect of including the .a files from $(libs) (which is 
+used in the dependency.
+
+For example, if you are linking against the built-in fftw3, then
+
+    LIBS will have -lfftw3f, and
+    libs will have lib/fftw3f.a
+
+the compile command will have '-Llib -lfftw3f', causing it to use 
+lib/fftw3f.a from the dependency.
+
+I suppose we could simplify by using $(libs) in both the dependency and 
+the command, but we would still have to build $(LIBS) for external use 
+(it goes into the .pc) file, and $(LIBS) may have other external 
+libraries, meaning we would end up using $(libs) and $(LIBS_NOT_IN_libs) :)
+
+				-- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From jules at codesourcery.com  Wed Jul 19 15:31:27 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Wed, 19 Jul 2006 11:31:27 -0400
+Subject: [vsipl++] CLAPACK and Matlab IO documentation
+In-Reply-To: <44BE41B9.4070203@codesourcery.com>
+References: <44BE41B9.4070203@codesourcery.com>
+Message-ID: <44BE504F.2050307@codesourcery.com>
+
+Assem,
+
+Can you send out the modified vendor/GNUmakefile.inc.in file?  As you 
+point out the diff is a bit difficult to read.
+
+				thanks,
+				-- Jules
+
+Assem Salama wrote:
+> Everyone,
+>  This patch adds support for simple-builtin option. Sorry about how the 
+> vendor/GNUmakefile.inc.in came out in the diff.
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From assem at codesourcery.com  Wed Jul 19 16:00:38 2006
+From: assem at codesourcery.com (Assem Salama)
+Date: Wed, 19 Jul 2006 12:00:38 -0400
+Subject: [vsipl++] CLAPACK and Matlab IO documentation
+In-Reply-To: <44BE504F.2050307@codesourcery.com>
+References: <44BE41B9.4070203@codesourcery.com> <44BE504F.2050307@codesourcery.com>
+Message-ID: <44BE5726.9040703@codesourcery.com>
+
+Jules Bergmann wrote:
+> Assem,
+>
+> Can you send out the modified vendor/GNUmakefile.inc.in file?  As you 
+> point out the diff is a bit difficult to read.
+>
+>                 thanks,
+>                 -- Jules
+>
+> Assem Salama wrote:
+>> Everyone,
+>>  This patch adds support for simple-builtin option. Sorry about how 
+>> the vendor/GNUmakefile.inc.in came out in the diff.
+>
+
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: GNUmakefile.inc.in
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060719/87a4f649/attachment.ksh>
+
+From don at codesourcery.com  Thu Jul 20 00:37:05 2006
+From: don at codesourcery.com (Don McCoy)
+Date: Wed, 19 Jul 2006 18:37:05 -0600
+Subject: [vsipl++] [patch] Profile_event class
+In-Reply-To: <44BCEBF3.5010801@codesourcery.com>
+References: <44BB1C32.7010608@codesourcery.com> <44BBF81A.8010805@codesourcery.com> <44BC0342.5020500@codesourcery.com> <44BCEBF3.5010801@codesourcery.com>
+Message-ID: <44BED031.4080300@codesourcery.com>
+
+Thank you Jules for the suggestions and the detailed explanations as
+well.  All have been addressed with this revision.  The important points
+being:
+
+   - impl_performance() works independently of the profiler being enabled
+   - It does share a timer resource internally for now
+   - FFT/FFTM size is now part of the descriptive tag in the profile output.
+   - Tags now use S,D,C,Z for float, double, complex<float> and
+complex<double> respectively.
+   - The tags are now generated at one point - from the base class
+(rather than in each derived Fft type).
+
+Also, thanks to Stefan for helping me find a defect in my handling of
+the timer resource.  This was related to making an unintentional copy of
+the object owning the timer.  I mention this because it helped me also
+to realize that when an Fft object is copied a new timer is created.
+This effectively erases the history that impl_performance() is able to
+report.  I don't think this is unreasonable behavior, but thought I'd
+point it out.
+
+Regards,
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: pf6.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060719/70f7dd82/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: pf6.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060719/70f7dd82/attachment-0001.ksh>
+
+From assem at codesourcery.com  Thu Jul 20 11:27:42 2006
+From: assem at codesourcery.com (Assem Salama)
+Date: Thu, 20 Jul 2006 07:27:42 -0400
+Subject: Matlab IO
+Message-ID: <44BF68AE.3050205@codesourcery.com>
+
+Everyone,
+  This is new Matlab IO iterator interface.
+
+Thanks,
+Assem
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: ChangeLog.07202006
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060720/ff9c4411/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: svn.diff.07202006.1.log
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060720/ff9c4411/attachment-0001.ksh>
+
+From jules at codesourcery.com  Thu Jul 20 13:47:12 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Thu, 20 Jul 2006 09:47:12 -0400
+Subject: [vsipl++] CLAPACK and Matlab IO documentation
+In-Reply-To: <44BE5726.9040703@codesourcery.com>
+References: <44BE41B9.4070203@codesourcery.com> <44BE504F.2050307@codesourcery.com> <44BE5726.9040703@codesourcery.com>
+Message-ID: <44BF8960.3060206@codesourcery.com>
+
+Assem,
+
+Can you fix the 4 items below and then check in the CLAPACK changes
+(vendor/GNUmakefile.inc.in, vendor/clapack/blas/SRC/*, configure.ac)?
+
+				thanks,
+				-- Jules
+
+ > ------------------------------------------------------------------------
+ >
+ > ########################################################################
+ > #
+ > # File:   GNUmakefile.inc.in
+ > # Author: Jules Bergmann
+ > # Date:   2005-11-22
+ > #
+ > # Contents: Makefile fragment for vendor
+ > #
+ > ########################################################################
+ >
+ > ########################################################################
+ > # Variables
+ > ########################################################################
+ >
+ >
+ > BUILD_ATLAS            := @BUILD_ATLAS@
+ > BUILD_REF_LAPACK       := @BUILD_REF_LAPACK@
+ > BUILD_REF_CLAPACK      := @BUILD_REF_CLAPACK@
+ > BUILD_REF_CLAPACK_BLAS := @BUILD_REF_CLAPACK_BLAS@
+ > BUILD_LIBF77           := @BUILD_LIBF77@
+ >
+ > USE_ATLAS_LAPACK       := @USE_ATLAS_LAPACK@
+ > USE_SIMPLE_LAPACK      := @USE_SIMPLE_LAPACK@
+ >
+ > #### LIBS
+ > vendor_ATLAS           := vendor/atlas/lib/libatlas.a
+ > vendor_FLAPACK         := vendor/lapack/lapack.a
+ > vendor_CLAPACK         := vendor/clapack/liblapack.a
+ > vendor_MERGED_LAPACK   := vendor/atlas/lib/liblapack.a
+ > vendor_PRE_LAPACK      := vendor/atlas/lib/libprelapack.a
+ > vendor_CLAPACK_BLAS    := vendor/clapack/libblas.a
+ > vendor_LIBF77          := vendor/clapack/F2CLIBS/libF77/libF77.a
+ >
+ > ########################################################################
+ > ################# BUILD PART ###########################################
+ > ########################################################################
+ >
+ >
+ > ifdef BUILD_REF_LAPACK
+ > all:: $(vendor_FLAPACK)
+ > endif
+ >
+ > ifdef BUILD_REF_LAPACK
+ > all:: $(vendor_FLAPACK)
+ > vendor_LAPACK := $(vendor_FLAPACK)
+ > endif
+
+[1] Is this a typo?  The two previous ifdefs have the same guard
+(REF_BUILD_LAPACK)
+
+ >
+ > ifdef BUILD_REF_CLAPACK
+ > all:: $(vendor_CLAPACK)
+ > vendor_LAPACK := $(vendor_CLAPACK)
+ > endif
+ >
+ > ifdef BUILD_REF_CLAPACK_BLAS
+ > all:: $(vendor_CLAPACK_BLAS)
+ > endif
+ >
+ > ifdef BUILD_LIBF77
+ > all:: $(vendor_LIBF77)
+ > endif
+ >
+ > ifdef BUILD_ATLAS
+ > all:: $(vendor_ATLAS) $(vendor_MERGED_LAPACK)
+ > endif
+ >
+ > ##### RULES
+ > $(vendor_FLAPACK):
+ > 	@echo "Building FLAPACK (see flapack.build.log)"
+ > 	@make -C vendor/lapack/SRC all >& flapack.build.log
+ >
+ > $(vendor_CLAPACK):
+ > 	@echo "Building CLAPACK (see clapack.build.log)"
+ > 	@make -C vendor/clapack/SRC all >& clapack.build.log
+ >
+ > $(vendor_CLAPACK_BLAS):
+ > 	@echo "Building CLAPACK BLAS (see clapack.blas.build.log)"
+ > 	@make -C vendor/clapack/blas/SRC all >& clapack.blas.build.log
+ >
+ > $(vendor_LIBF77):
+ > 	@echo "Building LIBF77 (see libF77.blas.build.log)"
+ > 	@make -C vendor/clapack/F2CLIBS/libF77 all >& libF77.blas.build.log
+ >
+ > $(vendor_ATLAS):
+ > 	@echo "Building ATLAS (see atlas.build.log)"
+ > 	@make -C vendor/atlas build >& atlas.build.log
+
+[2] This rule builds 4 targets:
+    vendor/atlas/lib/libatlas.a     (aka vendor_ATLAS)
+    vendor/atlas/lib/libcblas.a
+    vendor/atlas/lib/libprelapack.a (aka vendor_PRE_LAPACK)
+    vendor/atlas/lib/libf77blas.a
+
+You can represent this by putting multiple targets:
+
+vendor/atlas/lib/libatlas.a vendor/atlas/lib/libcblas.a ...:
+	...
+
+Is is slightly more convenient to create a variable
+
+vendor_ATLAS_LIBS :=				\
+	$(vendor_ATLAS)				\
+	vendor/atlas/lib/libcblas.a		\
+	$(vendor_F77BLAS)			\
+	$(vendor_PRE_LAPACK)
+
+$(vendor_ATLAS_LIBS):
+	...
+
+ >
+ > $(vendor_MERGED_LAPACK):
+
+[3] This rule should have dependencies to make sure things get done in the
+right order:
+
+$(vendor_MERGED_LAPACK): $(vendor_PRE_LAPACK) $(vendor_LAPACK)
+
+ > 	@echo "Merging pre-lapack and reference lapack..."
+ > 	@mkdir -p vendor/atlas/lib/tmp
+ > 	@cd vendor/atlas/lib/tmp;ar x ../../../../$(vendor_PRE_LAPACK)
+ > 	@cp $(vendor_LAPACK) $(vendor_MERGED_LAPACK)
+ > 	@cd vendor/atlas/lib/tmp;ar r ../../../../$(vendor_MERGED_LAPACK) *
+ > 	@rm -rf vendor/atlas/lib/tmp
+ >
+ >
+ > ########################################################################
+ > ################# INSTALL PART #########################################
+ > ########################################################################
+ >
+ > ifdef BUILD_LIBF77
+ > install::
+
+[4] The install rules should have dependencies to insure things happen in
+the right order ('make install' should work without having to first do
+a 'make' or 'make all').
+
+In this case:
+install:: $(vendor_LIBF77)
+
+Likewise for the rules below.
+
+ > 	$(INSTALL_DATA) $(vendor_LIBF77) $(DESTDIR)$(libdir)
+ > endif
+ >
+ > ifdef BUILD_REF_LAPACK
+ > install::
+ > 	$(INSTALL_DATA) vendor/atlas/lib/libf77blas.a $(DESTDIR)$(libdir)
+ > endif
+ >
+ > ifdef USE_ATLAS_LAPACK
+ > install::
+ > 	$(INSTALL_DATA) vendor/atlas/lib/libatlas.a   $(DESTDIR)$(libdir)
+ > 	$(INSTALL_DATA) vendor/atlas/lib/libcblas.a   $(DESTDIR)$(libdir)
+ > 	$(INSTALL_DATA) vendor/atlas/lib/liblapack.a  $(DESTDIR)$(libdir)
+ > 	$(INSTALL_DATA) vendor/atlas/lib/liblapack.a  $(DESTDIR)$(libdir)
+ > 	$(INSTALL_DATA) $(srcdir)/vendor/atlas/include/cblas.h 
+$(DESTDIR)$(includedir)
+ > endif
+ >
+ > ifdef USE_SIMPLE_LAPACK
+ > install::
+ > 	$(INSTALL_DATA) $(vendor_CLAPACK)      $(DESTDIR)$(libdir)
+ > 	$(INSTALL_DATA) $(vendor_CLAPACK_BLAS) $(DESTDIR)$(libdir)
+ > 	$(INSTALL_DATA) $(srcdir)/vendor/clapack/SRC/cblas.h 
+$(DESTDIR)$(includedir)
+ > endif
+ >
+ >
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From jules at codesourcery.com  Thu Jul 20 16:32:21 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Thu, 20 Jul 2006 12:32:21 -0400
+Subject: [patch] Fix png example failure, ICC fix
+Message-ID: <44BFB015.5030203@codesourcery.com>
+
+This patch should fix the build failure with the png example program.
+
+The problem was in the dispatch layer that re-evaluates a dense 
+multi-dim expression as a 1-dim expression.  It has to "re-dimension" 
+the expression template tree.  For Unary_expr_blocks, it was copying the 
+operand block, but not the unary functor.  For most unary_expr_blocks 
+this is OK, the unary functor's default constructor is fine.  However 
+for unary_expr_blocks associated with user-defined elementwise functions 
+(such as PNG's swap_read_green), this is not OK.  The functor needs to 
+be copied.
+
+This patch also fixes a compilation problem with ICC 9.1.  It was 
+confused by impl in "impl::Scalar_of".  Instead of thinking it was a 
+namespace, it thought it was a class.  Maying the namespace more 
+explicit fixes it.  Fortunately, our coding standards (lower-case 
+namespace names, upper-case Class names) make this an infrequent problem.
+
+Patch applied.
+
+				-- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: ede.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060720/764f5cdf/attachment.ksh>
+
+From stefan at codesourcery.com  Thu Jul 20 17:07:52 2006
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Thu, 20 Jul 2006 13:07:52 -0400
+Subject: [vsipl++] [patch] Fix png example failure, ICC fix
+In-Reply-To: <44BFB015.5030203@codesourcery.com>
+References: <44BFB015.5030203@codesourcery.com>
+Message-ID: <44BFB868.2010300@codesourcery.com>
+
+Jules Bergmann wrote:
+> This patch should fix the build failure with the png example program.
+> 
+> The problem was in the dispatch layer that re-evaluates a dense
+> multi-dim expression as a 1-dim expression.  It has to "re-dimension"
+> the expression template tree.  For Unary_expr_blocks, it was copying the
+> operand block, but not the unary functor.  For most unary_expr_blocks
+> this is OK, the unary functor's default constructor is fine.  However
+> for unary_expr_blocks associated with user-defined elementwise functions
+> (such as PNG's swap_read_green), this is not OK.  The functor needs to
+> be copied.
+
+Aha ! Thanks for the quick fix !
+
+		Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+
+
+From assem at codesourcery.com  Thu Jul 20 20:29:38 2006
+From: assem at codesourcery.com (Assem Salama)
+Date: Thu, 20 Jul 2006 16:29:38 -0400
+Subject: CLAPACK Makefile
+Message-ID: <44BFE7B2.5040804@codesourcery.com>
+
+How does this look?
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: GNUmakefile.inc.in
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060720/49eb1232/attachment.ksh>
+
+From mark at codesourcery.com  Thu Jul 20 23:33:09 2006
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Thu, 20 Jul 2006 16:33:09 -0700
+Subject: CodeSourcery awarded extension to Phase II SBIR
+Message-ID: <44C012B5.8080101@codesourcery.com>
+
+CodeSourcery has been awarded an extension to its Phase II SBIR contract
+with the United States Air Force Research Laboratory to continue its
+development of Sourcery VSIPL++.
+
+This contract extension will provide significant additional development
+resources.  Under the contract, CodeSourcery will be developing new
+optimizations, benchmarks, and documentation.
+
+In addition, CodeSourcery will provide Sourcery VSIPL++ Lite (comprising
+core functionality and support for MPI) under a BSD-style license.  All
+of Sourcery VSIPL++ will continue to be available under the GPL as well.
+
+-- 
+Mark Mitchell
+CodeSourcery
+mark at codesourcery.com
+(650) 331-3385 x713
+
+
+From assem at codesourcery.com  Fri Jul 21 02:00:31 2006
+From: assem at codesourcery.com (Assem Salama)
+Date: Thu, 20 Jul 2006 22:00:31 -0400
+Subject: Matlab IO
+Message-ID: <44C0353F.8090705@codesourcery.com>
+
+Everyone,
+  This doxygen Matlab IO documentation.
+
+Thanks,
+Assem
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: svn.diff.07202006.1.log
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060720/22b95472/attachment.ksh>
+
+From assem at codesourcery.com  Fri Jul 21 02:08:18 2006
+From: assem at codesourcery.com (Assem Salama)
+Date: Thu, 20 Jul 2006 22:08:18 -0400
+Subject: Documentation
+Message-ID: <44C03712.4010105@codesourcery.com>
+
+Everyone,
+  Stefan pointed out to me that Doxygen is something totally different 
+than docbook. I apologize for this. I meant docbook.
+
+Thanks,
+Assem
+
+
+From jules at codesourcery.com  Fri Jul 21 11:46:11 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Fri, 21 Jul 2006 07:46:11 -0400
+Subject: [patch] Fixes for snapshot
+Message-ID: <44C0BE83.90006@codesourcery.com>
+
+A couple of small items that broke while making a snapshot.
+
+Patch applied.
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: snapshot-fixes.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060721/ffa8d4c4/attachment.ksh>
+
+From jules at codesourcery.com  Fri Jul 21 11:51:52 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Fri, 21 Jul 2006 07:51:52 -0400
+Subject: [patch] release script changes for SVN
+Message-ID: <44C0BFD8.7020401@codesourcery.com>
+
+This patch updates the release scripts (package.py and release.sh) to 
+use SVN instead of CVS.
+
+Stefan, Ok to commit?
+
+				-- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: cvs-to-svn.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060721/500e485a/attachment.ksh>
+
+From stefan at codesourcery.com  Fri Jul 21 12:41:29 2006
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Fri, 21 Jul 2006 08:41:29 -0400
+Subject: [vsipl++] [patch] release script changes for SVN
+In-Reply-To: <44C0BFD8.7020401@codesourcery.com>
+References: <44C0BFD8.7020401@codesourcery.com>
+Message-ID: <44C0CB79.7010705@codesourcery.com>
+
+Jules Bergmann wrote:
+> This patch updates the release scripts (package.py and release.sh) to
+> use SVN instead of CVS.
+> 
+> Stefan, Ok to commit?
+
+This looks good. Thanks !
+
+		Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+
+
+From jules at codesourcery.com  Fri Jul 21 13:52:08 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Fri, 21 Jul 2006 09:52:08 -0400
+Subject: [vsipl++] Matlab IO
+In-Reply-To: <44BF68AE.3050205@codesourcery.com>
+References: <44BF68AE.3050205@codesourcery.com>
+Message-ID: <44C0DC08.4060103@codesourcery.com>
+
+Assem Salama wrote:
+ > Everyone,
+ >  This is new Matlab IO iterator interface.
+
+Assem,
+
+I have a few comments below (Don't be discouraged by the number!)
+This is looking good.
+
+				-- Jules
+
+ > Index: src/vsip_csl/GNUmakefile.inc.in
+ > ===================================================================
+ > --- src/vsip_csl/GNUmakefile.inc.in	(revision 144405)
+ > +++ src/vsip_csl/GNUmakefile.inc.in	(working copy)
+ > @@ -22,8 +22,10 @@
+ >  endif
+ >  src_vsip_csl_cxx_objects := $(patsubst $(srcdir)/%.cpp, %.$(OBJEXT),\
+ >                                $(src_vsip_csl_cxx_sources))
+ > -cxx_sources += $(src_vsip_csl_cxx_sources)
+ >
+ > +cxx_sources += $(src_vsip_csl_cxx_sources) matlab_file.cpp
+
+ > +cxx_objects += $(src_vsip_csl_cxx_objects) matlab_file.$(OBJEXT)
+ > +
+
+[1] We use nested makefiles (i.e. the top level makefile includes all
+the other makefiles in the source tree, that's why they have .inc
+suffixes.
+
+This means we have to be careful with our variable names so that
+two different GNUmakefile.inc files don't inadvertantly trample
+on each other.  To do this, we have a convention that variables
+local to a particular GNUmakefile.inc have a prefix related to
+the directory path.  For src/vsip_csl/GNUmakefile.inc, the prefix
+is src_vsip_csl_ .
+
+Instead of creating a new variable 'cxx_objects' here, you should
+add the objects to the existing 'src_vsip_csl_cxx_objects' variable.
+
+ >  libs += lib/libvsip_csl.a
+ >
+ >  ########################################################################
+ > @@ -35,7 +37,7 @@
+ >  clean::
+ >  	rm -f lib/libvsip_csl.a
+ >
+ > -lib/libvsip_csl.a: $(src_vsip_csl_cxx_objects)
+ > +lib/libvsip_csl.a: $(cxx_objects)
+
+[1b] and here you should revert to using src_vsip_csl_cxx_objects.
+
+ >  	$(AR) rc $@ $^ || rm -f $@
+ >
+ >  # Install the extensions library and its header files.
+ > Index: src/vsip_csl/matlab_file.hpp
+ > ===================================================================
+
+ > +#include "vsip_csl/matlab_bin_formatter.hpp"
+
+[2] Use angle-brackets for this include: <...>
+
+
+ > +class Matlab_file
+ > +{
+ > +  public:
+ > +    // Constructors
+ > +    Matlab_file(std::string fname);
+ > +
+ > +  // classes
+ > +  public:
+ > +    class iterator
+ > +    {
+ > +      public:
+ > +        iterator() {}
+
+[3] Is the default constructor necessary?  My guess is probably not.
+
+However, if it is necessary, it should initialize the iterator into
+a "good" state.  For example, it might set mf_ to NULL.
+
+Going down this path, if mf_ could be NULL, then all uses of mf_
+should check its validity (and probably through an exception if it is
+NULL).
+
+If we decide that the default constructor isn't necessary, we can
+replace this NULL check on use with a NULL check on construction.
+Better yet, we can store mf_ as a reference (Matlab_file&) instead of
+a pointer.  Then it is guarenteed to be valid (you can't have a NULL
+reference).
+
+ > +        iterator(bool end_iterator,Matlab_file *mf) :
+
+[4] Why not put the constructor parameters in the same order
+as the member order?  I.e. (mf, end_iterator).
+
+ > +	  mf_(mf),
+ > +	  end_iterator_(end_iterator) {}
+ > +
+ > +	void read_header() { mf_->is_ >> mf_->view_header_; }
+ > +	std::istream *get_stream() { return &(mf_->is_); }
+
+[5] We should be able to remove this function, see below.
+
+
+ > +      public:
+ > +	// copy constructors
+ > +	iterator(iterator const &obj) :
+ > +          mf_(obj.mf_), end_iterator_(obj.end_iterator_) {}
+ > +
+ > +        // = operator
+ > +	iterator&
+ > +	operator=(iterator &src)
+ > +	{
+ > +	  this->mf_           = src.mf_;
+ > +	  this->end_iterator_ = src.end_iterator_;
+ > +	  return *this;
+ > +	}
+
+[6] Can you put the copy constructor and assignment operator at the
+top of the class together with the other constructors?  In general,
+we try to lay out classes as:
+
+  - compile-time constants (typedefs, static variables, etc)
+  - constructors, destructors, assignment operators
+  - accessor member functions
+  - private member data
+
+Being consistent makes it easier to find things.
+
+ > +
+ > +      private:
+ > +        Matlab_file *mf_;
+
+[7] (see above) it would be "safer" to store Matlab_file as a
+reference.  Then we don't have to check if mf_ is NULL on construction
+or on use.
+
+ > +        bool end_iterator_;
+ > +
+ > +
+ > +    };
+ > +
+ > +    friend class iterator;
+ > +
+ > +  public:
+ > +    // iterator functions
+ > +    iterator begin() { return begin_iterator_; };
+ > +    iterator end() { return end_iterator_; };
+ > +
+ > +    // read a view from a matlab file after reading the header
+ > +    template <typename T,
+ > +	      typename Block0,
+ > +	      template <typename,typename> class View>
+ > +    void read_view(View<T,Block0> view, iterator  &iter);
+ > +
+ > +  private:
+ > +    Matlab_bin_hdr                    matlab_header_;
+ > +    std::ifstream                     is_;
+ > +    iterator                          begin_iterator_;
+ > +    iterator                          end_iterator_;
+ > +
+ > +
+ > +  // these variables are used for the iterator
+ > +  private:
+ > +    Matlab_view_header view_header_;
+ > +    bool read_data_;
+ > +    bool end_of_file_;
+ > +    uint32_t length_;
+ > +
+ > +  // make a private copy constructor and assignment
+ > +  private:
+ > +    Matlab_file(Matlab_file const & /*obj*/) {}
+ > +    Matlab_file& operator=(Matlab_file & /*src*/)
+ > +      {
+ > +        VSIP_IMPL_THROW(std::runtime_error(
+ > +          "Trying to use Matlab_file assignment operator"));
+ > +        return *this;
+ > +      }
+
+[8] It is better to leave the function bodies for these out.  I.e.
+
+	Matlab_file(Matlab_file const&);
+
+would be preferrable.  This way, you can't inadvertantly make a copy
+inside of a member function.
+
+However, an even better approach (hint hint :), we have a special class
+you can derive from to indicate that copy and assignment are
+dissallowed:
+
+	#include <vsip/impl/noncopyable.hpp>
+
+	class Matlab_file : Non_copyable
+	{
+	   ...
+
+	   no need to make copy constructor and assignment private,
+	   Non_copyable does it for you
+	};
+
+ > +
+ > +};
+ > +
+ > +
+ > 
++/*****************************************************************************
+ > + * Definitions
+ > + 
+*****************************************************************************/
+ > +
+ > +// read a view from a matlab file after reading the header
+ > +template <typename T,
+ > +	  typename Block0,
+ > +	  template <typename,typename> class View>
+ > +void Matlab_file::read_view(View<T,Block0> view, iterator  &iter)
+ > +{
+
+[9] it would be good to make the assumption that 'iter' is an iterator
+of 'this' explicit with an assertion:
+
+	assert(iter.mf == this);
+
+
+ > +  typedef typename vsip::impl::Scalar_of<T>::type scalar_type;
+ > +  vsip::dimension_type v_dim = vsip::impl::Dim_of_view<View>::dim;
+ > +  Matlab_view_header *header = *iter;
+ > +  std::istream *is = iter.get_stream();
+
+[10] since 'iter' belongs to 'this', 'iter.get_stream()' is equivalent
+to 'this->is_'.
+
+ > +
+ > +  // is this complex?
+
+[11] This comment describes what is being done below in a more direct
+fashion, which is good.  However, since it is phrased as a question,
+it might be confusiong to the reader.  In general, they might think
+that you were unsure of the following code and put a question in as a
+reminder to come back later.
+
+Can you repharse this?  "Check that view and file are both complex or 
+scalar."
+
+ > +  if(vsip::impl::Is_complex<T>::value && !header->is_complex)
+ > +    VSIP_IMPL_THROW(std::runtime_error(
+ > +      "Trying to read complex view into a real view"));
+ > +
+
+[12] Likewise for these comments:
+
+ > +  // is the class ok?
+
+ > +  // do dimensions agree?
+
+ > +    // should we swap this field?
+
+
+
+ > Index: tests/matlab_iterator_test.cpp
+
+[13] Since this file is in the "tests/" subdirectory, it is not
+necessary to put the word "test" in the filename.
+"matlab_iterator.cpp" is preferrable.
+
+ > ===================================================================
+ > --- tests/matlab_iterator_test.cpp	(revision 0)
+ > +++ tests/matlab_iterator_test.cpp	(revision 0)
+ > +
+ > +#include "test.hpp"
+
+[14] Make sure to do a 'svn update' before committing this.
+"test.hpp" has moved into vsip_csl so you need to replace this with:
+
+	#include <vsip_csl/test.hpp>
+
+ > +
+ > +using namespace std;
+ > +using namespace vsip;
+ > +using namespace vsip_csl;
+ > +
+ > +#define MAX(a,b) ( (a>b)? a:b)
+
+[15] Assem, you're an ole fashion C hacker! :)
+
+Instead of defining your own MAX macro, you should get in the habit
+of using C++'s std::max:
+
+Include algorithms:
+
+	#include <algorithms>
+
+Use it:
+
+	int x = std::max(a, b);
+
+Or if you have done a 'using namespace std;':
+
+	int x = max(a, b);
+
+
+
+ > +template <typename T>
+ > +void read_view_test(Matlab_file::iterator iterator, Matlab_file &mf)
+ > +{
+ > +  Matlab_view_header *header = *iterator;
+ > +  if(header->num_dims == 2 && (header->dims[0] == 1 | 
+header->dims[1] == 1))
+ > +  {
+ > +    // vector
+ > +    Vector<T> a(MAX(header->dims[0],header->dims[1]));
+
+[16] Why is it necessary to use MAX here?
+
+I assume that matlab distinguishes between row vectors and column
+vectors by storing them as either (N x 1) matrices (i.e. a column vector),
+or (1 x N) matrices (i.e. a row vector)?
+
+Since we don't distinguish between those cases in VSIPL++, I'm
+hesitant to export that interface and force the user to do a max.
+
+Instead, when we read the header for a vector, let's do two things:
+
+  1) Put the size into dims[0] and put 1 into dims[1].
+
+     This will make it easier for the majority of cases when it doesn't
+     matter.
+
+  2) Add a flag 'row_vector' that indicates when the vector was a row
+     vector, that is, when it was necessary to swap dims[0] and dims[1].
+
+     This will make it possible to determine what the vector was in
+     cases where it does matter.
+
+This suggests we need a similar capability to write column and row
+vectors.  If that is the case, let's not worry about it now, but
+instead file an enhancement issue.
+
+ > +    mf.read_view(a,iterator);
+ > +    view_test(a);
+ > +  } else if(header->num_dims == 2)
+ > +  {
+ > +    // matrix
+ > +    Matrix<T> a(header->dims[0],header->dims[1]);
+ > +    mf.read_view(a,iterator);
+ > +    view_test(a);
+ > +  } else if(header->num_dims == 3)
+ > +  {
+ > +    // tensor
+ > +    Tensor<T> a(header->dims[0],header->dims[1],header->dims[2]);
+ > +    mf.read_view(a,iterator);
+ > +    view_test(a);
+ > +  }
+ > +}
+ > +
+ > +int main()
+ > +{
+ > +  Matlab_file mf("temp.mat");
+
+[17] Where does "temp.mat" come from?  I assume it has been written
+already.
+
+That's fine, we just need to handle it properly.  As above, this test
+won't work when building the library outside of the source tree.
+
+Can you check how data files are handled by the fft tester?
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From jules at codesourcery.com  Fri Jul 21 13:59:37 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Fri, 21 Jul 2006 09:59:37 -0400
+Subject: [vsipl++] CLAPACK Makefile
+In-Reply-To: <44BFE7B2.5040804@codesourcery.com>
+References: <44BFE7B2.5040804@codesourcery.com>
+Message-ID: <44C0DDC9.9000800@codesourcery.com>
+
+Assem Salama wrote:
+> How does this look?
+
+Assem, this looks good, please check it in.  thanks, -- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From jules at codesourcery.com  Fri Jul 21 14:22:36 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Fri, 21 Jul 2006 10:22:36 -0400
+Subject: [vsipl++] SIMD
+In-Reply-To: <44BE45C8.2060405@codesourcery.com>
+References: <44BE45C8.2060405@codesourcery.com>
+Message-ID: <44C0E32C.9000908@codesourcery.com>
+
+Assem Salama wrote:
+ > Everyone,
+ >  This patch is for a CFAR update running sum SIMD instruction. I just
+ > realized date in previous ChangeLog file is not correct, sorry about 
+that.
+
+Assem,
+
+This looks good.  One minor comment, but otherwise it is ready to
+check in.
+
+Do you have a test for this?
+
+				thanks,
+				-- Jules
+
+ > +#if 0
+ > +// this order doesn't work correctly
+
+Can you change this comment to indicate which compiler(s) you've
+tried this with:
+
+// This order of operations does not work correctly with
+// GCC 3.4.  It is functionally equivalent to the order
+// below, that does work.
+
+ > +      reg4 = simd::add(reg4,reg0);
+ > +      reg4 = simd::sub(reg4,reg2);
+ > +      reg5 = simd::add(reg5,reg1);
+ > +      reg5 = simd::sub(reg5,reg3);
+ > +#else
+ > +      reg0 = simd::sub(reg0,reg2);
+ > +      reg4 = simd::add(reg4,reg0);
+ > +      reg1 = simd::sub(reg1,reg3);
+ > +      reg5 = simd::add(reg5,reg1);
+ > +#endif
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From stefan at codesourcery.com  Fri Jul 21 15:09:55 2006
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Fri, 21 Jul 2006 11:09:55 -0400
+Subject: patch: Enhance doc building
+Message-ID: <44C0EE43.1060803@codesourcery.com>
+
+The attached patch adds all doc/tutorial/*.xml files explicitely as dependencies,
+and adds convenience targets doc_manuals, html_manuals, and pdf_manuals.
+
+Regards,
+		Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: patch
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060721/43c03df4/attachment.ksh>
+
+From jules at codesourcery.com  Fri Jul 21 15:12:11 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Fri, 21 Jul 2006 11:12:11 -0400
+Subject: [vsipl++] patch: Enhance doc building
+In-Reply-To: <44C0EE43.1060803@codesourcery.com>
+References: <44C0EE43.1060803@codesourcery.com>
+Message-ID: <44C0EECB.4080002@codesourcery.com>
+
+Stefan Seefeld wrote:
+> The attached patch adds all doc/tutorial/*.xml files explicitely as dependencies,
+> and adds convenience targets doc_manuals, html_manuals, and pdf_manuals.
+> 
+
+Stefan, this looks good, please check it in (if you haven't already), 
+thanks -- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From jules at codesourcery.com  Fri Jul 21 15:40:48 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Fri, 21 Jul 2006 11:40:48 -0400
+Subject: [vsipl++] [patch] Profile_event class
+In-Reply-To: <44BED031.4080300@codesourcery.com>
+References: <44BB1C32.7010608@codesourcery.com> <44BBF81A.8010805@codesourcery.com> <44BC0342.5020500@codesourcery.com> <44BCEBF3.5010801@codesourcery.com> <44BED031.4080300@codesourcery.com>
+Message-ID: <44C0F580.3020706@codesourcery.com>
+
+Don McCoy wrote:
+ > Thank you Jules for the suggestions and the detailed explanations as
+ > well.  All have been addressed with this revision.  The important points
+ > being:
+ >
+ >   - impl_performance() works independently of the profiler being enabled
+ >   - It does share a timer resource internally for now
+ >   - FFT/FFTM size is now part of the descriptive tag in the profile 
+output.
+ >   - Tags now use S,D,C,Z for float, double, complex<float> and
+ > complex<double> respectively.
+ >   - The tags are now generated at one point - from the base class
+ > (rather than in each derived Fft type).
+
+Don,
+
+Sorry that I did not get to this sooner.
+
+This looks good.  I have 4 comments below, but once you're happy with
+those, please check it in.
+
+			thanks,
+			-- Jules
+
+ >
+ > Also, thanks to Stefan for helping me find a defect in my handling of
+ > the timer resource.  This was related to making an unintentional copy of
+ > the object owning the timer.  I mention this because it helped me also
+ > to realize that when an Fft object is copied a new timer is created.
+ > This effectively erases the history that impl_performance() is able to
+ > report.  I don't think this is unreasonable behavior, but thought I'd
+ > point it out.
+
+I agree.
+
+But how does that happen though?  Looking at the Profile_event class,
+it uses the default copy constructor, so copying a Profile_event
+should copy the history (but produce a unique object so that
+subsequent changes to either will cause them to diverge).
+
+				-- Jules
+
+ > @@ -220,7 +221,7 @@
+ >      {
+ >        float mflops = (*cur).second.count * (*cur).second.value /
+ >          (1e6 * TP::seconds((*cur).second.total));
+ > -      file << (*cur).first
+ > +      file << (*cur).first.c_str()
+
+[1] You should be able to pass a std::string directly to the stream.
+
+ >             << delim << TP::ticks((*cur).second.total)
+ >             << delim << (*cur).second.count
+ >             << delim << (*cur).second.value
+
+
+ > +
+ > +// Create a readable tag from parameters.
+ > +template <int D>
+ > +struct desc_dim { static char * value() { return "FFT "; } };
+ > +template <>
+ > +struct desc_dim<2> { static char * value() { return "FFTM "; } };
+
+[2] I think it would be better to match the class name here.
+
+It's too bad we had to change the class names to Fft and Fftm.
+
+
+ > +class Profile_event
+ > +{
+ > +  typedef DefaultTime    TP;
+ > +
+ > +public:
+ > +  Profile_event(std::string name, unsigned int ops_count = 0)
+ > +    : name_(name), ops_(ops_count)
+ > +  {}
+ > +
+ > +  ~Profile_event() {}
+
+[3] Can you put a comment saying that the default copy constructor and
+assignment operator are OK?
+
+ > +};
+
+
+ > +class Scope_profile_event
+
+[4] To be safe, I think this class should be made Non_copyable.
+
+ > +{
+ > +public:
+ > +  Scope_profile_event(Profile_event& event)
+ > +    : id_(prof->event(event.name(), event.ops(), 0, event.start())),
+ > +      event_(event)
+ > +  {}
+ > +
+ > +  ~Scope_profile_event() { prof->event(event_.name(), 0, id_, 
+event_.stop()); }
+ > +
+ > +private:
+ > +  int id_;
+ > +  Profile_event& event_;
+ > +};
+ > +
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From don at codesourcery.com  Fri Jul 21 22:03:07 2006
+From: don at codesourcery.com (Don McCoy)
+Date: Fri, 21 Jul 2006 16:03:07 -0600
+Subject: [patch] Benchmarks build issue redux.
+Message-ID: <44C14F1B.8060504@codesourcery.com>
+
+This patch fixes a kernel benchmarks makefile problem (same one as with 
+the normal benchmarks) and it eliminates the duplicate copy of 
+"ops_info.hpp" (now in vsip/impl).
+
+Regards,
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: ml2.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060721/955c4cb0/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: ml2.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060721/955c4cb0/attachment-0001.ksh>
+
+From don at codesourcery.com  Fri Jul 21 22:42:25 2006
+From: don at codesourcery.com (Don McCoy)
+Date: Fri, 21 Jul 2006 16:42:25 -0600
+Subject: [vsipl++] [patch] Benchmarks build issue redux.
+In-Reply-To: <44C14F1B.8060504@codesourcery.com>
+References: <44C14F1B.8060504@codesourcery.com>
+Message-ID: <44C15851.5000004@codesourcery.com>
+
+Don McCoy wrote:
+> This patch fixes a kernel benchmarks makefile problem (same one as with 
+> the normal benchmarks) and it eliminates the duplicate copy of 
+> "ops_info.hpp" (now in vsip/impl).
+> 
+Checked in (after changing it to use vsip::impl instead of 'namespace 
+impl').
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: ml3.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060721/ea1bf36d/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: ml3.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060721/ea1bf36d/attachment-0001.ksh>
+
+From jules at codesourcery.com  Fri Jul 21 23:49:00 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Fri, 21 Jul 2006 19:49:00 -0400
+Subject: [patch] MC Performance optimizations
+Message-ID: <44C167EC.1010601@codesourcery.com>
+
+This patch has a performance optimziation for parallel assignment:
+
+  - It reorganizes the parallel assignment algorithms to be
+    specializations of a common class (using implementation tags).
+    This makes it easier to plug in alternative algorithms
+    (in fact, this was back ported from the PAS implementation).
+
+  - It provides a new parallel assignment algorithm for
+    use with block-distributed and whole-distributed vectors.
+    It turns out that creating derived data types is very
+    expensive in MPI/Pro.  The new block-vector assignment
+    avoids creating these when possible, raising message
+    bandwidth in extreme cases from ~5 MB/s to ~210 MB/s.
+
+  - It has a new benchmark (dist_vmul) and extends existing
+    benchmarks (primarily copy) to help better characterize parallel
+    assignment performance.
+
+It also has several bug fixes related to the multi-dim to 1-dim
+expression redimension layer, and one bug fix in a "synthetic"
+SAL wrapper.
+
+				-- Jules
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: mc-release.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060721/578081f3/attachment.ksh>
+
+From don at codesourcery.com  Sun Jul 23 22:33:20 2006
+From: don at codesourcery.com (Don McCoy)
+Date: Sun, 23 Jul 2006 16:33:20 -0600
+Subject: [patch] Profiling chapter for tutorial
+Message-ID: <44C3F930.2090101@codesourcery.com>
+
+The attached patch adds a new chapter to the tutorial that describes how 
+to use the profiler feature.  An html version is included also, for ease 
+of review.
+
+Regards,
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: pd1.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060723/55963959/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: pd1.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060723/55963959/attachment-0001.ksh>
+-------------- next part --------------
+An HTML attachment was scrubbed...
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060723/55963959/attachment.html>
+-------------- next part --------------
+An HTML attachment was scrubbed...
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060723/55963959/attachment-0001.html>
+
+From jules at codesourcery.com  Mon Jul 24 03:15:00 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Sun, 23 Jul 2006 23:15:00 -0400
+Subject: [patch] Parallel Howto Chapter
+Message-ID: <44C43B34.5070506@codesourcery.com>
+
+Here's an updated version of the parallel howto chapter for the 
+tutorial.  I've tried to incorporate feedback from the first draft. 
+It's possible I've missed some things, please don't hesitate to let me know!
+
+Also, I've also filled in the missing figures.  These will need revision 
+because some of the performance results don't completely make sense to 
+me, in particular the phased vs interleaved performance.
+
+For convenience, the PDF and HTML for the tutorial with this chapter are 
+on the intranet:
+
+https://intranet.codesourcery.com/downloads/vsipl/jules/tutorial.pdf
+https://intranet.codesourcery.com/downloads/vsipl/jules/tutorial
+
+Patch applied.
+
+				-- Jules
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From don at codesourcery.com  Mon Jul 24 05:17:29 2006
+From: don at codesourcery.com (Don McCoy)
+Date: Sun, 23 Jul 2006 23:17:29 -0600
+Subject: [vsipl++] [patch] Profile_event class
+In-Reply-To: <44C0F580.3020706@codesourcery.com>
+References: <44BB1C32.7010608@codesourcery.com> <44BBF81A.8010805@codesourcery.com> <44BC0342.5020500@codesourcery.com> <44BCEBF3.5010801@codesourcery.com> <44BED031.4080300@codesourcery.com> <44C0F580.3020706@codesourcery.com>
+Message-ID: <44C457E9.5070003@codesourcery.com>
+
+Jules Bergmann wrote:
+> This looks good.  I have 4 comments below, but once you're happy with
+> those, please check it in.
+> 
+Committed, with changes as noted below.
+
+Thanks.
+
+
+>  > Also, thanks to Stefan for helping me find a defect in my handling of
+>  > the timer resource.  This was related to making an unintentional copy of
+>  > the object owning the timer.  I mention this because it helped me also
+>  > to realize that when an Fft object is copied a new timer is created.
+>  > This effectively erases the history that impl_performance() is able to
+>  > report.  I don't think this is unreasonable behavior, but thought I'd
+>  > point it out.
+> 
+> I agree.
+> 
+> But how does that happen though?  Looking at the Profile_event class,
+> it uses the default copy constructor, so copying a Profile_event
+> should copy the history (but produce a unique object so that
+> subsequent changes to either will cause them to diverge).
+> 
+Hmmm.  I had that wrong.  Thank you.
+
+
+>  > @@ -220,7 +221,7 @@
+>  >      {
+>  >        float mflops = (*cur).second.count * (*cur).second.value /
+>  >          (1e6 * TP::seconds((*cur).second.total));
+>  > -      file << (*cur).first
+>  > +      file << (*cur).first.c_str()
+> 
+> [1] You should be able to pass a std::string directly to the stream.
+> 
+Fixed.
+
+
+>  > +// Create a readable tag from parameters.
+>  > +template <int D>
+>  > +struct desc_dim { static char * value() { return "FFT "; } };
+>  > +template <>
+>  > +struct desc_dim<2> { static char * value() { return "FFTM "; } };
+> 
+> [2] I think it would be better to match the class name here.
+> 
+Done.
+
+> 
+>  > +class Profile_event
+>  > +{
+>  > +  typedef DefaultTime    TP;
+>  > +
+>  > +public:
+>  > +  Profile_event(std::string name, unsigned int ops_count = 0)
+>  > +    : name_(name), ops_(ops_count)
+>  > +  {}
+>  > +
+>  > +  ~Profile_event() {}
+> 
+> [3] Can you put a comment saying that the default copy constructor and
+> assignment operator are OK?
+> 
+Added.
+
+>  > +class Scope_profile_event
+> 
+> [4] To be safe, I think this class should be made Non_copyable.
+> 
+I did the same for class Scope_event.
+
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+
+
+From hgk at ll.mit.edu  Mon Jul 24 17:28:11 2006
+From: hgk at ll.mit.edu (Hahn Kim)
+Date: Mon, 24 Jul 2006 13:28:11 -0400
+Subject: bug in ATLAS configure script?
+Message-ID: <09BA1FF9-5E40-44DF-B47C-22E161B7979C@ll.mit.edu>
+
+Hello,
+
+I am trying to build SourceryVSIPL++ 1.1 and think I may have found a  
+bug in the ATLAS configure script.  When I run VSIPL++'s configure  
+script with the following command:
+
+./configure --prefix=<my install dir>
+
+the following output is generated:
+
+===============================================================
+ATLAS: CC  gcc
+ATLAS: F77 g77
+ATLAS: CFLAGS -g -O2
+checking build system type... i686-pc-linux-gnu
+checking host system type... i686-pc-linux-gnu
+checking for i686-pc-linux-gnu-gcc... gcc
+checking for C compiler default output file name... a.out
+checking whether the C compiler works... yes
+checking whether we are cross compiling... no
+checking for suffix of executables...
+checking for suffix of object files... o
+checking whether we are using the GNU C compiler... yes
+checking whether gcc accepts -g... yes
+checking for gcc option to accept ANSI C... none needed
+checking for machine type... linux arch x86_32
+PII
+checking for asm style... GAS_x8632
+checking for AltiVec ISA... not found.
+checking for SSE3... not found.
+checking for SSE2... not found.
+checking for SSE1... FOUND.
+ARCH: Linux_PIISSE1
+checking for L2 cache size... line: cache size  : 256 KB
+cache size      : 256 KB
+sizek: 256
+sizem:
+L2 Cache size: 256
+checking C compiler family... GCC
+checking mach/compiler specific flags... none
+checking for architectural defaults (CONFIG/ARCHS/PIISSE1.tgz)...  
+DIR ../.././vendor/atlas/CONFIG/ARCHS/PIISSE1.tgz
+configure: error: NOT FOUND.
+===============================================================
+configure: error: built-in ATLAS configure FAILED.
+
+
+The notable part is that ATLAS thinks I have Pentium 2 processor  
+using SSE1 ("ARCH: Linux_PIISSE1"), which doesn't exist.  I looked at  
+ATLAS' configure script and found the following code snippet starting  
+at line 2722 that determines what type of Pentium architecture I am  
+using:
+
+     if test "`echo $model | sed -n /Pentium/p`" != ""; then
+       if test "`echo $model | sed -n /III/p`" = "match"; then
+         mach="PIII"
+       elif test "`echo $model | sed -n '/ II/p'`" != ""; then
+         mach="PII"
+     ...
+
+Now, I'm not very familiar with UNIX shell scripting or sed, but the  
+2nd line looks to be testing for equality with the string "match".   
+However, I have not been able to find any other section of code that  
+tests for "match"; it seems that all other tests are testing for  
+inequality to an empty string.  If I change the 2nd line to the  
+following:
+
+       if test "`echo $model | sed -n /III/p`" != ""; then
+
+then VSIPL++'s configure seems to work just fine.
+
+Is this a typo?  Thanks.
+
+Hahn
+
+-- 
+Hahn Kim
+MIT Lincoln Laboratory	Phone: (781) 981-0940
+244 Wood Street, S2-252	Fax: (781) 981-5255
+Lexington, MA 02420	E-mail: hgk at ll.mit.edu
+
+
+
+-------------- next part --------------
+An HTML attachment was scrubbed...
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060724/1d7b96c3/attachment.html>
+
+From jules at codesourcery.com  Mon Jul 24 17:57:51 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Mon, 24 Jul 2006 13:57:51 -0400
+Subject: [vsipl++] bug in ATLAS configure script?
+In-Reply-To: <09BA1FF9-5E40-44DF-B47C-22E161B7979C@ll.mit.edu>
+References: <09BA1FF9-5E40-44DF-B47C-22E161B7979C@ll.mit.edu>
+Message-ID: <44C50A1F.5020502@codesourcery.com>
+
+Hahn Kim wrote:
+> Hello,
+> 
+> I am trying to build SourceryVSIPL++ 1.1 and think I may have found a 
+> bug in the ATLAS configure script.  When I run VSIPL++'s configure 
+> script with the following command:
+> 
+
+
+> Is this a typo?  Thanks.
+
+Hahn,
+
+Yes, that is a typo.  Thanks for reporting this, I will apply your patch 
+so that the fix makes it into our next release.  Thanks!
+
+FYI, ATLAS configuration is one of the weaker parts of building VSIPL++ 
+from source.  The original ATLAS configuration is very interactive. 
+We've tried to automate it for the platforms that we support, but as 
+you've noticed, it is far from perfect!
+
+				-- Jules
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From assem at codesourcery.com  Tue Jul 25 11:21:48 2006
+From: assem at codesourcery.com (Assem Salama)
+Date: Tue, 25 Jul 2006 07:21:48 -0400
+Subject: Matlab IO
+Message-ID: <44C5FECC.4010800@codesourcery.com>
+
+Everyone,
+  Patch with Jule's comments.
+
+Thanks,
+Assem
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: svn.diff.07252006.1.log
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060725/d6e38ae9/attachment.ksh>
+
+From jules at codesourcery.com  Wed Jul 26 01:20:13 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Tue, 25 Jul 2006 21:20:13 -0400
+Subject: [vsipl++] [patch] Profiling chapter for tutorial
+In-Reply-To: <44C3F930.2090101@codesourcery.com>
+References: <44C3F930.2090101@codesourcery.com>
+Message-ID: <44C6C34D.5090206@codesourcery.com>
+
+Don McCoy wrote:
+ > The attached patch adds a new chapter to the tutorial that describes how
+ > to use the profiler feature.  An html version is included also, for ease
+ > of review.
+ >
+ > Regards,
+ >
+
+Don,
+
+This is looking good.  I have some word smithing suggestions below
+in qoutes that you can feel free to ignore.  Please check this in
+when you're happy with it.
+
+Minor things:
+  - make sure that code fragments in the text have <code>...</code> tags.
+    For example the Scope_event class.
+  - likewise, make sure the directories in the text have <filename> tags.
+  - change mflops to mops
+
+ >
+ >
+ > ------------------------------------------------------------------------
+ >
+ > Chapter 4. Performance
+ > Prev <user-defined-blocks.html> 	 	 Next <application-profiling.html>
+ >
+ > ------------------------------------------------------------------------
+ >
+ >
+ >     Chapter 4. Performance
+ >
+ > *Table of Contents*
+ >
+ > Library Profiling <ch04.html#library-profiling>
+ >
+ >     Configuration Options <ch04.html#configuration>
+ >     Accumulating Profile Data <ch04.html#accumulating-profile-data>
+ >     Trace Profile Data <ch04.html#trace-profile-data>
+ >     Performance API <ch04.html#performance-api>
+ >
+ > Application Profiling <application-profiling.html>
+ >
+ >
+ >     Library Profiling
+ >
+ > Sourcery VSIPL++ provides some features that help speed application
+ > development by helping you locate and quantify the expensive
+ > computations in your algorithm.
+
+"Sourcery VSIPL++ provides library profiling features that speed
+application development by locating and quantifying the expensive
+computations in your algorithm"
+
+ > Built-in profiling capabilities, when
+ > enabled, provide timing data for many signal processing functions, such
+ > as FFT's, as well as common linear algebra computations like matrix
+ > multiplication and addition.
+
+"These profiling capabilities provide timing data for signal processing
+functions (such as FFTs), linear algebra computations (such as matrix
+multiply), and elementwise expressions (such as vector addition).
+When not required, profiling can be disabled at configure time, resulting
+in no application overhead."
+
+ > A full listing of functions covered is
+ > shown in the table below.
+ >
+ > The profiler operates in two modes. In 'trace' mode, the time spent in
+ > each function is stored separately and presented in chronological order.
+ > This mode is preferred when a highly detailed view of program execution
+ > is desired. In 'accumulate' mode, the times and opcounts are summed so
+ > that an average runtime and MFLOP/s for the function can be computed.
+ > This is desirable when investigating a specific function's performance.
+ >
+ > *Table 4.1. Functions Profiled*
+ >
+ > Section	Object/Function
+ > |signal|	Convolution
+ > |signal|	Correlation
+ > |signal|	Fft
+ > |signal|	Fir
+ > |signal|	Iir
+ >
+ > See the file "profiling.txt" for a detailed explanation of the profiler
+ > output for each of the functions above.
+ >
+ >
+ >       Configuration Options
+
+"Before using profiling, you need to configure the library with profiling
+enabled. ..."
+
+ > A timer is required to obtain the profile data. For profiling to be
+ > useful, the timer should have high resolution and low overhead, such as
+ > the Pentium and x86_64 time-stamp counters. When building the library
+ > from source, you should enable a timer suitable for your particular
+ > platform along with the profiler itself. These may be subsequently
+ > disabled for the production version of the code without altering the
+ > source code. For 64-bit Intel and AMD processors, use:
+ >
+ > --enable-timer=x86_64_tsc
+ >
+ > --enable-profiler
+ >
+ > If you are using a binary package on either of these platforms, then you
+ > need take no special steps, as the timer and profiler are already
+ > enabled for you.
+
+Hmm, this raises a good point.  If profiling has any appreciable overhead,
+we should add a third configuration option with profiling disabled.
+  - debug   - debug, profiling enabled
+  - profile - optimized, profiling enabled
+  - release - optimized, most profiling disabled (maybe leave some very
+    low overhead things enabled, like performance API).
+
+ >
+ >
+ >       Accumulating Profile Data
+ >
+ > Using this feature is very easy. Simply pass the path to a log file to
+ > the constructor of the Profile object as follows:
+
+"Using profiler's accumulate mode is easy.  Simply construct a
+'Profile' object with the name of a log file as follows:
+
+	Profile profile("/dev/stdout", pm_accum);
+
+Or simply:
+
+	Profile profile("/dev/stdout");
+
+I would mention using 'pm_accum' as a second argument.  Otherwise it
+seems arbitrary that pm_trace is required for tracing mode.
+
+ >
+ > Profile profile("/dev/stdout");
+
+
+ >
+ > Profiled library functions will store timing data in memory while this
+ > object is in scope. The profile data is written to the log file when the
+ > object is destroyed. Note that for this reason, only one object of this
+ > type may be created at any given time.
+ >
+ > The examples/ subdirectory provided with the source distribution
+ > demonstrates this profiling mode using a 2048-point forward FFT followed
+ > by an inverse FFT scaled by the length. The profiler uses the timer to
+ > measure each FFT call and uses the size to compute an estimate of the
+ > performance. For each unique event, the profiler outputs an indentifying
+ > tag, the accumulated time spent 'in scope' (in "ticks"), the number of
+ > times called, the total number of floating point operations performed
+ > per call and the computed performance in millions of flops per second.
+ > The time value may be converted to seconds by dividing it by the
+ > 'clocks_per_second' constant.
+
+"... by the 'clocks_per_second' constant in the log file header."
+
+ >
+ > # mode: pm_accum
+ > # timer: x86_64_tsc_time
+ > # clocks_per_sec: 3591371008
+ > #
+ > # tag : total ticks : num calls : op count : mflops
+
+                                                ^^ mops
+
+ > Fwd FFT C-C by_val 2048x1 : 208089 : 1 : 112640 : 1944.03
+ > Inv FFT C-C by_val 2048x1 : 209736 : 1 : 112640 : 1928.77
+ >
+ >
+ >
+ > This information is important in analyzing total processing requirements
+ > for an algorithm. However, care should be taken in interpreting the
+ > results to ensure that they are representative of the intended
+ > application. For example, in the above FFT the data will most likely not
+ > be resident in cache as it would be in some instances. With a well
+ > designed pipelined processing chain (typical of many embedded
+ > applications) the data will be in cache, yielding significantly better
+ > performance. To obtain a good estimate of the in-cache peformance, place
+ > the FFT in a loop so that it is called many times.
+ >
+ > # mode: pm_accum
+ > # timer: x86_64_tsc_time
+ > # clocks_per_sec: 3591371008
+ > #
+ > # tag : total ticks : num calls : op count : mflops
+ > Fwd FFT C-C by_val 2048x1 : 6212808 : 100 : 112640 : 6511.26
+ >
+ >
+ >
+ > This is only a portion of the analysis that would be necessary to
+ > predict the performance of a real-world application. Once you are able
+ > to accurately measure library performance, you may then extend that to
+ > profile your own application code, using the same features used internal
+ > to the library.
+ >
+ >
+ >       Trace Profile Data
+ >
+ > This mode is used similarly to accumulate mode, except that an extra
+ > parameter is passed to the creation of the Profile object.
+ >
+ > Profile profile("/dev/stdout", pm_trace);
+ >
+ > This mode is more important when investigating the execution sequence of
+ > your program. The profiler simply records each library call as a pair of
+ > events, allowing you to see where it entered and exited scope in each 
+case.
+
+"This mode is useful for investigating the ...
+
+ >
+ > Long traces can result when profiling in this mode, so be sure to avoid
+ > taking more data than you have memory to store (and have time to process
+ > later). The output is very similar to the output in accumulate mode.
+ >
+ > # mode: pm_trace
+ > # timer: x86_64_tsc_time
+ > # clocks_per_sec: 3591371008
+ > #
+ > # index : tag : ticks : open id : op count
+ > 1 : FFT Fwd 1D C-C by_val    2048x1 : 4688163420488244 : 0 : 112640
+ > 2 : FFT Fwd 1D C-C by_val    2048x1 : 4688163420626385 : 1 : 0
+ > 3 : FFT Inv 1D C-C by_val    2048x1 : 4688163420643116 : 0 : 112640
+ > 4 : FFT Inv 1D C-C by_val    2048x1 : 4688163420830298 : 3 : 0
+ >
+ >
+ >
+ > For each event, the profiler outputs an event number, an indentifying
+ > tag, and the current timestamp (in "ticks"). The next two fields differ
+ > depending on whether the event is coming into scope or out of scope.
+ > When coming into scope, a zero is shown followed by the estimated count
+ > of floating point operations for that function. When exiting scope, the
+ > profiler displays the event number being closed followed by a zero. In
+ > all cases, the timestamp (and intervals) may be converted to seconds by
+ > dividing by the 'clocks_per_second' constant.
+ >
+ >
+ >       Performance API
+ >
+ > An additional interface is provided for getting run-time profile data.
+ > This allows you to selectively monitor the performance of a particular
+ > instance of a VSIPL class such as Fft, Convolution or Correlation.
+ >
+ > Classes with the Performance API built in contain a function that takes
+ > a string parameter and returns single-precision floating point number.
+ > This flexible interface allows you to obtain a variety of useful values
+ > all through a single function.
+
+"Classes with the Performance API provide a function called
+'impl_performance' that takes a string parameter and returns 
+single-precision
+floating point number."
+
+ >
+ > For example, given an Fft object named "fwd_fft", the following call
+ > shows how to obtain an estimate of the number of floating point
+ > operations per second performed.
+ >
+ > float mflops = fwd_fft.impl_performance("mflops");
+
+"the following call shows how to obtain an estimate of the performance
+in number of operations per second:
+
+	float mops = fwd_fft.impl_performance("mops");
+
+An "operation" will vary depending on the object and type of data
+being processed.  For example, a single-precison Fft object will
+return the number of single-precison floating-point operations
+performed per second.
+
+ >
+ > The table below lists the current types of information available.
+ >
+ > *Table 4.2. Performance API Metrics*
+ >
+ > Parameter	Description
+ > |mflops|	performance in millions of floating point operations per second
+
+   |mops|	performance in millions of
+
+ > |count|	number of times invoked
+ > |time|	total time spent performing the operation, in seconds
+ > |op_count|	number of floating point operations per invocation
+ > |mbs|	data rate in millions of bytes per second (not applicable in for
+ > all operations)
+ >
+ > ------------------------------------------------------------------------
+ > Prev <user-defined-blocks.html> 	 	 Next <application-profiling.html>
+ > User-defined blocks 	Home <index.html>	 Application Profiling
+ >
+ >
+ > ------------------------------------------------------------------------
+ >
+ > Application Profiling
+ > Prev <ch04.html> 	Chapter 4. Performance	 Next <glossary.html>
+ >
+ > ------------------------------------------------------------------------
+ >
+ >
+ >     Application Profiling
+ >
+ > When knowing detailed run-time information regarding the library
+ > functions used by your algorithm is not enough, you may want to add
+ > profiling capabilities to some of your own code. Here, we introduce a
+ > new object, the Scope_event class, and show you how to use it in your
+ > application.
+
+"The profiling mode provides an API that allows you to instrument
+your own code.  Here we introduce ..."
+
+ >
+ > To create a Scope_event, simply call the constructor, passing it the
+ > string that will become the event tag and, optionally, an integer value
+ > expressing the number of floating point operations that will be
+ > performed by the time the Scope_event object is destroyed. For example,
+ > to measure the time taken to compute a simple running sum of squares
+ > over a C array:
+ >
+ > #include <vsip/initfin.hpp>
+ > #include <vsip/support.hpp>
+ > #include <vsip/impl/profile.hpp>
+ >
+ > using namespace vsip;
+ > using namespace impl;
+ >
+ > int
+ > main()
+ > {
+ >   vsipl init;
+ >
+ >   int data[1024];
+ >   for (int i = 0; i < 1024; ++i)
+ >     data[i] = i;
+ >
+ >   profile::Scope_enable scope("/dev/stdout" );
+ >
+ >   // This computation will be timed and included in the profiler output.
+ >   {
+ >     profile::Scope_event user_event("sum of squares", 2 * 1024);
+ >
+ >     int sum = 0;
+ >     for (int i = 0; i < 1024; ++i)
+ >       sum += data[i] * data[i];
+ >   }
+ >
+ >   return 0;
+ > }
+ >
+ >
+ >
+ >
+ > This resulting profile data is identical in format to that used for
+ > profiling library functions.
+ >
+ > # mode: pm_accum
+ > # timer: x86_64_tsc_time
+ > # clocks_per_sec: 3591371008
+ > #
+ > # tag : total ticks : num calls : op count : mflops
+ > sum of squares : 18153 : 1 : 2048 : 405.174
+ >
+ >
+ >
+ > Combining both application and library profiling is possible in either
+ > trace or accumulate modes. Performance events can be nested to help
+ > identify points of interest in your program. Events can be used to label
+ > different regions, such as "range processing" and "azimuth processing"
+ > for SAR. When examining the trace output, profile events for library
+ > functions, such as FFTs, will be nested within profile events for
+ > application regions.
+ >
+ > ------------------------------------------------------------------------
+ > Prev <ch04.html> 	Up <ch04.html>	 Next <glossary.html>
+ > Chapter 4. Performance 	Home <index.html>	 Glossary
+ >
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From jules at codesourcery.com  Wed Jul 26 15:35:39 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Wed, 26 Jul 2006 11:35:39 -0400
+Subject: [vsipl++] Matlab IO
+In-Reply-To: <44C5FECC.4010800@codesourcery.com>
+References: <44C5FECC.4010800@codesourcery.com>
+Message-ID: <44C78BCB.9060302@codesourcery.com>
+
+Assem Salama wrote:
+ > Everyone,
+ >  Patch with Jule's comments.
+
+Assem, this looks good.  I have 4 comments below.  Once you address 
+those, please check it in.
+
+				thanks,
+				-- Jules
+
+ > ------------------------------------------------------------------------
+ > Index: src/vsip_csl/matlab_file.hpp
+ > ===================================================================
+ > --- src/vsip_csl/matlab_file.hpp	(revision 0)
+ > +++ src/vsip_csl/matlab_file.hpp	(revision 0)
+ > @@ -0,0 +1,248 @@
+ > +/* Copyright (c) 2005, 2006 by CodeSourcery.  All rights reserved. */
+ > +
+ > +/** @file    vsip_csl/matlab_file.hpp
+ > +    @author  Assem Salama
+ > +    @date    2006-06-21
+ > +    @brief   VSIPL++ CodeSourcery Library: Matlab file class that 
+handles
+ > +             Matlab files using an iterator.
+ > +*/
+ > +
+ > +#ifndef VSIP_CSL_MATLAB_FILE_HPP
+ > +#define VSIP_CSL_MATLAB_FILE_HPP
+ > +
+ > +#include <iostream>
+ > +#include <fstream>
+ > +#include <vsip/impl/noncopyable.hpp>
+ > +#include <vsip_csl/matlab_bin_formatter.hpp>
+ > +
+ > +namespace vsip_csl
+ > +{
+ > +
+ > +class Matlab_file : vsip::impl::Non_copyable
+ > +{
+ > +  public:
+ > +    // Constructors
+ > +    Matlab_file(std::string fname);
+ > +
+ > +  // classes
+ > +  public:
+ > +    class iterator
+ > +    {
+
+
+[1] To be defensive, you should make the following constructor private:
+
+ > +      public:
+ > +        iterator(bool end_iterator,Matlab_file *mf) :
+ > +	  mf_(mf),
+ > +	  end_iterator_(end_iterator) {}
+
+That way only Matlab_file can use it (since it is a friend class).
+We know Matlab_file will always pass a valid Matlab_file*, so there
+is no need to assert(mf != NULL).
+
+ > +
+ > +      public:
+ > +	// copy constructors
+ > +	iterator(iterator const &obj) :
+ > +          mf_(obj.mf_), end_iterator_(obj.end_iterator_) {}
+ > +
+ > +        // = operator
+ > +	iterator&
+ > +	operator=(iterator &src)
+
+[2] Since this doesn't modify src, you should make parameter a const:
+
+	operator=(iterator const& src)
+
+This allows the compiler to use the assignment operator under more
+conditions (such as assigning from a temporary object).
+
+ > +	{
+ > +	  this->mf_           = src.mf_;
+ > +	  this->end_iterator_ = src.end_iterator_;
+ > +	  return *this;
+ > +	}
+
+
+ > Index: tests/matlab_iterator_test.cpp
+
+[3] Please rename this file to 'tests/matlab_iterator.cpp'
+
+ > ===================================================================
+ > --- tests/matlab_iterator_test.cpp	(revision 0)
+ > +++ tests/matlab_iterator_test.cpp	(revision 0)
+ > @@ -0,0 +1,191 @@
+ > +/* Copyright (c) 2006 by CodeSourcery, LLC.  All rights reserved. */
+ > +
+ > +/** @file    tests/matlab_bin_file_test.cpp
+ > +    @author  Assem Salama
+ > +    @date    2006-07-18
+ > +    @brief   VSIPL++ Library: Test for reading and writing Matlab 
+.mat files
+ > +             using iterators
+ > +*/
+ > +
+ > +/***********************************************************************
+ > +  Included Files
+ > +***********************************************************************/
+ > +
+ > +#include <iostream>
+ > +
+ > +#include <vsip/support.hpp>
+ > +#include <vsip/matrix.hpp>
+ > +#include <vsip/tensor.hpp>
+ > +#include <vsip_csl/matlab_file.hpp>
+ > +#include <vsip_csl/output.hpp>
+ > +
+ > +#include "test.hpp"
+
+[4] Rembemer to do an 'svn update' before commiting this.  test.hpp is
+no longer in the tests directory.
+
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From assem at codesourcery.com  Wed Jul 26 16:46:43 2006
+From: assem at codesourcery.com (Assem Salama)
+Date: Wed, 26 Jul 2006 12:46:43 -0400
+Subject: Matlab IO documentation
+Message-ID: <44C79C73.7080701@codesourcery.com>
+
+Everyone,
+  This patch adds more documentation to the docbook. I added another 
+section at the end that talks about the Matlab iterator interface.
+
+Thanks,
+Assem
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: svn.diff.07262006.1.log
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060726/5f6c6090/attachment.ksh>
+
+From stefan at codesourcery.com  Wed Jul 26 19:02:04 2006
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Wed, 26 Jul 2006 15:02:04 -0400
+Subject: patch: SIMD loop fusion
+Message-ID: <44C7BC2C.8050701@codesourcery.com>
+
+The attached patch adds support for SIMD (i.e. vectorized) loop fusion
+to our expression block evaluation harness. It is enabled for homogenous
+scalar expressions (i.e. all leaf blocks have float or double value_type)
+on platforms supporting SSE(2) instructions (such as 'gcc -msse2').
+
+Regards,
+		Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: simd.patch
+Type: text/x-patch
+Size: 17558 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060726/a360bf7b/attachment.bin>
+
+From jules at codesourcery.com  Wed Jul 26 21:06:54 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Wed, 26 Jul 2006 17:06:54 -0400
+Subject: [vsipl++] patch: SIMD loop fusion
+In-Reply-To: <44C7BC2C.8050701@codesourcery.com>
+References: <44C7BC2C.8050701@codesourcery.com>
+Message-ID: <44C7D96E.20001@codesourcery.com>
+
+Stefan Seefeld wrote:
+ > The attached patch adds support for SIMD (i.e. vectorized) loop fusion
+ > to our expression block evaluation harness. It is enabled for homogenous
+ > scalar expressions (i.e. all leaf blocks have float or double value_type)
+ > on platforms supporting SSE(2) instructions (such as 'gcc -msse2').
+
+Stefan,
+
+Excellent!  I have some comments below and a general comment:
+
+  - We need to make sure that mixed types are handled properly
+    I.e. we need to avoid dispatching on expressions like:
+
+	Vector<float>  fA, fB;
+	Vector<double> dC;
+
+	dC = fA + fB; // 1
+
+	fA = dC + fB; // 2
+
+    IIUC, the Proxy_factor dectects #2.  We should extend the expression
+    evalutor to catch #1.
+
+plus a couple of general nits:
+
+  - When you use single-char template parameters, can you document
+    what they are?  i.e. "B is a block type"?
+
+  - There are a few 80+ character lines, can you split them?
+
+Once these are fixed, please check this in.
+
+				thanks,
+				-- Jules
+
+ > ------------------------------------------------------------------------
+
+ > Index: src/vsip/impl/simd/expr_evaluator.hpp
+ > ===================================================================
+
+B is a block?  Can you capture that in a comment?  Likewise below for
+other single character template parameters (other than T).
+
+ > +template <typename B>
+ > +struct Proxy_factory
+ > +{
+ > +  typedef Direct_access_traits<typename B::value_type> access_traits;
+ > +  typedef Proxy<access_traits> proxy_type;
+ > +  static bool const ct_valid = true;
+
+I think this should check if block B has direct access.
+
+	ct_valid = Ext_data_cost<B>::value == 0;
+
+ > +
+ > +  static bool
+ > +  rt_valid(B const &b)
+ > +  {
+ > +    Ext_data<B> dda(b, SYNC_IN);
+ > +    return dda.stride(0) == 1 &&
+ > +      Simd_traits<typename B::value_type>::alignment_of(dda.data()) 
+== 0;
+ > +  }
+ > +  static proxy_type
+ > +  create(B const &b)
+ > +  {
+ > +    Ext_data<B> dda(b, SYNC_IN);
+ > +    return proxy_type(dda.data());
+ > +  }
+ > +};
+
+
+
+ > +template <typename LB,
+ > +	  typename RB>
+ > +struct Serial_expr_evaluator<1, LB, RB, Simd_tag>
+ > +{
+ > +  static bool const ct_valid =
+ > +    // Is SIMD supported at all ?
+ > +    simd::Simd_traits<typename LB::value_type>::is_accel &&
+ > +    // Check that direct access is possible.
+ > +    Ext_data_cost<LB>::value == 0 &&
+ > +    simd::Proxy_factory<RB>::ct_valid;
+
+To be safe, this should check if LB::value_type == RB::value_type
+
+ > +
+ > +  static bool rt_valid(LB& lhs, RB const& rhs)
+ > +  {
+ > +    Ext_data<LB> dda(lhs, SYNC_OUT);
+ > +    return (dda.stride(0) == 1 &&
+ > +	    simd::Simd_traits<typename LB::value_type>::
+ > +	      alignment_of(dda.data()) == 0 &&
+ > +	    simd::Proxy_factory<RB>::rt_valid(rhs));
+ > +  }
+ > +
+ > +  static void exec(LB& lhs, RB const& rhs)
+ > +  {
+
+Maybe these types could named be LAT/RAT to follow LB/RB and li/ri?
+
+ > +    typedef typename simd::LValue_access_traits<typename 
+LB::value_type> WAT;
+ > +    typedef typename simd::Proxy_factory<RB>::access_traits EAT;
+ > +    length_type const vec_size = simd::Simd_traits<typename 
+LB::value_type>::vec_size;
+ > +    Ext_data<LB> dda(lhs, SYNC_OUT);
+ > +    length_type size = dda.size(0) / vec_size;
+ > +    simd::Proxy<WAT> lp(dda.data());
+ > +    simd::Iterator<WAT> li(lp);
+ > +    // Map the expression block to an expression iterator and loop.
+ > +    simd::Iterator<EAT> ri(simd::Proxy_factory<RB>::create(rhs));
+ > +    while (size--) *li++ = *ri++;
+ > +    // Process the remainder, using simple loop fusion.
+ > +    size = dda.size(0);
+ > +    length_type remainder = size % vec_size;
+ > +    for (index_type i = size - remainder; i != size; ++i) lhs.put(i, 
+rhs.get(i));
+ > +  }
+
+
+
+ > Index: src/vsip/impl/simd/expr_iterator.hpp
+ > ===================================================================
+
+ > +template <typename T>
+ > +struct Unary_operator_map<T, op::Plus>
+ > +{
+ > +  typedef typename Simd_traits<T>::simd_type simd_type;
+ > +  static bool const is_supported = true;
+ > +  static simd_type
+ > +  apply(simd_type const &op)
+ > +  { return Simd_traits<T>::add(Simd_traits<T>::zero(), op);}
+
+This looks correct, but it would be faster to just return 'op' directly.
+
+
+
+
+ > +template <typename T>
+ > +class Proxy<Scalar_access_traits<T> >
+ > +{
+ > +public:
+ > +  typedef T value_type;
+ > +  typedef typename Simd_traits<value_type>::simd_type simd_type;
+ > +
+ > +  Proxy(value_type value) : value_(value) {}
+ > +
+ > +  simd_type load() const
+ > +  { return Simd_traits<value_type>::load_scalar_all(value_);}
+
+You could create a simd_valud_ member variable to avoid the call to
+'load_scalar_all' each time load is called.  This increases the SIMD
+register pressure, but it would be a win in simple expressions like:
+
+	vector = scalar * vector;
+
+ > +
+ > +  void increment() {}
+ > +
+ > +private:
+ > +  value_type value_;
+ > +};
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From don at codesourcery.com  Wed Jul 26 22:45:07 2006
+From: don at codesourcery.com (Don McCoy)
+Date: Wed, 26 Jul 2006 16:45:07 -0600
+Subject: [vsipl++] [patch] Profiling chapter for tutorial
+In-Reply-To: <44C6C34D.5090206@codesourcery.com>
+References: <44C3F930.2090101@codesourcery.com> <44C6C34D.5090206@codesourcery.com>
+Message-ID: <44C7F073.4090600@codesourcery.com>
+
+Committed with all of Jules' suggested changes and a minor update to the 
+table showing which areas are profiled.
+
+Regards,
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: pd2.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060726/a05082b5/attachment.ksh>
+
+From jules at codesourcery.com  Thu Jul 27 14:11:54 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Thu, 27 Jul 2006 10:11:54 -0400
+Subject: [patch] Fix benchmark dependency on $(libs)
+Message-ID: <44C8C9AA.8030404@codesourcery.com>
+
+Patch applied.
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: bmb.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060727/0c017825/attachment.ksh>
+
+From don at codesourcery.com  Fri Jul 28 15:34:28 2006
+From: don at codesourcery.com (Don McCoy)
+Date: Fri, 28 Jul 2006 09:34:28 -0600
+Subject: [patch] Profiling for IIR, FIR and matrix-vector functions
+Message-ID: <44CA2E84.6070402@codesourcery.com>
+
+This patch also reorganizes some of the description and operation 
+counting functions to one place and puts them under a namespace matching 
+their section name from the specification.  For example, 'dot', 'outer' 
+and other matrix-vector helper functions are under the 'impl::matvec' 
+namespace.  Signal processing helper functions, including the 
+Convolution and Correlation functions, are now under 'impl::signal' 
+namespace.
+
+This reorganization is helpful because it keeps all of these related 
+functions in one place, which should be easier for maintenance.  Note, 
+FFT helper functions and some of the operations counting functions have 
+not yet been moved either, pending approval of the current changes.
+
+Two miscellaneous fixes are included:  A change to the benchmarks 
+makefile skips building MPI benchmarks when not configured with MPI. 
+Second, a benchmark missed getting updated due to the change in location 
+of the ops_info.hpp header file.
+
+Regards,
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: pm1.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060728/88453c78/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: pm1.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060728/88453c78/attachment-0001.ksh>
+
+From jules at codesourcery.com  Fri Jul 28 15:35:37 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Fri, 28 Jul 2006 11:35:37 -0400
+Subject: [patch] Simd Unary_expr_traits fix
+Message-ID: <44CA2EC9.7050405@codesourcery.com>
+
+Fixes compilation errors in coverage_unary test.
+
+Patch applied.
+
+			--- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: simd.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060728/49fe259a/attachment.ksh>
+
+From sashang at gmail.com  Sun Jul 30 03:49:38 2006
+From: sashang at gmail.com (Sashan Govender)
+Date: Sun, 30 Jul 2006 15:49:38 +1200
+Subject: configure.ac patch for Athlon
+Message-ID: <23738f080607292049p25ae0068r98bf95e92b7075ee@mail.gmail.com>
+
+Hi
+
+Tried to compile vsipl++ on my AMD Athlon and configure failed. I've
+attached a patch for vendor/atlas/configure.ac.
+-------------- next part --------------
+A non-text attachment was scrubbed...
+Name: configure.ac.patch
+Type: text/x-patch
+Size: 623 bytes
+Desc: not available
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060730/25cda7a2/attachment.bin>
+
+From jules at codesourcery.com  Mon Jul 31 18:44:51 2006
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Mon, 31 Jul 2006 14:44:51 -0400
+Subject: [patch] Fixes for builtin lapack
+Message-ID: <44CE4FA3.6000009@codesourcery.com>
+
+This patch fixes configure.ac and vendor/GNUmakefile.inc.in so that the 
+builtin lapack variations (fortran-builtin and builtin) work.
+
+Patch applied.
+
+				-- Jules
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: lapack-fixes.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20060731/90fa0332/attachment.ksh>
+

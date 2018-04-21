@@ -1,0 +1,2242 @@
+From jules at codesourcery.com  Mon Sep  1 11:40:03 2008
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Mon, 01 Sep 2008 07:40:03 -0400
+Subject: [vsipl++] [patch] Multiply-add user-defined kernel
+In-Reply-To: <48B82454.7010309@codesourcery.com>
+References: <48B82454.7010309@codesourcery.com>
+Message-ID: <48BBD493.3080904@codesourcery.com>
+
+Don McCoy wrote:
+> This kernel extends the user-defined kernel framework to allow functions
+> having three inputs and one output.  Multiply-add is used as a test case
+> for this.  At this time, only scalar floats and complex-interleaved
+> floats are supported.
+> 
+> A few other minor corrections are included with this patch.
+> 
+> Ok to commit?
+
+Don, this looks good. -- Jules
+
+
+> +    length_type isize;
+> +    length_type osize;
+> +    length_type dtl_size;
+> +    {
+
+Why is this region scoped?
+
+> +      ukp.pre_chunks = 0;
+> +      isize = vh0.buffer_size() + vh1.buffer_size() + vh2.buffer_size();
+> +      osize = vh3.buffer_size();
+> +      dtl_size = vh0.dtl_size() + vh1.dtl_size() + vh2.dtl_size() + vh3.dtl_size();
+> +    }
+
+
+>  struct Pinfo
+>  {
+> -  unsigned int dim;
+> -  unsigned int l_total_size;
+> -  unsigned int l_offset[3];
+> -  unsigned int l_size[3];
+> -  signed int   l_stride[3];
+> -  signed int   g_offset[3];
+> -  signed int   o_leading[3];
+> -  signed int   o_trailing[3];
+> +  unsigned int dim;            // dimensions in this sub-block
+> +  unsigned int l_total_size;   // total elements for this iteration
+> +  unsigned int l_offset[3];    // offset to beginning of data (if alignment
+> +                               //  was required for DMA)
+
+				     offset to beginning of chunk
+				     (if overlap is requested, or if alignment
+				      is required for DMA).
+
+> +  unsigned int l_size[3];      // elements per dimension for this iteration
+> +  signed int   l_stride[3];    // next-element stride in each dimension
+> +  signed int   g_offset[3];    // offset from block origin 
+
+				     local chunk's offset in global view.
+
+> +  signed int   o_leading[3];   // 
+
+				     leading overlap
+
+> +  signed int   o_trailing[3];  // 
+
+				     trailing overlap
+>  };
+
+
+> Index: tests/GNUmakefile.inc.in
+> ===================================================================
+> --- tests/GNUmakefile.inc.in	(revision 218845)
+> +++ tests/GNUmakefile.inc.in	(working copy)
+> @@ -40,7 +40,8 @@
+>  tests_cxx_sources += $(wildcard $(srcdir)/tests/ref-impl/*.cpp)
+>  
+>  # These need to be linked with -lvsip_csl
+> -tests_csl_cxx_sources := $(wildcard $(srcdir)/tests/tutorial/*.cpp)
+> +tests_csl_cxx_sources := $(wildcard $(srcdir)/tests/tutorial/*.cpp) \
+> +                         $(wildcard $(srcdir)/tests/ukernel/*.cpp)
+
+Is it necessary to link with -lvsip_csl?
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From don at codesourcery.com  Mon Sep  1 20:13:54 2008
+From: don at codesourcery.com (Don McCoy)
+Date: Mon, 01 Sep 2008 14:13:54 -0600
+Subject: [vsipl++] [patch] Multiply-add user-defined kernel
+In-Reply-To: <48BBD493.3080904@codesourcery.com>
+References: <48B82454.7010309@codesourcery.com> <48BBD493.3080904@codesourcery.com>
+Message-ID: <48BC4D02.8050903@codesourcery.com>
+
+Jules Bergmann wrote:
+> Don McCoy wrote:
+>   
+>> This kernel extends the user-defined kernel framework to allow functions
+>> having three inputs and one output.  Multiply-add is used as a test case
+>>     
+> Don, this looks good. -- Jules
+>   
+>   
+Committed with improved comments and minor corrections.
+
+
+> Is it necessary to link with -lvsip_csl?
+>
+>   
+Nope.  I'd caught that, but I'm glad you did too.
+
+Thanks!
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+
+
+
+From don at codesourcery.com  Mon Sep  1 20:45:10 2008
+From: don at codesourcery.com (Don McCoy)
+Date: Mon, 01 Sep 2008 14:45:10 -0600
+Subject: [patch] include split-complex vector multiply kernel
+Message-ID: <48BC5456.3020708@codesourcery.com>
+
+This patch fixes a compilation error with the vmul test when configured
+for split complex.  It was not including this kernel in the library.
+
+Committed as obvious.
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: uk_zvmul.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20080901/56e2b7a1/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: uk_zvmul.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20080901/56e2b7a1/attachment-0001.ksh>
+
+From don at codesourcery.com  Tue Sep  2 05:01:32 2008
+From: don at codesourcery.com (Don McCoy)
+Date: Mon, 01 Sep 2008 23:01:32 -0600
+Subject: [patch] scalar-complex multiply-add user-defined kernel
+Message-ID: <48BCC8AC.30203@codesourcery.com>
+
+This patch extends the Cell/BE user-defined kernel framework to allow
+passing of views with different data types down to the kernels.  The
+scalar-complex multiply add (where A in A * B + C is a scalar and the
+rest are complex) is used as a test case.
+
+Ok to commit?
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: uk_scmadd.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20080901/6af9c662/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: uk_scmadd.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20080901/6af9c662/attachment-0001.ksh>
+
+From stefan at codesourcery.com  Tue Sep  2 10:40:46 2008
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Tue, 02 Sep 2008 06:40:46 -0400
+Subject: [vsipl++] [patch] scalar-complex multiply-add user-defined kernel
+In-Reply-To: <48BCC8AC.30203@codesourcery.com>
+References: <48BCC8AC.30203@codesourcery.com>
+Message-ID: <48BD182E.5000804@codesourcery.com>
+
+Don McCoy wrote:
+> This patch extends the Cell/BE user-defined kernel framework to allow
+> passing of views with different data types down to the kernels.  The
+> scalar-complex multiply add (where A in A * B + C is a scalar and the
+> rest are complex) is used as a test case.
+> 
+> Ok to commit?
+
+
+>  // Helper functor, converts void buffer pointer to appropriate type.
+> +//
+> +// The 'off' parameter is a byte offset, while 'size' is in elements.
+> +// This is necessary because the first is calculated from the amount
+> +// data previously allocated, which may or may not have the same data
+> +// type.  Conversely, the second parameter refers to the amount of
+> +// data for the current segment and it is therefore easier to use
+> +// pointer arithmetic since the type is known.
+>  
+>  template <typename T>
+>  struct To_ptr
+
+As just discussed in another mail, please use '//.' here, and omit the 
+empty line between the comment and the declaration, so this becomes 
+visible documentation in the API reference.
+(There are multiple such comments in the patch.)
+
+I was also reminded that we use iostreams and stdio interchangably. I 
+think we should try to be more vigilant and slowly phase out the use of 
+printf in favor of std::ostream (or, if there are strong arguments for 
+printf, do the inverse).
+
+Thanks,
+		Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+
+
+From jules at codesourcery.com  Tue Sep  2 15:22:58 2008
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Tue, 02 Sep 2008 11:22:58 -0400
+Subject: [vsipl++] [patch] scalar-complex multiply-add user-defined kernel
+In-Reply-To: <48BCC8AC.30203@codesourcery.com>
+References: <48BCC8AC.30203@codesourcery.com>
+Message-ID: <48BD5A52.5090702@codesourcery.com>
+
+Don McCoy wrote:
+> This patch extends the Cell/BE user-defined kernel framework to allow
+> passing of views with different data types down to the kernels.  The
+> scalar-complex multiply add (where A in A * B + C is a scalar and the
+> rest are complex) is used as a test case.
+> 
+> Ok to commit?
+
+Don,
+
+This looks good, please commit, modulo comments below.
+
+			-- Jules
+
+> +#ifndef DEBUG
+>  #define DEBUG 0
+> +#endif
+
+If this define collides with one in another file, we should:
+  - undefine DEBUG at the end of the other file, to prevent
+    the collision,
+  - disambiguate DEBUG
+     DEBUG_ALF_BASE
+     DEBUG_FOO
+
+
+>  // Helper functor, converts void buffer pointer to appropriate type.
+> +//
+> +// The 'off' parameter is a byte offset, while 'size' is in elements.
+> +// This is necessary because the first is calculated from the amount
+> +// data previously allocated, which may or may not have the same data
+> +// type.  Conversely, the second parameter refers to the amount of
+> +// data for the current segment and it is therefore easier to use
+> +// pointer arithmetic since the type is known.
+
+Thanks for documenting this, it has the potential to be confusing.
+
+
+> +
+> +// Converts a size in number of elements (or index value) into an offset 
+> +// based on the type referenced by the pointer.
+> +
+>  template <typename PtrT>
+> +struct Byte_offset
+> +{
+> +  static size_t index(size_t size) { return (size_t)((PtrT)0 + size); }
+
+The following would be more clear:
+
+    template <typename T>
+    struct Byte_offset;
+
+    template <typename T>
+    struct Byte_offset<T*>
+    {
+      static size_t index(size_t size) { return sizeof(T)*size; }
+    };
+
+
+> +};
+> +
+> +template <typename T>
+> +struct Byte_offset<std::pair<T*, T*> >
+> +{
+> +  static size_t index(size_t size) { return (size_t)((T*)0 + size) * 2; }
+
+Likewise,
+
+	return 2*sizeof(T)*size;
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From jules at codesourcery.com  Tue Sep  2 16:27:03 2008
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Tue, 02 Sep 2008 12:27:03 -0400
+Subject: Unary elementwise functions
+Message-ID: <48BD6957.8090800@codesourcery.com>
+
+As promised last week, the elementwise function man pages.
+
+Also in ~jules/tmp/manual.pdf
+
+Ok to apply?
+
+			-- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: doc.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20080902/c0b88e13/attachment.ksh>
+
+From don at codesourcery.com  Tue Sep  2 18:08:43 2008
+From: don at codesourcery.com (Don McCoy)
+Date: Tue, 02 Sep 2008 12:08:43 -0600
+Subject: [vsipl++] [patch] scalar-complex multiply-add user-defined kernel
+In-Reply-To: <48BD182E.5000804@codesourcery.com>
+References: <48BCC8AC.30203@codesourcery.com> <48BD182E.5000804@codesourcery.com>
+Message-ID: <48BD812B.2010407@codesourcery.com>
+
+Stefan Seefeld wrote:
+> I was also reminded that we use iostreams and stdio interchangably. I 
+> think we should try to be more vigilant and slowly phase out the use of 
+> printf in favor of std::ostream (or, if there are strong arguments for 
+> printf, do the inverse).
+>
+>   
+I agree, but I think we're stuck with using printf in any SPE code due
+to size limitations.  I don't think this should bias our choice in other
+code, so I've been using iostreams everywhere except for ALF kernels.
+
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+
+
+
+From stefan at codesourcery.com  Tue Sep  2 18:17:42 2008
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Tue, 02 Sep 2008 14:17:42 -0400
+Subject: [vsipl++] [patch] scalar-complex multiply-add user-defined kernel
+In-Reply-To: <48BD812B.2010407@codesourcery.com>
+References: <48BCC8AC.30203@codesourcery.com> <48BD182E.5000804@codesourcery.com> <48BD812B.2010407@codesourcery.com>
+Message-ID: <48BD8346.7080002@codesourcery.com>
+
+Don McCoy wrote:
+> Stefan Seefeld wrote:
+>> I was also reminded that we use iostreams and stdio interchangably. I 
+>> think we should try to be more vigilant and slowly phase out the use of 
+>> printf in favor of std::ostream (or, if there are strong arguments for 
+>> printf, do the inverse).
+>>
+>>   
+> I agree, but I think we're stuck with using printf in any SPE code due
+> to size limitations.  I don't think this should bias our choice in other
+> code, so I've been using iostreams everywhere except for ALF kernels.
+
+Oups, I didn't realize that this is SPE-code. Yes, I fully agree with 
+your choice, then.
+
+Thanks,
+		Stefan
+
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+
+
+From don at codesourcery.com  Tue Sep  2 18:21:12 2008
+From: don at codesourcery.com (Don McCoy)
+Date: Tue, 02 Sep 2008 12:21:12 -0600
+Subject: [vsipl++] [patch] scalar-complex multiply-add user-defined kernel
+In-Reply-To: <48BD5A52.5090702@codesourcery.com>
+References: <48BCC8AC.30203@codesourcery.com> <48BD5A52.5090702@codesourcery.com>
+Message-ID: <48BD8418.3020508@codesourcery.com>
+
+Jules Bergmann wrote:
+> This looks good, please commit, modulo comments below.
+>   
+Thanks.  Committed with your and Stefan's comments addressed.
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+
+
+
+From jules at codesourcery.com  Wed Sep  3 15:13:00 2008
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Wed, 03 Sep 2008 11:13:00 -0400
+Subject: [vsipl++] [patch] SSAR operation counts
+In-Reply-To: <48AE658A.7040604@codesourcery.com>
+References: <48AE658A.7040604@codesourcery.com>
+Message-ID: <48BEA97C.1000801@codesourcery.com>
+
+Don McCoy wrote:
+> This patch allows the SSAR application have accurate op counts when
+> using datasets with a scale factor other than 3.
+
+Don, this looks good, please check it in. -- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From jules at codesourcery.com  Wed Sep 10 14:32:06 2008
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Wed, 10 Sep 2008 10:32:06 -0400
+Subject: [patch] Binary and ternary elementwise functions
+Message-ID: <48C7DA66.1070503@codesourcery.com>
+
+Ok to apply?
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: binter.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20080910/b679a859/attachment.ksh>
+
+From Mike at CodeSourcery.com  Wed Sep 10 15:00:49 2008
+From: Mike at CodeSourcery.com (Mike LeBlanc)
+Date: Wed, 10 Sep 2008 11:00:49 -0400
+Subject: [vsipl++] [patch] Binary and ternary elementwise functions
+In-Reply-To: <48C7DA66.1070503@codesourcery.com>
+References: <48C7DA66.1070503@codesourcery.com>
+Message-ID: <970547D9-E75A-4A56-804C-1F1678562573@CodeSourcery.com>
+
+It looks good, except ...
+
+Should all those <literal> phrases become, say, <code>?
+
+On Sep 10, 2008, at 10:32 AM, Jules Bergmann wrote:
+
+> Ok to apply?
+
+
+
+From jules at codesourcery.com  Wed Sep 10 15:17:12 2008
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Wed, 10 Sep 2008 11:17:12 -0400
+Subject: [vsipl++] [patch] Binary and ternary elementwise functions
+In-Reply-To: <970547D9-E75A-4A56-804C-1F1678562573@CodeSourcery.com>
+References: <48C7DA66.1070503@codesourcery.com> <970547D9-E75A-4A56-804C-1F1678562573@CodeSourcery.com>
+Message-ID: <48C7E4F8.7050400@codesourcery.com>
+
+Mike LeBlanc wrote:
+> It looks good, except ...
+> 
+> Should all those <literal> phrases become, say, <code>?
+
+Hard to say, strictly speaking they're not intended to be valid code.
+
+For example, in describing the 'pow' function:
+
+	<literal>Z(i) = pow(A(i) ** B(i))</literal>
+
+C++ doesn't have a power operator '**'.
+
+If docbook had a math mode ... but I digress.  Perhaps 
+<treatthisasliteralbutitreallyshouldbemath>  :)
+
+Stefan, should these be <code>?
+
+				-- Jules
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From stefan at codesourcery.com  Wed Sep 10 15:26:59 2008
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Wed, 10 Sep 2008 11:26:59 -0400
+Subject: [vsipl++] [patch] Binary and ternary elementwise functions
+In-Reply-To: <48C7E4F8.7050400@codesourcery.com>
+References: <48C7DA66.1070503@codesourcery.com> <970547D9-E75A-4A56-804C-1F1678562573@CodeSourcery.com> <48C7E4F8.7050400@codesourcery.com>
+Message-ID: <48C7E743.4050202@codesourcery.com>
+
+Jules Bergmann wrote:
+> Mike LeBlanc wrote:
+>> It looks good, except ...
+>>
+>> Should all those <literal> phrases become, say, <code>?
+> 
+> Hard to say, strictly speaking they're not intended to be valid code.
+> 
+> For example, in describing the 'pow' function:
+> 
+>     <literal>Z(i) = pow(A(i) ** B(i))</literal>
+> 
+> C++ doesn't have a power operator '**'.
+> 
+> If docbook had a math mode ... but I digress.  Perhaps 
+> <treatthisasliteralbutitreallyshouldbemath>  :)
+> 
+> Stefan, should these be <code>?
+
+See my other reply for an issue with <code> vs. DB 4.2.
+
+Other than that, I agree <code> may be the wrong semantics, so <literal> 
+is the most generic / valid element to use. Let's just make sure it all 
+renders the way we want. (I noticed some places where a function 
+synopsis wasn't rendered the same as elsewhere, i.e. monotype on gray 
+background; I'll have to find it again and see what is causing it...)
+
+Thanks,
+		Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+
+
+From jules at codesourcery.com  Wed Sep 10 15:39:07 2008
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Wed, 10 Sep 2008 11:39:07 -0400
+Subject: [patch] Tunable parameters
+Message-ID: <48C7EA1B.7080203@codesourcery.com>
+
+This adds tunable parameters to the CBE vmul and transpose/copy evaluators.
+
+The idea is to include the problem size (a runtime parameter) into the 
+rt_valid decision.  For Cell, this sends small problem sizes to the PPE 
+where they can be handled faster.
+
+The threshold is a single parameter.  Tuning is done by finding the 
+cross-over point between PPU only performance with nominal 8 SPU 
+performance.
+
+To allow tuning data to be recollected after tuning parameters have been 
+set, tunable_threshold() functions should return 0 when 
+VSIP_IMPL_TUNE_MODE is 1.
+
+Ok to apply?
+
+				-- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: tp.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20080910/df9a59c7/attachment.ksh>
+
+From stefan at codesourcery.com  Wed Sep 10 15:59:53 2008
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Wed, 10 Sep 2008 11:59:53 -0400
+Subject: [vsipl++] [patch] Tunable parameters
+In-Reply-To: <48C7EA1B.7080203@codesourcery.com>
+References: <48C7EA1B.7080203@codesourcery.com>
+Message-ID: <48C7EEF9.5040404@codesourcery.com>
+
+Jules Bergmann wrote:
+> This adds tunable parameters to the CBE vmul and transpose/copy evaluators.
+> 
+> The idea is to include the problem size (a runtime parameter) into the 
+> rt_valid decision.  For Cell, this sends small problem sizes to the PPE 
+> where they can be handled faster.
+> 
+> The threshold is a single parameter.  Tuning is done by finding the 
+> cross-over point between PPU only performance with nominal 8 SPU 
+> performance.
+> 
+> To allow tuning data to be recollected after tuning parameters have been 
+> set, tunable_threshold() functions should return 0 when 
+> VSIP_IMPL_TUNE_MODE is 1.
+> 
+> Ok to apply?
+
+Jules,
+
+this looks fine. Could you please add a comment (to the rt_valid() 
+function, say), clarifying the meaning of 'tunable', i.e. to prevent the 
+library from dispatching, thus enabling our benchmarks to measure both, 
+PPU, as well as SPU, depending on --svpp-num-spes ?
+
+Thanks,
+		Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+
+
+From jules at codesourcery.com  Wed Sep 10 18:41:52 2008
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Wed, 10 Sep 2008 14:41:52 -0400
+Subject: [vsipl++] [patch] Tunable parameters
+In-Reply-To: <48C7EEF9.5040404@codesourcery.com>
+References: <48C7EA1B.7080203@codesourcery.com> <48C7EEF9.5040404@codesourcery.com>
+Message-ID: <48C814F0.3040702@codesourcery.com>
+
+
+>> Ok to apply?
+> 
+> Jules,
+> 
+> this looks fine. Could you please add a comment (to the rt_valid() 
+> function, say), clarifying the meaning of 'tunable', i.e. to prevent the 
+> library from dispatching, thus enabling our benchmarks to measure both, 
+> PPU, as well as SPU, depending on --svpp-num-spes ?
+
+Stefan,
+
+Perhaps we can come up with a better name.
+
+Originally, the threshold was checked directly in rt_valid:
+
+	bool rt_valid(...)
+	{
+	  return size >= 16384 && ...
+	}
+
+Since the number was magic and subject to change (as we optimize the 
+library, as hardware changes), I thought it would be good practice to 
+label the number as a "tunable parameter," and perhaps include some 
+history on how it's value was arrived at:
+
+	bool rt_valid(...)
+	{
+	   return
+		// Tunable: compare vmul -2 --svpp-num-spes {0,8} ...
+	        size >= 16384 &&
+		...
+	}
+
+That way we could search for magic numbers in the source ("/Tunable", 
+and have the information on how they were generated.
+
+Because other factors go into choosing the right number (operation, 
+value type, etc), it made sense to move the magic number into an 
+evaluator function:
+
+	bool rt_valid(...)
+	{
+	  return
+	    size >= tunable_threshold() &&
+	    ...
+	}
+
+
+If the "tunable" prefix is confusing, perhaps just "threshold()" would 
+be more clear?  That is still searchable.
+
+				-- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From stefan at codesourcery.com  Thu Sep 11 01:37:30 2008
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Wed, 10 Sep 2008 21:37:30 -0400
+Subject: [vsipl++] [patch] Tunable parameters
+In-Reply-To: <48C814F0.3040702@codesourcery.com>
+References: <48C7EA1B.7080203@codesourcery.com> <48C7EEF9.5040404@codesourcery.com> <48C814F0.3040702@codesourcery.com>
+Message-ID: <48C8765A.4060305@codesourcery.com>
+
+Jules,
+
+Jules Bergmann wrote:
+
+> Originally, the threshold was checked directly in rt_valid:
+> 
+>     bool rt_valid(...)
+>     {
+>       return size >= 16384 && ...
+>     }
+> 
+> Since the number was magic and subject to change (as we optimize the 
+> library, as hardware changes), I thought it would be good practice to 
+> label the number as a "tunable parameter," and perhaps include some 
+> history on how it's value was arrived at:
+
+>     bool rt_valid(...)
+>     {
+>        return
+>         // Tunable: compare vmul -2 --svpp-num-spes {0,8} ...
+>             size >= 16384 &&
+>         ...
+>     }
+> 
+> That way we could search for magic numbers in the source ("/Tunable", 
+> and have the information on how they were generated.
+
+I find this very valuable indeed.
+
+
+> Because other factors go into choosing the right number (operation, 
+> value type, etc), it made sense to move the magic number into an 
+> evaluator function:
+> 
+>     bool rt_valid(...)
+>     {
+>       return
+>         size >= tunable_threshold() &&
+>         ...
+>     }
+
+OK. (For avoidance of doubt: this remains a very evaluator-specific 
+function, so this wouldn't become part of the generic Evaluator 
+interface, right ?)
+
+> If the "tunable" prefix is confusing, perhaps just "threshold()" would 
+> be more clear?  That is still searchable.
+
+I think with all the context of this discussion, 'tunable' has already 
+become much more meaningful. This is true for whatever name we choose: 
+documentation is key. ;-)
+I think the high-order bit to capture in a comment is the tuning 
+process, from 300000 feet:
+Compile with VSIP_IMPL_TUNE_MODE=1, and then find the cross-over problem 
+sizes by comparing benchmark runs with 0 and N SPEs.
+
+I think 'tunable_threshold' is better than any alternative I can come up 
+with.
+
+Thanks,
+		Stefan
+
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+
+
+From jules at codesourcery.com  Thu Sep 11 03:01:00 2008
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Wed, 10 Sep 2008 23:01:00 -0400
+Subject: [vsipl++] [patch] Tunable parameters
+In-Reply-To: <48C8765A.4060305@codesourcery.com>
+References: <48C7EA1B.7080203@codesourcery.com> <48C7EEF9.5040404@codesourcery.com> <48C814F0.3040702@codesourcery.com> <48C8765A.4060305@codesourcery.com>
+Message-ID: <48C889EC.9040405@codesourcery.com>
+
+Stefan,
+
+> OK. (For avoidance of doubt: this remains a very evaluator-specific 
+> function, so this wouldn't become part of the generic Evaluator 
+> interface, right ?)
+
+Yes, the evaluator needs to check the right size against the threshold 
+in its rt_valid.  Choosing a consistent name for the function that 
+generates the threshold is just a convenience, not a requirement.
+
+
+> I think the high-order bit to capture in a comment is the tuning 
+> process, from 300000 feet:
+> Compile with VSIP_IMPL_TUNE_MODE=1, and then find the cross-over problem 
+> sizes by comparing benchmark runs with 0 and N SPEs.
+> 
+> I think 'tunable_threshold' is better than any alternative I can come up 
+> with.
+
+Ok, sounds good.  I'll put the following in config.hpp (near the 
+TUNE_MODE define):
+
+// Setting TUNE_MODE to 1 disables the tunable_thresholds.  This
+// allows benchmarks to be run without thresholds to determine
+// cross-over points, whcih can then be used as thresholds.
+
+Near thresholds, I'll put something like:
+
+// Compare interleaved vmul -2 --svpp-num-spes {0,8}.
+
+to indicate that 'vmul -2 --svpp-num-spes 0' and 'vmul -2 
+--svpp-num-spes 8' should be compared, with interleaved complex, to 
+determine the threshold.
+
+				-- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From don at codesourcery.com  Thu Sep 11 05:53:52 2008
+From: don at codesourcery.com (Don McCoy)
+Date: Wed, 10 Sep 2008 23:53:52 -0600
+Subject: [patch] User-defined Interpolation kernel for SSAR application
+Message-ID: <48C8B270.1020900@codesourcery.com>
+
+This patch adds support to the user-defined kernel framework for
+tensors.  This was the last remaining bit needed to allow this initial
+(non-optimized) version of an interpolation kernel to be added.  A few
+other minor improvements are also included.  The patch integrating this
+into the SSAR example application will be posted separately.
+
+Regards,
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: interp2.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20080910/e9c2e079/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: interp2.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20080910/e9c2e079/attachment-0001.ksh>
+
+From stefan at codesourcery.com  Thu Sep 11 15:23:21 2008
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Thu, 11 Sep 2008 11:23:21 -0400
+Subject: [vsipl++] [patch] Tunable parameters
+In-Reply-To: <48C889EC.9040405@codesourcery.com>
+References: <48C7EA1B.7080203@codesourcery.com> <48C7EEF9.5040404@codesourcery.com> <48C814F0.3040702@codesourcery.com> <48C8765A.4060305@codesourcery.com> <48C889EC.9040405@codesourcery.com>
+Message-ID: <48C937E9.1070707@codesourcery.com>
+
+Jules Bergmann wrote:
+
+> Near thresholds, I'll put something like:
+> 
+> // Compare interleaved vmul -2 --svpp-num-spes {0,8}.
+> 
+> to indicate that 'vmul -2 --svpp-num-spes 0' and 'vmul -2 
+> --svpp-num-spes 8' should be compared, with interleaved complex, to 
+> determine the threshold.
+
+That sounds fine. It may be good to use 'benchmarks/vmul' instead of 
+'vmul', or else it isn't quite obvious that the application you are 
+talking about is in fact a benchmark.
+
+Thanks,
+		Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+
+
+From jules at codesourcery.com  Thu Sep 11 18:25:38 2008
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Thu, 11 Sep 2008 14:25:38 -0400
+Subject: [vsipl++] [patch] User-defined Interpolation kernel for SSAR
+ application
+In-Reply-To: <48C8B270.1020900@codesourcery.com>
+References: <48C8B270.1020900@codesourcery.com>
+Message-ID: <48C962A2.1040705@codesourcery.com>
+
+Don McCoy wrote:
+> This patch adds support to the user-defined kernel framework for
+> tensors.  This was the last remaining bit needed to allow this initial
+> (non-optimized) version of an interpolation kernel to be added.  A few
+> other minor improvements are also included.  The patch integrating this
+> into the SSAR example application will be posted separately.
+> 
+> Regards,
+
+Don, this looks good.  -- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From jules at codesourcery.com  Sun Sep 14 01:53:35 2008
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Sat, 13 Sep 2008 21:53:35 -0400
+Subject: [patch] Use task_desc_init from alf.cpp
+Message-ID: <48CC6E9F.8030100@codesourcery.com>
+
+Otherwise new fields like f_cleanup field don't get initialized.
+
+Patch applied.
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: task_desc.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20080913/870aa3c2/attachment.ksh>
+
+From jules at codesourcery.com  Sun Sep 14 04:11:11 2008
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Sun, 14 Sep 2008 00:11:11 -0400
+Subject: [patch] Add direct_data support to Permuted_block
+Message-ID: <48CC8EDF.9020201@codesourcery.com>
+
+Patch applied.
+
+			-- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: subblock.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20080914/38de5551/attachment.ksh>
+
+From don at codesourcery.com  Tue Sep 16 00:09:47 2008
+From: don at codesourcery.com (Don McCoy)
+Date: Mon, 15 Sep 2008 18:09:47 -0600
+Subject: [patch] SSAR digital spotlighting alternate computation
+Message-ID: <48CEF94B.9040306@codesourcery.com>
+
+This patch adds a compiler switch to select one of two ways to compute
+the digital spotlighting portion of the computation.
+
+Committed (with prior approval).
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: ds_loop.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20080915/38e08a65/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: ds_loop.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20080915/38e08a65/attachment-0001.ksh>
+
+From jules at codesourcery.com  Tue Sep 16 04:18:50 2008
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Tue, 16 Sep 2008 00:18:50 -0400
+Subject: [patch] Install cml_kernels.so
+Message-ID: <48CF33AA.6080109@codesourcery.com>
+
+plus install additional ukernel directories.
+
+Patch applied.
+
+			-- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: install-cml-kernels.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20080916/d08510e0/attachment.ksh>
+
+From don at codesourcery.com  Tue Sep 16 05:24:08 2008
+From: don at codesourcery.com (Don McCoy)
+Date: Mon, 15 Sep 2008 23:24:08 -0600
+Subject: [vsipl++] [patch] SSAR digital spotlighting alternate computation
+In-Reply-To: <48CEF94B.9040306@codesourcery.com>
+References: <48CEF94B.9040306@codesourcery.com>
+Message-ID: <48CF42F8.7080602@codesourcery.com>
+
+Don McCoy wrote:
+> This patch adds a compiler switch to select one of two ways to compute
+> the digital spotlighting portion of the computation.
+>
+>   
+Renamed the switch and corrected the ChangeLog entry.
+
+Committed.
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: ds_loop2.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20080915/f21fd65d/attachment.ksh>
+
+From don at codesourcery.com  Tue Sep 16 19:00:34 2008
+From: don at codesourcery.com (Don McCoy)
+Date: Tue, 16 Sep 2008 13:00:34 -0600
+Subject: [patch] Enable user-defined interpolation kernel in SSAR application
+Message-ID: <48D00252.9030406@codesourcery.com>
+
+As attached.  Committed.
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: iuk.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20080916/4325d904/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: iuk.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20080916/4325d904/attachment-0001.ksh>
+
+From jules at codesourcery.com  Wed Sep 17 21:12:42 2008
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Wed, 17 Sep 2008 17:12:42 -0400
+Subject: [patch] SSAR opts
+Message-ID: <48D172CA.20808@codesourcery.com>
+
+This makes a couple of optimizations to the by-function digital 
+spotlighting:
+
+  - avoid copying the result of an in-place FFT.
+
+	If fft_ is a by-reference Fft, then
+
+		B = fft_(A)
+		use(B)
+
+	can be replaced by
+
+		fft_(A)
+		use(A)
+
+	Likewise, A = fft_(A) can be simplified to fft_(A)
+
+  - avoid mmul between matrices with different dimension order
+
+	If RM is a row-major matrix, and CM is a col-major matrix,
+	the following cannot be dispatched easily to the SPUs:
+
+		RM_Z = CM_A * RM_B;
+
+	Instead, its better to transpose first, the multiply:
+
+		RM_A = CM_A;	// transpose
+		RM_Z = RM_A * RM_B;
+
+It also adds a few more scope events.
+
+Ok to apply?
+
+				-- Jules
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: ssar.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20080917/b403fd56/attachment.ksh>
+
+From mark at codesourcery.com  Wed Sep 17 21:17:36 2008
+From: mark at codesourcery.com (Mark Mitchell)
+Date: Wed, 17 Sep 2008 14:17:36 -0700
+Subject: [vsipl++] [patch] SSAR opts
+In-Reply-To: <48D172CA.20808@codesourcery.com>
+References: <48D172CA.20808@codesourcery.com>
+Message-ID: <48D173F0.4050506@codesourcery.com>
+
+Jules Bergmann wrote:
+
+>     If RM is a row-major matrix, and CM is a col-major matrix,
+>     the following cannot be dispatched easily to the SPUs:
+> 
+>         RM_Z = CM_A * RM_B;
+> 
+>     Instead, its better to transpose first, the multiply:
+> 
+>         RM_A = CM_A;    // transpose
+>         RM_Z = RM_A * RM_B;
+
+Excellent!
+
+Is this something that we think SV++ should be so brave as do itself in
+the future?  I guess not: it would require allocating memory, and we
+probably don't want to do that without the user's permission.  But, I
+guess we could have a diagnostic mode where we said "warning: perhaps
+you should do a transpose and then multiply"?
+
+Thanks,
+
+-- 
+Mark Mitchell
+CodeSourcery
+mark at codesourcery.com
+(650) 331-3385 x713
+
+
+From stefan at codesourcery.com  Wed Sep 17 21:37:57 2008
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Wed, 17 Sep 2008 17:37:57 -0400
+Subject: [vsipl++] [patch] SSAR opts
+In-Reply-To: <48D172CA.20808@codesourcery.com>
+References: <48D172CA.20808@codesourcery.com>
+Message-ID: <48D178B5.2040501@codesourcery.com>
+
+Jules Bergmann wrote:
+
+> Ok to apply?
+
+ > -#if 1
+ > +#if 0
+ >  #define VERBOSE
+ >  #define SAVE_VIEW(a, b, c)    vsip_csl::save_view_as<complex<float> 
+ >(a, b, c)
+ >  #else
+
+In fact, can this literal '1' / '0' be replaced by something more 
+expressive, if it is indeed needed ? (#if DEBUG, say)
+
+> -  s_filt_ = ft_fftm_(fftshift(s_raw, s_filt_));
+> +  { Scope<user> scope("fftshift-1", n_ * mc_ * sizeof(complex<float>));
+> +  fftshift(s_raw, s_filt_);
+> +  }
+> +  ft_fftm_(s_filt_);
+
+Please add a newline between '{' and the Scope declaration, for 
+readability (also at some other places).
+
+Otherwise the patch looks fine.
+Thanks,
+		Stefan
+
+
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+
+
+From jules at codesourcery.com  Thu Sep 18 00:32:11 2008
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Wed, 17 Sep 2008 20:32:11 -0400
+Subject: [vsipl++] [patch] SSAR opts
+In-Reply-To: <48D173F0.4050506@codesourcery.com>
+References: <48D172CA.20808@codesourcery.com> <48D173F0.4050506@codesourcery.com>
+Message-ID: <48D1A18B.8040001@codesourcery.com>
+
+
+> Is this something that we think SV++ should be so brave as do itself in
+> the future?  I guess not: it would require allocating memory, and we
+> probably don't want to do that without the user's permission.  But, I
+> guess we could have a diagnostic mode where we said "warning: perhaps
+> you should do a transpose and then multiply"?
+
+We teach SV++ to do a tiled corner-turn on CM_A.
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From jules at codesourcery.com  Thu Sep 18 00:55:10 2008
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Wed, 17 Sep 2008 20:55:10 -0400
+Subject: [vsipl++] [patch] SSAR opts
+In-Reply-To: <48D178B5.2040501@codesourcery.com>
+References: <48D172CA.20808@codesourcery.com> <48D178B5.2040501@codesourcery.com>
+Message-ID: <48D1A6EE.3070400@codesourcery.com>
+
+
+>> -  s_filt_ = ft_fftm_(fftshift(s_raw, s_filt_));
+>> +  { Scope<user> scope("fftshift-1", n_ * mc_ * sizeof(complex<float>));
+>> +  fftshift(s_raw, s_filt_);
+>> +  }
+>> +  ft_fftm_(s_filt_);
+> 
+> Please add a newline between '{' and the Scope declaration, for 
+> readability (also at some other places).
+
+I understand the feedback.
+
+However, the Scope decls get in the way of readability since they're 
+unrelated to algorithm's function.  Ideally, we wouldn't have them at 
+all.  Adding vertical space will reduce the readability of the algorithm.
+
+I have an evil macro idea, let me see if that works :)
+
+				-- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From don at codesourcery.com  Fri Sep 19 05:27:48 2008
+From: don at codesourcery.com (Don McCoy)
+Date: Thu, 18 Sep 2008 23:27:48 -0600
+Subject: [patch] Document QR Decomposition
+Message-ID: <48D33854.7050305@codesourcery.com>
+
+As attached.  PDF output is in ~don/manual.pdf.
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: qr_man.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20080918/81ca9118/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: qr_man.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20080918/81ca9118/attachment-0001.ksh>
+
+From brooks at codesourcery.com  Fri Sep 19 07:59:18 2008
+From: brooks at codesourcery.com (Brooks Moses)
+Date: Fri, 19 Sep 2008 00:59:18 -0700
+Subject: [vsipl++] [patch] Install cml_kernels.so
+In-Reply-To: <48CF33AA.6080109@codesourcery.com>
+References: <48CF33AA.6080109@codesourcery.com>
+Message-ID: <48D35BD6.8070509@codesourcery.com>
+
+Jules Bergmann wrote, at 9/15/2008 9:18 PM:
+> plus install additional ukernel directories.
+> 
+> Patch applied.
+
+There's what may be a minor problem with this bit:
+> +# NOTE: Installing cml_kernels.so is a work-around for SDK 3.0 ALF, which
+> +#       only accepts 1 directory in ALF_LIBRARY_PATH.  libs/cml_kernels.so
+> +#       is a link created by configure.
+>  install-core:: lib/svpp_kernels.so
+>  	$(INSTALL) -d $(DESTDIR)$(libdir)
+>  	$(INSTALL_PROGRAM) lib/svpp_kernels.so \
+>            $(DESTDIR)$(libdir)/svpp_kernels.so
+> +	$(INSTALL_PROGRAM) lib/cml_kernels.so \
+> +          $(DESTDIR)$(libdir)/cml_kernels.so
+
+The lib/cml_kernels.so file is created with this line:
+
+    ln -sf $with_cml_prefix/$cml_libdir_found/cml_kernels.so lib
+
+A bit of experimenting indicates that install will, when presented with
+trying to install a symlink to file $FOO over top of file $FOO, throw an
+error about them being the same file and emit a nonzero return value.
+This will stop the "make install" process.
+
+The attached patch should fix this; okay to commit?
+
+- Brooks
+
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: 2008-09-18_install-cml-kernels.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20080919/95fd904d/attachment.ksh>
+
+From jules at codesourcery.com  Fri Sep 19 11:11:04 2008
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Fri, 19 Sep 2008 07:11:04 -0400
+Subject: [vsipl++] [patch] Install cml_kernels.so
+In-Reply-To: <48D35BD6.8070509@codesourcery.com>
+References: <48CF33AA.6080109@codesourcery.com> <48D35BD6.8070509@codesourcery.com>
+Message-ID: <48D388C8.3040703@codesourcery.com>
+
+
+> There's what may be a minor problem with this bit:
+>> +# NOTE: Installing cml_kernels.so is a work-around for SDK 3.0 ALF, which
+>> +#       only accepts 1 directory in ALF_LIBRARY_PATH.  libs/cml_kernels.so
+>> +#       is a link created by configure.
+>>  install-core:: lib/svpp_kernels.so
+>>  	$(INSTALL) -d $(DESTDIR)$(libdir)
+>>  	$(INSTALL_PROGRAM) lib/svpp_kernels.so \
+>>            $(DESTDIR)$(libdir)/svpp_kernels.so
+>> +	$(INSTALL_PROGRAM) lib/cml_kernels.so \
+>> +          $(DESTDIR)$(libdir)/cml_kernels.so
+> 
+> The lib/cml_kernels.so file is created with this line:
+> 
+>     ln -sf $with_cml_prefix/$cml_libdir_found/cml_kernels.so lib
+> 
+> A bit of experimenting indicates that install will, when presented with
+> trying to install a symlink to file $FOO over top of file $FOO, throw an
+> error about them being the same file and emit a nonzero return value.
+> This will stop the "make install" process.
+
+Interesting.  So the bug occurs installing the library a second time?
+
+> The attached patch should fix this; okay to commit?
+
+The behavior isn't intuitive.  When installing a new VSIPL++ over an 
+existing one, one would expect the old files to be overwritten. 
+However, the patch appears to preserve the older file.
+
+Perhaps you could remove the old file, if it exists:
+
+>  	$(INSTALL) -d $(DESTDIR)$(libdir)
+>  	$(INSTALL_PROGRAM) lib/svpp_kernels.so \
+>            $(DESTDIR)$(libdir)/svpp_kernels.so
+	if test  -e $(DESTDIR)$(libdir)/cml_kernels.so; then \
+           rm $(DESTDIR)$(libdir)/cml_kernels.so \
+         fi
+> 	$(INSTALL_PROGRAM) lib/cml_kernels.so \
+>           $(DESTDIR)$(libdir)/cml_kernels.so
+
+				-- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From jules at codesourcery.com  Fri Sep 19 12:22:39 2008
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Fri, 19 Sep 2008 08:22:39 -0400
+Subject: [vsipl++] [patch] Document QR Decomposition
+In-Reply-To: <48D33854.7050305@codesourcery.com>
+References: <48D33854.7050305@codesourcery.com>
+Message-ID: <48D3998F.1050303@codesourcery.com>
+
+Don McCoy wrote:
+> As attached.  PDF output is in ~don/manual.pdf.
+
+Don
+
+This looks good!  Please check this in, with the following comments.
+	
+			thanks,
+			-- Jules
+
+
+
+4.5.1.1
+
+- Remove leading blank line in class decl
+
+For return mechanism instead of saying "must be a member of the 
+enumeration ...," sprinkle the enumeration values into the documentation:
+
+"The return mechanism indicates how foo() provides results: by_value 
+indicates foo() returns a result matrix by value, by_reference indicates 
+foo() returns results by reference into a matrix provided by the caller. 
+  For details see enumeration type return_mechanism_type (SECTION)"
+
+Don't mention easier to program/faster here.  Instead, we should mention 
+this caveat in the return_mechanism_type documentation, plus the cases 
+we avoid it with return-block-optimization.
+
+4.5.1.2
+
+- remove blank line at top of qrd decl.
+
+4.5.1.3
+
+- 'qrd' should be in <code></code>
+
+- "," before "and"
+
+4.5.1.4
+
+- move the second sentence about modifying A into the requirements.
+
+4.5.1.5
+
+- Change to "The following fucntions are available only if the /qrd 
+template class is parameterized with the ReturnMechanismType = by_value/"
+
+Start a new paragraph before the following lines that precede the 4 tables:
+  "For qstorage() == qrd_saveq1",
+  "For qstorage() == qrd_saveq",
+
+What are the tables showing exactly?  I.e. how should I interpret 
+"Qm,rows(),s"?   "Qm" is the product computed, and "rows(),s" are its size?
+
+It would help if the tables had captions.
+
+Final senctence: "Note that the return matrix may have a different block 
+type from Block"
+
+rsol, qsol, lsqsol look good.  Nice equations!
+
+4.5.1.6
+
+- Similar comment about starting a new paragraph before the "For 
+qstorage == ..." sentences preceding the tables.
+
+Replace the sentence "where s is an arbitraty positive length_type" with 
+"where s is an arbitrary /positive value/."
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From stefan at codesourcery.com  Fri Sep 19 12:40:56 2008
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Fri, 19 Sep 2008 08:40:56 -0400
+Subject: [vsipl++] [patch] Document QR Decomposition
+In-Reply-To: <48D3998F.1050303@codesourcery.com>
+References: <48D33854.7050305@codesourcery.com> <48D3998F.1050303@codesourcery.com>
+Message-ID: <48D39DD8.8030401@codesourcery.com>
+
+Jules Bergmann wrote:
+> Don McCoy wrote:
+
+> 4.5.1.3
+> 
+> - 'qrd' should be in <code></code>
+
+not <type>qrd</type> ?
+
+
+> 4.5.1.5
+> 
+> - Change to "The following fucntions are available only if the /qrd 
+> template class is parameterized with the ReturnMechanismType = by_value/"
+> 
+> Start a new paragraph before the following lines that precede the 4 tables:
+>  "For qstorage() == qrd_saveq1",
+>  "For qstorage() == qrd_saveq",
+> 
+> What are the tables showing exactly?  I.e. how should I interpret 
+> "Qm,rows(),s"?   "Qm" is the product computed, and "rows(),s" are its size?
+> 
+> It would help if the tables had captions.
+
+I believe the missing captions are the result of the bug I identified 
+recently in our stylesheets, where formal.object.heading is made a noop 
+because of issues in some other contexts.
+
+
+> 
+> Final senctence: "Note that the return matrix may have a different block 
+> type from Block"
+
+We never explain what 'Blocks' are, and in fact, avoid even mentioning 
+blocks throughout the rest of the manual for that reason. I typically 
+just mark the return type with 'unspecified' for such cases, for this 
+reason.
+
+Thanks,
+		Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+
+
+From jules at codesourcery.com  Fri Sep 19 13:14:00 2008
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Fri, 19 Sep 2008 09:14:00 -0400
+Subject: [vsipl++] [patch] Document QR Decomposition
+In-Reply-To: <48D39DD8.8030401@codesourcery.com>
+References: <48D33854.7050305@codesourcery.com> <48D3998F.1050303@codesourcery.com> <48D39DD8.8030401@codesourcery.com>
+Message-ID: <48D3A598.30401@codesourcery.com>
+
+
+> not <type>qrd</type> ?
+
+Yes, that sounds more appropriate.  Does docbook have <class> even?
+
+>> It would help if the tables had captions.
+> 
+> I believe the missing captions are the result of the bug I identified 
+> recently in our stylesheets, where formal.object.heading is made a noop 
+> because of issues in some other contexts.
+
+Ok, let's punt on this for now.
+
+
+>> Final senctence: "Note that the return matrix may have a different 
+>> block type from Block"
+> 
+> We never explain what 'Blocks' are, and in fact, avoid even mentioning 
+> blocks throughout the rest of the manual for that reason. I typically 
+> just mark the return type with 'unspecified' for such cases, for this 
+> reason.
+
+Ok.  Let's do that here too.  IIRC, the decl shows the block return type 
+as "unspecified".
+
+				thanks,
+				-- Jules
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From stefan at codesourcery.com  Fri Sep 19 13:20:17 2008
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Fri, 19 Sep 2008 09:20:17 -0400
+Subject: [vsipl++] [patch] Document QR Decomposition
+In-Reply-To: <48D3A598.30401@codesourcery.com>
+References: <48D33854.7050305@codesourcery.com> <48D3998F.1050303@codesourcery.com> <48D39DD8.8030401@codesourcery.com> <48D3A598.30401@codesourcery.com>
+Message-ID: <48D3A711.9000301@codesourcery.com>
+
+Jules Bergmann wrote:
+> 
+>> not <type>qrd</type> ?
+> 
+> Yes, that sounds more appropriate.  Does docbook have <class> even?
+
+There is <classname>, but I'm somewhat reluctant to drill down into such 
+specific vocabulary, as it is rather incomplete in DB (this is a 
+language to write documentation in, not a modeling language such as UML).
+
+Thanks,
+		Stefan
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+
+
+From jules at codesourcery.com  Fri Sep 19 15:19:42 2008
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Fri, 19 Sep 2008 11:19:42 -0400
+Subject: [vsipl++] [patch] Document QR Decomposition
+In-Reply-To: <48D3A711.9000301@codesourcery.com>
+References: <48D33854.7050305@codesourcery.com> <48D3998F.1050303@codesourcery.com> <48D39DD8.8030401@codesourcery.com> <48D3A598.30401@codesourcery.com> <48D3A711.9000301@codesourcery.com>
+Message-ID: <48D3C30E.7040506@codesourcery.com>
+
+Stefan Seefeld wrote:
+> Jules Bergmann wrote:
+>>
+>>> not <type>qrd</type> ?
+>>
+>> Yes, that sounds more appropriate.  Does docbook have <class> even?
+> 
+> There is <classname>, but I'm somewhat reluctant to drill down into such 
+> specific vocabulary, as it is rather incomplete in DB (this is a 
+> language to write documentation in, not a modeling language such as UML).
+
+Ok, that's fine.  My primary concern is how the PDF looks.
+
+Out of curiosity, do <code> and <type> render differently?
+
+			-- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From stefan at codesourcery.com  Fri Sep 19 15:40:39 2008
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Fri, 19 Sep 2008 11:40:39 -0400
+Subject: [vsipl++] [patch] Document QR Decomposition
+In-Reply-To: <48D3C30E.7040506@codesourcery.com>
+References: <48D33854.7050305@codesourcery.com> <48D3998F.1050303@codesourcery.com> <48D39DD8.8030401@codesourcery.com> <48D3A598.30401@codesourcery.com> <48D3A711.9000301@codesourcery.com> <48D3C30E.7040506@codesourcery.com>
+Message-ID: <48D3C7F7.5060304@codesourcery.com>
+
+Jules Bergmann wrote:
+> Stefan Seefeld wrote:
+>> Jules Bergmann wrote:
+>>>
+>>>> not <type>qrd</type> ?
+>>>
+>>> Yes, that sounds more appropriate.  Does docbook have <class> even?
+>>
+>> There is <classname>, but I'm somewhat reluctant to drill down into 
+>> such specific vocabulary, as it is rather incomplete in DB (this is a 
+>> language to write documentation in, not a modeling language such as UML).
+> 
+> Ok, that's fine.  My primary concern is how the PDF looks.
+> 
+> Out of curiosity, do <code> and <type> render differently?
+
+I honestly don't know, and I'm not sure that is something to consider, 
+as it may change from one xsl-docbook release to the next (and can be 
+customized via CSS etc. individually).
+
+Regards,
+		Stefan
+
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+
+
+From don at codesourcery.com  Fri Sep 19 16:40:00 2008
+From: don at codesourcery.com (Don McCoy)
+Date: Fri, 19 Sep 2008 10:40:00 -0600
+Subject: [patch] Update parallel configuration options in the Getting Started
+ Guide
+Message-ID: <48D3D5E0.8030801@codesourcery.com>
+
+As attached.  Output in ~don/quickstart.pdf. 
+
+Ok to commit?
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: qsg_para.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20080919/c17447be/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: qsg_para.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20080919/c17447be/attachment-0001.ksh>
+
+From stefan at codesourcery.com  Fri Sep 19 16:48:21 2008
+From: stefan at codesourcery.com (Stefan Seefeld)
+Date: Fri, 19 Sep 2008 12:48:21 -0400
+Subject: [vsipl++] [patch] Update parallel configuration options in the
+ Getting Started Guide
+In-Reply-To: <48D3D5E0.8030801@codesourcery.com>
+References: <48D3D5E0.8030801@codesourcery.com>
+Message-ID: <48D3D7D5.8000104@codesourcery.com>
+
+Don McCoy wrote:
+> As attached.  Output in ~don/quickstart.pdf. 
+> 
+> Ok to commit?
+
+> +       <para>
+> +        <option>lam</option> selects the LAM/MPI open-source library.
+> +       </para>
+> +       <para>
+> +        <option>mpich2</option> selects the open-source MPICH2 library.
+> +       </para>
+
+I'm not sure how relevant it is in this context that the above are 
+'open-source' libraries. It might be better to just include links (URLs) 
+  to them.
+
+> +       <para>
+> +        <option>intelmpi</option> selects Intel MPI Library.
+> +       </para>
+> +       <para>
+> +        <option>mpipro</option> selects Verari's MPI/Pro.  This 
+> +	option is necessary when using MPI/Pro on the Mercury platform.
+> +       </para>
+> +       <para>
+> +        <option>openmpi</option> selects Open MPI library.
+> +       </para>
+
+The last sentence is missing a 'the'.
+
+Otherwise it looks fine to me.
+
+Thanks,
+	Stefan
+
+
+-- 
+Stefan Seefeld
+CodeSourcery
+stefan at codesourcery.com
+(650) 331-3385 x718
+
+
+From brooks at codesourcery.com  Fri Sep 19 18:05:15 2008
+From: brooks at codesourcery.com (Brooks Moses)
+Date: Fri, 19 Sep 2008 11:05:15 -0700
+Subject: [vsipl++] [patch] Install cml_kernels.so
+In-Reply-To: <48D388C8.3040703@codesourcery.com>
+References: <48CF33AA.6080109@codesourcery.com> <48D35BD6.8070509@codesourcery.com> <48D388C8.3040703@codesourcery.com>
+Message-ID: <48D3E9DB.1020703@codesourcery.com>
+
+Jules Bergmann wrote, at 9/19/2008 4:11 AM:
+>> There's what may be a minor problem with this bit:
+>>> +# NOTE: Installing cml_kernels.so is a work-around for SDK 3.0 ALF, which
+>>> +#       only accepts 1 directory in ALF_LIBRARY_PATH.  libs/cml_kernels.so
+>>> +#       is a link created by configure.
+>>>  install-core:: lib/svpp_kernels.so
+>>>  	$(INSTALL) -d $(DESTDIR)$(libdir)
+>>>  	$(INSTALL_PROGRAM) lib/svpp_kernels.so \
+>>>            $(DESTDIR)$(libdir)/svpp_kernels.so
+>>> +	$(INSTALL_PROGRAM) lib/cml_kernels.so \
+>>> +          $(DESTDIR)$(libdir)/cml_kernels.so
+>> The lib/cml_kernels.so file is created with this line:
+>>
+>>     ln -sf $with_cml_prefix/$cml_libdir_found/cml_kernels.so lib
+>>
+>> A bit of experimenting indicates that install will, when presented with
+>> trying to install a symlink to file $FOO over top of file $FOO, throw an
+>> error about them being the same file and emit a nonzero return value.
+>> This will stop the "make install" process.
+> 
+> Interesting.  So the bug occurs installing the library a second time?
+
+No; it occurs if we're installing VSIPL++ into the same directory that
+CML is installed into already, and if we give VSIPL++ that install
+directory as the location to find cml_kernels.so.  In other words, it
+occurs when --with-cml-prefix and --with-libdir point to the same place,
+such that the pre-existing file is the target of the cml_kernels.so
+symlink in the build directory that install is trying to use as a source
+to install on top of it.
+
+If we're installing the library a second time, the existing behavior is
+that install copies the "new" file on top of the "old" file, and there
+is no problem.
+
+>> The attached patch should fix this; okay to commit?
+> 
+> The behavior isn't intuitive.  When installing a new VSIPL++ over an 
+> existing one, one would expect the old files to be overwritten. 
+> However, the patch appears to preserve the older file.
+
+It does -- because, in the use case I was thinking of, the "older" file
+is the target of the symlink that is the new file, and so if I instead
+delete the "older" file, the new file that I'm trying to recreate it
+from suddenly goes away too.
+
+Perhaps a better solution is to replace the symlink with a copy when the
+$builddir/lib/cml_kernels.so file is created?  That way, install can
+always smash any existing cml_kernels.so file with the copy, even if
+it's the one that it got the copy from.
+
+- Brooks
+
+
+From jules at codesourcery.com  Fri Sep 19 18:21:45 2008
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Fri, 19 Sep 2008 14:21:45 -0400
+Subject: [vsipl++] [patch] Install cml_kernels.so
+In-Reply-To: <48D3E9DB.1020703@codesourcery.com>
+References: <48CF33AA.6080109@codesourcery.com> <48D35BD6.8070509@codesourcery.com> <48D388C8.3040703@codesourcery.com> <48D3E9DB.1020703@codesourcery.com>
+Message-ID: <48D3EDB9.9000900@codesourcery.com>
+
+
+> Perhaps a better solution is to replace the symlink with a copy when the
+> $builddir/lib/cml_kernels.so file is created?  That way, install can
+> always smash any existing cml_kernels.so file with the copy, even if
+> it's the one that it got the copy from.
+
+Even better, just revert back and don't have VSIPL++ install 
+cml_kernels.so at all.  If the right file is already in the right place, 
+we're done!  victory! :)
+
+			-- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From brooks at codesourcery.com  Fri Sep 19 18:42:16 2008
+From: brooks at codesourcery.com (Brooks Moses)
+Date: Fri, 19 Sep 2008 11:42:16 -0700
+Subject: [vsipl++] [patch] Install cml_kernels.so
+In-Reply-To: <48D3EDB9.9000900@codesourcery.com>
+References: <48CF33AA.6080109@codesourcery.com> <48D35BD6.8070509@codesourcery.com> <48D388C8.3040703@codesourcery.com> <48D3E9DB.1020703@codesourcery.com> <48D3EDB9.9000900@codesourcery.com>
+Message-ID: <48D3F288.5090507@codesourcery.com>
+
+Jules Bergmann wrote, at 9/19/2008 11:21 AM:
+>> Perhaps a better solution is to replace the symlink with a copy when the
+>> $builddir/lib/cml_kernels.so file is created?  That way, install can
+>> always smash any existing cml_kernels.so file with the copy, even if
+>> it's the one that it got the copy from.
+> 
+> Even better, just revert back and don't have VSIPL++ install 
+> cml_kernels.so at all.  If the right file is already in the right place, 
+> we're done!  victory! :)
+
+That's exactly what my proposed patch does.  :)
+
+It just doesn't have any way of distinguishing between the "the right
+file is already in the right place" case and the "a file from an old
+install is there already" case.  The behavior you initially objected to
+is simply that it treats the latter as an instance of the former.
+
+- Brooks
+
+
+From jules at codesourcery.com  Fri Sep 19 18:46:20 2008
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Fri, 19 Sep 2008 14:46:20 -0400
+Subject: [vsipl++] [patch] Update parallel configuration options in the
+ Getting Started Guide
+In-Reply-To: <48D3D5E0.8030801@codesourcery.com>
+References: <48D3D5E0.8030801@codesourcery.com>
+Message-ID: <48D3F37C.3060404@codesourcery.com>
+
+Don McCoy wrote:
+> As attached.  Output in ~don/quickstart.pdf. 
+> 
+> Ok to commit?
+
+Don, this looks good. Please commit with one comment below.  -- Jules
+
+
+Move this:
+> +        <option>mpipro</option> selects Verari's MPI/Pro.  This 
+> +	option is necessary when using MPI/Pro on the Mercury platform.
+> +       </para>
+
+> +       <para>
+> +        <option>openmpi</option> selects Open MPI library.
+> +       </para>
+
+To here, so that mpipro and pas (both Mercury only) are together.
+
+> +       <para>
+> +        <option>pas</option> enables the use of Mercury Parallel 
+> +	Acceleration System (PAS) for parallel services if found.  
+> +	This option is necessary to use PAS on the Mercury platform, 
+> +	and when using PAS for Linux clusters.
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From jules at codesourcery.com  Fri Sep 19 18:50:38 2008
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Fri, 19 Sep 2008 14:50:38 -0400
+Subject: [vsipl++] [patch] Install cml_kernels.so
+In-Reply-To: <48D3F288.5090507@codesourcery.com>
+References: <48CF33AA.6080109@codesourcery.com> <48D35BD6.8070509@codesourcery.com> <48D388C8.3040703@codesourcery.com> <48D3E9DB.1020703@codesourcery.com> <48D3EDB9.9000900@codesourcery.com> <48D3F288.5090507@codesourcery.com>
+Message-ID: <48D3F47E.5090404@codesourcery.com>
+
+
+> 
+> That's exactly what my proposed patch does.  :)
+> 
+> It just doesn't have any way of distinguishing between the "the right
+> file is already in the right place" case and the "a file from an old
+> install is there already" case.  The behavior you initially objected to
+> is simply that it treats the latter as an instance of the former.
+
+Sort of, except it introduces the unexpected behavior of not overwriting 
+the old file in other cases.
+
+We added the installation of cml_kernels.so a few days ago with the 
+express purpose of helping the package build process out.  If it is now 
+in the way, rather than disable it during the build process, let's just 
+remove it altogether.
+
+				-- Jules
+
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From brooks at codesourcery.com  Fri Sep 19 19:01:24 2008
+From: brooks at codesourcery.com (Brooks Moses)
+Date: Fri, 19 Sep 2008 12:01:24 -0700
+Subject: [vsipl++] [patch] Install cml_kernels.so
+In-Reply-To: <48D3F47E.5090404@codesourcery.com>
+References: <48CF33AA.6080109@codesourcery.com> <48D35BD6.8070509@codesourcery.com> <48D388C8.3040703@codesourcery.com> <48D3E9DB.1020703@codesourcery.com> <48D3EDB9.9000900@codesourcery.com> <48D3F288.5090507@codesourcery.com> <48D3F47E.5090404@codesourcery.com>
+Message-ID: <48D3F704.6090302@codesourcery.com>
+
+Jules Bergmann wrote, at 9/19/2008 11:50 AM:
+>> That's exactly what my proposed patch does.  :)
+>>
+>> It just doesn't have any way of distinguishing between the "the right
+>> file is already in the right place" case and the "a file from an old
+>> install is there already" case.  The behavior you initially objected to
+>> is simply that it treats the latter as an instance of the former.
+> 
+> Sort of, except it introduces the unexpected behavior of not overwriting 
+> the old file in other cases.
+> 
+> We added the installation of cml_kernels.so a few days ago with the 
+> express purpose of helping the package build process out.  If it is now 
+> in the way, rather than disable it during the build process, let's just 
+> remove it altogether.
+
+Well, it's in the way sometimes and necessary sometimes, depending on
+the package layout.  The package layout that I'm currently using is one
+of the ones where it's necessary, so I definitely don't want to remove
+it!  With the patch I proposed, it will do the right thing for all
+package layouts.
+
+Anyhow, I have looked at the documentation and discovered that "test"
+has a "FILE -ef FILE" check, which will distinguish the relevant cases.
+Thus, I proposed a revised version:
+
+	if test ! lib/cml_kernels.so -ef \
+            $(DESTDIR)$(libdir)/cml_kernels.so; then \
+          $(INSTALL_PROGRAM) lib/cml_kernels.so \
+            $(DESTDIR)$(libdir)/cml_kernels.so \
+        fi
+
+Is that ok?  That will still overwrite any old files.  :)
+
+- Brooks
+
+
+From jules at codesourcery.com  Fri Sep 19 19:18:02 2008
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Fri, 19 Sep 2008 15:18:02 -0400
+Subject: [vsipl++] [patch] Install cml_kernels.so
+In-Reply-To: <48D3F704.6090302@codesourcery.com>
+References: <48CF33AA.6080109@codesourcery.com> <48D35BD6.8070509@codesourcery.com> <48D388C8.3040703@codesourcery.com> <48D3E9DB.1020703@codesourcery.com> <48D3EDB9.9000900@codesourcery.com> <48D3F288.5090507@codesourcery.com> <48D3F47E.5090404@codesourcery.com> <48D3F704.6090302@codesourcery.com>
+Message-ID: <48D3FAEA.1040906@codesourcery.com>
+
+
+> 
+> Anyhow, I have looked at the documentation and discovered that "test"
+> has a "FILE -ef FILE" check, which will distinguish the relevant cases.
+> Thus, I proposed a revised version:
+> 
+> 	if test ! lib/cml_kernels.so -ef \
+>             $(DESTDIR)$(libdir)/cml_kernels.so; then \
+>           $(INSTALL_PROGRAM) lib/cml_kernels.so \
+>             $(DESTDIR)$(libdir)/cml_kernels.so \
+>         fi
+> 
+> Is that ok?  That will still overwrite any old files.  :)
+
+Brooks,
+
+Yes, that sounds good.
+
+Sorry to be difficult :), I didn't realize it was sometimes necessary 
+and sometimes not.
+
+				-- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From jules at codesourcery.com  Sat Sep 20 02:53:09 2008
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Fri, 19 Sep 2008 22:53:09 -0400
+Subject: [patch] In-place transpose for split-complex
+Message-ID: <48D46595.8060704@codesourcery.com>
+
+This implements in-place transpose for split complex.  It also extends 
+the matrix copy/transpose evaluator to handle split copies.
+
+Running tests now.
+
+				-- Jules
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: ip_transpose.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20080919/41df289e/attachment.ksh>
+
+From jules at codesourcery.com  Sat Sep 20 03:07:55 2008
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Fri, 19 Sep 2008 23:07:55 -0400
+Subject: [patch] Fix typo in m4/cbe.m4
+Message-ID: <48D4690B.50102@codesourcery.com>
+
+This lead to an extra "-I" in some cases.
+
+Patch applied.
+
+			-- Jules
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: extraI.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20080919/b5d5d0df/attachment.ksh>
+
+From don at codesourcery.com  Sat Sep 20 05:58:39 2008
+From: don at codesourcery.com (Don McCoy)
+Date: Fri, 19 Sep 2008 23:58:39 -0600
+Subject: [vsipl++] [patch] Update parallel configuration options in the
+ Getting Started Guide
+In-Reply-To: <48D3F37C.3060404@codesourcery.com>
+References: <48D3D5E0.8030801@codesourcery.com> <48D3F37C.3060404@codesourcery.com>
+Message-ID: <48D4910F.8080308@codesourcery.com>
+
+Jules Bergmann wrote:
+> Don, this looks good. Please commit with one comment below.  -- Jules
+>   
+Feedback incorporated.  Also addressed a few other items, two of which
+were identified in Issue 191.  Additional changes committed as obvious
+as they mostly affect formatting or markup correctness.
+
+Note: If </ulink> closing tags are placed away from content, for example
+on the following line by themselves, the link is not rendered at all in
+the HTML output.  Some long lines in the source file result from
+following this convention, but I do not know of a way to correct that.
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: qsg_para.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20080919/3c0a6962/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: qsg_para.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20080919/3c0a6962/attachment-0001.ksh>
+
+From don at codesourcery.com  Sat Sep 20 07:03:02 2008
+From: don at codesourcery.com (Don McCoy)
+Date: Sat, 20 Sep 2008 01:03:02 -0600
+Subject: [vsipl++] [patch] Document QR Decomposition
+In-Reply-To: <48D3998F.1050303@codesourcery.com>
+References: <48D33854.7050305@codesourcery.com> <48D3998F.1050303@codesourcery.com>
+Message-ID: <48D4A026.7040507@codesourcery.com>
+
+Jules Bergmann wrote:
+> This looks good!  Please check this in, with the following comments.
+> 	
+>   
+Feedback incorporated.  Committed as attached.
+
+Thanks,
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: qr_man.changes
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20080920/213d6873/attachment.ksh>
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: qr_man.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20080920/213d6873/attachment-0001.ksh>
+
+From jules at codesourcery.com  Sat Sep 20 16:17:41 2008
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Sat, 20 Sep 2008 12:17:41 -0400
+Subject: [vsipl++] [patch] Document QR Decomposition
+In-Reply-To: <48D4A026.7040507@codesourcery.com>
+References: <48D33854.7050305@codesourcery.com> <48D3998F.1050303@codesourcery.com> <48D4A026.7040507@codesourcery.com>
+Message-ID: <48D52225.9030507@codesourcery.com>
+
+Don McCoy wrote:
+> Jules Bergmann wrote:
+>> This looks good!  Please check this in, with the following comments.
+>> 	
+>>   
+> Feedback incorporated.  Committed as attached.
+
+Can you add a ChangeLog entry for this?  thanks, Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From jules at codesourcery.com  Sat Sep 20 16:18:07 2008
+From: jules at codesourcery.com (Jules Bergmann)
+Date: Sat, 20 Sep 2008 12:18:07 -0400
+Subject: [vsipl++] [patch] Update parallel configuration options in the
+ Getting Started Guide
+In-Reply-To: <48D4910F.8080308@codesourcery.com>
+References: <48D3D5E0.8030801@codesourcery.com> <48D3F37C.3060404@codesourcery.com> <48D4910F.8080308@codesourcery.com>
+Message-ID: <48D5223F.9040605@codesourcery.com>
+
+Don McCoy wrote:
+> Jules Bergmann wrote:
+>> Don, this looks good. Please commit with one comment below.  -- Jules
+>>   
+> Feedback incorporated.  Also addressed a few other items, two of which
+> were identified in Issue 191.  Additional changes committed as obvious
+> as they mostly affect formatting or markup correctness.
+> 
+> Note: If </ulink> closing tags are placed away from content, for example
+> on the following line by themselves, the link is not rendered at all in
+> the HTML output.  Some long lines in the source file result from
+> following this convention, but I do not know of a way to correct that.
+> 
+> 
+
+Can you add a ChangeLog entry for this too?  thanks, -- Jules
+
+-- 
+Jules Bergmann
+CodeSourcery
+jules at codesourcery.com
+(650) 331-3385 x705
+
+
+From don at codesourcery.com  Sat Sep 20 16:30:20 2008
+From: don at codesourcery.com (Don McCoy)
+Date: Sat, 20 Sep 2008 10:30:20 -0600
+Subject: [vsipl++] [patch] Document QR Decomposition
+In-Reply-To: <48D52225.9030507@codesourcery.com>
+References: <48D33854.7050305@codesourcery.com> <48D3998F.1050303@codesourcery.com> <48D4A026.7040507@codesourcery.com> <48D52225.9030507@codesourcery.com>
+Message-ID: <48D5251C.2030504@codesourcery.com>
+
+Jules Bergmann wrote:
+>
+> Can you add a ChangeLog entry for this?  thanks, Jules
+>
+>   
+This is what I currently have:
+
+2008-09-20  Don McCoy  <don at codesourcery.com>
+
+        * doc/manual/datatypes.xml: Add definitions for mat_op_type,
+          product_side_type, return_mechanism_type and storage_type.
+        * doc/manual/functions.xml: Include QR solver reference.
+        * doc/manual/qr.xml: New file.  QR decomposition solver.
+
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+
+
+
+From don at codesourcery.com  Sat Sep 20 16:30:24 2008
+From: don at codesourcery.com (Don McCoy)
+Date: Sat, 20 Sep 2008 10:30:24 -0600
+Subject: [vsipl++] [patch] Update parallel configuration options in the
+ Getting Started Guide
+In-Reply-To: <48D5223F.9040605@codesourcery.com>
+References: <48D3D5E0.8030801@codesourcery.com> <48D3F37C.3060404@codesourcery.com> <48D4910F.8080308@codesourcery.com> <48D5223F.9040605@codesourcery.com>
+Message-ID: <48D52520.2000703@codesourcery.com>
+
+Jules Bergmann wrote:
+> Can you add a ChangeLog entry for this too?  thanks, -- Jules
+>
+>   
+And this one has:
+
+2008-09-19  Don McCoy  <don at codesourcery.com>
+
+        * doc/quickstart/quickstart.xml: Update --enable-parallel option
+          to reflect current possible selections.  Included information
+          about OpenMPI.  Fixed several URLs to properly close <ulink>
+          tags and/or use <para> within <listitem> blocks.  Updated link
+          to Mercury's website.  Eliminated redundant content in <ulink>
+          tags to force it to use the URL for the text of the link (for
+          PDFs, this removes the redundant footnotes).
+
+Did I miss anything?
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+
+
+
+From don at codesourcery.com  Sat Sep 20 18:07:33 2008
+From: don at codesourcery.com (Don McCoy)
+Date: Sat, 20 Sep 2008 12:07:33 -0600
+Subject: [patch] Skip user-defined kernel tests that don't support split complex
+Message-ID: <48D53BE5.5000903@codesourcery.com>
+
+Committed.
+
+-- 
+Don McCoy
+don (at) CodeSourcery
+(888) 776-0262 / (650) 331-3385, x712
+
+-------------- next part --------------
+An embedded and charset-unspecified text was scrubbed...
+Name: uk_split.diff
+URL: <http://sourcerytools.com/pipermail/vsipl++/attachments/20080920/b545f03d/attachment.ksh>
+

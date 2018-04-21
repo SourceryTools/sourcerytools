@@ -1,0 +1,227 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> [vsipl++] [selgen]
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20%5Bselgen%5D&In-Reply-To=%3C4339C525.7000707%40codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000050.html">
+   <LINK REL="Next"  HREF="000052.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>[vsipl++] [selgen]</H1>
+    <B>Jules Bergmann</B> 
+    <A HREF="mailto:vsipl%2B%2B%40codesourcery.com?Subject=Re%3A%20%5Bvsipl%2B%2B%5D%20%5Bselgen%5D&In-Reply-To=%3C4339C525.7000707%40codesourcery.com%3E"
+       TITLE="[vsipl++] [selgen]">jules at codesourcery.com
+       </A><BR>
+    <I>Tue Sep 27 22:18:13 UTC 2005</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000050.html">[selgen]
+</A></li>
+        <LI>Next message: <A HREF="000052.html">[vsipl++] [selgen]
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#51">[ date ]</a>
+              <a href="thread.html#51">[ thread ]</a>
+              <a href="subject.html#51">[ subject ]</a>
+              <a href="author.html#51">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>
+
+Stefan Seefeld wrote:
+&gt;<i> The attached patch implements all functions from section 9.4 ([selgen])
+</I>&gt;<i> of the spec, i.e.
+</I>&gt;<i> 
+</I>&gt;<i> * first()
+</I>&gt;<i> * indexbool()
+</I>&gt;<i> * gather()
+</I>&gt;<i> * scatter()
+</I>&gt;<i> * clip()
+</I>&gt;<i> * invclip()
+</I>&gt;<i> * swap()
+</I>&gt;<i> 
+</I>&gt;<i> together with unit tests. It also contains some bits and pieces I
+</I>&gt;<i> submitted earlier today to cleanup header dependencies etc., as I
+</I>&gt;<i> wasn't able to easily separate the two.
+</I>
+Stefan,
+
+Looks good.  I have one suggestion for indexbool to make it a little 
+more robust, otherwise it looks ready to check in.
+
+Also, were the unit tests included in the patch?
+
+				thanks,
+				-- Jules
+
+
+&gt;<i>  
+</I>&gt;<i>  /***********************************************************************
+</I>&gt;<i> @@ -30,6 +31,29 @@
+</I>&gt;<i>  namespace impl
+</I>&gt;<i>  {
+</I>&gt;<i>  
+</I>&gt;<i> +template &lt;typename T, typename B1, typename B2&gt;
+</I>&gt;<i> +length_type
+</I>&gt;<i> +indexbool(const_Vector&lt;T, B1&gt; source, Vector&lt;Index&lt;1&gt;, B2&gt; indices)
+</I>&gt;<i> +{
+</I>&gt;<i> +  index_type cursor = 0;
+</I>&gt;<i> +  for (index_type i = 0; i != source.size(); ++i)
+</I>&gt;<i> +    if (source.get(i))
+</I>&gt;<i> +      indices.put(cursor++, Index&lt;1&gt;(i));
+</I>&gt;<i> +  return cursor;
+</I>&gt;<i> +}
+</I>
+I'm trying to think if we can do better error checking here.  This 
+doesn't check if cursor &lt; indices.size(0), but the put does, so that's 
+good.  It would be good to have an assertion in indexbool so that the 
+failure is more obvious.
+
+However, I don't think the specification of indexbool makes it very 
+useful.  It should handle an overflow more gracefully than either 
+aborting or corrupting memory.  Since the overflow condition is 
+data-dependent, it forces me to size indices for the absolute worst 
+case.  Hypotheticaly, if I'm doing target detection on an IR sensor and 
+a flare goes off, I'm going to have way more detections for a few frames 
+until I have a chance to adapt my thresholds.  As a system engineer, I 
+would probably choose to drop some detections for a few frames rather 
+than size my detection buffer for the absolute worst-case.  I certainly 
+don't want the application to crash or corrupt itself!
+
+This is a future opportunity here to design a better interface (such as 
+a stateful one that avoids overflow by getting the next N detections 
+from source, where N is the size of indices).
+
+In the short term, let's check that cursor is less than indices.size() 
+before doing the put, i.e.:
+
+   index_type cursor = 0;
+   for (index_type i = 0; i != source.size(); ++i)
+     if (source.get(i) &amp;&amp; cursor++ &lt; indices.size())
+       indices.put(cursor-1, Index&lt;1&gt;(i));
+   return cursor;
+
+The returned value (cursor) is still the &quot;number of non-false values in 
+source&quot; (as required by the spec) and we avoid overwriting memory.  A 
+concerned user can check if the returned value is greater than 
+indices.size().
+
+
+&gt;<i> +
+</I>&gt;<i> +template &lt;typename T, typename B1, typename B2&gt;
+</I>&gt;<i> +length_type
+</I>&gt;<i> +indexbool(const_Matrix&lt;T, B1&gt; source, Vector&lt;Index&lt;2&gt;, B2&gt; indices)
+</I>&gt;<i> +{
+</I>&gt;<i> +  index_type cursor = 0;
+</I>&gt;<i> +  for (index_type r = 0; r != source.size(0); ++r)
+</I>&gt;<i> +    for (index_type c = 0; c != source.size(1); ++c)
+</I>&gt;<i> +      if (source.get(r, c))
+</I>&gt;<i> +	indices.put(cursor++, Index&lt;2&gt;(r, c));
+</I>&gt;<i> +  return cursor;
+</I>&gt;<i> +}
+</I>
+Let's do the same as above.
+
+
+&gt;<i>  
+</I>&gt;<i> +namespace impl
+</I>&gt;<i> +{
+</I>&gt;<i> +template &lt;typename Tout, typename Tin1&gt;
+</I>&gt;<i> +struct clip_wrapper
+</I>&gt;<i> +{
+</I>&gt;<i> +  template &lt;typename Tin0&gt;
+</I>&gt;<i> +  struct clip_functor
+</I>&gt;<i> +  {
+</I>&gt;<i> +    typedef Tout result_type;
+</I>&gt;<i> +    result_type operator()(Tin0 t) const 
+</I>&gt;<i> +    {
+</I>&gt;<i> +      return t &lt;= lower_threshold ? lower_clip_value 
+</I>&gt;<i> +	: t &lt; upper_threshold ? t
+</I>&gt;<i> +	: upper_clip_value;
+</I>&gt;<i> +    }
+</I>&gt;<i> +
+</I>&gt;<i> +    Tin1 lower_threshold;
+</I>&gt;<i> +    Tin1 upper_threshold;
+</I>&gt;<i> +    result_type lower_clip_value;
+</I>&gt;<i> +    result_type upper_clip_value;
+</I>&gt;<i> +  };
+</I>&gt;<i> +  template &lt;typename Tin0&gt;
+</I>&gt;<i> +  struct invclip_functor
+</I>&gt;<i> +  {
+</I>&gt;<i> +    typedef Tout result_type;
+</I>&gt;<i> +    result_type operator()(Tin0 t) const 
+</I>&gt;<i> +    {
+</I>&gt;<i> +      return t &lt; lower_threshold ? t
+</I>&gt;<i> +	: t &lt; middle_threshold ? lower_clip_value
+</I>&gt;<i> +	: t &lt;= upper_threshold ? upper_clip_value
+</I>&gt;<i> +	: t;
+</I>&gt;<i> +    }
+</I>&gt;<i> +
+</I>&gt;<i> +    Tin1 lower_threshold;
+</I>&gt;<i> +    Tin1 middle_threshold;
+</I>&gt;<i> +    Tin1 upper_threshold;
+</I>&gt;<i> +    result_type lower_clip_value;
+</I>&gt;<i> +    result_type upper_clip_value;
+</I>&gt;<i> +  };
+</I>&gt;<i> +};
+</I>&gt;<i> +  
+</I>
+Why are clip_functor and invclip_functor nested in clip_wrapper?  (I'm 
+just curious, I'm not suggesting that it should be changed)
+
+&gt;<i> +
+</I>&gt;<i> +namespace impl
+</I>&gt;<i> +{
+</I>&gt;<i> +/// Generic swapping of the content of two blocks.
+</I>&gt;<i> +template &lt;typename Block1, typename Block2&gt;
+</I>&gt;<i> +struct Swap
+</I>&gt;<i> +{
+</I>&gt;<i> +  static void apply(Block1 &amp;block1, Block2 &amp;block2)
+</I>&gt;<i> +  {
+</I>&gt;<i> +    assert(block1.size() == block2.size());
+</I>&gt;<i> +    for (index_type i = 0; i != block1.size(); ++i)
+</I>&gt;<i> +    {
+</I>&gt;<i> +      typename Block1::value_type tmp = block1.get(i);
+</I>&gt;<i> +      block1.put(i, block2.get(i));
+</I>&gt;<i> +      block2.put(i, tmp);
+</I>&gt;<i> +    }
+</I>&gt;<i> +
+</I>&gt;<i> +  }
+</I>&gt;<i> +};
+</I>
+Looks good.  We can plug in specializations to Swap for things like 
+swapping pointers (if we decide it's worth doing).
+
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000050.html">[selgen]
+</A></li>
+	<LI>Next message: <A HREF="000052.html">[vsipl++] [selgen]
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#51">[ date ]</a>
+              <a href="thread.html#51">[ thread ]</a>
+              <a href="subject.html#51">[ subject ]</a>
+              <a href="author.html#51">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/vsipl++">More information about the vsipl++
+mailing list</a><br>
+</body></html>

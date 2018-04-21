@@ -1,0 +1,1009 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<HTML>
+ <HEAD>
+   <TITLE> PATCH: Fix packaging problems
+   </TITLE>
+   <LINK REL="Index" HREF="index.html" >
+   <LINK REL="made" HREF="mailto:qmtest%40codesourcery.com?Subject=Re%3A%20PATCH%3A%20Fix%20packaging%20problems&In-Reply-To=%3C200311240059.hAO0xQw8013723%40doubledemon.codesourcery.com%3E">
+   <META NAME="robots" CONTENT="index,nofollow">
+   <style type="text/css">
+       pre {
+           white-space: pre-wrap;       /* css-2.1, curent FF, Opera, Safari */
+           }
+   </style>
+   <META http-equiv="Content-Type" content="text/html; charset=us-ascii">
+   <LINK REL="Previous"  HREF="000623.html">
+   <LINK REL="Next"  HREF="000617.html">
+ </HEAD>
+ <BODY BGCOLOR="#ffffff">
+   <H1>PATCH: Fix packaging problems</H1>
+    <B>Mark Mitchell</B> 
+    <A HREF="mailto:qmtest%40codesourcery.com?Subject=Re%3A%20PATCH%3A%20Fix%20packaging%20problems&In-Reply-To=%3C200311240059.hAO0xQw8013723%40doubledemon.codesourcery.com%3E"
+       TITLE="PATCH: Fix packaging problems">mark at codesourcery.com
+       </A><BR>
+    <I>Mon Nov 24 00:59:26 UTC 2003</I>
+    <P><UL>
+        <LI>Previous message: <A HREF="000623.html">[qmtest] os.system0 use in resource SetUp methods
+</A></li>
+        <LI>Next message: <A HREF="000617.html">PATCH: Create working Windows distributions
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#615">[ date ]</a>
+              <a href="thread.html#615">[ thread ]</a>
+              <a href="subject.html#615">[ subject ]</a>
+              <a href="author.html#615">[ author ]</a>
+         </LI>
+       </UL>
+    <HR>  
+<!--beginarticle-->
+<PRE>
+This patch fixes some packaging issues:
+
+(1) The printed manual was being installed in two locations
+
+(2) The &quot;classes&quot; directory was not installed in lib, and therefore
+    optimized versions of the files were not generated.
+
+(3) The &quot;classes&quot; directory had no &quot;__init__.py&quot; file and therefore
+    modules from &quot;classes&quot; could not easily be imported.
+
+(4) The &quot;sdist&quot; and &quot;bdist_rpm&quot; commands for Distutils were no longer
+    working correctly.
+
+I hope to get Windows packages working tonight, at which point we will
+generate a test release of QMTest 2.1.
+
+--
+Mark Mitchell
+CodeSourcery, LLC
+<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">mark at codesourcery.com</A>
+
+2003-11-23  Mark Mitchell  &lt;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">mark at codesourcery.com</A>&gt;
+
+	* .cvsignore: Add build, dist, and MANIFEST.
+	* MANIFEST.in: Update for recent changes.
+	* setup.py: Put qm/test/classes in lib, not share.  Add more
+	metadata.  Correct documentation handling.
+	* qm/__init__.py: Import lib_dir from qm.config.
+	* common.py (get_lib_directory): New function.
+	* qm/test/base.py (get_extension_directories): Use
+	get_lib_directory, not get_share_directory.
+	* qm/test/clases/__init__.py: New file.
+	* qmdist/.cvsignore: Likewise.
+	* qmdist/command/.cvsignore: Likeiwse.
+	* qmdist/command/__init__.py (get_relative_path): Robustify.
+	* qmdist/command/build.py: New file.
+	* qmdist/command/build_doc.py (build_doc.call_jade): Put generated
+	files in the source directory.
+	(build_doc.run): Update accordingly.
+	* qmdist/command/install_data.py (install_data.run): Set
+	lib_dir in config.py.
+	* qmdist/command/install_lib.py: New file.
+	* qmdist/command/install_scripts.py: Generalize prefix handling.
+
+Index: .cvsignore
+===================================================================
+RCS file: /home/sc/Repository/qm/.cvsignore,v
+retrieving revision 1.2
+diff -c -5 -p -r1.2 .cvsignore
+*** .cvsignore	2 Jan 2002 22:27:11 -0000	1.2
+--- .cvsignore	24 Nov 2003 00:46:53 -0000
+***************
+*** 1,5 ****
+--- 1,8 ----
+  GNUmakefile
+  config.log
+  config.cache
+  config.status
+  qm.spec
++ build
++ dist
++ MANIFEST
+Index: MANIFEST.in
+===================================================================
+RCS file: /home/sc/Repository/qm/MANIFEST.in,v
+retrieving revision 1.1
+diff -c -5 -p -r1.1 MANIFEST.in
+*** MANIFEST.in	9 Sep 2003 13:48:21 -0000	1.1
+--- MANIFEST.in	24 Nov 2003 00:46:53 -0000
+***************
+*** 11,32 ****
+  #
+  # For license terms see the file COPYING.
+  #
+  ########################################################################
+  
+! include ChangeLog COPYING README TODO
+  include MANIFEST.in setup.py
+  
+  # These are the modules included in the 'qm' package.
+  recursive-include   qm *.py
+- include             qm/config.py
+  # This is the main executable.
+! include             qm/test/qmtest.py
+  # These are all docs, in (docbook) xml, html, tex, and pdf format.
+  include             qm/test/doc/*.xml
+  include             qm/test/doc/html/*.html
+- include             qm/test/doc/print/manual.tex
+  include             qm/test/doc/print/manual.pdf
+  recursive-include   doc *
+  # These are data files used by various parts of QMTest.
+  include             qm/test/classes/classes.qmc
+  recursive-include   qm/test/share *
+--- 11,30 ----
+  #
+  # For license terms see the file COPYING.
+  #
+  ########################################################################
+  
+! include ChangeLog COPYING README
+  include MANIFEST.in setup.py
+  
+  # These are the modules included in the 'qm' package.
+  recursive-include   qm *.py
+  # This is the main executable.
+! include             qm/test/qmtest
+  # These are all docs, in (docbook) xml, html, tex, and pdf format.
+  include             qm/test/doc/*.xml
+  include             qm/test/doc/html/*.html
+  include             qm/test/doc/print/manual.pdf
+  recursive-include   doc *
+  # These are data files used by various parts of QMTest.
+  include             qm/test/classes/classes.qmc
+  recursive-include   qm/test/share *
+Index: setup.py
+===================================================================
+RCS file: /home/sc/Repository/qm/setup.py,v
+retrieving revision 1.6
+diff -c -5 -p -r1.6 setup.py
+*** setup.py	14 Oct 2003 21:56:06 -0000	1.6
+--- setup.py	24 Nov 2003 00:46:53 -0000
+*************** from   distutils.core import setup
+*** 21,32 ****
+--- 21,34 ----
+  import sys
+  import os
+  import os.path
+  import string
+  import glob
++ from   qmdist.command.build import build
+  from   qmdist.command.build_doc import build_doc
+  from   qmdist.command.install_data import install_data
++ from   qmdist.command.install_lib import install_lib
+  from   qmdist.command.install_scripts import install_scripts
+  from   qmdist.command.check import check
+  
+  ########################################################################
+  # Functions
+*************** def select_share_files(share_files, dir,
+*** 73,130 ****
+  
+  packages=['qm',
+            'qm/external',
+            'qm/external/DocumentTemplate',
+            'qm/test',
+            'qm/test/web']
+  
+! classes= filter(lambda f: f[-3:] == '.py',
+!                 os.listdir(os.path.join('qm','test','classes')))
+! classes.append('classes.qmc')
+  
+  diagnostics=['common.txt','common-help.txt']
+  
+  messages=['help.txt', 'diagnostics.txt']
+  
+  html_docs = []
+- print_docs = []
+  
+  if not os.path.isdir(os.path.normpath('qm/test/doc/html')):
+      print &quot;&quot;&quot;Warning: to include documentation run the
+               \'build_doc\' command first.&quot;&quot;&quot;
+  
+  else:
+      html_docs = filter(lambda f: f.endswith(&quot;.html&quot;),
+                         os.listdir(os.path.normpath('qm/test/doc/html')))
+-     print_docs = [ 'manual.pdf']
+  
+  tutorial_files = files_with_ext(&quot;qm/test/share/tutorial/tdb&quot;, &quot;.qmt&quot;)
+  test_dtml_files = files_with_ext(&quot;qm/test/share/dtml&quot;, &quot;.dtml&quot;)
+  
+  share_files = {}
+  os.path.walk(&quot;share&quot;, select_share_files, share_files)
+  
+! setup(cmdclass={'build_doc': build_doc,
+                  'install_data': install_data,
+                  'install_scripts' : install_scripts,
+                  'check': check},
+!       name=&quot;qm&quot;, 
+!       version=&quot;2.1&quot;,
+        packages=packages,
+        scripts=['qm/test/qmtest'],
+!       data_files=[('qm/test/classes',
+!                    prefix(classes, 'qm/test/classes')),
+!                   ('qm/messages/test',
+                     prefix(messages, 'qm/test/share/messages')),
+                    # DTML files for the GUI.
+                    (&quot;qm/dtml/test&quot;, test_dtml_files),
+                    # The documentation.
+                    ('qm/doc', ('README', 'COPYING')),
+                    ('qm/doc/test/html',
+                     prefix(html_docs, 'qm/test/doc/html')),
+                    ('qm/doc/test/print',
+!                    prefix(print_docs, 'qm/test/doc/print')),
+                    # The tutorial.
+                    (&quot;qm/tutorial/test/tdb&quot;, tutorial_files),
+                    (&quot;qm/tutorial/test/tdb/QMTest&quot;,
+                     (&quot;qm/test/share/tutorial/tdb/QMTest/configuration&quot;,))]
+                   # The files from the top-level &quot;share&quot; directory.
+--- 75,137 ----
+  
+  packages=['qm',
+            'qm/external',
+            'qm/external/DocumentTemplate',
+            'qm/test',
++           'qm/test/classes',
+            'qm/test/web']
+  
+! classes = [&quot;classes.qmc&quot;]
+  
+  diagnostics=['common.txt','common-help.txt']
+  
+  messages=['help.txt', 'diagnostics.txt']
+  
+  html_docs = []
+  
+  if not os.path.isdir(os.path.normpath('qm/test/doc/html')):
+      print &quot;&quot;&quot;Warning: to include documentation run the
+               \'build_doc\' command first.&quot;&quot;&quot;
+  
+  else:
+      html_docs = filter(lambda f: f.endswith(&quot;.html&quot;),
+                         os.listdir(os.path.normpath('qm/test/doc/html')))
+  
+  tutorial_files = files_with_ext(&quot;qm/test/share/tutorial/tdb&quot;, &quot;.qmt&quot;)
+  test_dtml_files = files_with_ext(&quot;qm/test/share/dtml&quot;, &quot;.dtml&quot;)
+  
+  share_files = {}
+  os.path.walk(&quot;share&quot;, select_share_files, share_files)
+  
+! setup(name=&quot;qm&quot;, 
+!       version=&quot;2.1&quot;,
+!       author=&quot;CodeSourcery, LLC&quot;,
+!       author_email=&quot;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">info at codesourcery.com</A>&quot;,
+!       maintainer=&quot;Mark Mitchell&quot;,
+!       maintainer_email=&quot;<A HREF="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">mark at codesourcery.com</A>&quot;,
+!       url=&quot;<A HREF="http://www.codesourcery.com/qm/test">http://www.codesourcery.com/qm/test</A>&quot;,
+!       description=&quot;QMTest is a automated software test execution tool.&quot;,
+!       
+!       cmdclass={'build': build,
+!                 'build_doc': build_doc,
+                  'install_data': install_data,
++                 'install_lib': install_lib,
+                  'install_scripts' : install_scripts,
+                  'check': check},
+! 
+        packages=packages,
+        scripts=['qm/test/qmtest'],
+!       data_files=[('qm/messages/test',
+                     prefix(messages, 'qm/test/share/messages')),
+                    # DTML files for the GUI.
+                    (&quot;qm/dtml/test&quot;, test_dtml_files),
+                    # The documentation.
+                    ('qm/doc', ('README', 'COPYING')),
+                    ('qm/doc/test/html',
+                     prefix(html_docs, 'qm/test/doc/html')),
+                    ('qm/doc/test/print',
+!                    [&quot;qm/test/doc/print/manual.pdf&quot;]),
+                    # The tutorial.
+                    (&quot;qm/tutorial/test/tdb&quot;, tutorial_files),
+                    (&quot;qm/tutorial/test/tdb/QMTest&quot;,
+                     (&quot;qm/test/share/tutorial/tdb/QMTest/configuration&quot;,))]
+                   # The files from the top-level &quot;share&quot; directory.
+Index: qm/__init__.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/__init__.py,v
+retrieving revision 1.10
+diff -c -5 -p -r1.10 __init__.py
+*** qm/__init__.py	14 Oct 2003 21:56:06 -0000	1.10
+--- qm/__init__.py	24 Nov 2003 00:46:53 -0000
+*************** import string
+*** 21,31 ****
+  from qm.common import *
+  from qm.diagnostic import error, warning, message
+  
+  try:
+      # The config file is created during &quot;make install&quot; by setup.py.
+!     from qm.config import version, data_dir
+      version_info = tuple(string.split(version, '.'))
+      &quot;&quot;&quot;The version of QM as a tuple of '(major, minor, release)'.&quot;&quot;&quot;
+  except:
+      # If qm.config was not available, we are running out of the source tree.
+      common.is_installed = 0
+--- 21,31 ----
+  from qm.common import *
+  from qm.diagnostic import error, warning, message
+  
+  try:
+      # The config file is created during &quot;make install&quot; by setup.py.
+!     from qm.config import version, data_dir, lib_dir
+      version_info = tuple(string.split(version, '.'))
+      &quot;&quot;&quot;The version of QM as a tuple of '(major, minor, release)'.&quot;&quot;&quot;
+  except:
+      # If qm.config was not available, we are running out of the source tree.
+      common.is_installed = 0
+Index: qm/common.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/common.py,v
+retrieving revision 1.77
+diff -c -5 -p -r1.77 common.py
+*** qm/common.py	13 Nov 2003 03:08:01 -0000	1.77
+--- qm/common.py	24 Nov 2003 00:46:53 -0000
+*************** class RcConfiguration(ConfigParser.Confi
+*** 215,226 ****
+                  options.remove(&quot;__name__&quot;)
+              return options
+  
+      
+  ########################################################################
+! # functions
+  ########################################################################
+  
+  def get_share_directory(*components):
+      &quot;&quot;&quot;Return the path to a file in the QM data file directory.&quot;&quot;&quot;
+  
+      return os.path.join(qm.prefix, qm.data_dir, *components)
+--- 215,232 ----
+                  options.remove(&quot;__name__&quot;)
+              return options
+  
+      
+  ########################################################################
+! # Functions
+  ########################################################################
++ 
++ def get_lib_directory(*components):
++     &quot;&quot;&quot;Return the path to a file in the QM library directory.&quot;&quot;&quot;
++ 
++     return os.path.join(qm.prefix, qm.lib_dir, *components)
++ 
+  
+  def get_share_directory(*components):
+      &quot;&quot;&quot;Return the path to a file in the QM data file directory.&quot;&quot;&quot;
+  
+      return os.path.join(qm.prefix, qm.data_dir, *components)
+Index: qm/test/base.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qm/test/base.py,v
+retrieving revision 1.94
+diff -c -5 -p -r1.94 base.py
+*** qm/test/base.py	14 Oct 2003 21:56:07 -0000	1.94
+--- qm/test/base.py	24 Nov 2003 00:46:53 -0000
+*************** def get_extension_directories(kind, data
+*** 112,122 ****
+                      (database_path))
+  
+      if qm.common.is_installed:
+          # In an installed version of QMTest, the config object tells us
+          # where to look.
+!         dirs.append(qm.common.get_share_directory('test', 'classes'))
+      else:
+          # When running from the source tree, we look for path relative
+          # to this file.
+          dirs.append(os.path.join(os.path.dirname(__file__), &quot;classes&quot;))
+  
+--- 112,122 ----
+                      (database_path))
+  
+      if qm.common.is_installed:
+          # In an installed version of QMTest, the config object tells us
+          # where to look.
+!         dirs.append(qm.common.get_lib_directory('test', 'classes'))
+      else:
+          # When running from the source tree, we look for path relative
+          # to this file.
+          dirs.append(os.path.join(os.path.dirname(__file__), &quot;classes&quot;))
+  
+Index: qm/test/classes/__init__.py
+===================================================================
+RCS file: qm/test/classes/__init__.py
+diff -N qm/test/classes/__init__.py
+*** /dev/null	1 Jan 1970 00:00:00 -0000
+--- qm/test/classes/__init__.py	24 Nov 2003 00:46:53 -0000
+***************
+*** 0 ****
+--- 1,21 ----
++ ########################################################################
++ #
++ # File:   __init__.py
++ # Author: Mark Mitchell
++ # Date:   2003-11-23
++ #
++ # Contents:
++ #   Module initialization.
++ #
++ # Copyright (c) 2001 by CodeSourcery, LLC.  All rights reserved. 
++ #
++ # For license terms see the file COPYING.
++ #
++ ########################################################################
++ 
++ ########################################################################
++ # Local Variables:
++ # mode: python
++ # indent-tabs-mode: nil
++ # fill-column: 72
++ # End:
+Index: qmdist/.cvsignore
+===================================================================
+RCS file: qmdist/.cvsignore
+diff -N qmdist/.cvsignore
+*** /dev/null	1 Jan 1970 00:00:00 -0000
+--- qmdist/.cvsignore	24 Nov 2003 00:46:53 -0000
+***************
+*** 0 ****
+--- 1,2 ----
++ *.pyc
++ *.pyo
+Index: qmdist/command/.cvsignore
+===================================================================
+RCS file: qmdist/command/.cvsignore
+diff -N qmdist/command/.cvsignore
+*** /dev/null	1 Jan 1970 00:00:00 -0000
+--- qmdist/command/.cvsignore	24 Nov 2003 00:46:53 -0000
+***************
+*** 0 ****
+--- 1,2 ----
++ *.pyc
++ *.pyo
+Index: qmdist/command/__init__.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qmdist/command/__init__.py,v
+retrieving revision 1.2
+diff -c -5 -p -r1.2 __init__.py
+*** qmdist/command/__init__.py	14 Oct 2003 21:56:07 -0000	1.2
+--- qmdist/command/__init__.py	24 Nov 2003 00:46:53 -0000
+*************** def get_relative_path(dir1, dir2):
+*** 30,40 ****
+  
+      'dir2' -- The path to a directory.
+      
+      returns -- The relative path from 'dir1' to 'dir2'.&quot;&quot;&quot;
+  
+      rel_path = &quot;&quot;
+      while not dir2.startswith(dir1):
+          rel_path = os.path.join(os.pardir, rel_path)
+          dir1 = os.path.dirname(dir1)
+! 
+      return os.path.join(rel_path, dir2[len(dir1) + 1:])
+--- 30,44 ----
+  
+      'dir2' -- The path to a directory.
+      
+      returns -- The relative path from 'dir1' to 'dir2'.&quot;&quot;&quot;
+  
++     dir1 = os.path.abspath(dir1)
++     dir2 = os.path.abspath(dir2)
+      rel_path = &quot;&quot;
+      while not dir2.startswith(dir1):
+          rel_path = os.path.join(os.pardir, rel_path)
+          dir1 = os.path.dirname(dir1)
+!         if dir1 == os.sep:
+!             dir1 = &quot;&quot;
+!             break
+      return os.path.join(rel_path, dir2[len(dir1) + 1:])
+Index: qmdist/command/build.py
+===================================================================
+RCS file: qmdist/command/build.py
+diff -N qmdist/command/build.py
+*** /dev/null	1 Jan 1970 00:00:00 -0000
+--- qmdist/command/build.py	24 Nov 2003 00:46:53 -0000
+***************
+*** 0 ****
+--- 1,38 ----
++ ########################################################################
++ #
++ # File:   build.py
++ # Author: Mark Mitchell
++ # Date:   2003-11-23
++ #
++ # Contents:
++ #   Command to create the build files.
++ #
++ # Copyright (c) 2003 by CodeSourcery, LLC.  All rights reserved. 
++ #
++ # For license terms see the file COPYING.
++ #
++ ########################################################################
++ 
++ ########################################################################
++ # Imports
++ ########################################################################
++ 
++ from distutils.command.build import build as base
++ from os.path import join, normpath
++ 
++ ########################################################################
++ # Classes
++ ########################################################################
++ 
++ class build(base):
++     &quot;&quot;&quot;Build files required for installation.&quot;&quot;&quot;
++ 
++     def run(self):
++ 
++         # Do the default actions.
++         base.run(self)
++         # Copy the classes.qmc file.
++         self.copy_file(join (&quot;qm&quot;, &quot;test&quot;, &quot;classes&quot;, &quot;classes.qmc&quot;),
++                        join(self.build_lib, &quot;qm&quot;, &quot;test&quot;, &quot;classes&quot;,
++                             &quot;classes.qmc&quot;))
++                                 
+Index: qmdist/command/build_doc.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qmdist/command/build_doc.py,v
+retrieving revision 1.1
+diff -c -5 -p -r1.1 build_doc.py
+*** qmdist/command/build_doc.py	9 Sep 2003 13:48:21 -0000	1.1
+--- qmdist/command/build_doc.py	24 Nov 2003 00:46:54 -0000
+*************** from distutils.spawn import spawn, find_
+*** 18,27 ****
+--- 18,28 ----
+  from distutils.dep_util import newer, newer_group
+  from distutils.dir_util import copy_tree, remove_tree
+  from distutils.file_util import copy_file
+  import os
+  import os.path
++ from   os.path import normpath
+  import string
+  import glob
+  
+  def find_file(paths, predicate):
+      &quot;&quot;&quot;Return a file satisfying 'predicate' from 'paths'.
+*************** class build_doc(build.build):
+*** 60,82 ****
+          'type' -- The output type to be generated.
+  
+          'src' -- The xml (master) source file to be processed.
+  
+          'builddir' -- The directory from which to call jade.&quot;&quot;&quot;
+!         cwd = os.getcwd()
+          # Use an absolute path so that calls to chdir do not invalidate
+          # the name.
+          src = os.path.abspath(src)
+!         builddir = os.path.join(self.build_temp, builddir)
+          if (type == 'sgml'):
+              # The stylesheet used for html output sets
+              # 'html' to be the output directory. Jade
+              # expects that to exist.
+              self.mkpath(builddir + '/html')
+          else:
+              self.mkpath(builddir)
+!             
+          os.chdir(builddir)            
+          cmd = [jade] + args + ['-t', type]
+          cmd += ['-d', os.path.join(cwd, 'doc', 'qm-%s.dsl'%type)]
+          cmd += [dcl]
+          cmd += [src]
+--- 61,84 ----
+          'type' -- The output type to be generated.
+  
+          'src' -- The xml (master) source file to be processed.
+  
+          'builddir' -- The directory from which to call jade.&quot;&quot;&quot;
+! 
+          # Use an absolute path so that calls to chdir do not invalidate
+          # the name.
+          src = os.path.abspath(src)
+!         builddir = os.path.dirname(src)
+          if (type == 'sgml'):
+              # The stylesheet used for html output sets
+              # 'html' to be the output directory. Jade
+              # expects that to exist.
+              self.mkpath(builddir + '/html')
+          else:
+              self.mkpath(builddir)
+! 
+!         cwd = os.getcwd()
+          os.chdir(builddir)            
+          cmd = [jade] + args + ['-t', type]
+          cmd += ['-d', os.path.join(cwd, 'doc', 'qm-%s.dsl'%type)]
+          cmd += [dcl]
+          cmd += [src]
+*************** class build_doc(build.build):
+*** 89,210 ****
+          &quot;&quot;&quot;Run this command, i.e. do the actual document generation.
+  
+          As this command requires 'jade', it will do nothing if
+          that couldn't be found in the default path.&quot;&quot;&quot;
+  
+!         source_files = map(os.path.normpath,
+                             ['qm/test/doc/manual.xml',
+                              'qm/test/doc/introduction.xml',
+                              'qm/test/doc/tour.xml',
+                              'qm/test/doc/reference.xml'])
+  
+          jade = find_executable('jade')
+!         dcl = find_file(map(os.path.normpath,
+                              ['/usr/share/doc/jade*/pubtext/xml.dcl',
+                               '/usr/share/doc/openjade*/pubtext/xml.dcl',
+                               '/usr/doc/jade*/pubtext/xml.dcl',
+                               '/usr/share/sgml/declaration/xml.dcl']),
+                          os.path.isfile)
+  
+!         stylesheets = find_file(map(os.path.normpath,
+                                      ['/usr/lib/sgml/stylesheets/docbook',
+                                       '/usr/lib/sgml/stylesheets/dsssl/docbook',
+                                       '/usr/share/sgml/docbook/dsssl-stylesheets']),
+                                  os.path.isdir)
+  
+!         dtd = find_file(map(os.path.normpath,
+                              ['/usr/lib/sgml',
+                               '/usr/share/sgml/docbook']),
+                          os.path.isdir)
+  
+          if not jade or not dcl or not stylesheets or not dtd:
+              self.warn(&quot;can't build documentation&quot;)
+              return
+  
+          #
+          # Build html output.
+          #
+!         target = os.path.normpath(self.build_lib + '/qm/test/doc/html')
+          if newer_group(source_files, target):
+              self.announce(&quot;building html manual&quot;)
+              # Remove the target first such that its new mtime reflects
+              # this build.
+              if os.path.isdir(target): remove_tree(target)
+              self.call_jade(jade, ['-D%s'%dtd, '-D%s'%stylesheets],
+                             dcl, 'sgml',
+!                            os.path.normpath('qm/test/doc/manual.xml'),
+!                            os.path.normpath('qm/test/doc'))
+              tidy = find_executable('tidy')
+              if tidy:
+!                 for f in glob.glob(map(os.path.normpath,
+!                                        self.build_temp + '/qm/test/doc/html/*.html')):
+                      spawn([tidy,
+                             '-wrap', '72', '-i',
+                             '--indent-spaces', '1',
+                             '-f', '/dev/null',
+                             '-asxml', '-modify', f])
+-             if self.build_temp != self.build_lib:
+-                 src = os.path.normpath(self.build_temp + '/qm/test/doc/html')
+-                 dst = target
+-                 self.mkpath(dst)
+-                 copy_tree(src, dst, 1, 1, 0, 1,
+-                           self.verbose, self.dry_run)
+  
+!         #
+!         # Build tex output.
+!         #
+!         target = os.path.normpath(self.build_lib + '/qm/test/doc/print/manual.tex')
+          if newer_group(source_files, target):
+              self.announce(&quot;building tex manual&quot;)
+              # Remove the target first such that its new mtime reflects
+              # this build.
+              if os.path.isfile(target): os.remove(target)
+              self.call_jade(jade,
+!                            ['-D%s'%dtd, '-D%s'%stylesheets, '-o', 'manual.tex'],
+                             dcl, 'tex',
+!                            os.path.normpath('qm/test/doc/manual.xml'),
+!                            os.path.normpath('qm/test/doc'))
+  
+!             # Jade places the output TeX source file in the current directory,
+!             # so move it where we want it afterwards.
+!             # We have to change -- into -{-} so that TeX does not generate long 
+              # dashes.  This is a bug in Jade.
+!             cwd = os.getcwd()
+!             self.mkpath(self.build_temp + '/qm/test/doc/print')
+!             os.chdir(os.path.normpath(self.build_temp + '/qm/test/doc'))
+              self.spawn(['sh', '-c',
+!                         'sed -e &quot;s|--|-{-}|g&quot; &lt; manual.tex &gt; print/manual.tex'])
+!             os.remove('manual.tex')
+!             os.chdir(cwd)
+!             if self.build_temp != self.build_lib:
+!                 src = os.path.normpath(self.build_temp + '/qm/test/doc/print/manual.tex')
+!                 dst = target
+!                 self.mkpath(os.path.dirname(dst))
+!                 copy_file(src, target,
+!                           1, 1, 1, None, self.verbose, self.dry_run)
+  
+          #
+          # Build pdf output.
+          #
+!         target = os.path.normpath(self.build_lib + '/qm/test/doc/print/manual.pdf')
+          if newer_group(source_files, target):
+              self.announce(&quot;building pdf manual&quot;)
+              # Remove the target first such that its new mtime reflects
+              # this build.
+              if os.path.isfile(target): os.remove(target)
+              cwd = os.getcwd()
+!             os.chdir(os.path.normpath(self.build_temp + '/qm/test/doc/print/'))
+!             self.spawn(['pdfjadetex', 'manual.tex'])
+!             self.spawn(['pdfjadetex', 'manual.tex'])
+!             self.spawn(['pdfjadetex', 'manual.tex'])
+              os.chdir(cwd)
+-             if self.build_temp != self.build_lib:
+-                 src = os.path.normpath(self.build_temp + '/qm/test/doc/print/manual.pdf')
+-                 dst = target
+-                 self.mkpath(os.path.dirname(dst))
+-                 copy_file(src, target,
+-                           1, 1, 1, None, self.verbose, self.dry_run)
+  
+          #
+          # Build reference manual via 'happydoc'.
+          #
+          happydoc = find_executable('happydoc')
+--- 91,195 ----
+          &quot;&quot;&quot;Run this command, i.e. do the actual document generation.
+  
+          As this command requires 'jade', it will do nothing if
+          that couldn't be found in the default path.&quot;&quot;&quot;
+  
+!         source_files = map(normpath,
+                             ['qm/test/doc/manual.xml',
+                              'qm/test/doc/introduction.xml',
+                              'qm/test/doc/tour.xml',
+                              'qm/test/doc/reference.xml'])
+  
+          jade = find_executable('jade')
+!         dcl = find_file(map(normpath,
+                              ['/usr/share/doc/jade*/pubtext/xml.dcl',
+                               '/usr/share/doc/openjade*/pubtext/xml.dcl',
+                               '/usr/doc/jade*/pubtext/xml.dcl',
+                               '/usr/share/sgml/declaration/xml.dcl']),
+                          os.path.isfile)
+  
+!         stylesheets = find_file(map(normpath,
+                                      ['/usr/lib/sgml/stylesheets/docbook',
+                                       '/usr/lib/sgml/stylesheets/dsssl/docbook',
+                                       '/usr/share/sgml/docbook/dsssl-stylesheets']),
+                                  os.path.isdir)
+  
+!         dtd = find_file(map(normpath,
+                              ['/usr/lib/sgml',
+                               '/usr/share/sgml/docbook']),
+                          os.path.isdir)
+  
+          if not jade or not dcl or not stylesheets or not dtd:
+              self.warn(&quot;can't build documentation&quot;)
+              return
+  
++         # All files that are generated below are generated in the
++         # source tree.  That is the only way that Distutils will
++         # install the documentation as data files (in &quot;share&quot;) rather
++         # than as program files (in &quot;lib&quot;).
++         
+          #
+          # Build html output.
+          #
+!         target = normpath(&quot;qm/test/doc/html&quot;)
+          if newer_group(source_files, target):
+              self.announce(&quot;building html manual&quot;)
+              # Remove the target first such that its new mtime reflects
+              # this build.
+              if os.path.isdir(target): remove_tree(target)
+              self.call_jade(jade, ['-D%s'%dtd, '-D%s'%stylesheets],
+                             dcl, 'sgml',
+!                            normpath('qm/test/doc/manual.xml'),
+!                            normpath('qm/test/doc'))
+              tidy = find_executable('tidy')
+              if tidy:
+!                 for f in glob.glob(normpath('/qm/test/doc/html/*.html')):
+                      spawn([tidy,
+                             '-wrap', '72', '-i',
+                             '--indent-spaces', '1',
+                             '-f', '/dev/null',
+                             '-asxml', '-modify', f])
+  
+!         target = normpath(&quot;qm/test/doc/print/manual.tex&quot;)
+          if newer_group(source_files, target):
+              self.announce(&quot;building tex manual&quot;)
+              # Remove the target first such that its new mtime reflects
+              # this build.
+              if os.path.isfile(target): os.remove(target)
+              self.call_jade(jade,
+!                            ['-D%s'%dtd, '-D%s'%stylesheets, '-o',
+!                             'manual.tex'],
+                             dcl, 'tex',
+!                            normpath('qm/test/doc/manual.xml'),
+!                            normpath('qm/test/doc'))
+  
+!             # Jade places the output TeX source file in the current
+!             # directory, so move it where we want it afterwards.  We have
+!             # to change -- into -{-} so that TeX does not generate long
+              # dashes.  This is a bug in Jade.
+!             orig_tex_manual = normpath(&quot;qm/test/doc/manual.tex&quot;)
+!             self.mkpath(normpath(&quot;qm/test/doc/print&quot;))
+              self.spawn(['sh', '-c',
+!                         ('sed -e &quot;s|--|-{-}|g&quot; &lt; %s &gt; %s'
+!                          % (orig_tex_manual,
+!                             normpath(&quot;qm/test/doc/print/manual.tex&quot;)))])
+!             os.remove(orig_tex_manual)
+  
+          #
+          # Build pdf output.
+          #
+!         target = normpath(&quot;qm/test/doc/print/manual.pdf&quot;)
+          if newer_group(source_files, target):
+              self.announce(&quot;building pdf manual&quot;)
+              # Remove the target first such that its new mtime reflects
+              # this build.
+              if os.path.isfile(target): os.remove(target)
+              cwd = os.getcwd()
+!             os.chdir(&quot;qm/test/doc/print&quot;)
+!             for i in xrange(3):
+!                 self.spawn(['pdfjadetex', &quot;manual.tex&quot;])
+              os.chdir(cwd)
+  
+          #
+          # Build reference manual via 'happydoc'.
+          #
+          happydoc = find_executable('happydoc')
+Index: qmdist/command/install_data.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qmdist/command/install_data.py,v
+retrieving revision 1.4
+diff -c -5 -p -r1.4 install_data.py
+*** qmdist/command/install_data.py	14 Oct 2003 21:56:07 -0000	1.4
+--- qmdist/command/install_data.py	24 Nov 2003 00:46:54 -0000
+*************** class install_data(base.install_data):
+*** 37,53 ****
+          base.install_data.run(self)
+          
+          i = self.distribution.get_command_obj('install')
+          il = self.distribution.get_command_obj('install_lib')
+  
+!         config = os.path.join(il.install_dir, 'qm/config.py')
+          self.announce(&quot;generating %s&quot; %(config))
+          outf = open(config, &quot;w&quot;)
+          outf.write(&quot;version='%s'\n&quot; % (self.distribution.get_version()))
+!         # Compute the path to the data directory.
+!         data_dir = os.path.join(self.install_dir, &quot;qm&quot;)
+!         # Encode the relative path from the installation prefix to the
+          # data directory.
+          outf.write(&quot;data_dir='%s'\n&quot;
+!                    % get_relative_path (i.prefix, data_dir))
+          outf.write(&quot;\n&quot;)
+          self.outfiles.append(config)
+--- 37,58 ----
+          base.install_data.run(self)
+          
+          i = self.distribution.get_command_obj('install')
+          il = self.distribution.get_command_obj('install_lib')
+  
+!         config = os.path.join(il.install_dir, &quot;qm&quot;, &quot;config.py&quot;)
+          self.announce(&quot;generating %s&quot; %(config))
+          outf = open(config, &quot;w&quot;)
+          outf.write(&quot;version='%s'\n&quot; % (self.distribution.get_version()))
+!         prefix = i.root or i.prefix
+! 
+!         # Record the relative path from the installation prefix to the
+          # data directory.
++         data_dir = os.path.join(self.install_dir, &quot;qm&quot;)
+          outf.write(&quot;data_dir='%s'\n&quot;
+!                    % get_relative_path (prefix, data_dir))
+!         # And do the library directory.
+!         lib_dir = os.path.join(il.install_dir, &quot;qm&quot;)
+!         outf.write(&quot;lib_dir='%s'\n&quot;
+!                    % get_relative_path (prefix, lib_dir))
+          outf.write(&quot;\n&quot;)
+          self.outfiles.append(config)
+Index: qmdist/command/install_lib.py
+===================================================================
+RCS file: qmdist/command/install_lib.py
+diff -N qmdist/command/install_lib.py
+*** /dev/null	1 Jan 1970 00:00:00 -0000
+--- qmdist/command/install_lib.py	24 Nov 2003 00:46:54 -0000
+***************
+*** 0 ****
+--- 1,40 ----
++ ########################################################################
++ #
++ # File:   install_lib.py
++ # Author: Mark Mitchell
++ # Date:   2003-11-23
++ #
++ # Contents:
++ #   Command to install library files.
++ #
++ # Copyright (c) 2003 by CodeSourcery, LLC.  All rights reserved. 
++ #
++ # For license terms see the file COPYING.
++ #
++ ########################################################################
++ 
++ ########################################################################
++ # Imports
++ ########################################################################
++ 
++ from distutils.command.install_lib import install_lib as base
++ from os.path import join, normpath
++ 
++ ########################################################################
++ # Classes
++ ########################################################################
++ 
++ class install_lib(base):
++     &quot;&quot;&quot;Install library files.&quot;&quot;&quot;
++ 
++     def get_inputs(self):
++     
++         inputs = base.get_inputs(self)
++         return inputs + [join(&quot;qm&quot;, &quot;test&quot;, &quot;classes&quot;, &quot;classes.qmc&quot;)]
++ 
++ 
++     def get_outputs(self):
++         
++         outputs = base.get_outputs(self)
++         return outputs + [join(self.install_dir,
++                                &quot;qm&quot;, &quot;test&quot;, &quot;classes&quot;, &quot;classes.qmc&quot;)]
+Index: qmdist/command/install_scripts.py
+===================================================================
+RCS file: /home/sc/Repository/qm/qmdist/command/install_scripts.py,v
+retrieving revision 1.1
+diff -c -5 -p -r1.1 install_scripts.py
+*** qmdist/command/install_scripts.py	14 Oct 2003 21:56:07 -0000	1.1
+--- qmdist/command/install_scripts.py	24 Nov 2003 00:46:54 -0000
+*************** class install_scripts(base.install_scrip
+*** 40,57 ****
+          qmtest_script = open(qmtest_file).read()
+  
+          # Encode the relative path from that script to the top of the
+          # installation directory.
+          i = self.distribution.get_command_obj('install')
+!         rel_prefix = get_relative_path(self.install_dir, i.prefix)
+          assignment = 'rel_prefix = &quot;%s&quot;' % rel_prefix
+          qmtest_script = re.sub(&quot;rel_prefix = .*&quot;, assignment,
+                                 qmtest_script)
+          # Encode the relative path from the prefix to the library
+          # directory.
+          il = self.distribution.get_command_obj('install_lib')
+!         rel_libdir = get_relative_path(i.prefix, il.install_dir)
+          assignment = 'rel_libdir = &quot;%s&quot;' % rel_libdir
+          qmtest_script = re.sub(&quot;rel_libdir = .*&quot;, assignment,
+                                 qmtest_script)
+  
+          # Write the script back out.
+--- 40,58 ----
+          qmtest_script = open(qmtest_file).read()
+  
+          # Encode the relative path from that script to the top of the
+          # installation directory.
+          i = self.distribution.get_command_obj('install')
+!         prefix = i.root or i.prefix
+!         rel_prefix = get_relative_path(self.install_dir, prefix)
+          assignment = 'rel_prefix = &quot;%s&quot;' % rel_prefix
+          qmtest_script = re.sub(&quot;rel_prefix = .*&quot;, assignment,
+                                 qmtest_script)
+          # Encode the relative path from the prefix to the library
+          # directory.
+          il = self.distribution.get_command_obj('install_lib')
+!         rel_libdir = get_relative_path(prefix, il.install_dir)
+          assignment = 'rel_libdir = &quot;%s&quot;' % rel_libdir
+          qmtest_script = re.sub(&quot;rel_libdir = .*&quot;, assignment,
+                                 qmtest_script)
+  
+          # Write the script back out.
+
+</PRE>
+
+<!--endarticle-->
+    <HR>
+    <P><UL>
+        <!--threads-->
+	<LI>Previous message: <A HREF="000623.html">[qmtest] os.system0 use in resource SetUp methods
+</A></li>
+	<LI>Next message: <A HREF="000617.html">PATCH: Create working Windows distributions
+</A></li>
+         <LI> <B>Messages sorted by:</B> 
+              <a href="date.html#615">[ date ]</a>
+              <a href="thread.html#615">[ thread ]</a>
+              <a href="subject.html#615">[ subject ]</a>
+              <a href="author.html#615">[ author ]</a>
+         </LI>
+       </UL>
+
+<hr>
+<a href="http://sourcerytools.com/cgi-bin/mailman/listinfo/qmtest">More information about the qmtest
+mailing list</a><br>
+</body></html>
